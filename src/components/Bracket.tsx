@@ -24,7 +24,7 @@ const rounds: Round[] = [
 
 export function Bracket() {
   return (
-    <section id="bracket" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="bracket" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="knockout"
@@ -55,7 +55,7 @@ export function Bracket() {
                       }`}
                     >
                       {slot.flag && <span className="text-base">{slot.flag}</span>}
-                      <span className="text-slate-300 font-mono">
+                      <span className="text-slate-500 font-mono">
                         {slot.team ?? slot.label}
                       </span>
                     </motion.div>

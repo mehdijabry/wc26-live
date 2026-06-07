@@ -73,13 +73,13 @@ export function PublicProfile({ slug }: { slug: string }) {
       animate={{ opacity: 1 }}
       className="min-h-svh pb-12"
     >
-      <header className="border-b border-white/5 py-6">
+      <header className="border-b border-slate-200/70 py-6">
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <img src="/wc26-emblem.svg" alt="" className="w-8 h-8" />
             <span className="font-display font-bold tracking-tight">WC<span className="text-accent-gold">26</span> Live</span>
           </a>
-          <a href="/" className="text-sm text-slate-400 hover:text-white">← Hub</a>
+          <a href="/" className="text-sm text-slate-600 hover:text-slate-900">← Hub</a>
         </div>
       </header>
 

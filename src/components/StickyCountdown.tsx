@@ -29,15 +29,15 @@ export function StickyCountdown() {
       initial={{ y: -40, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.6, delay: 0.3 }}
-      className="fixed top-[60px] inset-x-0 z-40 pointer-events-none"
+      className="hidden md:block fixed top-[60px] inset-x-0 z-40 pointer-events-none"
     >
       <div className="container max-w-6xl mx-auto px-6 flex justify-center">
         <div
           className={
             'pointer-events-auto inline-flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-2 rounded-full text-xs font-mono backdrop-blur-xl border ' +
             (hot
-              ? 'bg-gradient-to-r from-red-700/40 via-yellow-700/30 to-red-700/40 border-yellow-500/30 animate-pulse-slow'
-              : 'bg-ink-800/70 border-white/10')
+              ? 'bg-gradient-to-r from-red-50 via-yellow-50 to-red-50 border-yellow-300/50 animate-pulse-slow'
+              : 'bg-white border-slate-200 shadow-sm')
           }
         >
           <span className="text-slate-500 uppercase tracking-widest hidden sm:inline">
@@ -63,8 +63,8 @@ function Digit({ value, label, hot }: { value: number; label: string; hot?: bool
         className={
           'tabular-nums font-semibold ' +
           (hot
-            ? 'text-yellow-300 text-sm sm:text-base'
-            : 'text-white text-sm sm:text-base')
+            ? 'text-yellow-700 text-sm sm:text-base'
+            : 'text-slate-900 text-sm sm:text-base')
         }
       >
         {String(value).padStart(2, '0')}

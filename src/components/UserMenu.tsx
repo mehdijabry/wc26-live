@@ -3,7 +3,7 @@ import { useAuth } from '../store/auth'
 import { AuthModal } from './AuthModal'
 
 const TIER_COLORS: Record<string, string> = {
-  Rookie: 'text-slate-400',
+  Rookie: 'text-slate-600',
   Amateur: 'text-blue-400',
   Pro: 'text-accent-green',
   Elite: 'text-accent-gold',
@@ -16,7 +16,7 @@ export function UserMenu() {
   const [menuOpen, setMenuOpen] = useState(false)
 
   if (loading) {
-    return <div className="w-24 h-8 rounded-full bg-white/5 animate-pulse" />
+    return <div className="w-24 h-8 rounded-full bg-slate-100 animate-pulse" />
   }
 
   if (!user) {
@@ -72,7 +72,7 @@ export function UserMenu() {
 
             <button
               onClick={signOut}
-              className="mt-4 w-full px-3 py-2 rounded-full bg-white/5 hover:bg-white/10 text-xs text-slate-400 transition-colors"
+              className="mt-4 w-full px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-xs text-slate-600 transition-colors"
             >
               Sign out
             </button>
@@ -85,8 +85,8 @@ export function UserMenu() {
 
 function Stat({ label, value, suffix }: { label: string; value: number | string; suffix?: string }) {
   return (
-    <div className="rounded-lg bg-ink-900/40 px-2 py-2">
-      <div className="font-display font-bold text-base text-white tabular-nums">
+    <div className="rounded-lg bg-slate-50 px-2 py-2">
+      <div className="font-display font-bold text-base text-slate-900 tabular-nums">
         {value}
         {suffix && <span className="text-[10px] text-slate-500 ml-1">{suffix}</span>}
       </div>

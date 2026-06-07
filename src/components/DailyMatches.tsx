@@ -75,7 +75,7 @@ export function DailyMatches() {
   }
 
   return (
-    <section id="today" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="today" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="football today"
@@ -94,7 +94,7 @@ export function DailyMatches() {
                   'px-4 py-1.5 rounded-full text-sm transition-all ' +
                   (offset === d
                     ? 'bg-accent-gold text-ink-900 font-semibold'
-                    : 'text-slate-400 hover:text-white')
+                    : 'text-slate-600 hover:text-slate-900')
                 }
               >
                 {d === -1 ? '← Yesterday' : d === 0 ? 'Today' : 'Tomorrow →'}
@@ -125,8 +125,8 @@ export function DailyMatches() {
               className={
                 'px-3 py-1 rounded-full text-xs font-mono transition-colors ' +
                 (activeSlugs === null
-                  ? 'bg-white/10 text-white'
-                  : 'glass glass-hover text-slate-400')
+                  ? 'bg-slate-200 text-white'
+                  : 'glass glass-hover text-slate-600')
               }
             >
               All
@@ -140,7 +140,7 @@ export function DailyMatches() {
                   className={
                     'px-3 py-1 rounded-full text-xs font-mono transition-colors ' +
                     (isActive
-                      ? 'bg-white/10 text-white'
+                      ? 'bg-slate-200 text-white'
                       : 'glass glass-hover text-slate-500')
                   }
                 >
@@ -231,7 +231,7 @@ function MatchCard({ ev }: { ev: EspnEvent }) {
             {s.label}
           </span>
         ) : s.finished ? (
-          <span className="text-slate-400">FT</span>
+          <span className="text-slate-600">FT</span>
         ) : (
           <span className="text-slate-600">{s.label}</span>
         )}

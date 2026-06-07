@@ -65,11 +65,11 @@ export function AtlasLions() {
           >
             <button
               onClick={() => setToast(null)}
-              className="pointer-events-auto group max-w-md flex items-center gap-3 px-4 py-2.5 rounded-full backdrop-blur-xl bg-ink-800/85 border border-red-500/15 shadow-2xl text-xs text-slate-200 hover:bg-ink-800/95 transition-colors"
+              className="pointer-events-auto group max-w-md flex items-center gap-3 px-4 py-2.5 rounded-full backdrop-blur-xl bg-white border border-red-500/15 shadow-2xl text-xs text-slate-800 hover:bg-white/95 transition-colors"
             >
               <span className="text-base">🦁</span>
               <span className="text-left flex-1 leading-snug">{toast}</span>
-              <span className="text-slate-600 group-hover:text-slate-400 text-[10px] font-mono">×</span>
+              <span className="text-slate-600 group-hover:text-slate-600 text-[10px] font-mono">×</span>
             </button>
           </motion.div>
         )}
@@ -101,7 +101,7 @@ function KonamiOverlay() {
         className="relative text-center px-8"
       >
         <div className="text-8xl mb-4">🦁🇲🇦</div>
-        <div className="font-display font-bold text-5xl sm:text-7xl text-white drop-shadow-2xl">
+        <div className="font-display font-bold text-5xl sm:text-7xl text-slate-900 drop-shadow-2xl">
           Atlas Lions
         </div>
         <div className="font-display font-bold text-2xl sm:text-4xl text-yellow-300 mt-2">
@@ -155,7 +155,7 @@ export function MoroccoOdds() {
           <li key={o.team} className="flex items-center gap-3">
             <span className="text-xl w-8">{o.flag}</span>
             <span className="text-sm font-mono w-16">{o.team.toUpperCase()}</span>
-            <div className="flex-1 h-2 rounded-full bg-ink-900/60 overflow-hidden">
+            <div className="flex-1 h-2 rounded-full bg-slate-50 overflow-hidden">
               <motion.div
                 initial={{ width: 0 }}
                 whileInView={{ width: `${o.prob}%` }}
@@ -179,7 +179,7 @@ export function MoroccoOdds() {
           </li>
         ))}
       </ul>
-      <div className="mt-4 pt-4 border-t border-white/5 text-[11px] text-slate-500 font-mono text-center">
+      <div className="mt-4 pt-4 border-t border-slate-200/70 text-[11px] text-slate-500 font-mono text-center">
         © Atlas Lions Stats Inc. — peer-reviewed by Mehdi.
       </div>
     </div>

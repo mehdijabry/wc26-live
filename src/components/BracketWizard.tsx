@@ -28,7 +28,7 @@ export function BracketWizard() {
   const stepIdx = STEP_ORDER.indexOf(step)
 
   return (
-    <section id="bracket-predict" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="bracket-predict" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="full-bracket prediction"
@@ -48,7 +48,7 @@ export function BracketWizard() {
                   ? 'bg-accent-gold text-ink-900 font-semibold'
                   : i < stepIdx
                     ? 'glass text-accent-green'
-                    : 'glass glass-hover text-slate-400'
+                    : 'glass glass-hover text-slate-600'
               )}
             >
               <span>{i + 1}</span>
@@ -144,13 +144,13 @@ function GroupRanker({ letter, value, onChange }: { letter: GroupLetter; value: 
           const t = teamByCode(code)
           if (!t) return null
           return (
-            <div key={code} className={cn('flex items-center gap-3 px-3 py-2 rounded-lg border bg-white/[0.02]', tone[i])}>
+            <div key={code} className={cn('flex items-center gap-3 px-3 py-2 rounded-lg border bg-slate-50', tone[i])}>
               <span className="text-[10px] font-mono w-6 text-slate-500">{tag[i]}</span>
               <span className="text-xl">{t.flag}</span>
               <span className="text-sm flex-1 truncate">{t.name}</span>
               <div className="flex flex-col">
-                <button onClick={() => move(i, -1)} disabled={i === 0} className="text-slate-500 hover:text-white text-xs leading-none disabled:opacity-20">▲</button>
-                <button onClick={() => move(i, +1)} disabled={i === 3} className="text-slate-500 hover:text-white text-xs leading-none disabled:opacity-20">▼</button>
+                <button onClick={() => move(i, -1)} disabled={i === 0} className="text-slate-500 hover:text-slate-900 text-xs leading-none disabled:opacity-20">▲</button>
+                <button onClick={() => move(i, +1)} disabled={i === 3} className="text-slate-500 hover:text-slate-900 text-xs leading-none disabled:opacity-20">▼</button>
               </div>
             </div>
           )
@@ -178,7 +178,7 @@ function StepThirds() {
     <div>
       <div className="text-xs text-slate-500 mb-4 font-mono">
         Select <span className="text-accent-gold">8 of 12</span> best third-placed teams that will advance to the Round of 32.
-        Currently picked: <span className="text-white">{thirdPlaceAdvancing.length}</span>
+        Currently picked: <span className="text-slate-900">{thirdPlaceAdvancing.length}</span>
       </div>
       {thirds.length < 12 && (
         <div className="glass rounded-xl p-4 mb-4 text-xs text-yellow-300">
@@ -249,7 +249,7 @@ function StepKo({ stage, titleHint }: { stage: 'R32' | 'R16' | 'QF' | 'SF'; titl
 
 function KoSide({ team, selected, onClick }: { team: Team | null; selected: boolean; onClick: () => void }) {
   if (!team) {
-    return <div className="px-3 py-3 rounded-lg bg-ink-900/40 text-xs text-slate-600 font-mono">TBD</div>
+    return <div className="px-3 py-3 rounded-lg bg-slate-50 text-xs text-slate-600 font-mono">TBD</div>
   }
   return (
     <button
@@ -258,7 +258,7 @@ function KoSide({ team, selected, onClick }: { team: Team | null; selected: bool
         'flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors',
         selected
           ? 'bg-accent-gold/15 ring-1 ring-accent-gold/40'
-          : 'bg-white/[0.02] hover:bg-white/[0.06]'
+          : 'bg-slate-50 hover:bg-white/[0.06]'
       )}
     >
       <span className="text-xl">{team.flag}</span>
@@ -354,7 +354,7 @@ function StepFinal() {
               onClick={() => { setKoWinner('TP-1', t.code); setThirdPlaceWinner(t.code) }}
               className={cn(
                 'flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors',
-                thirdPlaceWinner === t.code ? 'bg-orange-600/15 ring-1 ring-orange-500/40' : 'bg-white/[0.02] hover:bg-white/[0.06]'
+                thirdPlaceWinner === t.code ? 'bg-orange-600/15 ring-1 ring-orange-500/40' : 'bg-slate-50 hover:bg-white/[0.06]'
               )}
             >
               <span className="text-xl">{t.flag}</span>
@@ -375,7 +375,7 @@ function StepFinal() {
               onClick={() => { setKoWinner('FINAL-1', t.code); setFinalWinner(t.code) }}
               className={cn(
                 'flex items-center gap-3 px-4 py-4 rounded-xl transition-colors',
-                finalWinner === t.code ? 'bg-gradient-to-br from-accent-gold/25 to-yellow-700/10 ring-2 ring-accent-gold/50' : 'bg-white/[0.02] hover:bg-white/[0.06]'
+                finalWinner === t.code ? 'bg-gradient-to-br from-accent-gold/25 to-yellow-700/10 ring-2 ring-accent-gold/50' : 'bg-slate-50 hover:bg-white/[0.06]'
               )}
             >
               <span className="text-3xl">{t.flag}</span>
@@ -503,8 +503,8 @@ function BracketPoster() {
   }
 
   return (
-    <div className="text-white">
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
+    <div className="text-slate-900">
+      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
         <div>
           <div className="text-xs uppercase tracking-widest text-accent-gold font-mono">{profile?.alias ?? 'fan'}'s prediction</div>
           <div className="font-display font-bold text-3xl">FIFA World Cup 26 — Full Bracket</div>

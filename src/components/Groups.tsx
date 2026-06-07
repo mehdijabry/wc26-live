@@ -41,7 +41,7 @@ export function Groups() {
             <button
               onClick={() => load()}
               disabled={loading}
-              className="px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 transition-colors disabled:opacity-40"
+              className="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors disabled:opacity-40"
             >
               ↻
             </button>
@@ -122,8 +122,8 @@ export function Groups() {
                             className={
                               'w-full grid grid-cols-[1fr_auto_auto_auto_auto] gap-1.5 items-center px-3 py-2 rounded-lg transition-colors group text-left ' +
                               (champ
-                                ? `bg-gradient-to-r ${champ.tone.split(' ').slice(0, 3).join(' ')} ring-1 ${champ.tone.split(' ').slice(3).join(' ')} hover:bg-white/[0.08]`
-                                : 'bg-white/[0.02] hover:bg-white/[0.08]')
+                                ? `bg-gradient-to-r ${champ.tone.split(' ').slice(0, 3).join(' ')} ring-1 ${champ.tone.split(' ').slice(3).join(' ')} hover:bg-slate-100`
+                                : 'bg-slate-50 hover:bg-slate-100')
                             }
                             title={`View ${t.name} squad`}
                           >
@@ -152,14 +152,14 @@ export function Groups() {
                               )}
                               <span className="text-sm truncate flex-1 min-w-0">{t.shortName}</span>
                               {champ && (
-                                <span className="text-[8px] uppercase tracking-widest text-slate-400 font-mono shrink-0 hidden md:inline">
+                                <span className="text-[8px] uppercase tracking-widest text-slate-600 font-mono shrink-0 hidden md:inline">
                                   {champ.short}
                                 </span>
                               )}
                             </span>
                             {rec.played > 0 ? (
                               <>
-                                <span className="w-5 text-center font-mono text-xs text-slate-400 tabular-nums">{rec.played}</span>
+                                <span className="w-5 text-center font-mono text-xs text-slate-600 tabular-nums">{rec.played}</span>
                                 <span className={'w-7 text-center font-mono text-xs tabular-nums ' + (rec.goalsFor - rec.goalsAgainst > 0 ? 'text-accent-green' : rec.goalsFor - rec.goalsAgainst < 0 ? 'text-red-400' : 'text-slate-500')}>
                                   {rec.goalsFor - rec.goalsAgainst > 0 ? '+' : ''}{rec.goalsFor - rec.goalsAgainst}
                                 </span>
@@ -216,7 +216,7 @@ function GroupNextMatch({ group }: { group: ReturnType<typeof deriveLiveGroups>[
       })
     : ''
   return (
-    <div className={'mt-3 pt-3 border-t border-white/5 flex items-center gap-2 text-[10px] font-mono ' + (isLive ? 'text-red-400' : 'text-slate-500')}>
+    <div className={'mt-3 pt-3 border-t border-slate-200/70 flex items-center gap-2 text-[10px] font-mono ' + (isLive ? 'text-red-400' : 'text-slate-500')}>
       <span className="uppercase tracking-widest text-slate-600">{isLive ? 'LIVE' : 'NEXT'}</span>
       <span className="truncate flex-1">
         {home?.shortDisplayName ?? home?.abbreviation ?? '?'}
@@ -234,15 +234,15 @@ function GroupsSkeleton() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="glass rounded-2xl p-5 animate-pulse">
           <div className="flex items-center justify-between mb-4">
-            <div className="h-7 w-24 bg-white/5 rounded" />
-            <div className="h-3 w-16 bg-white/5 rounded" />
+            <div className="h-7 w-24 bg-slate-100 rounded" />
+            <div className="h-3 w-16 bg-slate-100 rounded" />
           </div>
           <div className="space-y-2">
             {Array.from({ length: 4 }).map((_, j) => (
-              <div key={j} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-white/[0.02]">
-                <div className="w-6 h-6 rounded-full bg-white/5" />
-                <div className="h-3 flex-1 bg-white/5 rounded" />
-                <div className="w-5 h-5 bg-white/5 rounded" />
+              <div key={j} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50">
+                <div className="w-6 h-6 rounded-full bg-slate-100" />
+                <div className="h-3 flex-1 bg-slate-100 rounded" />
+                <div className="w-5 h-5 bg-slate-100 rounded" />
               </div>
             ))}
           </div>
@@ -274,7 +274,7 @@ export function SectionHeader({
       <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-tight mb-3">
         {title}
       </h2>
-      <p className="text-slate-400 max-w-3xl text-base sm:text-lg leading-relaxed">{sub}</p>
+      <p className="text-slate-600 max-w-3xl text-base sm:text-lg leading-relaxed">{sub}</p>
     </motion.div>
   )
 }

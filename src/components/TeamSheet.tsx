@@ -1,14 +1,21 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { API_BASE, api, eventTeams, statusLabel, type EspnEvent, type RosterAthlete, type RosterResponse } from '../lib/api'
-import { useTournament } from '../store/tournament'
+import {
+  API_BASE,
+  api,
+  eventTeams,
+  statusLabel,
+  type EspnEvent,
+  type RosterAthlete,
+  type RosterResponse,
+} from '../lib/api'
+import { useTournament, recordForTeam, matchesForTeam } from '../store/tournament'
 import { teamBadgeFallback } from '../lib/utils'
 
 /**
- * Team detail sheet — opens when a team row in the Groups grid is clicked.
- * Fetches ESPN /teams/:abbr (logo, colors, links, roster if available) and
- * shows every match this team has in the tournament with live status.
+ * Team detail sheet — full-page modal opened from a country click in Groups.
+ * Footmercato-style structure with 4 tabs (Infos / Effectif / Calendar / Stats).
  */
 
 type EspnTeamPayload = {
@@ -21,17 +28,20 @@ type EspnTeamPayload = {
     location?: string
     color?: string
     logos?: Array<{ href?: string }>
-    record?: { items?: Array<{ summary?: string; description?: string }> }
+    record?: { items?: Array<{ summary?: string; description?: string; stats?: Array<{ name?: string; value?: number; displayValue?: string }> }> }
     standingSummary?: string
     nextEvent?: Array<{ name?: string; date?: string }>
   }
 }
+
+type Tab = 'infos' | 'effectif' | 'calendrier' | 'stats'
 
 export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null; open: boolean; onClose: () => void }) {
   const [data, setData] = useState<EspnTeamPayload | null>(null)
   const [roster, setRoster] = useState<RosterResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [tab, setTab] = useState<Tab>('infos')
   const events = useTournament((s) => s.events)
 
   useEffect(() => {
@@ -41,7 +51,7 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
     setError(null)
     setData(null)
     setRoster(null)
-    // Team meta + roster in parallel
+    setTab('infos')
     Promise.all([
       fetch(`${API_BASE}/teams/${teamCode.toLowerCase()}`).then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -59,16 +69,7 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
     return () => { stop = true }
   }, [open, teamCode])
 
-  // Tournament matches for this team
-  const teamMatches = teamCode
-    ? events.filter((ev) => {
-        const { home, away } = eventTeams(ev)
-        const codes = [home?.team?.abbreviation, away?.team?.abbreviation].filter(Boolean).map((c) => (c as string).toLowerCase())
-        return codes.includes(teamCode.toLowerCase())
-      })
-    : []
-
-  // Lock body scroll while modal is open (iOS Safari friendly)
+  // Lock body scroll while modal is open
   useEffect(() => {
     if (!open) return
     const prev = document.body.style.overflow
@@ -76,15 +77,23 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
     return () => { document.body.style.overflow = prev }
   }, [open])
 
+  const teamMatches = useMemo(
+    () => (teamCode ? matchesForTeam(events, teamCode) : []),
+    [events, teamCode]
+  )
+  const record = useMemo(
+    () => (teamCode ? recordForTeam(events, teamCode) : { played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, points: 0 }),
+    [events, teamCode]
+  )
+
   const team = data?.team
   const logo = teamBadgeFallback(team?.logos?.[0]?.href, teamCode ?? undefined)
-  const color = team?.color ? `#${team.color}` : '#d4af37'
   const athletes = roster?.athletes ?? []
+  const displayName = team?.displayName ?? team?.shortDisplayName ?? teamCode ?? ''
+  const abbr = (teamCode ?? team?.abbreviation ?? '').toUpperCase()
 
-  // Portal the modal to <body> so it escapes any transformed/overflow-hidden
-  // ancestor (the Groups motion.div with whileInView creates a transform
-  // stacking context on iOS Safari that would otherwise trap our fixed pos).
   if (typeof document === 'undefined') return null
+
   return createPortal(
     <AnimatePresence>
       {open && (
@@ -93,111 +102,104 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 z-[100] bg-ink-900/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+          className="fixed inset-0 z-[100] bg-slate-900/40 backdrop-blur-sm overflow-y-auto"
         >
           <motion.div
-            initial={{ y: 100, opacity: 0 }}
+            initial={{ y: 40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
+            exit={{ y: 40, opacity: 0 }}
             transition={{ type: 'spring', damping: 28, stiffness: 250 }}
             onClick={(e) => e.stopPropagation()}
-            className="glass rounded-t-3xl sm:rounded-3xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-6 sm:p-8 ring-glow"
+            className="min-h-screen sm:min-h-0 sm:max-w-3xl sm:mx-auto sm:my-8 bg-white sm:rounded-3xl sm:shadow-2xl overflow-hidden"
           >
-            {/* Header */}
-            <div className="flex items-start justify-between mb-5 gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                {logo ? (
-                  <img src={logo} alt="" className="w-14 h-14 sm:w-16 sm:h-16 object-contain shrink-0" />
-                ) : (
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full glass flex items-center justify-center text-2xl">
-                    🏳️
-                  </div>
-                )}
-                <div className="min-w-0">
-                  <div className="text-[10px] uppercase tracking-widest font-mono" style={{ color }}>
-                    {team?.location ?? teamCode}
-                  </div>
-                  <div className="font-display font-bold text-2xl sm:text-3xl truncate">
-                    {team?.displayName ?? team?.shortDisplayName ?? teamCode}
-                  </div>
-                  {team?.record?.items?.[0]?.summary && (
-                    <div className="text-xs text-slate-500 font-mono mt-1">
-                      Record · {team.record.items[0].summary}
+            {/* Header — flag, name, big watermark, close, share */}
+            <div className="relative px-5 sm:px-7 pt-5 pb-3 border-b border-slate-100">
+              <div className="absolute top-1/2 right-4 -translate-y-1/2 font-display font-black text-7xl sm:text-8xl text-slate-100 select-none pointer-events-none tracking-tighter">
+                {abbr}
+              </div>
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  {logo ? (
+                    <img
+                      src={logo}
+                      alt=""
+                      className="w-12 h-12 sm:w-14 sm:h-14 object-contain shrink-0 rounded-full ring-2 ring-white shadow-md"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-slate-100 flex items-center justify-center text-2xl shrink-0">
+                      🏳️
                     </div>
                   )}
-                </div>
-              </div>
-              <button
-                onClick={onClose}
-                aria-label="Close"
-                className="w-9 h-9 rounded-full glass glass-hover flex items-center justify-center text-xl shrink-0"
-              >
-                ×
-              </button>
-            </div>
-
-            {team?.standingSummary && (
-              <div className="glass rounded-xl px-3 py-2 text-xs text-slate-300 font-mono mb-5">
-                {team.standingSummary}
-              </div>
-            )}
-
-            {/* Status */}
-            {loading && (
-              <div className="glass rounded-xl p-4 text-center text-slate-500 text-sm">
-                Loading team data from ESPN…
-              </div>
-            )}
-            {error && (
-              <div className="glass rounded-xl p-4 text-center text-red-400 text-xs font-mono">
-                {error}
-              </div>
-            )}
-
-            {/* Tournament matches */}
-            <div className="mt-1">
-              <div className="text-xs uppercase tracking-widest text-slate-500 font-mono mb-3">
-                Tournament matches · {teamMatches.length}
-              </div>
-              {teamMatches.length === 0 && (
-                <div className="glass rounded-xl p-4 text-xs text-slate-500">
-                  No fixtures for this team yet — ESPN will publish them as the draw is finalized.
-                </div>
-              )}
-              <div className="space-y-1.5">
-                {teamMatches.map((ev) => (
-                  <MatchLine key={ev.id} ev={ev} teamCode={teamCode!} />
-                ))}
-              </div>
-            </div>
-
-            {/* Squad — live from ESPN /roster (falls back through several
-                confederation endpoints because national rosters are exposed
-                inconsistently before kickoff). */}
-            <div className="mt-6 pt-6 border-t border-white/5">
-              <div className="flex items-baseline justify-between mb-3">
-                <div className="text-xs uppercase tracking-widest text-slate-500 font-mono">
-                  Squad · {athletes.length} {athletes.length === 1 ? 'player' : 'players'}
-                </div>
-                {roster?.source && (
-                  <div className="text-[9px] font-mono text-slate-700 truncate max-w-[60%]" title={roster.source}>
-                    ESPN
+                  <div className="min-w-0">
+                    <div className="font-display font-bold text-xl sm:text-2xl truncate text-slate-900">
+                      {displayName}
+                    </div>
+                    {team?.standingSummary && (
+                      <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                        {team.standingSummary}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              {athletes.length === 0 ? (
-                <div className="glass rounded-xl p-4 text-xs text-slate-400 leading-relaxed">
-                  {loading
-                    ? 'Loading squad…'
-                    : "ESPN n'a pas encore publié de roster pour cette sélection. La liste apparaîtra ici dès que la fédération la publie — pas d'intervention nécessaire."}
                 </div>
-              ) : (
-                <SquadGrid athletes={athletes} />
-              )}
+                <button
+                  onClick={onClose}
+                  aria-label="Close"
+                  className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-xl shrink-0 text-slate-700"
+                >
+                  ×
+                </button>
+              </div>
             </div>
 
-            <div className="mt-6 text-[10px] font-mono text-slate-600 text-center">
-              Live data · ESPN public API · refresh 30s
+            {/* Tabs — sticky on scroll */}
+            <div className="sticky top-0 z-10 bg-white border-b border-slate-100">
+              <div className="overflow-x-auto no-scrollbar">
+                <div className="flex gap-1 px-3 sm:px-7 min-w-max">
+                  {(['infos', 'effectif', 'calendrier', 'stats'] as Tab[]).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setTab(t)}
+                      aria-current={tab === t ? 'page' : undefined}
+                      className="tab-link uppercase tracking-wider text-xs"
+                    >
+                      {t === 'infos' ? 'Infos'
+                       : t === 'effectif' ? `Squad${athletes.length ? ` · ${athletes.length}` : ''}`
+                       : t === 'calendrier' ? `Matches${teamMatches.length ? ` · ${teamMatches.length}` : ''}`
+                       : 'Stats'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Body */}
+            <div className="px-5 sm:px-7 py-5">
+              {error && (
+                <div className="rounded-xl bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700 font-mono mb-4">
+                  {error}
+                </div>
+              )}
+
+              {tab === 'infos' && (
+                <InfosTab team={team} record={record} teamMatches={teamMatches} teamCode={teamCode ?? ''} loading={loading} />
+              )}
+
+              {tab === 'effectif' && (
+                <EffectifTab athletes={athletes} loading={loading} />
+              )}
+
+              {tab === 'calendrier' && (
+                <CalendrierTab teamMatches={teamMatches} teamCode={teamCode ?? ''} />
+              )}
+
+              {tab === 'stats' && (
+                <StatsTab record={record} teamMatches={teamMatches} />
+              )}
+
+              <div className="mt-6 text-[10px] font-mono text-slate-400 text-center">
+                Live data · ESPN public API · refresh 30s
+              </div>
             </div>
           </motion.div>
         </motion.div>
@@ -207,8 +209,180 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
   )
 }
 
-function SquadGrid({ athletes }: { athletes: RosterAthlete[] }) {
-  // Group by position bucket (GK / DEF / MID / FW)
+// ---------- Tabs ---------------------------------------------------------
+
+function InfosTab({
+  team, record, teamMatches, teamCode, loading,
+}: {
+  team: EspnTeamPayload['team']
+  record: ReturnType<typeof recordForTeam>
+  teamMatches: EspnEvent[]
+  teamCode: string
+  loading: boolean
+}) {
+  const next = teamMatches.find((ev) => ev.status?.type?.state !== 'post')
+
+  // Form bullets — last 5 finished matches as W/D/L circles
+  const form = teamMatches
+    .filter((ev) => ev.status?.type?.state === 'post')
+    .slice(-5)
+    .map((ev) => {
+      const cs = ev.competitions?.[0]?.competitors ?? []
+      const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === teamCode.toUpperCase())
+      const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== teamCode.toUpperCase())
+      const my = parseInt(mine?.score ?? '0', 10)
+      const op = parseInt(other?.score ?? '0', 10)
+      return my > op ? 'W' : my === op ? 'D' : 'L'
+    })
+
+  return (
+    <div className="space-y-5">
+      {/* KPI grid à la footmercato */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Kpi label="Form">
+          {form.length === 0 ? <span className="text-slate-400 text-xs font-mono">—</span> : (
+            <div className="flex gap-1">
+              {form.map((f, i) => (
+                <span key={i} className={
+                  'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ' +
+                  (f === 'W' ? 'bg-accent-green' : f === 'D' ? 'bg-slate-400' : 'bg-accent-red')
+                }>
+                  {f}
+                </span>
+              ))}
+            </div>
+          )}
+        </Kpi>
+        <Kpi label="Goals" value={`${record.goalsFor > 0 ? '+' : ''}${record.goalsFor} / -${record.goalsAgainst}`} />
+        <Kpi label="Results" value={
+          <>
+            <span className="text-accent-green">{record.won}W</span>{' '}
+            <span className="text-slate-500">{record.drawn}D</span>{' '}
+            <span className="text-accent-red">{record.lost}L</span>
+          </>
+        } />
+        <Kpi label="Squad size" value={team?.record?.items?.[0]?.stats?.length ? String(team.record.items[0].stats.length) : '—'} />
+      </div>
+
+      {/* Next match card */}
+      <div>
+        <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+          Next match
+        </div>
+        {next ? (
+          <MatchLine ev={next} teamCode={teamCode} />
+        ) : (
+          <div className="rounded-xl border border-slate-100 px-3 py-3 text-xs text-slate-500">
+            No upcoming match — the tournament is over for this team.
+          </div>
+        )}
+      </div>
+
+      {/* Loading hint */}
+      {loading && (
+        <div className="text-xs text-slate-500 font-mono">Loading from ESPN…</div>
+      )}
+    </div>
+  )
+}
+
+function EffectifTab({ athletes, loading }: { athletes: RosterAthlete[]; loading: boolean }) {
+  if (loading && athletes.length === 0) {
+    return (
+      <div className="space-y-2">
+        {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+  if (athletes.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-100 px-3 py-4 text-xs text-slate-500 leading-relaxed">
+        ESPN n'a pas encore publié le roster pour cette sélection. La liste apparaîtra ici dès que la fédération la publie — auto-refresh.
+      </div>
+    )
+  }
+  return <SquadTable athletes={athletes} />
+}
+
+function CalendrierTab({ teamMatches, teamCode }: { teamMatches: EspnEvent[]; teamCode: string }) {
+  if (teamMatches.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-100 px-3 py-4 text-xs text-slate-500">
+        No fixtures published yet — ESPN will populate them as the draw is finalized.
+      </div>
+    )
+  }
+  // Group by month
+  const groups = new Map<string, EspnEvent[]>()
+  for (const ev of teamMatches) {
+    if (!ev.date) continue
+    const key = new Date(ev.date).toLocaleDateString(undefined, { month: 'long', year: 'numeric' })
+    const arr = groups.get(key) ?? []
+    arr.push(ev)
+    groups.set(key, arr)
+  }
+  return (
+    <div className="space-y-5">
+      {Array.from(groups.entries()).map(([month, evs]) => (
+        <div key={month}>
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+            {month}
+          </div>
+          <div className="space-y-1.5">
+            {evs.map((ev) => <MatchLine key={ev.id} ev={ev} teamCode={teamCode} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StatsTab({ record, teamMatches }: { record: ReturnType<typeof recordForTeam>; teamMatches: EspnEvent[] }) {
+  const finished = teamMatches.filter((ev) => ev.status?.type?.state === 'post')
+  const avgGoals = record.played ? (record.goalsFor / record.played).toFixed(2) : '—'
+  const avgConceded = record.played ? (record.goalsAgainst / record.played).toFixed(2) : '—'
+  const cleanSheets = finished.filter((ev) => {
+    const cs = ev.competitions?.[0]?.competitors ?? []
+    const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() === finished[0]?.competitions?.[0]?.competitors?.[0]?.team?.abbreviation?.toUpperCase() ? false : true)
+    return parseInt(other?.score ?? '0', 10) === 0
+  }).length
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <Kpi label="Matches" value={String(record.played)} />
+        <Kpi label="Points" value={String(record.points)} highlight />
+        <Kpi label="Goals/match" value={avgGoals} />
+        <Kpi label="Conceded/match" value={avgConceded} />
+        <Kpi label="Clean sheets" value={String(cleanSheets)} />
+        <Kpi label="Wins" value={String(record.won)} highlight />
+        <Kpi label="Draws" value={String(record.drawn)} />
+        <Kpi label="Losses" value={String(record.lost)} />
+      </div>
+      {record.played === 0 && (
+        <div className="text-xs text-slate-500 text-center font-mono">
+          Stats will populate once matches finish.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------- Pieces ------------------------------------------------------
+
+function Kpi({ label, value, children, highlight }: { label: string; value?: React.ReactNode; children?: React.ReactNode; highlight?: boolean }) {
+  return (
+    <div className={'rounded-xl px-3 py-3 border ' + (highlight ? 'border-accent-blue/30 bg-blue-50/40' : 'border-slate-100 bg-slate-50/60')}>
+      <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-1">{label}</div>
+      <div className={'font-display font-bold text-lg ' + (highlight ? 'text-accent-blue' : 'text-slate-900')}>
+        {children ?? value ?? '—'}
+      </div>
+    </div>
+  )
+}
+
+function SquadTable({ athletes }: { athletes: RosterAthlete[] }) {
   const buckets: Record<string, RosterAthlete[]> = { GK: [], DEF: [], MID: [], FW: [], Other: [] }
   for (const a of athletes) {
     const pos = (a.position?.abbreviation ?? '').toUpperCase()
@@ -227,12 +401,14 @@ function SquadGrid({ athletes }: { athletes: RosterAthlete[] }) {
         if (!list.length) return null
         return (
           <div key={k}>
-            <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono mb-2">
-              {labels[k]} · {list.length}
+            <div className="grid grid-cols-[2rem_1fr_auto] gap-3 px-3 py-1.5 text-[9px] uppercase tracking-widest text-slate-500 font-mono border-b border-slate-100">
+              <span>#</span>
+              <span>{labels[k]} · {list.length}</span>
+              <span>Age</span>
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-              {list.map((a) => (
-                <AthleteRow key={a.id ?? a.fullName} a={a} />
+            <div>
+              {list.map((a, i) => (
+                <AthleteRow key={a.id ?? `${k}-${i}`} a={a} alt={i % 2 === 1} />
               ))}
             </div>
           </div>
@@ -242,36 +418,28 @@ function SquadGrid({ athletes }: { athletes: RosterAthlete[] }) {
   )
 }
 
-function AthleteRow({ a }: { a: RosterAthlete }) {
+function AthleteRow({ a, alt }: { a: RosterAthlete; alt?: boolean }) {
   const name = a.displayName ?? a.fullName ?? a.shortName ?? '?'
-  // ESPN national-team athletes rarely expose headshot — fall back to the
-  // citizenship flag (always present for international squads).
-  const photo = a.headshot?.href ?? a.flag?.href
-  const jersey = a.jersey != null ? `#${a.jersey}` : ''
-  const pos = a.position?.abbreviation ?? ''
+  const photo = a.headshot?.href
+  const flag = a.flag?.href
+  const jersey = a.jersey != null ? String(a.jersey) : ''
   return (
-    <div className="glass rounded-lg px-2.5 py-1.5 flex items-center gap-2.5">
-      {photo ? (
-        <img
-          src={photo}
-          alt=""
-          loading="lazy"
-          className="w-7 h-7 rounded-full object-cover bg-ink-900"
-          onError={(e) => (e.currentTarget.style.display = 'none')}
-        />
-      ) : (
-        <div className="w-7 h-7 rounded-full bg-ink-900/60 flex items-center justify-center text-[10px] font-mono text-slate-500">
-          {pos || '·'}
-        </div>
-      )}
-      <div className="min-w-0 flex-1">
-        <div className="text-sm truncate">{name}</div>
-        <div className="text-[10px] font-mono text-slate-500 flex gap-2">
-          {jersey && <span>{jersey}</span>}
-          {pos && <span>{pos}</span>}
-          {a.age && <span>{a.age}y</span>}
+    <div className={'grid grid-cols-[2rem_1fr_auto] gap-3 items-center px-3 py-2.5 ' + (alt ? 'bg-slate-50/60' : '')}>
+      <span className="text-sm text-slate-700 font-mono tabular-nums">{jersey || '—'}</span>
+      <div className="flex items-center gap-2.5 min-w-0">
+        {photo ? (
+          <img src={photo} alt="" loading="lazy" className="w-8 h-8 rounded-full object-cover bg-slate-100 shrink-0" onError={(e) => (e.currentTarget.style.display = 'none')} />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center text-slate-400 shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4" /><path d="M4 21v-1a8 8 0 1 1 16 0v1z" /></svg>
+          </div>
+        )}
+        <div className="min-w-0 flex items-center gap-1.5">
+          <span className="text-sm text-slate-900 truncate font-medium">{name}</span>
+          {flag && <img src={flag} alt="" className="w-4 h-3 object-cover rounded-sm shrink-0" loading="lazy" />}
         </div>
       </div>
+      <span className="text-sm text-slate-500 font-mono tabular-nums">{a.age ?? '—'}</span>
     </div>
   )
 }
@@ -282,41 +450,38 @@ function MatchLine({ ev, teamCode }: { ev: EspnEvent; teamCode: string }) {
   const isHome = home?.team?.abbreviation?.toLowerCase() === teamCode.toLowerCase()
   const opp = isHome ? away : home
   const us = isHome ? home : away
+  const oppLogo = teamBadgeFallback(opp?.team?.logo, opp?.team?.abbreviation)
   const time = ev.date
     ? new Date(ev.date).toLocaleString(undefined, {
         weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
       })
     : '—'
-
   return (
-    <div className={`glass rounded-lg px-3 py-2 flex items-center gap-3 ${s.live ? 'ring-1 ring-red-500/30' : ''}`}>
-      <div className="text-[10px] font-mono text-slate-500 w-32 shrink-0 truncate">{time}</div>
-      <div className="text-[10px] font-mono text-slate-500 w-8">{isHome ? 'vs' : '@'}</div>
+    <div className={'rounded-xl border px-3 py-2.5 flex items-center gap-3 ' + (s.live ? 'border-accent-red/40 bg-red-50/30' : 'border-slate-100 hover:border-slate-200 transition-colors')}>
+      <div className="text-[10px] font-mono text-slate-500 w-28 shrink-0 truncate">{time}</div>
+      <div className="text-[10px] font-mono text-slate-400 w-6">{isHome ? 'vs' : '@'}</div>
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        {(() => {
-          const logo = teamBadgeFallback(opp?.team?.logo, opp?.team?.abbreviation)
-          return logo ? (
-            <img
-              src={logo}
-              alt=""
-              loading="lazy"
-              className="w-4 h-4 object-contain"
-              onError={(e) => (e.currentTarget.style.display = 'none')}
-            />
-          ) : null
-        })()}
-        <span className="text-sm truncate">{opp?.team?.shortDisplayName ?? opp?.team?.displayName ?? '?'}</span>
+        {oppLogo ? (
+          <img src={oppLogo} alt="" loading="lazy" className="w-5 h-5 object-contain shrink-0" onError={(e) => (e.currentTarget.style.display = 'none')} />
+        ) : null}
+        <span className="text-sm truncate text-slate-800">{opp?.team?.shortDisplayName ?? opp?.team?.displayName ?? '?'}</span>
       </div>
       {s.live && (
-        <span className="text-[10px] font-mono text-red-400">{s.label}</span>
+        <span className="text-[10px] font-mono text-accent-red shrink-0 flex items-center gap-1.5">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-red/60 opacity-75" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent-red" />
+          </span>
+          {s.label}
+        </span>
       )}
       {s.finished && (
-        <span className="text-xs font-display font-bold tabular-nums">
-          {us?.score ?? '0'} – {opp?.score ?? '0'}
+        <span className="text-base font-display font-bold tabular-nums text-slate-900 shrink-0">
+          {us?.score ?? '0'}–{opp?.score ?? '0'}
         </span>
       )}
       {!s.live && !s.finished && (
-        <span className="text-[10px] font-mono text-slate-600">{s.label}</span>
+        <span className="text-[10px] font-mono text-slate-400 shrink-0">{s.label}</span>
       )}
     </div>
   )

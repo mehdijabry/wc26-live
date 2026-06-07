@@ -76,7 +76,7 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 z-50 bg-ink-900/80 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -97,7 +97,7 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
                    'Save your bracket'}
                 </div>
               </div>
-              <button onClick={onClose} className="text-slate-500 hover:text-white text-xl w-8 h-8 rounded-full hover:bg-white/10 transition-colors flex items-center justify-center">×</button>
+              <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-xl w-8 h-8 rounded-full hover:bg-slate-200 transition-colors flex items-center justify-center">×</button>
             </div>
 
             {!SUPABASE_CONFIGURED && (
@@ -108,16 +108,16 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
 
             {/* Mode tabs (signup / login) */}
             {(mode === 'signup' || mode === 'login') && (
-              <div className="flex gap-2 mb-5 p-1 bg-ink-900/40 rounded-full">
+              <div className="flex gap-2 mb-5 p-1 bg-slate-50 rounded-full">
                 <button
                   onClick={() => { setMode('signup'); reset() }}
-                  className={`flex-1 px-3 py-1.5 rounded-full text-sm transition-all ${mode === 'signup' ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-400'}`}
+                  className={`flex-1 px-3 py-1.5 rounded-full text-sm transition-all ${mode === 'signup' ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-600'}`}
                 >
                   Sign up
                 </button>
                 <button
                   onClick={() => { setMode('login'); reset() }}
-                  className={`flex-1 px-3 py-1.5 rounded-full text-sm transition-all ${mode === 'login' ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-400'}`}
+                  className={`flex-1 px-3 py-1.5 rounded-full text-sm transition-all ${mode === 'login' ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-600'}`}
                 >
                   Log in
                 </button>
@@ -137,7 +137,7 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
                   <span>Continue with Google</span>
                 </button>
                 <div className="flex items-center gap-3 mb-4 text-[10px] text-slate-600 font-mono uppercase tracking-widest">
-                  <div className="flex-1 h-px bg-white/5" /> or <div className="flex-1 h-px bg-white/5" />
+                  <div className="flex-1 h-px bg-slate-100" /> or <div className="flex-1 h-px bg-slate-100" />
                 </div>
               </>
             )}
@@ -146,8 +146,8 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
             {status === 'sent' && (
               <div className="text-center py-6">
                 <div className="text-5xl mb-3">📬</div>
-                <div className="font-display text-xl text-white mb-2">Check your inbox</div>
-                <div className="text-sm text-slate-400">
+                <div className="font-display text-xl text-slate-900 mb-2">Check your inbox</div>
+                <div className="text-sm text-slate-600">
                   {mode === 'reset' ? 'We sent a password reset link to' : 'We sent a magic link to'}{' '}
                   <span className="text-accent-gold font-mono">{email}</span>.
                 </div>
@@ -157,8 +157,8 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
             {status === 'needsConfirm' && (
               <div className="text-center py-6">
                 <div className="text-5xl mb-3">📬</div>
-                <div className="font-display text-xl text-white mb-2">One more step</div>
-                <div className="text-sm text-slate-400 mb-4">
+                <div className="font-display text-xl text-slate-900 mb-2">One more step</div>
+                <div className="text-sm text-slate-600 mb-4">
                   We sent a confirmation email to <span className="text-accent-gold font-mono">{email}</span>.
                   Click the link to activate your account. After that you can log in with your password anytime.
                 </div>
@@ -244,10 +244,10 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
               </form>
             )}
 
-            <div className="mt-6 pt-4 border-t border-white/5 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-500 font-mono">
-              <div><div className="text-white text-base font-display font-bold">100</div>exact score</div>
-              <div><div className="text-white text-base font-display font-bold">60</div>winner + gap</div>
-              <div><div className="text-white text-base font-display font-bold">30</div>winner only</div>
+            <div className="mt-6 pt-4 border-t border-slate-200/70 grid grid-cols-3 gap-2 text-center text-[10px] text-slate-500 font-mono">
+              <div><div className="text-slate-900 text-base font-display font-bold">100</div>exact score</div>
+              <div><div className="text-slate-900 text-base font-display font-bold">60</div>winner + gap</div>
+              <div><div className="text-slate-900 text-base font-display font-bold">30</div>winner only</div>
             </div>
           </motion.div>
         </motion.div>
@@ -282,7 +282,7 @@ function Field({
         placeholder={placeholder}
         maxLength={maxLength}
         minLength={minLength}
-        className="mt-1 w-full bg-ink-900/60 border border-white/10 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-gold/50"
+        className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-accent-gold/50"
       />
     </div>
   )

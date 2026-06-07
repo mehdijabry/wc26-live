@@ -72,7 +72,7 @@ export function Hero() {
           initial={{ y: 30, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-slate-400 text-lg sm:text-xl max-w-2xl mb-10 leading-relaxed"
+          className="text-slate-600 text-lg sm:text-xl max-w-2xl mb-10 leading-relaxed"
         >
           Every match, every group, every stadium — synced to your timezone, your
           predictions, your watchlist. From kickoff in Mexico City to the final at
@@ -108,7 +108,7 @@ export function Hero() {
                   </>
                 )}
               </div>
-              <div className="font-display text-xl sm:text-2xl text-white mt-1">
+              <div className="font-display text-xl sm:text-2xl text-slate-900 mt-1">
                 {isLiveNow ? 'In progress' : 'Kicks off in'}
               </div>
             </div>
@@ -119,7 +119,7 @@ export function Hero() {
 
           <CountdownGrid {...ttl} key={tick > 0 ? 'live' : 'init'} />
 
-          <div className="mt-5 pt-5 border-t border-white/5 text-sm text-slate-400 flex flex-wrap gap-x-6 gap-y-2">
+          <div className="mt-5 pt-5 border-t border-slate-200/70 text-sm text-slate-600 flex flex-wrap gap-x-6 gap-y-2">
             <span>📅 {fmtDate(targetIso)}</span>
             {liveOrNext && home?.team && away?.team && (
               <span className="flex items-center gap-2">
@@ -194,9 +194,9 @@ function CountdownGrid({ d, h, m, s }: ReturnType<typeof timeUntil>) {
   return (
     <div className="grid grid-cols-4 gap-2 sm:gap-4">
       {cells.map((c) => (
-        <div key={c.k} className="rounded-2xl bg-ink-900/60 border border-white/5 p-4 sm:p-6 text-center relative overflow-hidden">
+        <div key={c.k} className="rounded-2xl bg-slate-50 border border-slate-200/70 p-4 sm:p-6 text-center relative overflow-hidden">
           <div
-            className="font-display text-4xl sm:text-6xl font-bold text-white tabular-nums"
+            className="font-display text-4xl sm:text-6xl font-bold text-slate-900 tabular-nums"
             key={c.v}
           >
             {String(c.v).padStart(2, '0')}

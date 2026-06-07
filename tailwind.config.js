@@ -4,12 +4,15 @@ export default {
   theme: {
     extend: {
       colors: {
+        // Editorial light palette — paper background, ink text, plus a slim
+        // dark scale kept for the gold WC26 logo emblem (1 use only).
+        paper: '#ffffff',
         ink: {
-          900: '#0a0a0f',
-          800: '#13141d',
-          700: '#1c1e2a',
-          600: '#2a2d3d',
-          500: '#3d4154',
+          900: '#0f172a', // primary text
+          800: '#1e293b',
+          700: '#334155',
+          600: '#475569',
+          500: '#64748b',
         },
         accent: {
           gold: '#d4af37',

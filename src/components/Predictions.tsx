@@ -23,7 +23,7 @@ export function Predictions() {
   const total = groupMatches.length
 
   return (
-    <section id="predict" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="predict" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="your bracket"
@@ -41,12 +41,12 @@ export function Predictions() {
               value={alias}
               onChange={(e) => setAlias(e.target.value)}
               placeholder="el10"
-              className="bg-ink-900/50 border border-white/10 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent-gold/50 flex-1 max-w-[180px]"
+              className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-accent-gold/50 flex-1 max-w-[180px]"
             />
           </div>
           <div className="flex items-center gap-3 text-sm">
             <span className="text-slate-500">
-              <span className="text-white font-mono">{filled}</span> / {total} filled
+              <span className="text-slate-900 font-mono">{filled}</span> / {total} filled
             </span>
             <button
               onClick={onShare}
@@ -68,7 +68,7 @@ export function Predictions() {
           <motion.div
             initial={{ opacity: 0, y: -5 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-3 glass rounded-xl px-4 py-3 text-xs text-slate-400 break-all"
+            className="mt-3 glass rounded-xl px-4 py-3 text-xs text-slate-600 break-all"
           >
             <span className="text-accent-green font-mono">✓ Copied to clipboard:</span>{' '}
             {shareUrl}
@@ -85,7 +85,7 @@ export function Predictions() {
                 'px-4 py-2 rounded-full text-sm transition-all',
                 tab === t
                   ? 'bg-white text-ink-900 font-semibold'
-                  : 'glass glass-hover text-slate-300'
+                  : 'glass glass-hover text-slate-700'
               )}
             >
               {t === 'scores' ? '⚽️ Scores' : t === 'goalscorers' ? '🎯 Goalscorers' : '👕 Starting XI'}
@@ -186,19 +186,19 @@ export function Predictions() {
 
 function Stepper({ value, onChange }: { value: number; onChange: (v: number) => void }) {
   return (
-    <div className="flex items-center gap-1 bg-ink-900/60 rounded-lg px-2 py-1">
+    <div className="flex items-center gap-1 bg-slate-50 rounded-lg px-2 py-1">
       <button
         onClick={() => onChange(Math.max(0, value - 1))}
-        className="w-6 h-6 rounded-md text-slate-400 hover:bg-white/10 transition-colors"
+        className="w-6 h-6 rounded-md text-slate-600 hover:bg-slate-200 transition-colors"
       >
         −
       </button>
-      <span className="font-display font-bold text-2xl text-white w-6 text-center tabular-nums">
+      <span className="font-display font-bold text-2xl text-slate-900 w-6 text-center tabular-nums">
         {value}
       </span>
       <button
         onClick={() => onChange(Math.min(9, value + 1))}
-        className="w-6 h-6 rounded-md text-slate-400 hover:bg-white/10 transition-colors"
+        className="w-6 h-6 rounded-md text-slate-600 hover:bg-slate-200 transition-colors"
       >
         +
       </button>

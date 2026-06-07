@@ -66,7 +66,7 @@ export function Schedule() {
   }, [filtered])
 
   return (
-    <section id="schedule" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="schedule" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="every match"
@@ -84,7 +84,7 @@ export function Schedule() {
                   'px-4 py-1.5 rounded-full text-sm transition-colors',
                   filter === f
                     ? 'bg-accent-gold text-ink-900 font-semibold'
-                    : 'glass glass-hover text-slate-300'
+                    : 'glass glass-hover text-slate-700'
                 )}
               >
                 {f === 'all' ? `All ${events.length || ''}`.trim() : f === 'group' ? 'Group stage' : 'Knockouts'}
@@ -106,7 +106,7 @@ export function Schedule() {
             <button
               onClick={() => load()}
               disabled={loading}
-              className="px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 transition-colors disabled:opacity-40"
+              className="px-2 py-0.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors disabled:opacity-40"
             >
               ↻
             </button>
@@ -189,7 +189,7 @@ function MatchRow({ ev }: { ev: EspnEvent }) {
         </div>
         <div className={cn(
           'px-3 py-1 rounded-md text-[10px] font-mono',
-          s.live ? 'bg-red-500/20 text-red-300' : s.finished ? 'bg-white/5 text-slate-400' : 'bg-ink-900/50 text-slate-500'
+          s.live ? 'bg-red-500/20 text-red-300' : s.finished ? 'bg-slate-100 text-slate-600' : 'bg-slate-50 text-slate-500'
         )}>
           {s.live ? s.label : s.finished ? 'FT' : stageLabel}
         </div>

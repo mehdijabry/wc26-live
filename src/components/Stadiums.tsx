@@ -10,7 +10,7 @@ export function Stadiums() {
   stadiums.forEach((s) => byCountry[s.country].push(s))
 
   return (
-    <section id="stadiums" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="stadiums" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="16 host cities"
@@ -41,7 +41,7 @@ export function Stadiums() {
                 {byCountry[country].map((s) => (
                   <li
                     key={s.id}
-                    className="rounded-lg bg-white/[0.02] hover:bg-white/[0.06] transition-colors px-3 py-3"
+                    className="rounded-lg bg-slate-50 hover:bg-white/[0.06] transition-colors px-3 py-3"
                   >
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
@@ -85,7 +85,7 @@ function Stat({ label, value, suffix }: { label: string; value: string; suffix?:
   return (
     <div className="px-4">
       <div className="text-xs uppercase tracking-widest text-slate-500 font-mono">{label}</div>
-      <div className="font-display font-bold text-2xl text-white mt-1">{value}</div>
+      <div className="font-display font-bold text-2xl text-slate-900 mt-1">{value}</div>
       {suffix && <div className="text-xs text-slate-500 font-mono mt-0.5">{suffix}</div>}
     </div>
   )

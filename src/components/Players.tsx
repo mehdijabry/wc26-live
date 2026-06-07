@@ -20,7 +20,7 @@ export function Players() {
   }, [filter])
 
   return (
-    <section id="players" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="players" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="every starter"
@@ -38,7 +38,7 @@ export function Players() {
                 'px-4 py-1.5 rounded-full text-sm transition-all',
                 filter === p
                   ? 'bg-accent-gold text-ink-900 font-semibold'
-                  : 'glass glass-hover text-slate-300'
+                  : 'glass glass-hover text-slate-700'
               )}
             >
               {p === 'ALL' ? 'All players' : p}
@@ -88,7 +88,7 @@ export function Players() {
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-400 mb-3 flex items-center gap-2 truncate">
+                <div className="text-xs text-slate-600 mb-3 flex items-center gap-2 truncate">
                   {getClubLogo(p.clubName) ? (
                     <img
                       src={getClubLogo(p.clubName)!}
@@ -147,7 +147,7 @@ export function Players() {
 
 function Kpi({ label, value, hl }: { label: string; value: number | string; hl?: boolean }) {
   return (
-    <div className={cn('rounded-md bg-ink-900/40 px-2 py-1.5 text-center', hl && 'bg-accent-gold/10')}>
+    <div className={cn('rounded-md bg-slate-50 px-2 py-1.5 text-center', hl && 'bg-accent-gold/10')}>
       <div className={cn('font-display font-bold text-base', hl && 'text-accent-gold')}>
         {value}
       </div>
@@ -167,7 +167,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
-      className="fixed inset-0 bg-ink-900/80 backdrop-blur-md z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-slate-900/40 backdrop-blur-md z-50 flex items-center justify-center p-4"
     >
       <motion.div
         initial={{ scale: 0.95, opacity: 0, y: 20 }}
@@ -184,7 +184,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
                 #{player.shirtNumber} · {player.position}
               </div>
               <div className="font-display font-bold text-3xl mt-1">{player.name}</div>
-              <div className="text-sm text-slate-400 mt-1 flex items-center gap-2">
+              <div className="text-sm text-slate-600 mt-1 flex items-center gap-2">
                 {team?.name} <span className="text-slate-600">·</span>
                 {getClubLogo(player.clubName) && (
                   <img
@@ -202,7 +202,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
           </div>
           <button
             onClick={onClose}
-            className="text-slate-500 hover:text-white text-xl w-8 h-8 rounded-full hover:bg-white/10 transition-colors"
+            className="text-slate-500 hover:text-slate-900 text-xl w-8 h-8 rounded-full hover:bg-slate-200 transition-colors"
           >
             ×
           </button>
@@ -258,7 +258,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
           <div className="flex items-end gap-1.5 h-24">
             {player.formLast5.map((r, i) => (
               <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                <div className="text-xs font-mono text-slate-400">{r.toFixed(1)}</div>
+                <div className="text-xs font-mono text-slate-600">{r.toFixed(1)}</div>
                 <div
                   className="w-full rounded"
                   style={{
@@ -275,7 +275,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
           </div>
           <div className="text-[10px] text-slate-500 mt-3 font-mono">
             5-match avg:{' '}
-            <span className="text-white">
+            <span className="text-slate-900">
               {(player.formLast5.reduce((a, b) => a + b, 0) / player.formLast5.length).toFixed(2)}
             </span>{' '}
             · trend {trendIndicator(player.formLast5)}

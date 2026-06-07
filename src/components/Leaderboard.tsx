@@ -5,7 +5,7 @@ import { useAuth } from '../store/auth'
 import { SectionHeader } from './Groups'
 
 const TIER_COLORS: Record<string, string> = {
-  Rookie: 'text-slate-400',
+  Rookie: 'text-slate-600',
   Amateur: 'text-blue-400',
   Pro: 'text-accent-green',
   Elite: 'text-accent-gold',
@@ -35,7 +35,7 @@ export function Leaderboard() {
   )
 
   return (
-    <section id="leaderboard" className="py-20 sm:py-28 border-t border-white/5">
+    <section id="leaderboard" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="all bracketers"
@@ -52,7 +52,7 @@ export function Leaderboard() {
                 'px-4 py-1.5 rounded-full text-sm transition-all ' +
                 (tab === t
                   ? 'bg-accent-gold text-ink-900 font-semibold'
-                  : 'glass glass-hover text-slate-300')
+                  : 'glass glass-hover text-slate-700')
               }
             >
               {t === 'points' ? 'Total points' : 'Accuracy %'}
@@ -61,7 +61,7 @@ export function Leaderboard() {
         </div>
 
         {!supabase && (
-          <div className="glass rounded-2xl p-6 text-center text-slate-400">
+          <div className="glass rounded-2xl p-6 text-center text-slate-600">
             Leaderboard unlocks once Supabase is configured. Add{' '}
             <code className="text-accent-gold">VITE_SUPABASE_URL</code> +{' '}
             <code className="text-accent-gold">VITE_SUPABASE_ANON_KEY</code> to <code>.env.local</code>.
@@ -109,7 +109,7 @@ export function Leaderboard() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <div className="font-display font-bold text-lg text-white tabular-nums">
+                    <div className="font-display font-bold text-lg text-slate-900 tabular-nums">
                       {tab === 'points' ? row.total_points : `${row.accuracy_pct}%`}
                     </div>
                     <div className="text-[10px] font-mono text-slate-500">

@@ -5,6 +5,8 @@ import { Hero } from './components/Hero'
 import { Groups } from './components/Groups'
 import { Schedule } from './components/Schedule'
 import { Footer } from './components/Footer'
+import { BottomNav } from './components/BottomNav'
+import { LiveTicker } from './components/LiveTicker'
 import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
 
@@ -52,9 +54,10 @@ function App() {
   }
 
   return (
-    <div className="min-h-svh">
+    <div className="min-h-svh pb-20 md:pb-0">
       <Navigation />
       <StickyCountdown />
+      <LiveTicker />
       <main>
         <Hero />
         <Groups />
@@ -70,6 +73,7 @@ function App() {
         </Suspense>
       </main>
       <Footer />
+      <BottomNav />
       <Suspense fallback={null}>
         <AtlasLions />
       </Suspense>
@@ -77,13 +81,13 @@ function App() {
       {/* Auth-callback overlay — keeps the home view from flashing as
           "not signed in" while Supabase exchanges the URL token. */}
       {completingSignIn && (
-        <div className="fixed inset-0 z-[60] bg-ink-900/85 backdrop-blur-sm flex items-center justify-center">
+        <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center">
           <div className="glass rounded-2xl px-6 py-4 flex items-center gap-3 ring-glow">
             <span className="relative flex h-3 w-3">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-gold/60 opacity-75" />
               <span className="relative inline-flex h-3 w-3 rounded-full bg-accent-gold" />
             </span>
-            <span className="text-sm text-slate-200 font-mono">Completing sign-in…</span>
+            <span className="text-sm text-slate-800 font-mono">Completing sign-in…</span>
           </div>
         </div>
       )}
@@ -93,11 +97,11 @@ function App() {
 
 function SectionSkeleton() {
   return (
-    <div className="py-20 sm:py-28 border-t border-white/5">
+    <div className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
-        <div className="h-3 w-24 bg-white/5 rounded animate-pulse mb-4" />
-        <div className="h-10 w-64 bg-white/5 rounded animate-pulse mb-3" />
-        <div className="h-4 w-80 bg-white/5 rounded animate-pulse" />
+        <div className="h-3 w-24 bg-slate-100 rounded animate-pulse mb-4" />
+        <div className="h-10 w-64 bg-slate-100 rounded animate-pulse mb-3" />
+        <div className="h-4 w-80 bg-slate-100 rounded animate-pulse" />
       </div>
     </div>
   )

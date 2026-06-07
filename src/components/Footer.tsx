@@ -1,6 +1,6 @@
 export function Footer() {
   return (
-    <footer className="border-t border-white/5 py-12 text-center text-xs text-slate-500">
+    <footer className="border-t border-slate-200/70 py-12 text-center text-xs text-slate-500">
       <div className="container max-w-6xl mx-auto px-6">
         <div className="flex items-center justify-center gap-2.5 mb-3">
           <img src="/wc26-emblem.svg" alt="" className="w-7 h-7" />
@@ -9,7 +9,7 @@ export function Footer() {
               WC<span className="text-accent-gold">26</span> Live
             </div>
             <div className="text-[9px] uppercase tracking-[0.2em] font-mono mt-0.5">
-              <span className="text-white">Pressing</span>{' '}
+              <span className="text-slate-900">Pressing</span>{' '}
               <span className="text-accent-red font-semibold">90′</span>
             </div>
           </div>
