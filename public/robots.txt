@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Crawl-delay isn't strictly enforced by Googlebot but helps Bing/Yandex
+Crawl-delay: 1
+
+Sitemap: https://wc26.mehdijabry.dev/sitemap.xml
