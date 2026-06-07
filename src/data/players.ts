@@ -144,12 +144,36 @@ export const players: Player[] = [
     season: { matches: 31, starts: 28, minutes: 2480, goals: 14, assists: 9, yellows: 4, reds: 0, avgRating: 7.6, shots: 75, keyPasses: 62 },
     formLast5: [7.8, 7.4, 7.9, 7.3, 7.7],
   },
-  // MOROCCO
+  // MOROCCO 🦁🦁🦁🦁 — The Atlas Lions section
   {
     id: 'p-hakimi', name: 'Achraf Hakimi', teamCode: 'MAR', clubName: 'Paris Saint-Germain', clubLeague: 'Ligue 1',
     position: 'DEF', shirtNumber: 2, age: 27, height: 181, preferredFoot: 'R',
     season: { matches: 30, starts: 30, minutes: 2700, goals: 7, assists: 12, yellows: 6, reds: 0, avgRating: 7.8, tackles: 71, interceptions: 55, keyPasses: 58 },
     formLast5: [7.9, 7.5, 8.2, 7.6, 8.0],
+  },
+  {
+    id: 'p-bono', name: 'Yassine Bounou', teamCode: 'MAR', clubName: 'Al-Hilal', clubLeague: 'Saudi Pro League',
+    position: 'GK', shirtNumber: 1, age: 34, height: 195, preferredFoot: 'R',
+    season: { matches: 31, starts: 31, minutes: 2790, goals: 0, assists: 0, yellows: 2, reds: 0, avgRating: 7.4 },
+    formLast5: [7.6, 7.8, 7.2, 7.5, 7.9],
+  },
+  {
+    id: 'p-ziyech', name: 'Hakim Ziyech', teamCode: 'MAR', clubName: 'Al-Duhail', clubLeague: 'QSL',
+    position: 'MID', shirtNumber: 7, age: 32, height: 181, preferredFoot: 'L',
+    season: { matches: 28, starts: 26, minutes: 2200, goals: 9, assists: 13, yellows: 3, reds: 0, avgRating: 7.7, keyPasses: 84, tackles: 31 },
+    formLast5: [7.8, 7.5, 8.1, 7.4, 7.9],
+  },
+  {
+    id: 'p-en-nesyri', name: 'Youssef En-Nesyri', teamCode: 'MAR', clubName: 'Fenerbahçe', clubLeague: 'Süper Lig',
+    position: 'ATT', shirtNumber: 19, age: 28, height: 189, preferredFoot: 'R',
+    season: { matches: 32, starts: 30, minutes: 2620, goals: 21, assists: 5, yellows: 4, reds: 0, avgRating: 7.6, shots: 95, keyPasses: 22 },
+    formLast5: [7.9, 7.5, 8.0, 7.4, 7.8],
+  },
+  {
+    id: 'p-ounahi', name: 'Azzedine Ounahi', teamCode: 'MAR', clubName: 'Marseille', clubLeague: 'Ligue 1',
+    position: 'MID', shirtNumber: 8, age: 26, height: 184, preferredFoot: 'R',
+    season: { matches: 27, starts: 23, minutes: 2050, goals: 4, assists: 7, yellows: 5, reds: 0, avgRating: 7.3, keyPasses: 56, tackles: 48 },
+    formLast5: [7.2, 7.5, 7.0, 7.4, 7.6],
   },
   // CANADA
   {

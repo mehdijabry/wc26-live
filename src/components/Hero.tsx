@@ -130,12 +130,23 @@ export function Hero() {
         </motion.div>
       </div>
 
-      {/* Floating Lottie (CDN-loaded ball icon) */}
+      {/* WC26 official emblem — floating */}
       <motion.div
         aria-hidden
-        className="hidden lg:block absolute right-8 top-32 w-40 h-40 pointer-events-none"
-        animate={{ y: [0, -20, 0], rotate: [0, 10, -10, 0] }}
-        transition={{ duration: 8, repeat: Infinity }}
+        className="hidden lg:block absolute right-12 top-28 w-56 h-56 pointer-events-none"
+        animate={{ y: [0, -16, 0], rotate: [0, 4, -4, 0] }}
+        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ filter: 'drop-shadow(0 12px 40px rgba(212,175,55,0.25))' }}
+      >
+        <img src="/wc26-emblem.svg" alt="FIFA World Cup 26 emblem" className="w-full h-full" />
+      </motion.div>
+
+      {/* Tiny floating ball (Lottie) */}
+      <motion.div
+        aria-hidden
+        className="hidden xl:block absolute right-72 top-72 w-20 h-20 pointer-events-none opacity-70"
+        animate={{ y: [0, -12, 0] }}
+        transition={{ duration: 6, repeat: Infinity }}
       >
         <DotLottieReact
           src="https://lottie.host/4f4f96d0-0e85-4b3b-a6e8-23c5f4d39d77/qhCs9JKMjE.lottie"

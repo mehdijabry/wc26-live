@@ -28,9 +28,13 @@ export function Navigation() {
     >
       <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
         <a href="#hero" className="flex items-center gap-2 group">
-          <span className="text-2xl group-hover:rotate-12 transition-transform inline-block">⚽️</span>
+          <img
+            src="/wc26-emblem.svg"
+            alt="WC26"
+            className="w-8 h-8 group-hover:scale-110 transition-transform"
+          />
           <span className="font-display font-bold tracking-tight text-lg">
-            WC<span className="text-accent-gold">26</span>
+            WC<span className="text-accent-gold">26</span> Hub
           </span>
         </a>
         <nav className="hidden md:flex items-center gap-1">

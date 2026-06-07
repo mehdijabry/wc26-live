@@ -5,6 +5,7 @@ import { teamByCode } from '../data/teams'
 import { fmtDate, cn } from '../lib/utils'
 import { usePredictions, shareLink } from '../store/predictions'
 import { SectionHeader } from './Groups'
+import { MoroccoOdds } from './AtlasLions'
 
 export function Predictions() {
   const [tab, setTab] = useState<'scores' | 'goalscorers' | 'lineups'>('scores')
@@ -172,6 +173,11 @@ export function Predictions() {
               </div>
             </div>
           ))}
+        </div>
+
+        {/* 🦁 Tongue-in-cheek prediction model */}
+        <div className="mt-8">
+          <MoroccoOdds />
         </div>
       </div>
     </section>

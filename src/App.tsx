@@ -7,6 +7,7 @@ import { Stadiums } from './components/Stadiums'
 import { Predictions } from './components/Predictions'
 import { Players } from './components/Players'
 import { Footer } from './components/Footer'
+import { AtlasLions } from './components/AtlasLions'
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
         <Predictions />
       </main>
       <Footer />
+      <AtlasLions />
     </div>
   )
 }

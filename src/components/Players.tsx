@@ -2,6 +2,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import { players, computeRating, type Player, type Position } from '../data/players'
 import { teamByCode } from '../data/teams'
+import { getClubLogo } from '../data/clubLogos'
 import { cn } from '../lib/utils'
 import { SectionHeader } from './Groups'
 
@@ -69,6 +70,16 @@ export function Players() {
                   </div>
                 </div>
 
+                {/* 🦁 Atlas Lions side stripe for Moroccans */}
+                {p.teamCode === 'MAR' && (
+                  <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-gradient-to-b from-red-600 via-yellow-500 to-green-700 rounded-l-2xl" />
+                )}
+                {p.teamCode === 'MAR' && (
+                  <div className="absolute -top-1 left-3 px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest rounded-b-md bg-red-600 text-white">
+                    🦁 champion-in-waiting
+                  </div>
+                )}
+
                 {/* Header */}
                 <div className="flex items-start gap-3 mb-4 pr-16">
                   <div className="text-4xl">{team?.flag ?? '🏳️'}</div>
@@ -82,8 +93,21 @@ export function Players() {
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-400 mb-3 truncate">
-                  ⚽️ {p.clubName} <span className="text-slate-600">·</span> {p.clubLeague}
+                <div className="text-xs text-slate-400 mb-3 flex items-center gap-2 truncate">
+                  {getClubLogo(p.clubName) ? (
+                    <img
+                      src={getClubLogo(p.clubName)!}
+                      alt=""
+                      loading="lazy"
+                      className="w-5 h-5 object-contain"
+                      onError={(e) => ((e.currentTarget.style.display = 'none'))}
+                    />
+                  ) : (
+                    <span>⚽️</span>
+                  )}
+                  <span className="truncate">
+                    {p.clubName} <span className="text-slate-600">·</span> {p.clubLeague}
+                  </span>
                 </div>
 
                 {/* KPI row */}
@@ -165,9 +189,16 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
                 #{player.shirtNumber} · {player.position}
               </div>
               <div className="font-display font-bold text-3xl mt-1">{player.name}</div>
-              <div className="text-sm text-slate-400 mt-1">
-                {team?.name} <span className="text-slate-600">·</span> {player.clubName} (
-                {player.clubLeague})
+              <div className="text-sm text-slate-400 mt-1 flex items-center gap-2">
+                {team?.name} <span className="text-slate-600">·</span>
+                {getClubLogo(player.clubName) && (
+                  <img
+                    src={getClubLogo(player.clubName)!}
+                    alt=""
+                    className="w-5 h-5 object-contain"
+                  />
+                )}
+                {player.clubName} ({player.clubLeague})
               </div>
               <div className="text-xs text-slate-500 mt-1">
                 {player.age}y · {player.height}cm · {player.preferredFoot === 'L' ? 'Left foot' : player.preferredFoot === 'R' ? 'Right foot' : 'Both feet'}
