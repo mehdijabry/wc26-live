@@ -60,7 +60,7 @@ export function Hero() {
         >
           The <span className="gradient-text">World Cup 2026</span>
           <br />
-          Hub
+          Live
         </motion.h1>
 
         <motion.p
