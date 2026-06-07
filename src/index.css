@@ -1,0 +1,62 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply bg-ink-900 text-slate-200 font-sans antialiased;
+    background-image:
+      radial-gradient(1200px 600px at 50% -100px, rgba(212, 175, 55, 0.18), transparent 60%),
+      radial-gradient(800px 400px at 90% 30%, rgba(0, 166, 81, 0.10), transparent 60%),
+      radial-gradient(900px 500px at 10% 70%, rgba(29, 78, 216, 0.12), transparent 60%);
+    background-attachment: fixed;
+    min-height: 100svh;
+  }
+  ::selection {
+    @apply bg-accent-gold/30 text-white;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-ink-800/60 backdrop-blur-xl border border-white/5;
+  }
+  .glass-hover {
+    @apply hover:bg-ink-700/70 hover:border-white/10 transition-all;
+  }
+  .gradient-text {
+    background: linear-gradient(120deg, #d4af37, #fff7d4, #00a651, #d4af37);
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: gradient-x 6s ease infinite;
+  }
+  .pill {
+    @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border border-white/10 bg-white/5;
+  }
+  .ring-glow {
+    box-shadow:
+      0 0 0 1px rgba(212, 175, 55, 0.3),
+      0 8px 30px -10px rgba(212, 175, 55, 0.4);
+  }
+}
+
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  src: url('https://fonts.gstatic.com/s/bricolagegrotesque/v3/3y9c6D-1nWiOAY7p.woff2') format('woff2');
+  font-display: swap;
+  font-weight: 200 800;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: #0a0a0f; }
+::-webkit-scrollbar-thumb { background: #2a2d3d; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #3d4154; }
