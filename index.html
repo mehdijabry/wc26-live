@@ -54,10 +54,15 @@
     <!-- Performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="dns-prefetch" href="https://wc26-api.nameless-violet-5dc1.workers.dev" />
+    <link rel="preconnect" href="https://wc26-api.nameless-violet-5dc1.workers.dev" crossorigin />
     <link rel="dns-prefetch" href="https://ssvvojhxyotlbcdosiog.supabase.co" />
-    <link rel="dns-prefetch" href="https://media.api-sports.io" />
     <link rel="dns-prefetch" href="https://a.espncdn.com" />
+    <link rel="dns-prefetch" href="https://flagcdn.com" />
+    <!-- Warm the tournament endpoint in parallel with the JS bundle. By the
+         time the React store calls api.tournament() this response is already
+         sitting in the browser cache → near-zero blank gap on Groups. -->
+    <link rel="preload" as="fetch" crossorigin
+      href="https://wc26-api.nameless-violet-5dc1.workers.dev/tournament" />
     <link
       href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
       rel="stylesheet"

@@ -220,3 +220,59 @@ export function relativeTime(iso: string | null): string {
   if (delta < 3_600_000) return `${Math.floor(delta / 60_000)} min ago`
   return `${Math.floor(delta / 3_600_000)}h ago`
 }
+
+// ----- Per-team helpers -------------------------------------------------
+
+export type TeamRecord = {
+  played: number
+  won: number
+  drawn: number
+  lost: number
+  goalsFor: number
+  goalsAgainst: number
+  points: number
+}
+
+export function recordForTeam(events: EspnEvent[], abbr: string): TeamRecord {
+  const r: TeamRecord = { played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, points: 0 }
+  const A = abbr.toUpperCase()
+  for (const ev of events) {
+    if (ev.status?.type?.state !== 'post') continue
+    const comp = ev.competitions?.[0]
+    const cs = comp?.competitors ?? []
+    if (cs.length < 2) continue
+    const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === A)
+    const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== A)
+    if (!mine || !other) continue
+    const my = parseInt(mine.score ?? '0', 10)
+    const op = parseInt(other.score ?? '0', 10)
+    r.played++
+    r.goalsFor += my
+    r.goalsAgainst += op
+    if (my > op) { r.won++; r.points += 3 }
+    else if (my === op) { r.drawn++; r.points += 1 }
+    else r.lost++
+  }
+  return r
+}
+
+export function nextMatchForTeam(events: EspnEvent[], abbr: string): EspnEvent | null {
+  const A = abbr.toUpperCase()
+  const now = Date.now()
+  return events
+    .filter((ev) => {
+      if (ev.status?.type?.state === 'post') return false
+      const cs = ev.competitions?.[0]?.competitors ?? []
+      return cs.some((c) => c.team?.abbreviation?.toUpperCase() === A)
+        && ev.date && new Date(ev.date).getTime() > now - 7_200_000 // include matches up to 2h late (live)
+    })
+    .sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))[0] ?? null
+}
+
+export function matchesForTeam(events: EspnEvent[], abbr: string): EspnEvent[] {
+  const A = abbr.toUpperCase()
+  return events.filter((ev) => {
+    const cs = ev.competitions?.[0]?.competitors ?? []
+    return cs.some((c) => c.team?.abbreviation?.toUpperCase() === A)
+  })
+}

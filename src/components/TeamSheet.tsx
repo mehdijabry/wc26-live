@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { API_BASE, api, eventTeams, statusLabel, type EspnEvent, type RosterAthlete, type RosterResponse } from '../lib/api'
 import { useTournament } from '../store/tournament'
 import { teamBadgeFallback } from '../lib/utils'
@@ -67,12 +68,24 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
       })
     : []
 
+  // Lock body scroll while modal is open (iOS Safari friendly)
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [open])
+
   const team = data?.team
   const logo = teamBadgeFallback(team?.logos?.[0]?.href, teamCode ?? undefined)
   const color = team?.color ? `#${team.color}` : '#d4af37'
   const athletes = roster?.athletes ?? []
 
-  return (
+  // Portal the modal to <body> so it escapes any transformed/overflow-hidden
+  // ancestor (the Groups motion.div with whileInView creates a transform
+  // stacking context on iOS Safari that would otherwise trap our fixed pos).
+  if (typeof document === 'undefined') return null
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -80,7 +93,7 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 z-50 bg-ink-900/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
+          className="fixed inset-0 z-[100] bg-ink-900/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto"
         >
           <motion.div
             initial={{ y: 100, opacity: 0 }}
@@ -189,7 +202,8 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
 
