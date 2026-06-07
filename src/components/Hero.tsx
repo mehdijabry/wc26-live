@@ -1,9 +1,10 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { openingMatchUTC, nextMatch } from '../data/matches'
-import { teamByCode } from '../data/teams'
+import { openingMatchUTC } from '../data/matches'
 import { timeUntil, userTimezone, fmtDate } from '../lib/utils'
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
+import { nextLiveOrUpcoming, useTournament } from '../store/tournament'
+import { eventTeams } from '../lib/api'
 
 export function Hero() {
   const [tick, setTick] = useState(0)
@@ -13,10 +14,14 @@ export function Hero() {
   }, [])
 
   const opening = openingMatchUTC()
-  const ttl = timeUntil(opening)
-  const nm = nextMatch()
-  const home = nm && teamByCode(nm.home)
-  const away = nm && teamByCode(nm.away)
+  const events = useTournament((s) => s.events)
+  const liveOrNext = nextLiveOrUpcoming(events)
+  // Prefer the actual next ESPN-known kickoff; fallback to the static opening date
+  const targetIso = liveOrNext?.date ?? opening
+  const ttl = timeUntil(targetIso)
+  const { home, away } = liveOrNext ? eventTeams(liveOrNext) : { home: undefined, away: undefined }
+  const venue = liveOrNext?.competitions?.[0]?.venue
+  const isLiveNow = liveOrNext?.status?.type?.state === 'in'
 
   return (
     <section id="hero" className="relative overflow-hidden pt-24 pb-12 sm:pt-32 sm:pb-20">
@@ -83,11 +88,28 @@ export function Hero() {
         >
           <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
             <div>
-              <div className="text-xs uppercase tracking-widest text-slate-500 font-mono">
-                Opening match · Estadio Azteca
+              <div className="text-xs uppercase tracking-widest text-slate-500 font-mono flex items-center gap-2">
+                {isLiveNow ? (
+                  <>
+                    <span className="flex items-center gap-1.5 text-red-400">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                      </span>
+                      LIVE NOW
+                    </span>
+                    {venue?.fullName && <span>· {venue.fullName}</span>}
+                  </>
+                ) : (
+                  <>
+                    <span>{liveOrNext ? 'Next match' : 'Opening match'}</span>
+                    {venue?.fullName && <span>· {venue.fullName}</span>}
+                    {!venue?.fullName && <span>· Estadio Azteca</span>}
+                  </>
+                )}
               </div>
               <div className="font-display text-xl sm:text-2xl text-white mt-1">
-                Kicks off in
+                {isLiveNow ? 'In progress' : 'Kicks off in'}
               </div>
             </div>
             <div className="text-xs font-mono text-slate-500">
@@ -98,13 +120,17 @@ export function Hero() {
           <CountdownGrid {...ttl} key={tick > 0 ? 'live' : 'init'} />
 
           <div className="mt-5 pt-5 border-t border-white/5 text-sm text-slate-400 flex flex-wrap gap-x-6 gap-y-2">
-            <span>📅 {fmtDate(opening)}</span>
-            {nm && home && away && (
-              <span>
-                ⚽️ Next: {home.flag} {home.name} <span className="text-slate-600">vs</span>{' '}
-                {away.flag} {away.name}
+            <span>📅 {fmtDate(targetIso)}</span>
+            {liveOrNext && home?.team && away?.team && (
+              <span className="flex items-center gap-2">
+                ⚽️ {home.team.shortDisplayName ?? home.team.displayName}{' '}
+                <span className="text-slate-600">vs</span>{' '}
+                {away.team.shortDisplayName ?? away.team.displayName}
               </span>
             )}
+            <span className="text-[11px] text-slate-600 font-mono ml-auto">
+              source · ESPN live
+            </span>
           </div>
         </motion.div>
 

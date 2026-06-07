@@ -1,9 +1,12 @@
 import { motion } from 'framer-motion'
+import { useState } from 'react'
 import { groups, teamByCode, teams, getContinentalChampion } from '../data/teams'
+import { TeamSheet } from './TeamSheet'
 
 const GROUP_LETTERS = 'ABCDEFGHIJKL'.split('')
 
 export function Groups() {
+  const [openTeam, setOpenTeam] = useState<string | null>(null)
   return (
     <section id="groups" className="py-20 sm:py-28">
       <div className="container max-w-6xl mx-auto px-6">
@@ -35,31 +38,36 @@ export function Groups() {
                   if (!t) return null
                   const champ = getContinentalChampion(code)
                   return (
-                    <li
-                      key={code}
-                      className={
-                        'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group ' +
-                        (champ
-                          ? `bg-gradient-to-r ${champ.tone.split(' ').slice(0, 3).join(' ')} ring-1 ${champ.tone.split(' ').slice(3).join(' ')} hover:bg-white/[0.06]`
-                          : 'bg-white/[0.02] hover:bg-white/[0.06]')
-                      }
-                      title={champ?.label}
-                    >
-                      <span className="w-5 text-xs font-mono text-slate-600 group-hover:text-slate-400">
-                        #{i + 1}
-                      </span>
-                      <span className="text-xl">{t.flag}</span>
-                      <span className="text-sm flex-1 truncate flex items-center gap-2">
-                        <span className="truncate">{t.name}</span>
-                        {champ && (
-                          <span className="text-[9px] uppercase tracking-widest text-slate-300 font-mono shrink-0 hidden sm:inline">
-                            {champ.short}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {t.fifaRank ? `R${t.fifaRank}` : 'TBD'}
-                      </span>
+                    <li key={code}>
+                      <button
+                        onClick={() => setOpenTeam(code)}
+                        className={
+                          'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group text-left cursor-pointer ' +
+                          (champ
+                            ? `bg-gradient-to-r ${champ.tone.split(' ').slice(0, 3).join(' ')} ring-1 ${champ.tone.split(' ').slice(3).join(' ')} hover:bg-white/[0.08]`
+                            : 'bg-white/[0.02] hover:bg-white/[0.08]')
+                        }
+                        title={champ?.label ?? `View ${t.name} details`}
+                      >
+                        <span className="w-5 text-xs font-mono text-slate-600 group-hover:text-slate-400">
+                          #{i + 1}
+                        </span>
+                        <span className="text-xl">{t.flag}</span>
+                        <span className="text-sm flex-1 truncate flex items-center gap-2">
+                          <span className="truncate">{t.name}</span>
+                          {champ && (
+                            <span className="text-[9px] uppercase tracking-widest text-slate-300 font-mono shrink-0 hidden sm:inline">
+                              {champ.short}
+                            </span>
+                          )}
+                        </span>
+                        <span className="text-[10px] font-mono text-slate-500">
+                          {t.fifaRank ? `R${t.fifaRank}` : 'TBD'}
+                        </span>
+                        <span className="text-slate-600 group-hover:text-accent-gold transition-colors text-xs">
+                          →
+                        </span>
+                      </button>
                     </li>
                   )
                 })}
@@ -92,6 +100,7 @@ export function Groups() {
           ))}
         </motion.div>
       </div>
+      <TeamSheet teamCode={openTeam} open={openTeam !== null} onClose={() => setOpenTeam(null)} />
     </section>
   )
 }

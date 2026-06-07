@@ -1,7 +1,7 @@
 name = "wc26-api"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
-account_id = "be5f666b1040f84d4f2c6baf630babaa"
+account_id = "a3e85bed1717f5e4eca6988586bfc06e"
 
 # Cron: run the scheduled handler every 5 minutes
 [triggers]
@@ -10,7 +10,7 @@ crons = ["*/5 * * * *"]
 # KV namespace bound as env.CACHE
 [[kv_namespaces]]
 binding = "CACHE"
-id = "01a3a566e877405e98bf18f19678a796"
+id = "125829a0bacb4ab6b352991e857c95eb"
 
 # Public vars
 [vars]

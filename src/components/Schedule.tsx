@@ -1,10 +1,9 @@
 import { motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
-import { matches, type Match } from '../data/matches'
-import { stadiums } from '../data/stadiums'
-import { teamByCode } from '../data/teams'
+import { useEffect, useMemo, useState } from 'react'
 import { userTimezone, cn } from '../lib/utils'
 import { SectionHeader } from './Groups'
+import { useTournament, relativeTime } from '../store/tournament'
+import { eventTeams, statusLabel, type EspnEvent } from '../lib/api'
 
 const TZ_LABELS: Record<string, string> = {
   Europe: '🇪🇺',
@@ -15,28 +14,52 @@ const TZ_LABELS: Record<string, string> = {
   Pacific: '🌊',
 }
 
+type Filter = 'all' | 'group' | 'ko'
+
+function inferStage(ev: EspnEvent): 'group' | 'r32' | 'r16' | 'qf' | 'sf' | 'final' | 'tp' {
+  const comp = ev.competitions?.[0] as unknown as { notes?: Array<{ headline?: string }> } | undefined
+  const headline = comp?.notes?.find((n) => n.headline)?.headline?.toLowerCase() ?? ''
+  if (headline.includes('group')) return 'group'
+  if (headline.includes('round of 32')) return 'r32'
+  if (headline.includes('round of 16')) return 'r16'
+  if (headline.includes('quarter')) return 'qf'
+  if (headline.includes('semi')) return 'sf'
+  if (headline.includes('third')) return 'tp'
+  if (headline.includes('final')) return 'final'
+  return 'group'
+}
+
+function groupLetter(ev: EspnEvent): string | null {
+  const comp = ev.competitions?.[0] as unknown as { notes?: Array<{ headline?: string }> } | undefined
+  const headline = comp?.notes?.find((n) => n.headline)?.headline ?? ''
+  const m = headline.match(/Group\s+([A-L])/i)
+  return m ? m[1].toUpperCase() : null
+}
+
 export function Schedule() {
   const tz = userTimezone()
   const tzZone = tz.split('/')[0]
-  const [filter, setFilter] = useState<'all' | 'group' | 'ko'>('all')
+  const [filter, setFilter] = useState<Filter>('all')
+
+  const { events, fetchedAt, hasLive, loading, error, load } = useTournament()
+  const [, force] = useState(0)
+  useEffect(() => { const i = setInterval(() => force((x) => x + 1), 30_000); return () => clearInterval(i) }, [])
 
   const filtered = useMemo(() => {
-    if (filter === 'all') return matches
-    if (filter === 'group') return matches.filter((m) => m.stage === 'group')
-    return matches.filter((m) => m.stage !== 'group')
-  }, [filter])
+    if (filter === 'all') return events
+    if (filter === 'group') return events.filter((e) => inferStage(e) === 'group')
+    return events.filter((e) => inferStage(e) !== 'group')
+  }, [events, filter])
 
-  // Group by date
   const byDate = useMemo(() => {
-    const m = new Map<string, Match[]>()
-    filtered.forEach((match) => {
-      const date = new Date(match.kickoffUTC).toLocaleDateString(undefined, {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
+    const m = new Map<string, EspnEvent[]>()
+    filtered.forEach((ev) => {
+      if (!ev.date) return
+      const date = new Date(ev.date).toLocaleDateString(undefined, {
+        weekday: 'long', month: 'long', day: 'numeric',
       })
       const arr = m.get(date) ?? []
-      arr.push(match)
+      arr.push(ev)
       m.set(date, arr)
     })
     return m
@@ -51,25 +74,65 @@ export function Schedule() {
           sub={`All kickoff times converted to your local timezone. ${TZ_LABELS[tzZone] || '🌐'} ${tz}.`}
         />
 
-        <div className="flex flex-wrap gap-2 mt-8 mb-8">
-          {(['all', 'group', 'ko'] as const).map((f) => (
+        <div className="mt-6 flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'group', 'ko'] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={cn(
+                  'px-4 py-1.5 rounded-full text-sm transition-colors',
+                  filter === f
+                    ? 'bg-accent-gold text-ink-900 font-semibold'
+                    : 'glass glass-hover text-slate-300'
+                )}
+              >
+                {f === 'all' ? `All ${events.length || ''}`.trim() : f === 'group' ? 'Group stage' : 'Knockouts'}
+              </button>
+            ))}
+          </div>
+
+          <div className="ml-auto flex items-center gap-2 text-[10px] font-mono text-slate-500">
+            {hasLive && (
+              <span className="flex items-center gap-1.5 text-red-400">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                </span>
+                LIVE
+              </span>
+            )}
+            <span>ESPN · {loading ? 'updating…' : relativeTime(fetchedAt)}</span>
             <button
-              key={f}
-              onClick={() => setFilter(f)}
-              className={cn(
-                'px-4 py-1.5 rounded-full text-sm transition-colors',
-                filter === f
-                  ? 'bg-accent-gold text-ink-900 font-semibold'
-                  : 'glass glass-hover text-slate-300'
-              )}
+              onClick={() => load()}
+              disabled={loading}
+              className="px-2 py-0.5 rounded-full bg-white/5 hover:bg-white/10 text-slate-400 transition-colors disabled:opacity-40"
             >
-              {f === 'all' ? 'All matches' : f === 'group' ? 'Group stage' : 'Knockouts'}
+              ↻
             </button>
-          ))}
+          </div>
         </div>
 
-        <div className="space-y-8">
-          {Array.from(byDate.entries()).map(([date, ms], idx) => (
+        {error && (
+          <div className="mt-6 glass rounded-xl px-4 py-3 text-xs text-red-400 font-mono">
+            {error}
+          </div>
+        )}
+
+        {events.length === 0 && loading && (
+          <div className="mt-8 glass rounded-2xl p-8 text-center text-slate-500">
+            Loading schedule from ESPN…
+          </div>
+        )}
+
+        {events.length === 0 && !loading && !error && (
+          <div className="mt-8 glass rounded-2xl p-8 text-center text-slate-500">
+            No matches yet. Schedule will populate as ESPN publishes the draw.
+          </div>
+        )}
+
+        <div className="mt-8 space-y-8">
+          {Array.from(byDate.entries()).map(([date, evs], idx) => (
             <motion.div
               key={date}
               initial={{ opacity: 0, y: 10 }}
@@ -81,8 +144,8 @@ export function Schedule() {
                 {date}
               </div>
               <div className="space-y-2">
-                {ms.map((m) => (
-                  <MatchRow key={m.id} match={m} />
+                {evs.map((ev) => (
+                  <MatchRow key={ev.id} ev={ev} />
                 ))}
               </div>
             </motion.div>
@@ -93,38 +156,54 @@ export function Schedule() {
   )
 }
 
-function MatchRow({ match }: { match: Match }) {
-  const home = teamByCode(match.home)
-  const away = teamByCode(match.away)
-  const stadium = stadiums.find((s) => s.id === match.stadium)
-  const time = new Date(match.kickoffUTC).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
+function MatchRow({ ev }: { ev: EspnEvent }) {
+  const { home, away } = eventTeams(ev)
+  const s = statusLabel(ev)
+  const stage = inferStage(ev)
+  const grp = groupLetter(ev)
+  const time = ev.date
+    ? new Date(ev.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+    : '—'
+  const venue = ev.competitions?.[0]?.venue
+  const stageLabel = stage === 'group'
+    ? (grp ? `Group ${grp}` : 'Group')
+    : stage.toUpperCase()
 
   return (
-    <div className="glass glass-hover rounded-xl px-4 py-3 flex items-center gap-4">
+    <div className={cn(
+      'glass glass-hover rounded-xl px-4 py-3 flex items-center gap-4',
+      s.live && 'ring-1 ring-red-500/30'
+    )}>
       <div className="font-mono text-xs text-slate-500 w-14 tabular-nums">{time}</div>
 
       <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <div className="flex items-center gap-2 justify-end text-right min-w-0">
-          <span className="truncate text-sm">{home?.name ?? match.home}</span>
-          <span className="text-xl">{home?.flag ?? '🏳️'}</span>
+          <span className="truncate text-sm">{home?.team?.shortDisplayName ?? home?.team?.displayName ?? '—'}</span>
+          {home?.team?.logo && (
+            <img src={home.team.logo} alt="" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
+          )}
+          {s.finished && <span className="font-display font-bold text-lg tabular-nums w-6">{home?.score ?? '0'}</span>}
         </div>
-        <div className="px-3 py-1 rounded-md bg-ink-900/50 text-[10px] font-mono text-slate-500">
-          {match.stage === 'group'
-            ? `Group ${match.group}`
-            : match.stage.toUpperCase()}
+        <div className={cn(
+          'px-3 py-1 rounded-md text-[10px] font-mono',
+          s.live ? 'bg-red-500/20 text-red-300' : s.finished ? 'bg-white/5 text-slate-400' : 'bg-ink-900/50 text-slate-500'
+        )}>
+          {s.live ? s.label : s.finished ? 'FT' : stageLabel}
         </div>
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xl">{away?.flag ?? '🏳️'}</span>
-          <span className="truncate text-sm">{away?.name ?? match.away}</span>
+          {s.finished && <span className="font-display font-bold text-lg tabular-nums w-6">{away?.score ?? '0'}</span>}
+          {away?.team?.logo && (
+            <img src={away.team.logo} alt="" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
+          )}
+          <span className="truncate text-sm">{away?.team?.shortDisplayName ?? away?.team?.displayName ?? '—'}</span>
         </div>
       </div>
 
-      <div className="hidden sm:block text-[11px] text-slate-500 max-w-[180px] truncate">
-        📍 {stadium?.city}, {stadium?.country}
-      </div>
+      {venue?.fullName && (
+        <div className="hidden sm:block text-[11px] text-slate-500 max-w-[180px] truncate">
+          📍 {venue.address?.city ?? venue.fullName}
+        </div>
+      )}
     </div>
   )
 }

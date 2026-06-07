@@ -66,9 +66,16 @@ export default {
         return cors(await cachedFetch(env, 'scoreboard', `${ESPN_BASE}/scoreboard`, 30), req)
       }
 
-      // Full fixtures list
+      // Full fixtures list (single-day window — ESPN returns ~limit events around now)
       if (url.pathname === '/fixtures') {
         return cors(await cachedFetch(env, 'fixtures', `${ESPN_BASE}/scoreboard?limit=200`, 3600), req)
+      }
+
+      // FULL tournament fan-out — every WC26 fixture from June 11 → July 19, 2026.
+      // ESPN /scoreboard only returns a date-bounded slice, so we fan out per-day
+      // and merge. Cached aggressively since the draw rarely changes mid-tournament.
+      if (url.pathname === '/tournament') {
+        return cors(await fetchTournament(env), req)
       }
 
       // Standings (group stage tables)
@@ -223,6 +230,80 @@ function ymdUtc(d: Date): string {
   const m = String(d.getUTCMonth() + 1).padStart(2, '0')
   const day = String(d.getUTCDate()).padStart(2, '0')
   return `${y}${m}${day}`
+}
+
+// All days of WC26 2026 (June 11 → July 19 inclusive)
+function wc26Days(): string[] {
+  const start = new Date(Date.UTC(2026, 5, 11)) // month 5 = June (0-indexed)
+  const end = new Date(Date.UTC(2026, 6, 19))   // July 19
+  const days: string[] = []
+  for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
+    days.push(ymdUtc(d))
+  }
+  return days
+}
+
+async function fetchTournament(env: Env): Promise<Response> {
+  const cached = await env.CACHE.get('tournament')
+  if (cached) {
+    return new Response(cached, {
+      headers: {
+        'content-type': 'application/json',
+        'x-cache': 'HIT',
+        'cache-control': 'public, max-age=300',
+      },
+    })
+  }
+
+  // Fan out across every WC26 day. ESPN tolerates this — and we cache aggressively.
+  const days = wc26Days()
+  const dayResults = await Promise.all(
+    days.map(async (d) => {
+      try {
+        const r = await fetch(`${ESPN_BASE}/scoreboard?dates=${d}`, {
+          cf: { cacheTtl: 1800, cacheEverything: true },
+        })
+        if (!r.ok) return []
+        const data = await r.json<EspnScoreboard>()
+        return data.events ?? []
+      } catch {
+        return []
+      }
+    })
+  )
+
+  // Dedupe by event id (some days overlap on overnight matches)
+  const allEvents = dayResults.flat()
+  const seen = new Set<string>()
+  const events = allEvents.filter((e) => {
+    if (!e.id || seen.has(e.id)) return false
+    seen.add(e.id)
+    return true
+  })
+
+  // Sort by kickoff
+  events.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+
+  const hasLive = events.some((e) => e.status?.type?.state === 'in')
+
+  const body = JSON.stringify({
+    total: events.length,
+    hasLive,
+    events,
+    fetchedAt: new Date().toISOString(),
+  })
+
+  // 30s if any live match, else 5min
+  const ttl = hasLive ? 30 : 300
+  env.CACHE.put('tournament', body, { expirationTtl: ttl }).catch(() => {})
+
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json',
+      'x-cache': 'MISS',
+      'cache-control': `public, max-age=${ttl}`,
+    },
+  })
 }
 
 type DailyComp = {

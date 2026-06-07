@@ -4,7 +4,7 @@
  */
 
 export const API_BASE =
-  import.meta.env.VITE_API_BASE ?? 'https://wc26-api.cradly-uk.workers.dev'
+  import.meta.env.VITE_API_BASE ?? 'https://wc26-api.nameless-violet-5dc1.workers.dev'
 
 export type EspnTeam = {
   id?: string
@@ -63,12 +63,21 @@ export type DailyResponse = {
   fetchedAt: string
 }
 
+export type TournamentResponse = {
+  total: number
+  hasLive: boolean
+  events: EspnEvent[]
+  fetchedAt: string
+}
+
 export const api = {
   health: () => jget<{ ok: boolean; service: string; t: string }>('/health'),
   scoreboard: () => jget<EspnScoreboard>('/scoreboard'),
   fixtures: () => jget<EspnScoreboard>('/fixtures'),
+  tournament: () => jget<TournamentResponse>('/tournament'),
   standings: () => jget<unknown>('/standings'),
   match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
+  team: (code: string) => jget<unknown>(`/teams/${code}`),
   today: (date?: string) => jget<DailyResponse>(`/today${date ? `?date=${date}` : ''}`),
 }
 
