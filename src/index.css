@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Hash-targeted sections clear the fixed nav + countdown when scrolled-to */
+section[id] {
+  scroll-margin-top: 110px;
+}
+
 @layer base {
   :root {
     color-scheme: dark;
