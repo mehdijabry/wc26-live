@@ -76,18 +76,29 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
   }, [open, teamCode])
 
   // Lazy load history only when the History tab is opened, so we don't
-  // burn ESPN bandwidth for users who never open it.
+  // burn ESPN bandwidth for users who never open it. IMPORTANT: we
+  // intentionally exclude `history`/`historyLoading` from deps so that
+  // setHistoryLoading(true) doesn't re-fire this effect, run the cleanup
+  // and cancel the in-flight fetch. We track the requested team in a
+  // ref so a subsequent team change cancels the previous request.
   useEffect(() => {
-    if (!open || !teamCode) return
-    if (tab !== 'history' || history || historyLoading) return
+    if (!open || !teamCode || tab !== 'history') return
+    if (history) return // already loaded for this team
+    const requested = teamCode
     setHistoryLoading(true)
-    let stop = false
     api.history(teamCode)
-      .then((h) => !stop && setHistory(h))
-      .catch(() => !stop && setHistory(null))
-      .finally(() => !stop && setHistoryLoading(false))
-    return () => { stop = true }
-  }, [open, teamCode, tab, history, historyLoading])
+      .then((h) => {
+        // Only commit if user hasn't switched teams since
+        if (requested.toLowerCase() === teamCode.toLowerCase()) setHistory(h)
+      })
+      .catch(() => {
+        if (requested.toLowerCase() === teamCode.toLowerCase()) setHistory(null)
+      })
+      .finally(() => {
+        if (requested.toLowerCase() === teamCode.toLowerCase()) setHistoryLoading(false)
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, teamCode, tab])
 
   // Lock body scroll while modal is open
   useEffect(() => {
