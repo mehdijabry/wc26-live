@@ -1,0 +1,96 @@
+/**
+ * WC26 API client — talks to the Cloudflare Worker proxy that
+ * caches ESPN's public soccer API for the FIFA World Cup 26.
+ */
+
+export const API_BASE =
+  import.meta.env.VITE_API_BASE ?? 'https://wc26-api.cradly-uk.workers.dev'
+
+export type EspnTeam = {
+  id?: string
+  abbreviation?: string
+  displayName?: string
+  shortDisplayName?: string
+  logo?: string
+  color?: string
+}
+
+export type EspnCompetitor = {
+  homeAway: 'home' | 'away'
+  score?: string
+  winner?: boolean
+  team?: EspnTeam
+}
+
+export type EspnStatus = {
+  clock?: number
+  displayClock?: string
+  period?: number
+  type?: { state?: 'pre' | 'in' | 'post'; completed?: boolean; description?: string }
+}
+
+export type EspnEvent = {
+  id: string
+  date?: string
+  shortName?: string
+  name?: string
+  status?: EspnStatus
+  competitions?: Array<{
+    competitors?: EspnCompetitor[]
+    venue?: { fullName?: string; address?: { city?: string; country?: string } }
+  }>
+}
+
+export type EspnScoreboard = { events?: EspnEvent[] }
+
+async function jget<T>(path: string): Promise<T> {
+  const resp = await fetch(`${API_BASE}${path}`)
+  if (!resp.ok) throw new Error(`API ${path} → ${resp.status}`)
+  return (await resp.json()) as T
+}
+
+export type DailyComp = {
+  slug: string
+  label: string
+  tier: number
+  events: EspnEvent[]
+}
+export type DailyResponse = {
+  date: string
+  total: number
+  hasLive: boolean
+  competitions: DailyComp[]
+  fetchedAt: string
+}
+
+export const api = {
+  health: () => jget<{ ok: boolean; service: string; t: string }>('/health'),
+  scoreboard: () => jget<EspnScoreboard>('/scoreboard'),
+  fixtures: () => jget<EspnScoreboard>('/fixtures'),
+  standings: () => jget<unknown>('/standings'),
+  match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
+  today: (date?: string) => jget<DailyResponse>(`/today${date ? `?date=${date}` : ''}`),
+}
+
+// "YYYYMMDD" for a Date in UTC — matches the /today?date= query param
+export function ymdUtc(d: Date): string {
+  const y = d.getUTCFullYear()
+  const m = String(d.getUTCMonth() + 1).padStart(2, '0')
+  const day = String(d.getUTCDate()).padStart(2, '0')
+  return `${y}${m}${day}`
+}
+
+// Helper: ESPN status → simple label
+export function statusLabel(ev: EspnEvent): { label: string; live: boolean; finished: boolean } {
+  const s = ev.status?.type?.state
+  if (s === 'in') return { label: ev.status?.displayClock ?? 'LIVE', live: true, finished: false }
+  if (s === 'post') return { label: ev.status?.type?.description ?? 'FT', live: false, finished: true }
+  return { label: ev.status?.type?.description ?? 'Scheduled', live: false, finished: false }
+}
+
+export function eventTeams(ev: EspnEvent): { home: EspnCompetitor | undefined; away: EspnCompetitor | undefined } {
+  const comp = ev.competitions?.[0]
+  const home = comp?.competitors?.find((c) => c.homeAway === 'home')
+  const away = comp?.competitors?.find((c) => c.homeAway === 'away')
+  return { home, away }
+}

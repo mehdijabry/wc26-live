@@ -9,6 +9,7 @@ import { Stadiums } from './components/Stadiums'
 import { Predictions } from './components/Predictions'
 import { Players } from './components/Players'
 import { Leaderboard } from './components/Leaderboard'
+import { DailyMatches } from './components/DailyMatches'
 import { Footer } from './components/Footer'
 import { AtlasLions } from './components/AtlasLions'
 import { useAuth } from './store/auth'
@@ -47,6 +48,7 @@ function App() {
         <Players />
         <Predictions />
         <Leaderboard />
+        <DailyMatches />
       </main>
       <Footer />
       <AtlasLions />

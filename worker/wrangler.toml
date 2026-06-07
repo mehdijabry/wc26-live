@@ -1,0 +1,20 @@
+name = "wc26-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+account_id = "be5f666b1040f84d4f2c6baf630babaa"
+
+# Cron: run the scheduled handler every 5 minutes
+[triggers]
+crons = ["*/5 * * * *"]
+
+# KV namespace bound as env.CACHE
+[[kv_namespaces]]
+binding = "CACHE"
+id = "01a3a566e877405e98bf18f19678a796"
+
+# Public vars
+[vars]
+SUPABASE_URL = "https://ssvvojhxyotlbcdosiog.supabase.co"
+
+# Secrets — set with `wrangler secret put SUPABASE_SERVICE_KEY`
+# DO NOT commit secrets here.

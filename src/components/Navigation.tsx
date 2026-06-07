@@ -7,7 +7,8 @@ const links = [
   { label: 'Schedule', href: '#schedule' },
   { label: 'Bracket', href: '#bracket' },
   { label: 'Predict', href: '#predict' },
-  { label: 'Leaderboard', href: '#leaderboard' },
+  { label: 'Today', href: '#today' },
+  { label: 'Board', href: '#leaderboard' },
 ]
 
 export function Navigation() {
