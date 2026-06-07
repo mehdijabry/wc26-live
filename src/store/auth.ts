@@ -14,6 +14,13 @@ type AuthState = {
    * instead of the not-connected home view.
    */
   completingSignIn: boolean
+  /**
+   * Surface OAuth provider errors that come back in the URL hash/query
+   * (e.g. `error_description=Unable+to+exchange+external+code`). Cleared
+   * when the user dismisses or successfully signs in.
+   */
+  authError: string | null
+  dismissAuthError: () => void
 
   init: () => Promise<void>
   signUpWithPassword: (email: string, password: string, alias?: string) => Promise<{ error?: string; needsConfirm?: boolean }>
@@ -37,12 +44,36 @@ function hasAuthCallback(): boolean {
     || /access_token=|refresh_token=|error=/.test(h)
 }
 
+// Extract a human-readable error from the URL query or hash, if Supabase /
+// the provider redirected us back with one.
+function readAuthErrorFromUrl(): string | null {
+  if (typeof window === 'undefined') return null
+  const tryParam = (s: string): string | null => {
+    const p = new URLSearchParams(s)
+    const desc = p.get('error_description') ?? p.get('error_message') ?? p.get('error')
+    return desc ? decodeURIComponent(desc.replace(/\+/g, ' ')) : null
+  }
+  return tryParam(window.location.search.slice(1))
+    ?? tryParam(window.location.hash.slice(1))
+}
+
 export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   session: null,
   profile: null,
   loading: true,
   completingSignIn: hasAuthCallback(),
+  authError: readAuthErrorFromUrl(),
+  dismissAuthError: () => {
+    set({ authError: null })
+    // Also clean the URL so a refresh doesn't re-trigger the error.
+    if (typeof window !== 'undefined') {
+      try {
+        const clean = window.location.origin + window.location.pathname
+        window.history.replaceState({}, '', clean)
+      } catch { /* ignore */ }
+    }
+  },
 
   async init() {
     if (!supabase) {
@@ -51,6 +82,17 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
 
     const callback = hasAuthCallback()
+    const providerError = readAuthErrorFromUrl()
+
+    // If the provider rejected the OAuth round-trip (e.g. Supabase couldn't
+    // exchange the Google authorization code because the Google Cloud
+    // Console redirect URI doesn't match the Supabase callback), there's
+    // no point spinning on "completing sign-in" — short-circuit straight
+    // to the error state so the user actually sees what went wrong.
+    if (providerError) {
+      set({ loading: false, completingSignIn: false, authError: providerError })
+      return
+    }
 
     // Subscribe FIRST so we never miss SIGNED_IN from the URL exchange.
     supabase.auth.onAuthStateChange(async (event, session) => {

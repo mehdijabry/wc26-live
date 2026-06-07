@@ -26,6 +26,8 @@ function App() {
   const authInit = useAuth((s) => s.init)
   const user = useAuth((s) => s.user)
   const completingSignIn = useAuth((s) => s.completingSignIn)
+  const authError = useAuth((s) => s.authError)
+  const dismissAuthError = useAuth((s) => s.dismissAuthError)
   const syncFromCloud = usePredictions((s) => s.syncFromCloud)
   const pushLocalToCloud = usePredictions((s) => s.pushLocalToCloud)
 
@@ -88,6 +90,36 @@ function App() {
               <span className="relative inline-flex h-3 w-3 rounded-full bg-accent-gold" />
             </span>
             <span className="text-sm text-slate-800 font-mono">Completing sign-in…</span>
+          </div>
+        </div>
+      )}
+
+      {/* OAuth provider error — Supabase / Google round-trip failure.
+          We surface the actual message instead of silently dropping the
+          user back to a logged-out home; otherwise it looks like the
+          sign-in just didn't happen, which is what the user reported. */}
+      {authError && (
+        <div className="fixed top-20 inset-x-0 z-[70] flex justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto max-w-xl w-full bg-red-50 border border-red-200 rounded-2xl shadow-lg p-4 flex items-start gap-3">
+            <div className="shrink-0 mt-0.5">
+              <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-sm font-bold">!</div>
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-red-800 text-sm">Sign-in failed</div>
+              <div className="text-xs text-red-700 mt-1 leading-relaxed break-words">{authError}</div>
+              <div className="text-[11px] text-red-600/80 mt-2">
+                Likely cause: the Google OAuth redirect URI doesn't match Supabase's callback.
+                Check Google Cloud Console → Credentials → OAuth client → Authorized redirect URIs
+                includes <code className="font-mono bg-red-100 px-1 rounded">https://ssvvojhxyotlbcdosiog.supabase.co/auth/v1/callback</code>
+              </div>
+            </div>
+            <button
+              onClick={dismissAuthError}
+              aria-label="Dismiss"
+              className="shrink-0 w-7 h-7 rounded-full text-red-500 hover:bg-red-100 flex items-center justify-center text-lg leading-none"
+            >
+              ×
+            </button>
           </div>
         </div>
       )}
