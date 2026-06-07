@@ -103,6 +103,116 @@ export function nextLiveOrUpcoming(events: EspnEvent[]): EspnEvent | null {
   return upcoming[0] ?? null
 }
 
+/**
+ * Derive the 12 WC26 groups (A–L) from the first 72 ESPN events.
+ *
+ * Group stage = first 72 matches. Each team plays 3 others — its group-mates.
+ * We build an adjacency map and cluster connected components. Each cluster
+ * of 4 teams is a group. Groups are labelled A→L in order of their first
+ * kickoff date.
+ */
+export type LiveGroup = {
+  letter: string
+  teams: Array<{
+    abbr: string
+    name: string
+    shortName: string
+    logo?: string
+    color?: string
+  }>
+  firstKickoff: string
+}
+
+export function deriveLiveGroups(events: EspnEvent[]): LiveGroup[] {
+  // Sort by kickoff
+  const sorted = [...events].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+
+  // Take first 72 matches as the group stage
+  const groupStage = sorted.slice(0, 72)
+  if (groupStage.length === 0) return []
+
+  // Build adjacency map of team → set of group-mates
+  const adj = new Map<string, Set<string>>()
+  const teamData = new Map<string, { name: string; shortName: string; logo?: string; color?: string }>()
+  const teamFirstKickoff = new Map<string, string>()
+
+  for (const ev of groupStage) {
+    const comp = ev.competitions?.[0]
+    if (!comp) continue
+    const competitors = comp.competitors ?? []
+    if (competitors.length < 2) continue
+    const a = competitors[0]?.team
+    const b = competitors[1]?.team
+    if (!a?.abbreviation || !b?.abbreviation) continue
+    const aa = a.abbreviation.toUpperCase()
+    const ba = b.abbreviation.toUpperCase()
+    if (!adj.has(aa)) adj.set(aa, new Set())
+    if (!adj.has(ba)) adj.set(ba, new Set())
+    adj.get(aa)!.add(ba)
+    adj.get(ba)!.add(aa)
+    if (a.displayName && !teamData.has(aa)) {
+      teamData.set(aa, {
+        name: a.displayName,
+        shortName: a.shortDisplayName ?? a.displayName,
+        logo: a.logo,
+        color: a.color,
+      })
+    }
+    if (b.displayName && !teamData.has(ba)) {
+      teamData.set(ba, {
+        name: b.displayName,
+        shortName: b.shortDisplayName ?? b.displayName,
+        logo: b.logo,
+        color: b.color,
+      })
+    }
+    const date = ev.date ?? ''
+    for (const code of [aa, ba]) {
+      const prev = teamFirstKickoff.get(code)
+      if (!prev || date < prev) teamFirstKickoff.set(code, date)
+    }
+  }
+
+  // Cluster connected components (DFS)
+  const visited = new Set<string>()
+  const clusters: Array<{ teams: string[]; firstKickoff: string }> = []
+  for (const team of adj.keys()) {
+    if (visited.has(team)) continue
+    const cluster: string[] = []
+    const stack = [team]
+    let firstKickoff = '9999-99-99'
+    while (stack.length) {
+      const t = stack.pop()!
+      if (visited.has(t)) continue
+      visited.add(t)
+      cluster.push(t)
+      const kickoff = teamFirstKickoff.get(t)
+      if (kickoff && kickoff < firstKickoff) firstKickoff = kickoff
+      const neighbors = adj.get(t)
+      if (neighbors) for (const n of neighbors) if (!visited.has(n)) stack.push(n)
+    }
+    // Only keep clusters of exactly 4 (proper WC26 group)
+    if (cluster.length === 4) clusters.push({ teams: cluster, firstKickoff })
+  }
+
+  // Sort clusters by first kickoff, label A→L
+  clusters.sort((a, b) => a.firstKickoff.localeCompare(b.firstKickoff))
+  const letters = 'ABCDEFGHIJKL'.split('')
+  return clusters.slice(0, 12).map((c, i) => ({
+    letter: letters[i],
+    firstKickoff: c.firstKickoff,
+    teams: c.teams
+      .map((abbr) => ({
+        abbr,
+        name: teamData.get(abbr)?.name ?? abbr,
+        shortName: teamData.get(abbr)?.shortName ?? abbr,
+        logo: teamData.get(abbr)?.logo,
+        color: teamData.get(abbr)?.color,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  }))
+}
+
 export function relativeTime(iso: string | null): string {
   if (!iso) return '—'
   const delta = Date.now() - new Date(iso).getTime()
