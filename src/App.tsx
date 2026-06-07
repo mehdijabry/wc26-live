@@ -1,4 +1,5 @@
 import { Navigation } from './components/Navigation'
+import { StickyCountdown } from './components/StickyCountdown'
 import { Hero } from './components/Hero'
 import { Groups } from './components/Groups'
 import { Schedule } from './components/Schedule'
@@ -13,6 +14,7 @@ function App() {
   return (
     <div className="min-h-svh">
       <Navigation />
+      <StickyCountdown />
       <main>
         <Hero />
         <Groups />

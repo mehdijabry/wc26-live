@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { groups, teamByCode, teams } from '../data/teams'
+import { groups, teamByCode, teams, getContinentalChampion } from '../data/teams'
 
 const GROUP_LETTERS = 'ABCDEFGHIJKL'.split('')
 
@@ -33,27 +33,27 @@ export function Groups() {
                 {(groups[letter] || []).map((code, i) => {
                   const t = teamByCode(code)
                   if (!t) return null
-                  const isMorocco = code === 'MAR'
+                  const champ = getContinentalChampion(code)
                   return (
                     <li
                       key={code}
                       className={
                         'flex items-center gap-3 px-3 py-2 rounded-lg transition-colors group ' +
-                        (isMorocco
-                          ? 'bg-gradient-to-r from-red-700/15 via-yellow-700/5 to-green-700/15 ring-1 ring-red-500/20 hover:from-red-700/25'
+                        (champ
+                          ? `bg-gradient-to-r ${champ.tone.split(' ').slice(0, 3).join(' ')} ring-1 ${champ.tone.split(' ').slice(3).join(' ')} hover:bg-white/[0.06]`
                           : 'bg-white/[0.02] hover:bg-white/[0.06]')
                       }
-                      title={isMorocco ? '🦁 The chosen ones — Atlas Lions' : undefined}
+                      title={champ?.label}
                     >
                       <span className="w-5 text-xs font-mono text-slate-600 group-hover:text-slate-400">
                         #{i + 1}
                       </span>
                       <span className="text-xl">{t.flag}</span>
-                      <span className="text-sm flex-1 truncate">
-                        {t.name}
-                        {isMorocco && (
-                          <span className="ml-2 text-[10px] uppercase tracking-widest text-red-400 font-mono">
-                            🦁 champions
+                      <span className="text-sm flex-1 truncate flex items-center gap-2">
+                        <span className="truncate">{t.name}</span>
+                        {champ && (
+                          <span className="text-[9px] uppercase tracking-widest text-slate-300 font-mono shrink-0 hidden sm:inline">
+                            {champ.short}
                           </span>
                         )}
                       </span>

@@ -70,14 +70,9 @@ export function Players() {
                   </div>
                 </div>
 
-                {/* 🦁 Atlas Lions side stripe for Moroccans */}
+                {/* Subtle confederation accent on player card */}
                 {p.teamCode === 'MAR' && (
-                  <div className="absolute top-0 left-0 bottom-0 w-1.5 bg-gradient-to-b from-red-600 via-yellow-500 to-green-700 rounded-l-2xl" />
-                )}
-                {p.teamCode === 'MAR' && (
-                  <div className="absolute -top-1 left-3 px-2 py-0.5 text-[9px] font-mono uppercase tracking-widest rounded-b-md bg-red-600 text-white">
-                    🦁 champion-in-waiting
-                  </div>
+                  <div className="absolute top-0 left-0 bottom-0 w-1 bg-gradient-to-b from-red-600 via-yellow-500 to-green-700 rounded-l-2xl opacity-80" />
                 )}
 
                 {/* Header */}

@@ -1,28 +1,29 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { KONAMI, logIntro, randomMoroccoQuote, TONGUE_IN_CHEEK_ODDS } from '../lib/morocco'
+import { KONAMI, logIntro, randomMoroccoQuote } from '../lib/morocco'
+import { TONGUE_IN_CHEEK_ODDS } from '../lib/morocco'
 
 /**
  * Atlas Lions — global Morocco easter-egg layer.
- * - Logs an ASCII intro to the console on mount.
- * - Listens for the Konami code → triggers a confetti + champion overlay.
- * - Rotates a Moroccan editorial quote every 12 seconds at the bottom of the page.
+ * - ASCII intro logged to console on mount.
+ * - Listens for Konami code → confetti + champion overlay.
+ * - Shows an occasional toast quote (every ~90s, visible 5s, then dismisses).
  */
 export function AtlasLions() {
   const [konamiHit, setKonamiHit] = useState(false)
-  const [quote, setQuote] = useState(randomMoroccoQuote())
+  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     logIntro()
   }, [])
 
+  // Konami code listener
   useEffect(() => {
     const buf: string[] = []
     const handler = (e: KeyboardEvent) => {
       const key = e.key
       buf.push(key)
       if (buf.length > KONAMI.length) buf.shift()
-      // case-insensitive match for 'b'/'a'
       const norm = buf.map((k) => (k.length === 1 ? k.toLowerCase() : k))
       if (KONAMI.every((k, i) => k === norm[i])) {
         setKonamiHit(true)
@@ -33,39 +34,46 @@ export function AtlasLions() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
+  // Occasional toast — first shows after 25s, then every 90s, visible for 5s
   useEffect(() => {
-    const id = setInterval(() => setQuote(randomMoroccoQuote()), 12000)
-    return () => clearInterval(id)
+    let timer: number
+    const showToast = () => {
+      setToast(randomMoroccoQuote())
+      timer = window.setTimeout(() => setToast(null), 5000)
+    }
+    const first = window.setTimeout(showToast, 25000)
+    const interval = window.setInterval(showToast, 90000)
+    return () => {
+      clearTimeout(first)
+      clearInterval(interval)
+      clearTimeout(timer)
+    }
   }, [])
 
   return (
     <>
-      {/* Floating quote banner — sticky bottom-right */}
-      <motion.div
-        initial={{ x: 100, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        transition={{ delay: 5, duration: 0.6 }}
-        className="hidden md:flex fixed bottom-6 right-6 z-40 max-w-sm glass rounded-2xl px-4 py-3 border border-red-500/20 backdrop-blur-xl items-start gap-3"
-      >
-        <span className="text-2xl">🦁</span>
-        <div className="text-xs">
-          <div className="font-mono text-[10px] uppercase tracking-widest text-red-400 mb-1">
-            Official editorial bias
-          </div>
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={quote}
-              initial={{ opacity: 0, y: 6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
-              transition={{ duration: 0.4 }}
-              className="text-slate-200 leading-snug"
+      {/* Occasional toast — bottom center, dismissible */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div
+            key={toast}
+            initial={{ y: 30, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 30, opacity: 0 }}
+            transition={{ type: 'spring', stiffness: 280, damping: 24 }}
+            className="fixed bottom-6 inset-x-0 z-40 flex justify-center px-4 pointer-events-none"
+          >
+            <button
+              onClick={() => setToast(null)}
+              className="pointer-events-auto group max-w-md flex items-center gap-3 px-4 py-2.5 rounded-full backdrop-blur-xl bg-ink-800/85 border border-red-500/15 shadow-2xl text-xs text-slate-200 hover:bg-ink-800/95 transition-colors"
             >
-              {quote}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </motion.div>
+              <span className="text-base">🦁</span>
+              <span className="text-left flex-1 leading-snug">{toast}</span>
+              <span className="text-slate-600 group-hover:text-slate-400 text-[10px] font-mono">×</span>
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Konami overlay */}
       <AnimatePresence>

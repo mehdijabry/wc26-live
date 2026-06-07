@@ -71,9 +71,9 @@ export const teams: Team[] = [
   { code: 'CRC', name: 'Costa Rica', flag: '🇨🇷', confed: 'CONCACAF', fifaRank: 50, group: 'C' },
   { code: 'JAM', name: 'Jamaica', flag: '🇯🇲', confed: 'CONCACAF', fifaRank: 65, group: 'E' },
 
-  // Intercontinental playoff winners (TBD until March 2026)
-  { code: 'PLY-1', name: 'Playoff Winner 1', flag: '🏁', confed: 'TBD', group: 'K' },
-  { code: 'PLY-2', name: 'Playoff Winner 2', flag: '🏁', confed: 'TBD', group: 'J' },
+  // Intercontinental playoff winners (March 2026 — both slots now confirmed)
+  { code: 'COD', name: 'DR Congo', flag: '🇨🇩', confed: 'CAF', fifaRank: 60, group: 'K' },
+  { code: 'BOL', name: 'Bolivia', flag: '🇧🇴', confed: 'CONMEBOL', fifaRank: 84, group: 'J' },
 ]
 
 export const groups: Record<string, string[]> = teams.reduce((acc, t) => {
@@ -85,4 +85,20 @@ export const groups: Record<string, string[]> = teams.reduce((acc, t) => {
 
 export function teamByCode(code: string): Team | undefined {
   return teams.find((t) => t.code === code)
+}
+
+// Continental champions — the site's official pick for each confederation.
+// One title per continent, displayed subtly on the group list (text-only, no emoji).
+export const CONTINENTAL_CHAMPIONS: Record<string, { code: string; short: string; label: string; tone: string }> = {
+  CAF:      { code: 'MAR', short: 'CAF champ',      label: 'Champion of Africa',        tone: 'from-red-700/15 via-yellow-700/5 to-green-700/15 ring-red-500/20' },
+  UEFA:     { code: 'ESP', short: 'UEFA champ',     label: 'Champion of Europe',        tone: 'from-red-600/10 via-yellow-600/5 to-yellow-700/10 ring-yellow-500/20' },
+  CONMEBOL: { code: 'ARG', short: 'CONMEBOL champ', label: 'Champion of South America', tone: 'from-sky-600/15 via-white/5 to-sky-600/15 ring-sky-400/20' },
+  AFC:      { code: 'JPN', short: 'AFC champ',      label: 'Champion of Asia',          tone: 'from-red-600/15 via-white/5 to-red-700/15 ring-red-500/20' },
+  CONCACAF: { code: 'USA', short: 'CONCACAF champ', label: 'Champion of CONCACAF',      tone: 'from-blue-700/15 via-white/5 to-red-700/15 ring-blue-400/20' },
+  OFC:      { code: 'NZL', short: 'OFC champ',      label: 'Champion of Oceania',       tone: 'from-slate-600/10 via-white/5 to-slate-700/10 ring-slate-400/20' },
+}
+
+export function getContinentalChampion(teamCode: string) {
+  const champ = Object.values(CONTINENTAL_CHAMPIONS).find((c) => c.code === teamCode)
+  return champ
 }
