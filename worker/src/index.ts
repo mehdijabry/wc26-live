@@ -27,23 +27,62 @@ const ALLOW_ORIGINS = [
 // Curated competitions for the daily aggregator. Order matters — it's the
 // display order in the UI (top-tier leagues first, then friendlies/other).
 const DAILY_LEAGUES: Array<{ slug: string; label: string; tier: number }> = [
-  { slug: 'fifa.world',             label: 'FIFA World Cup 26',     tier: 0 },
-  { slug: 'uefa.champions',         label: 'UEFA Champions League', tier: 1 },
-  { slug: 'uefa.europa',            label: 'UEFA Europa League',    tier: 1 },
-  { slug: 'uefa.europa.conf',       label: 'UEFA Conference League',tier: 1 },
-  { slug: 'eng.1',                  label: 'Premier League',        tier: 2 },
-  { slug: 'esp.1',                  label: 'LaLiga',                tier: 2 },
-  { slug: 'ita.1',                  label: 'Serie A',               tier: 2 },
-  { slug: 'ger.1',                  label: 'Bundesliga',            tier: 2 },
-  { slug: 'fra.1',                  label: 'Ligue 1',               tier: 2 },
-  { slug: 'por.1',                  label: 'Liga Portugal',         tier: 3 },
-  { slug: 'ned.1',                  label: 'Eredivisie',            tier: 3 },
-  { slug: 'tur.1',                  label: 'Süper Lig',             tier: 3 },
-  { slug: 'mex.1',                  label: 'Liga MX',               tier: 3 },
-  { slug: 'usa.1',                  label: 'MLS',                   tier: 3 },
-  { slug: 'sau.1',                  label: 'Saudi Pro League',      tier: 3 },
-  { slug: 'arg.1',                  label: 'Liga Profesional',      tier: 3 },
-  { slug: 'fifa.friendly',          label: 'International Friendlies', tier: 4 },
+  // ----- World stage -----
+  { slug: 'fifa.world',                 label: 'FIFA World Cup 26',         tier: 0 },
+  { slug: 'fifa.friendly',              label: 'International Friendlies',  tier: 0 },
+  { slug: 'fifa.friendly.w',            label: "International Friendlies (W)", tier: 0 },
+  { slug: 'uefa.nations',               label: 'UEFA Nations League',       tier: 0 },
+  { slug: 'concacaf.nations.league',    label: 'CONCACAF Nations League',   tier: 0 },
+  { slug: 'fifa.wwc',                   label: 'FIFA Women World Cup',      tier: 0 },
+
+  // ----- European cups -----
+  { slug: 'uefa.champions',             label: 'UEFA Champions League',     tier: 1 },
+  { slug: 'uefa.europa',                label: 'UEFA Europa League',        tier: 1 },
+  { slug: 'uefa.europa.conf',           label: 'UEFA Conference League',    tier: 1 },
+  { slug: 'uefa.super_cup',             label: 'UEFA Super Cup',            tier: 1 },
+  { slug: 'club.world.cup',             label: 'FIFA Club World Cup',       tier: 1 },
+
+  // ----- Continental club cups -----
+  { slug: 'conmebol.libertadores',      label: 'Copa Libertadores',         tier: 1 },
+  { slug: 'conmebol.sudamericana',      label: 'Copa Sudamericana',         tier: 1 },
+  { slug: 'concacaf.champions_league',  label: 'CONCACAF Champions Cup',    tier: 1 },
+  { slug: 'afc.champions',              label: 'AFC Champions Elite',       tier: 1 },
+  { slug: 'caf.champions_league',       label: 'CAF Champions League',      tier: 1 },
+
+  // ----- Top 5 leagues -----
+  { slug: 'eng.1',                      label: 'Premier League',            tier: 2 },
+  { slug: 'esp.1',                      label: 'LaLiga',                    tier: 2 },
+  { slug: 'ita.1',                      label: 'Serie A',                   tier: 2 },
+  { slug: 'ger.1',                      label: 'Bundesliga',                tier: 2 },
+  { slug: 'fra.1',                      label: 'Ligue 1',                   tier: 2 },
+
+  // ----- Other major leagues -----
+  { slug: 'por.1',                      label: 'Liga Portugal',             tier: 3 },
+  { slug: 'ned.1',                      label: 'Eredivisie',                tier: 3 },
+  { slug: 'bel.1',                      label: 'Belgian Pro League',        tier: 3 },
+  { slug: 'tur.1',                      label: 'Süper Lig',                 tier: 3 },
+  { slug: 'sco.1',                      label: 'Scottish Premiership',      tier: 3 },
+  { slug: 'gre.1',                      label: 'Super League Greece',       tier: 3 },
+  { slug: 'sui.1',                      label: 'Swiss Super League',        tier: 3 },
+  { slug: 'aut.1',                      label: 'Austrian Bundesliga',       tier: 3 },
+  { slug: 'rus.1',                      label: 'Russian Premier League',    tier: 3 },
+  { slug: 'mex.1',                      label: 'Liga MX',                   tier: 3 },
+  { slug: 'usa.1',                      label: 'MLS',                       tier: 3 },
+  { slug: 'sau.1',                      label: 'Saudi Pro League',          tier: 3 },
+  { slug: 'arg.1',                      label: 'Liga Profesional',          tier: 3 },
+  { slug: 'bra.1',                      label: 'Brasileirão',               tier: 3 },
+  { slug: 'jpn.1',                      label: 'J1 League',                 tier: 3 },
+  { slug: 'kor.1',                      label: 'K League 1',                tier: 3 },
+  { slug: 'aus.1',                      label: 'A-League',                  tier: 3 },
+
+  // ----- Domestic cups -----
+  { slug: 'eng.fa',                     label: 'FA Cup',                    tier: 4 },
+  { slug: 'eng.league_cup',             label: 'Carabao Cup',               tier: 4 },
+  { slug: 'esp.copa_del_rey',           label: 'Copa del Rey',              tier: 4 },
+  { slug: 'ita.coppa_italia',           label: 'Coppa Italia',              tier: 4 },
+  { slug: 'fra.coupe_de_france',        label: 'Coupe de France',           tier: 4 },
+  { slug: 'ger.dfb_pokal',              label: 'DFB-Pokal',                 tier: 4 },
+  { slug: 'usa.open',                   label: 'US Open Cup',               tier: 4 },
 ]
 
 // ----- HTTP entry point --------------------------------------------------
@@ -101,6 +140,16 @@ export default {
           await cachedFetch(env, `team:${code}`, `${ESPN_BASE}/teams/${code}`, 86400),
           req
         )
+      }
+
+      // National team roster — falls back through several ESPN endpoints
+      // because the public site API rarely exposes international rosters
+      // until very close to kickoff. We try the WC league path first, then
+      // fan out through known confederation leagues.
+      const rosterMatch = url.pathname.match(/^\/roster\/([^/]+)$/)
+      if (rosterMatch) {
+        const code = rosterMatch[1]
+        return cors(await fetchRoster(env, code), req)
       }
 
       // Daily aggregator — all competitions for a given day
@@ -365,6 +414,96 @@ async function fetchDaily(env: Env, date: string): Promise<Response> {
       'content-type': 'application/json',
       'x-cache': 'MISS',
       'cache-control': `public, max-age=${ttl}`,
+    },
+  })
+}
+
+// National team roster — tries multiple ESPN endpoints since the free site
+// API exposes rosters inconsistently for international teams. Returns the
+// first non-empty result. Cached 6h.
+async function fetchRoster(env: Env, code: string): Promise<Response> {
+  const cacheKey = `roster:${code.toLowerCase()}`
+  const cached = await env.CACHE.get(cacheKey)
+  if (cached) {
+    return new Response(cached, {
+      headers: {
+        'content-type': 'application/json',
+        'x-cache': 'HIT',
+        'cache-control': 'public, max-age=21600',
+      },
+    })
+  }
+
+  // Candidate endpoints (ordered: most-likely first).
+  // The `?enable=roster,stats` query is the one that actually returns a
+  // populated athletes list for national teams on ESPN's free site API —
+  // the bare `/roster` path returns 400 for international squads.
+  const candidates = [
+    `${ESPN_BASE}/teams/${code}?enable=roster,stats`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.nations/teams/${code}?enable=roster,stats`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/concacaf.nations.league/teams/${code}?enable=roster,stats`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/teams/${code}?enable=roster,stats`,
+    `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wwc/teams/${code}?enable=roster,stats`,
+  ]
+
+  let athletes: unknown[] = []
+  let teamMeta: Record<string, unknown> | null = null
+  let sourceUsed = ''
+
+  for (const upstream of candidates) {
+    try {
+      const r = await fetch(upstream, { cf: { cacheTtl: 21600, cacheEverything: true } })
+      if (!r.ok) continue
+      const data = (await r.json()) as {
+        team?: Record<string, unknown> & {
+          athletes?: Array<{ items?: unknown[] }> | unknown[]
+        }
+        athletes?: Array<{ items?: unknown[] }> | unknown[]
+      }
+      const teamObj = data.team ?? null
+
+      // Roster may live at `team.athletes` (flat array) or `data.athletes`
+      // (sometimes nested as position groups with `items`).
+      const rosterRaw =
+        (teamObj?.athletes as unknown[] | Array<{ items?: unknown[] }> | undefined) ??
+        (data.athletes as unknown[] | Array<{ items?: unknown[] }> | undefined)
+
+      let flat: unknown[] = []
+      if (Array.isArray(rosterRaw) && rosterRaw.length) {
+        const first = rosterRaw[0] as { items?: unknown[] } | unknown
+        if (typeof first === 'object' && first !== null && 'items' in (first as object)) {
+          flat = (rosterRaw as Array<{ items?: unknown[] }>).flatMap((g) => g.items ?? [])
+        } else {
+          flat = rosterRaw as unknown[]
+        }
+      }
+      if (flat.length) {
+        athletes = flat
+        teamMeta = teamObj
+        sourceUsed = upstream
+        break
+      }
+      if (teamObj && !teamMeta) teamMeta = teamObj
+    } catch {
+      continue
+    }
+  }
+
+  const body = JSON.stringify({
+    team: teamMeta,
+    athletes,
+    source: sourceUsed || null,
+    fetchedAt: new Date().toISOString(),
+  })
+
+  // 6h cache (rosters change slowly; we want to limit ESPN calls)
+  env.CACHE.put(cacheKey, body, { expirationTtl: 21600 }).catch(() => {})
+
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json',
+      'x-cache': 'MISS',
+      'cache-control': 'public, max-age=21600',
     },
   })
 }

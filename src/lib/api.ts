@@ -70,6 +70,29 @@ export type TournamentResponse = {
   fetchedAt: string
 }
 
+export type RosterAthlete = {
+  id?: string
+  fullName?: string
+  displayName?: string
+  shortName?: string
+  jersey?: string | number
+  position?: { abbreviation?: string; displayName?: string }
+  age?: number
+  height?: number
+  weight?: number
+  citizenship?: string
+  flag?: { href?: string }
+  headshot?: { href?: string }
+  birthPlace?: { country?: string }
+}
+
+export type RosterResponse = {
+  team?: { displayName?: string; abbreviation?: string; logo?: string; logos?: Array<{ href?: string }> }
+  athletes: RosterAthlete[]
+  source: string | null
+  fetchedAt: string
+}
+
 export const api = {
   health: () => jget<{ ok: boolean; service: string; t: string }>('/health'),
   scoreboard: () => jget<EspnScoreboard>('/scoreboard'),
@@ -78,6 +101,7 @@ export const api = {
   standings: () => jget<unknown>('/standings'),
   match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
   team: (code: string) => jget<unknown>(`/teams/${code}`),
+  roster: (code: string) => jget<RosterResponse>(`/roster/${code.toLowerCase()}`),
   today: (date?: string) => jget<DailyResponse>(`/today${date ? `?date=${date}` : ''}`),
 }
 

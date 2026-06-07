@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
 import { api, eventTeams, statusLabel, ymdUtc, type DailyResponse, type EspnEvent } from '../lib/api'
+import { teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
 
 const TIER_LABEL: Record<number, string> = {
@@ -246,12 +247,14 @@ function MatchCard({ ev }: { ev: EspnEvent }) {
 
 function TeamRow({ comp, live }: { comp: ReturnType<typeof eventTeams>['home']; live: boolean }) {
   if (!comp) return null
+  const logo = teamBadgeFallback(comp.team?.logo, comp.team?.abbreviation)
   return (
     <div className="flex items-center gap-2.5">
-      {comp.team?.logo ? (
+      {logo ? (
         <img
-          src={comp.team.logo}
+          src={logo}
           alt=""
+          loading="lazy"
           className="w-5 h-5 object-contain"
           onError={(e) => ((e.currentTarget.style.display = 'none'))}
         />

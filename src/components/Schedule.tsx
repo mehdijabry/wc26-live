@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { userTimezone, cn } from '../lib/utils'
+import { userTimezone, cn, teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
 import { useTournament, relativeTime } from '../store/tournament'
 import { eventTeams, statusLabel, type EspnEvent } from '../lib/api'
@@ -179,9 +179,12 @@ function MatchRow({ ev }: { ev: EspnEvent }) {
       <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
         <div className="flex items-center gap-2 justify-end text-right min-w-0">
           <span className="truncate text-sm">{home?.team?.shortDisplayName ?? home?.team?.displayName ?? '—'}</span>
-          {home?.team?.logo && (
-            <img src={home.team.logo} alt="" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
-          )}
+          {(() => {
+            const logo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation)
+            return logo ? (
+              <img src={logo} alt="" loading="lazy" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
+            ) : null
+          })()}
           {s.finished && <span className="font-display font-bold text-lg tabular-nums w-6">{home?.score ?? '0'}</span>}
         </div>
         <div className={cn(
@@ -192,9 +195,12 @@ function MatchRow({ ev }: { ev: EspnEvent }) {
         </div>
         <div className="flex items-center gap-2 min-w-0">
           {s.finished && <span className="font-display font-bold text-lg tabular-nums w-6">{away?.score ?? '0'}</span>}
-          {away?.team?.logo && (
-            <img src={away.team.logo} alt="" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
-          )}
+          {(() => {
+            const logo = teamBadgeFallback(away?.team?.logo, away?.team?.abbreviation)
+            return logo ? (
+              <img src={logo} alt="" loading="lazy" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
+            ) : null
+          })()}
           <span className="truncate text-sm">{away?.team?.shortDisplayName ?? away?.team?.displayName ?? '—'}</span>
         </div>
       </div>

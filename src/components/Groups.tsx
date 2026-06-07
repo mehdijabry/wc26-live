@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import { deriveLiveGroups, relativeTime, useTournament } from '../store/tournament'
 import { TeamSheet } from './TeamSheet'
+import { teamBadgeFallback } from '../lib/utils'
 
 // Editorial Continental Champions — one team per confederation gets
 // a subtle gradient/ring tone. Uses ESPN abbreviations.
@@ -92,16 +93,20 @@ export function Groups() {
                           <span className="w-5 text-xs font-mono text-slate-600 group-hover:text-slate-400">
                             #{i + 1}
                           </span>
-                          {t.logo ? (
-                            <img
-                              src={t.logo}
-                              alt=""
-                              className="w-6 h-6 object-contain shrink-0"
-                              onError={(e) => (e.currentTarget.style.display = 'none')}
-                            />
-                          ) : (
-                            <span className="w-6 h-6 inline-flex items-center justify-center text-base">🏳️</span>
-                          )}
+                          {(() => {
+                            const logo = teamBadgeFallback(t.logo, t.abbr)
+                            return logo ? (
+                              <img
+                                src={logo}
+                                alt=""
+                                loading="lazy"
+                                className="w-6 h-6 object-contain shrink-0"
+                                onError={(e) => (e.currentTarget.style.display = 'none')}
+                              />
+                            ) : (
+                              <span className="w-6 h-6 inline-flex items-center justify-center text-base">🏳️</span>
+                            )
+                          })()}
                           <span className="text-sm flex-1 truncate flex items-center gap-2">
                             <span className="truncate">{t.shortName}</span>
                             {champ && (

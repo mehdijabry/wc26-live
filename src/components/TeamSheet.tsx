@@ -1,7 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { API_BASE, eventTeams, statusLabel, type EspnEvent } from '../lib/api'
+import { API_BASE, api, eventTeams, statusLabel, type EspnEvent, type RosterAthlete, type RosterResponse } from '../lib/api'
 import { useTournament } from '../store/tournament'
+import { teamBadgeFallback } from '../lib/utils'
 
 /**
  * Team detail sheet — opens when a team row in the Groups grid is clicked.
@@ -27,23 +28,34 @@ type EspnTeamPayload = {
 
 export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null; open: boolean; onClose: () => void }) {
   const [data, setData] = useState<EspnTeamPayload | null>(null)
+  const [roster, setRoster] = useState<RosterResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const events = useTournament((s) => s.events)
 
   useEffect(() => {
     if (!open || !teamCode) return
+    let stop = false
     setLoading(true)
     setError(null)
     setData(null)
-    fetch(`${API_BASE}/teams/${teamCode.toLowerCase()}`)
-      .then(async (r) => {
+    setRoster(null)
+    // Team meta + roster in parallel
+    Promise.all([
+      fetch(`${API_BASE}/teams/${teamCode.toLowerCase()}`).then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
-        return r.json()
+        return r.json() as Promise<EspnTeamPayload>
+      }),
+      api.roster(teamCode).catch(() => null),
+    ])
+      .then(([teamData, rosterData]) => {
+        if (stop) return
+        setData(teamData)
+        setRoster(rosterData)
       })
-      .then((d: EspnTeamPayload) => setData(d))
-      .catch((e) => setError(e instanceof Error ? e.message : 'Failed'))
-      .finally(() => setLoading(false))
+      .catch((e) => !stop && setError(e instanceof Error ? e.message : 'Failed'))
+      .finally(() => !stop && setLoading(false))
+    return () => { stop = true }
   }, [open, teamCode])
 
   // Tournament matches for this team
@@ -56,8 +68,9 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
     : []
 
   const team = data?.team
-  const logo = team?.logos?.[0]?.href
+  const logo = teamBadgeFallback(team?.logos?.[0]?.href, teamCode ?? undefined)
   const color = team?.color ? `#${team.color}` : '#d4af37'
+  const athletes = roster?.athletes ?? []
 
   return (
     <AnimatePresence>
@@ -145,18 +158,29 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
               </div>
             </div>
 
-            {/* Squad — placeholder (ESPN's free endpoint rarely exposes national-team rosters
-                pre-tournament; v2 will integrate Sofascore for full squad + per-match stats). */}
+            {/* Squad — live from ESPN /roster (falls back through several
+                confederation endpoints because national rosters are exposed
+                inconsistently before kickoff). */}
             <div className="mt-6 pt-6 border-t border-white/5">
-              <div className="text-xs uppercase tracking-widest text-slate-500 font-mono mb-2">
-                Squad
+              <div className="flex items-baseline justify-between mb-3">
+                <div className="text-xs uppercase tracking-widest text-slate-500 font-mono">
+                  Squad · {athletes.length} {athletes.length === 1 ? 'player' : 'players'}
+                </div>
+                {roster?.source && (
+                  <div className="text-[9px] font-mono text-slate-700 truncate max-w-[60%]" title={roster.source}>
+                    ESPN
+                  </div>
+                )}
               </div>
-              <div className="glass rounded-xl p-4 text-xs text-slate-400 leading-relaxed">
-                Le tableau du squad complet par jour (entraînements, minutes, buts, notes des joueurs) arrive en{' '}
-                <span className="text-accent-gold font-mono">Phase 4</span> via Sofascore — l'API ESPN gratuite n'expose
-                pas les rosters internationaux avant le coup d'envoi. Dès que ESPN publie la liste officielle, elle
-                apparaîtra ici automatiquement.
-              </div>
+              {athletes.length === 0 ? (
+                <div className="glass rounded-xl p-4 text-xs text-slate-400 leading-relaxed">
+                  {loading
+                    ? 'Loading squad…'
+                    : "ESPN n'a pas encore publié de roster pour cette sélection. La liste apparaîtra ici dès que la fédération la publie — pas d'intervention nécessaire."}
+                </div>
+              ) : (
+                <SquadGrid athletes={athletes} />
+              )}
             </div>
 
             <div className="mt-6 text-[10px] font-mono text-slate-600 text-center">
@@ -166,6 +190,75 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
         </motion.div>
       )}
     </AnimatePresence>
+  )
+}
+
+function SquadGrid({ athletes }: { athletes: RosterAthlete[] }) {
+  // Group by position bucket (GK / DEF / MID / FW)
+  const buckets: Record<string, RosterAthlete[]> = { GK: [], DEF: [], MID: [], FW: [], Other: [] }
+  for (const a of athletes) {
+    const pos = (a.position?.abbreviation ?? '').toUpperCase()
+    if (pos.startsWith('G')) buckets.GK.push(a)
+    else if (pos.startsWith('D') || pos.includes('B')) buckets.DEF.push(a)
+    else if (pos.startsWith('M')) buckets.MID.push(a)
+    else if (pos.startsWith('F') || pos.startsWith('W') || pos.startsWith('S')) buckets.FW.push(a)
+    else buckets.Other.push(a)
+  }
+  const order: Array<keyof typeof buckets> = ['GK', 'DEF', 'MID', 'FW', 'Other']
+  const labels: Record<string, string> = { GK: 'Goalkeepers', DEF: 'Defenders', MID: 'Midfielders', FW: 'Forwards', Other: 'Others' }
+  return (
+    <div className="space-y-4">
+      {order.map((k) => {
+        const list = buckets[k]
+        if (!list.length) return null
+        return (
+          <div key={k}>
+            <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono mb-2">
+              {labels[k]} · {list.length}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+              {list.map((a) => (
+                <AthleteRow key={a.id ?? a.fullName} a={a} />
+              ))}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function AthleteRow({ a }: { a: RosterAthlete }) {
+  const name = a.displayName ?? a.fullName ?? a.shortName ?? '?'
+  // ESPN national-team athletes rarely expose headshot — fall back to the
+  // citizenship flag (always present for international squads).
+  const photo = a.headshot?.href ?? a.flag?.href
+  const jersey = a.jersey != null ? `#${a.jersey}` : ''
+  const pos = a.position?.abbreviation ?? ''
+  return (
+    <div className="glass rounded-lg px-2.5 py-1.5 flex items-center gap-2.5">
+      {photo ? (
+        <img
+          src={photo}
+          alt=""
+          loading="lazy"
+          className="w-7 h-7 rounded-full object-cover bg-ink-900"
+          onError={(e) => (e.currentTarget.style.display = 'none')}
+        />
+      ) : (
+        <div className="w-7 h-7 rounded-full bg-ink-900/60 flex items-center justify-center text-[10px] font-mono text-slate-500">
+          {pos || '·'}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="text-sm truncate">{name}</div>
+        <div className="text-[10px] font-mono text-slate-500 flex gap-2">
+          {jersey && <span>{jersey}</span>}
+          {pos && <span>{pos}</span>}
+          {a.age && <span>{a.age}y</span>}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -186,9 +279,18 @@ function MatchLine({ ev, teamCode }: { ev: EspnEvent; teamCode: string }) {
       <div className="text-[10px] font-mono text-slate-500 w-32 shrink-0 truncate">{time}</div>
       <div className="text-[10px] font-mono text-slate-500 w-8">{isHome ? 'vs' : '@'}</div>
       <div className="flex items-center gap-2 flex-1 min-w-0">
-        {opp?.team?.logo && (
-          <img src={opp.team.logo} alt="" className="w-4 h-4 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
-        )}
+        {(() => {
+          const logo = teamBadgeFallback(opp?.team?.logo, opp?.team?.abbreviation)
+          return logo ? (
+            <img
+              src={logo}
+              alt=""
+              loading="lazy"
+              className="w-4 h-4 object-contain"
+              onError={(e) => (e.currentTarget.style.display = 'none')}
+            />
+          ) : null
+        })()}
         <span className="text-sm truncate">{opp?.team?.shortDisplayName ?? opp?.team?.displayName ?? '?'}</span>
       </div>
       {s.live && (
