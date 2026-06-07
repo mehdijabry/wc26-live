@@ -1,12 +1,13 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import { UserMenu } from './UserMenu'
 
 const links = [
   { label: 'Groups', href: '#groups' },
   { label: 'Schedule', href: '#schedule' },
   { label: 'Bracket', href: '#bracket' },
-  { label: 'Stadiums', href: '#stadiums' },
   { label: 'Predict', href: '#predict' },
+  { label: 'Leaderboard', href: '#leaderboard' },
 ]
 
 export function Navigation() {
@@ -48,9 +49,7 @@ export function Navigation() {
             </a>
           ))}
         </nav>
-        <div className="text-xs font-mono text-slate-500 hidden sm:block">
-          🇺🇸 🇲🇽 🇨🇦
-        </div>
+        <UserMenu />
       </div>
     </motion.header>
   )

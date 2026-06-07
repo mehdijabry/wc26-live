@@ -118,12 +118,12 @@ export function Predictions() {
                     <div className="flex items-center gap-1">
                       <Stepper
                         value={pick?.homeScore ?? 0}
-                        onChange={(v) => setPick({ matchId: m.id, homeScore: v, awayScore: pick?.awayScore ?? 0, ts: Date.now() })}
+                        onChange={(v) => { void setPick({ matchId: m.id, homeScore: v, awayScore: pick?.awayScore ?? 0, ts: Date.now() }) }}
                       />
                       <span className="text-slate-600">:</span>
                       <Stepper
                         value={pick?.awayScore ?? 0}
-                        onChange={(v) => setPick({ matchId: m.id, homeScore: pick?.homeScore ?? 0, awayScore: v, ts: Date.now() })}
+                        onChange={(v) => { void setPick({ matchId: m.id, homeScore: pick?.homeScore ?? 0, awayScore: v, ts: Date.now() }) }}
                       />
                     </div>
                     <div className="text-left">
