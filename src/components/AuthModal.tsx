@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useAuth } from '../store/auth'
 import { SUPABASE_CONFIGURED } from '../lib/supabase'
 
@@ -68,7 +69,20 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
     // On success, browser redirects to Google → comes back → onAuthStateChange triggers
   }
 
-  return (
+  // Lock body scroll while open
+  useEffect(() => {
+    if (!open) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => { document.body.style.overflow = prev }
+  }, [open])
+
+  if (typeof document === 'undefined') return null
+
+  // Portal to <body> so the modal escapes the Navigation's transformed
+  // stacking context (motion.header creates a CSS transform during scroll
+  // animation, which traps fixed-position descendants in some browsers).
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -76,14 +90,14 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           onClick={onClose}
-          className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
+          className="fixed inset-0 z-[100] bg-slate-900/50 backdrop-blur-md flex items-center justify-center p-4 overflow-y-auto"
         >
           <motion.div
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0 }}
             onClick={(e) => e.stopPropagation()}
-            className="glass rounded-3xl p-8 max-w-md w-full ring-glow my-auto"
+            className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl ring-1 ring-accent-gold/20 my-auto"
           >
             <div className="flex items-start justify-between mb-5">
               <div>
@@ -252,7 +266,8 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
 

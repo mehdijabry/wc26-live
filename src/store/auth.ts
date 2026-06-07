@@ -50,19 +50,14 @@ export const useAuth = create<AuthState>((set, get) => ({
       return
     }
 
-    // If the URL carries an auth callback, give Supabase a tick to process
-    // the token via `detectSessionInUrl` BEFORE we ask for the session.
-    // Without this, getSession() can resolve to null before the token is
-    // exchanged, and the app paints a "not signed in" home view briefly.
     const callback = hasAuthCallback()
 
-    // Subscribe FIRST so we never miss the SIGNED_IN event from the URL exchange.
+    // Subscribe FIRST so we never miss SIGNED_IN from the URL exchange.
     supabase.auth.onAuthStateChange(async (event, session) => {
       set({ session, user: session?.user ?? null, completingSignIn: false })
       if (session) await get().refreshProfile()
       else set({ profile: null })
 
-      // Clean the callback bits out of the URL once we've consumed them.
       if (event === 'SIGNED_IN' && typeof window !== 'undefined' && callback) {
         try {
           const clean = window.location.origin + window.location.pathname
@@ -73,15 +68,28 @@ export const useAuth = create<AuthState>((set, get) => ({
       }
     })
 
-    // Now read the session — Supabase JS will have queued the URL exchange.
+    // If the URL carries a PKCE `?code=` from Google/magic-link, perform
+    // the exchange EXPLICITLY. The default `detectSessionInUrl` is racy
+    // when the bundle is code-split — by the time it runs, React may have
+    // already painted "not signed in". Calling exchangeCodeForSession
+    // ourselves guarantees the session is stored before getSession() reads.
+    try {
+      const url = new URL(window.location.href)
+      const code = url.searchParams.get('code')
+      if (code) {
+        await supabase.auth.exchangeCodeForSession(window.location.href)
+      }
+    } catch (err) {
+      // Surface but don't block — fall through to getSession.
+      // eslint-disable-next-line no-console
+      console.warn('[auth] exchangeCodeForSession failed:', err)
+    }
+
     const { data } = await supabase.auth.getSession()
     set({
       session: data.session,
       user: data.session?.user ?? null,
       loading: false,
-      // Stay in "completing" mode briefly if we expected a callback but no
-      // session yet — onAuthStateChange will clear it as soon as exchange
-      // finishes. Hard-cap at 4s so we never deadlock the UI.
       completingSignIn: callback && !data.session,
     })
     if (data.session) await get().refreshProfile()
