@@ -10,6 +10,8 @@ import { Predictions } from './components/Predictions'
 import { Players } from './components/Players'
 import { Leaderboard } from './components/Leaderboard'
 import { DailyMatches } from './components/DailyMatches'
+import { BracketWizard } from './components/BracketWizard'
+import { PublicProfile } from './components/PublicProfile'
 import { Footer } from './components/Footer'
 import { AtlasLions } from './components/AtlasLions'
 import { useAuth } from './store/auth'
@@ -35,6 +37,12 @@ function App() {
     })()
   }, [user, pushLocalToCloud, syncFromCloud])
 
+  // Simple path-based routing for public profile pages /u/:slug
+  const profileMatch = window.location.pathname.match(/^\/u\/([\w-]+)$/)
+  if (profileMatch) {
+    return <PublicProfile slug={profileMatch[1]} />
+  }
+
   return (
     <div className="min-h-svh">
       <Navigation />
@@ -47,6 +55,7 @@ function App() {
         <Stadiums />
         <Players />
         <Predictions />
+        <BracketWizard />
         <Leaderboard />
         <DailyMatches />
       </main>

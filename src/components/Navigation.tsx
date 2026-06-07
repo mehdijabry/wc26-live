@@ -5,8 +5,9 @@ import { UserMenu } from './UserMenu'
 const links = [
   { label: 'Groups', href: '#groups' },
   { label: 'Schedule', href: '#schedule' },
-  { label: 'Bracket', href: '#bracket' },
+  { label: 'KO Tree', href: '#bracket' },
   { label: 'Predict', href: '#predict' },
+  { label: 'My Bracket', href: '#bracket-predict' },
   { label: 'Today', href: '#today' },
   { label: 'Board', href: '#leaderboard' },
 ]
