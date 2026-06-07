@@ -526,28 +526,64 @@ async function fetchTeamHistory(env: Env, code: string): Promise<Response> {
       headers: {
         'content-type': 'application/json',
         'x-cache': 'HIT',
-        'cache-control': 'public, max-age=43200',
+        'cache-control': 'public, max-age=900',
       },
     })
   }
 
-  // ESPN's `/teams/{abbr}/schedule?season=YYYY&seasontype=1` returns the
-  // team's matches in that league for a given season. We hit each past
-  // World Cup season + recent friendly windows in parallel.
-  const wcSeasons = [2022, 2018, 2014, 2010, 2006, 2002, 1998]
+  // ESPN's WC league uses `seasontype` to split phases:
+  //   1=Group, 2=R16, 3=QF, 4=SF, 5=3rd/Final.
+  // So a single fetch only returns 3-4 group games for nations that went
+  // deep. We fan out per (season × seasontype) so semi-finalists like
+  // Morocco 2022 actually expose their full bracket run.
+  const wcSeasons = [2022, 2018, 2014, 2010, 2006, 2002, 1998, 1994]
+  const wcSeasonTypes = [1, 2, 3, 4, 5]
   const friendlySeasons = [2026, 2025, 2024, 2023]
 
+  // Additional competitions worth showing — qualifiers + confederation cups.
+  // These slugs are tried best-effort; empty responses are silently skipped.
+  const otherCompetitions: Array<{ slug: string; tag: (y: number) => string; seasons: number[] }> = [
+    { slug: 'fifa.worldq.caf',     tag: (y) => `WC qual. ${y}`, seasons: [2025, 2024, 2023, 2021, 2017, 2013] },
+    { slug: 'fifa.worldq.uefa',    tag: (y) => `WC qual. ${y}`, seasons: [2025, 2024, 2021, 2017, 2013] },
+    { slug: 'fifa.worldq.conmebol', tag: (y) => `WC qual. ${y}`, seasons: [2025, 2024, 2023, 2022, 2017, 2013] },
+    { slug: 'fifa.worldq.afc',     tag: (y) => `WC qual. ${y}`, seasons: [2025, 2024, 2021] },
+    { slug: 'fifa.worldq.concacaf', tag: (y) => `WC qual. ${y}`, seasons: [2025, 2024, 2021] },
+    { slug: 'fifa.cwc',            tag: (y) => `Confed. Cup ${y}`, seasons: [2017, 2013, 2009] },
+    { slug: 'uefa.euro',           tag: (y) => `Euro ${y}`, seasons: [2024, 2020, 2016, 2012] },
+    { slug: 'conmebol.america',    tag: (y) => `Copa América ${y}`, seasons: [2024, 2021, 2019, 2016] },
+    { slug: 'concacaf.gold',       tag: (y) => `Gold Cup ${y}`, seasons: [2023, 2021, 2019, 2017] },
+    { slug: 'caf.nations_cup',     tag: (y) => `AFCON ${y}`, seasons: [2024, 2022, 2019, 2017, 2015] },
+    { slug: 'afc.asian_cup',       tag: (y) => `Asian Cup ${y}`, seasons: [2024, 2019, 2015] },
+    { slug: 'ofc.nations_cup',     tag: (y) => `OFC Nations ${y}`, seasons: [2024, 2016, 2012] },
+  ]
+
   type Target = { upstream: string; tag: string }
-  const targets: Target[] = [
-    ...wcSeasons.map((y) => ({
-      upstream: `${ESPN_BASE}/teams/${code}/schedule?season=${y}&seasontype=1`,
-      tag: `WC ${y}`,
-    })),
-    ...friendlySeasons.map((y) => ({
+  const targets: Target[] = []
+  // WC: season × seasontype
+  for (const y of wcSeasons) {
+    for (const st of wcSeasonTypes) {
+      targets.push({
+        upstream: `${ESPN_BASE}/teams/${code}/schedule?season=${y}&seasontype=${st}`,
+        tag: `WC ${y}`,
+      })
+    }
+  }
+  // Friendlies
+  for (const y of friendlySeasons) {
+    targets.push({
       upstream: `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/teams/${code}/schedule?season=${y}`,
       tag: `Friendlies ${y}`,
-    })),
-  ]
+    })
+  }
+  // Other competitions
+  for (const c of otherCompetitions) {
+    for (const y of c.seasons) {
+      targets.push({
+        upstream: `https://site.api.espn.com/apis/site/v2/sports/soccer/${c.slug}/teams/${code}/schedule?season=${y}`,
+        tag: c.tag(y),
+      })
+    }
+  }
 
   type RawEvent = {
     id?: string
@@ -638,7 +674,7 @@ async function fetchTeamHistory(env: Env, code: string): Promise<Response> {
     headers: {
       'content-type': 'application/json',
       'x-cache': 'MISS',
-      'cache-control': 'public, max-age=43200',
+      'cache-control': 'public, max-age=900',
     },
   })
 }

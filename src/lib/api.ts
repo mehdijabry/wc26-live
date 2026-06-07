@@ -124,7 +124,10 @@ export const api = {
   match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
   team: (code: string) => jget<unknown>(`/teams/${code}`),
   roster: (code: string) => jget<RosterResponse>(`/roster/${code.toLowerCase()}`),
-  history: (code: string) => jget<HistoryResponse>(`/team-history/${code.toLowerCase()}`),
+  // v=2 bumps the URL when the Worker history schema changes (added knockout
+  // rounds + qualifiers + AFCON) so browsers don't keep serving the old
+  // /team-history payload from their HTTP cache.
+  history: (code: string) => jget<HistoryResponse>(`/team-history/${code.toLowerCase()}?v=2`),
   today: (date?: string) => jget<DailyResponse>(`/today${date ? `?date=${date}` : ''}`),
 }
 
