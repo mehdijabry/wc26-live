@@ -168,7 +168,7 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
             {status === 'success' && (
               <div className="text-center py-6">
                 <div className="text-5xl mb-3">✅</div>
-                <div className="font-display text-xl text-white">Welcome to WC26 Hub.</div>
+                <div className="font-display text-xl text-white">Welcome to WC26 Live.</div>
               </div>
             )}
 

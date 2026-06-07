@@ -59,7 +59,7 @@ export function PublicProfile({ slug }: { slug: string }) {
         <div className="text-sm text-slate-500">
           The user <code className="text-accent-gold">{slug}</code> hasn't published their bracket yet.
         </div>
-        <a href="/" className="mt-6 px-5 py-2 rounded-full bg-accent-gold text-ink-900 text-sm font-semibold">← Back to WC26 Hub</a>
+        <a href="/" className="mt-6 px-5 py-2 rounded-full bg-accent-gold text-ink-900 text-sm font-semibold">← Back to WC26 Live</a>
       </div>
     )
   }
@@ -77,7 +77,7 @@ export function PublicProfile({ slug }: { slug: string }) {
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <img src="/wc26-emblem.svg" alt="" className="w-8 h-8" />
-            <span className="font-display font-bold tracking-tight">WC<span className="text-accent-gold">26</span> Hub</span>
+            <span className="font-display font-bold tracking-tight">WC<span className="text-accent-gold">26</span> Live</span>
           </a>
           <a href="/" className="text-sm text-slate-400 hover:text-white">← Hub</a>
         </div>

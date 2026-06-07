@@ -510,7 +510,7 @@ function BracketPoster() {
           <div className="font-display font-bold text-3xl">FIFA World Cup 26 — Full Bracket</div>
         </div>
         <div className="text-[10px] font-mono text-slate-500 text-right">
-          WC26 Hub<br />by mehdijabry.dev
+          WC26 Live<br />by mehdijabry.dev
         </div>
       </div>
 

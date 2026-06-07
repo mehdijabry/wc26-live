@@ -25,7 +25,7 @@ export function Players() {
         <SectionHeader
           eyebrow="every starter"
           title="Player Lab"
-          sub="Each player, club, minutes, goals, season form — plus a WC26 Hub Score (0-100) that weighs consistency, position-weighted output, recent form, and availability. Updates daily."
+          sub="Each player, club, minutes, goals, season form — plus a WC26 Live Score (0-100) that weighs consistency, position-weighted output, recent form, and availability. Updates daily."
         />
 
         {/* Filters */}
@@ -211,7 +211,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
         {/* Rating spotlight */}
         <div className="glass rounded-2xl p-6 text-center mb-6">
           <div className="text-xs uppercase tracking-widest text-slate-500 font-mono mb-2">
-            WC26 Hub Score
+            WC26 Live Score
           </div>
           <div className={cn('font-display font-bold text-7xl', rating.tierColor)}>
             {rating.score}
@@ -283,7 +283,7 @@ function PlayerModal({ player, onClose }: { player: Player; onClose: () => void 
         </div>
 
         <div className="mt-6 text-[10px] text-slate-600 font-mono text-center">
-          Sources: club fixtures (mock v1 · Sofascore v2). WC26 Hub Score is computed by our model.
+          Sources: club fixtures (mock v1 · Sofascore v2). WC26 Live Score is computed by our model.
         </div>
       </motion.div>
     </motion.div>

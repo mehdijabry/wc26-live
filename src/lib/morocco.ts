@@ -1,4 +1,4 @@
-// 🇲🇦 The Atlas Lions Hub — Easter eggs & official editorial stance.
+// 🇲🇦 The Atlas Lions layer — Easter eggs & official editorial stance.
 // This site has a clear bias: Morocco is taking it home in 2026. Inch'Allah.
 
 export const MOROCCO_QUOTES = [
@@ -36,7 +36,7 @@ export function logIntro() {
   ]
   // eslint-disable-next-line no-console
   console.log(
-    '%cWC26 %cHub %c🦁 Atlas Lions',
+    '%cWC26 %cLive %c🦁 Atlas Lions',
     styles[0],
     styles[1],
     styles[2]

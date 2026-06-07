@@ -2,11 +2,17 @@ export function Footer() {
   return (
     <footer className="border-t border-white/5 py-12 text-center text-xs text-slate-500">
       <div className="container max-w-6xl mx-auto px-6">
-        <div className="flex items-center justify-center gap-2 mb-3">
-          <span className="text-xl">⚽️</span>
-          <span className="font-display font-bold text-base text-white">
-            WC<span className="text-accent-gold">26</span> Hub
-          </span>
+        <div className="flex items-center justify-center gap-2.5 mb-3">
+          <img src="/wc26-emblem.svg" alt="" className="w-7 h-7" />
+          <div className="leading-tight text-left">
+            <div className="font-display font-bold text-base text-white">
+              WC<span className="text-accent-gold">26</span> Live
+            </div>
+            <div className="text-[9px] uppercase tracking-[0.2em] font-mono mt-0.5">
+              <span className="text-white">Pressing</span>{' '}
+              <span className="text-accent-red font-semibold">90′</span>
+            </div>
+          </div>
         </div>
         <div className="font-mono">
           Not affiliated with FIFA. Data sources (planned v2): ESPN public API ·

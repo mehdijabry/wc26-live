@@ -39,15 +39,21 @@ export function Navigation() {
         }`}
       >
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
-          <a href="#hero" className="flex items-center gap-2 group">
+          <a href="#hero" className="flex items-center gap-2.5 group">
             <img
               src="/wc26-emblem.svg"
               alt="WC26"
-              className="w-8 h-8 group-hover:scale-110 transition-transform"
+              className="w-8 h-8 group-hover:scale-110 transition-transform shrink-0"
             />
-            <span className="font-display font-bold tracking-tight text-lg">
-              WC<span className="text-accent-gold">26</span> Hub
-            </span>
+            <div className="leading-tight">
+              <div className="font-display font-bold tracking-tight text-base sm:text-lg whitespace-nowrap">
+                WC<span className="text-accent-gold">26</span> Live
+              </div>
+              <div className="text-[9px] uppercase tracking-[0.2em] font-mono whitespace-nowrap mt-0.5">
+                <span className="text-white">Pressing</span>{' '}
+                <span className="text-accent-red font-semibold">90′</span>
+              </div>
+            </div>
           </a>
 
           {/* Desktop nav */}
@@ -98,11 +104,17 @@ export function Navigation() {
               className="fixed top-0 right-0 bottom-0 z-[60] w-[80%] max-w-xs bg-ink-800 border-l border-white/10 p-6 md:hidden overflow-y-auto"
             >
               <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2.5">
                   <img src="/wc26-emblem.svg" alt="" className="w-7 h-7" />
-                  <span className="font-display font-bold tracking-tight">
-                    WC<span className="text-accent-gold">26</span>
-                  </span>
+                  <div className="leading-tight">
+                    <div className="font-display font-bold tracking-tight text-sm">
+                      WC<span className="text-accent-gold">26</span> Live
+                    </div>
+                    <div className="text-[8px] uppercase tracking-[0.2em] font-mono mt-0.5">
+                      <span className="text-white">Pressing</span>{' '}
+                      <span className="text-accent-red font-semibold">90′</span>
+                    </div>
+                  </div>
                 </div>
                 <button
                   onClick={() => setMenuOpen(false)}
