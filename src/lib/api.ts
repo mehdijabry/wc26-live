@@ -93,6 +93,28 @@ export type RosterResponse = {
   fetchedAt: string
 }
 
+export type HistoryEvent = EspnEvent & {
+  tag?: string
+  competitions?: Array<{
+    competitors?: Array<{
+      homeAway: 'home' | 'away'
+      // `/schedule` endpoint nests score as { value, displayValue, winner }
+      score?: string | { value?: number; displayValue?: string; winner?: boolean }
+      winner?: boolean
+      team?: EspnTeam
+    }>
+    venue?: { fullName?: string; address?: { city?: string; country?: string } }
+  }>
+}
+
+export type HistoryResponse = {
+  abbr: string
+  total: number
+  summary: { won: number; drawn: number; lost: number; goalsFor: number; goalsAgainst: number; played: number }
+  events: HistoryEvent[]
+  fetchedAt: string
+}
+
 export const api = {
   health: () => jget<{ ok: boolean; service: string; t: string }>('/health'),
   scoreboard: () => jget<EspnScoreboard>('/scoreboard'),
@@ -102,6 +124,7 @@ export const api = {
   match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
   team: (code: string) => jget<unknown>(`/teams/${code}`),
   roster: (code: string) => jget<RosterResponse>(`/roster/${code.toLowerCase()}`),
+  history: (code: string) => jget<HistoryResponse>(`/team-history/${code.toLowerCase()}`),
   today: (date?: string) => jget<DailyResponse>(`/today${date ? `?date=${date}` : ''}`),
 }
 

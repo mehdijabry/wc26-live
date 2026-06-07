@@ -152,6 +152,14 @@ export default {
         return cors(await fetchRoster(env, code), req)
       }
 
+      // Full team history — past WCs (2022, 2018, 2014, 2010, 2006) + recent
+      // friendlies. Aggregates across multiple ESPN league/season paths.
+      const historyMatch = url.pathname.match(/^\/team-history\/([^/]+)$/)
+      if (historyMatch) {
+        const code = historyMatch[1]
+        return cors(await fetchTeamHistory(env, code), req)
+      }
+
       // Daily aggregator — all competitions for a given day
       // /today?date=YYYYMMDD  (default = today UTC)
       if (url.pathname === '/today') {
@@ -504,6 +512,133 @@ async function fetchRoster(env: Env, code: string): Promise<Response> {
       'content-type': 'application/json',
       'x-cache': 'MISS',
       'cache-control': 'public, max-age=21600',
+    },
+  })
+}
+
+// Team history — fans out across past WC seasons + recent friendly &
+// continental fixtures. Cached 12h. Returns chronological list (newest first).
+async function fetchTeamHistory(env: Env, code: string): Promise<Response> {
+  const cacheKey = `history:${code.toLowerCase()}`
+  const cached = await env.CACHE.get(cacheKey)
+  if (cached) {
+    return new Response(cached, {
+      headers: {
+        'content-type': 'application/json',
+        'x-cache': 'HIT',
+        'cache-control': 'public, max-age=43200',
+      },
+    })
+  }
+
+  // ESPN's `/teams/{abbr}/schedule?season=YYYY&seasontype=1` returns the
+  // team's matches in that league for a given season. We hit each past
+  // World Cup season + recent friendly windows in parallel.
+  const wcSeasons = [2022, 2018, 2014, 2010, 2006, 2002, 1998]
+  const friendlySeasons = [2026, 2025, 2024, 2023]
+
+  type Target = { upstream: string; tag: string }
+  const targets: Target[] = [
+    ...wcSeasons.map((y) => ({
+      upstream: `${ESPN_BASE}/teams/${code}/schedule?season=${y}&seasontype=1`,
+      tag: `WC ${y}`,
+    })),
+    ...friendlySeasons.map((y) => ({
+      upstream: `https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.friendly/teams/${code}/schedule?season=${y}`,
+      tag: `Friendlies ${y}`,
+    })),
+  ]
+
+  type RawEvent = {
+    id?: string
+    date?: string
+    name?: string
+    shortName?: string
+    status?: { type?: { state?: string; description?: string; completed?: boolean } }
+    competitions?: Array<{
+      competitors?: Array<{
+        homeAway?: 'home' | 'away'
+        score?: string | { displayValue?: string; value?: number }
+        winner?: boolean
+        team?: { abbreviation?: string; displayName?: string; shortDisplayName?: string; logo?: string }
+      }>
+      venue?: { fullName?: string; address?: { city?: string; country?: string } }
+    }>
+  }
+  type Bucket = { tag: string; events: RawEvent[] }
+
+  const results = await Promise.all(
+    targets.map(async (t): Promise<Bucket> => {
+      try {
+        const r = await fetch(t.upstream, { cf: { cacheTtl: 43200, cacheEverything: true } })
+        if (!r.ok) return { tag: t.tag, events: [] }
+        const data = (await r.json()) as { events?: RawEvent[] }
+        return { tag: t.tag, events: data.events ?? [] }
+      } catch {
+        return { tag: t.tag, events: [] }
+      }
+    })
+  )
+
+  // Flatten, tag each event with the source bucket so the UI can group / sort
+  const seen = new Set<string>()
+  type Tagged = RawEvent & { tag: string }
+  const all: Tagged[] = []
+  for (const b of results) {
+    for (const ev of b.events) {
+      if (!ev.id || seen.has(ev.id)) continue
+      seen.add(ev.id)
+      all.push({ ...ev, tag: b.tag })
+    }
+  }
+  all.sort((a, b) => (b.date ?? '').localeCompare(a.date ?? '')) // newest first
+
+  // Lightweight win/draw/loss tally. The /schedule endpoint omits
+  // status.state, so we treat date-in-the-past as finished AND require a
+  // score object to count (so live-but-unfinished matches don't pollute).
+  let won = 0, drawn = 0, lost = 0, goalsFor = 0, goalsAgainst = 0
+  const A = code.toUpperCase()
+  const now = Date.now()
+  for (const ev of all) {
+    if (!ev.date || new Date(ev.date).getTime() > now) continue
+    const cs = ev.competitions?.[0]?.competitors ?? []
+    const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === A)
+    const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== A)
+    if (!mine || !other) continue
+    const extract = (s: unknown): number | null => {
+      if (s == null) return null
+      if (typeof s === 'object' && s !== null && 'value' in s) {
+        const v = (s as { value?: number }).value
+        return typeof v === 'number' ? v : null
+      }
+      const n = parseInt(String(s), 10)
+      return Number.isFinite(n) ? n : null
+    }
+    const myScore = extract(mine.score)
+    const opScore = extract(other.score)
+    if (myScore === null || opScore === null) continue // not actually finished
+    goalsFor += myScore
+    goalsAgainst += opScore
+    if (myScore > opScore) won++
+    else if (myScore === opScore) drawn++
+    else lost++
+  }
+
+  const body = JSON.stringify({
+    abbr: A,
+    total: all.length,
+    summary: { won, drawn, lost, goalsFor, goalsAgainst, played: won + drawn + lost },
+    events: all,
+    fetchedAt: new Date().toISOString(),
+  })
+
+  env.CACHE.put(cacheKey, body, { expirationTtl: 43200 }).catch(() => {})
+
+  return new Response(body, {
+    headers: {
+      'content-type': 'application/json',
+      'x-cache': 'MISS',
+      'cache-control': 'public, max-age=43200',
     },
   })
 }

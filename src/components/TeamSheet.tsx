@@ -7,11 +7,14 @@ import {
   eventTeams,
   statusLabel,
   type EspnEvent,
+  type HistoryEvent,
+  type HistoryResponse,
   type RosterAthlete,
   type RosterResponse,
 } from '../lib/api'
 import { useTournament, recordForTeam, matchesForTeam } from '../store/tournament'
 import { teamBadgeFallback } from '../lib/utils'
+import { heritageFor } from '../data/wcHeritage'
 
 /**
  * Team detail sheet — full-page modal opened from a country click in Groups.
@@ -34,11 +37,13 @@ type EspnTeamPayload = {
   }
 }
 
-type Tab = 'infos' | 'effectif' | 'calendrier' | 'stats'
+type Tab = 'infos' | 'effectif' | 'calendrier' | 'history' | 'stats'
 
 export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null; open: boolean; onClose: () => void }) {
   const [data, setData] = useState<EspnTeamPayload | null>(null)
   const [roster, setRoster] = useState<RosterResponse | null>(null)
+  const [history, setHistory] = useState<HistoryResponse | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('infos')
@@ -52,6 +57,7 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
     setData(null)
     setRoster(null)
     setTab('infos')
+    setHistory(null)
     Promise.all([
       fetch(`${API_BASE}/teams/${teamCode.toLowerCase()}`).then(async (r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`)
@@ -68,6 +74,20 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
       .finally(() => !stop && setLoading(false))
     return () => { stop = true }
   }, [open, teamCode])
+
+  // Lazy load history only when the History tab is opened, so we don't
+  // burn ESPN bandwidth for users who never open it.
+  useEffect(() => {
+    if (!open || !teamCode) return
+    if (tab !== 'history' || history || historyLoading) return
+    setHistoryLoading(true)
+    let stop = false
+    api.history(teamCode)
+      .then((h) => !stop && setHistory(h))
+      .catch(() => !stop && setHistory(null))
+      .finally(() => !stop && setHistoryLoading(false))
+    return () => { stop = true }
+  }, [open, teamCode, tab, history, historyLoading])
 
   // Lock body scroll while modal is open
   useEffect(() => {
@@ -155,7 +175,7 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
             <div className="sticky top-0 z-10 bg-white border-b border-slate-100">
               <div className="overflow-x-auto no-scrollbar">
                 <div className="flex gap-1 px-3 sm:px-7 min-w-max">
-                  {(['infos', 'effectif', 'calendrier', 'stats'] as Tab[]).map((t) => (
+                  {(['infos', 'effectif', 'calendrier', 'history', 'stats'] as Tab[]).map((t) => (
                     <button
                       key={t}
                       type="button"
@@ -165,7 +185,8 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
                     >
                       {t === 'infos' ? 'Infos'
                        : t === 'effectif' ? `Squad${athletes.length ? ` · ${athletes.length}` : ''}`
-                       : t === 'calendrier' ? `Matches${teamMatches.length ? ` · ${teamMatches.length}` : ''}`
+                       : t === 'calendrier' ? `WC26${teamMatches.length ? ` · ${teamMatches.length}` : ''}`
+                       : t === 'history' ? `History${history ? ` · ${history.total}` : ''}`
                        : 'Stats'}
                     </button>
                   ))}
@@ -191,6 +212,15 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
 
               {tab === 'calendrier' && (
                 <CalendrierTab teamMatches={teamMatches} teamCode={teamCode ?? ''} />
+              )}
+
+              {tab === 'history' && (
+                <HistoryTab
+                  history={history}
+                  loading={historyLoading}
+                  teamCode={teamCode ?? ''}
+                  abbr={abbr}
+                />
               )}
 
               {tab === 'stats' && (
@@ -335,6 +365,154 @@ function CalendrierTab({ teamMatches, teamCode }: { teamMatches: EspnEvent[]; te
           </div>
         </div>
       ))}
+    </div>
+  )
+}
+
+function HistoryTab({
+  history, loading, teamCode, abbr,
+}: {
+  history: HistoryResponse | null
+  loading: boolean
+  teamCode: string
+  abbr: string
+}) {
+  const heritage = heritageFor(abbr)
+
+  // Group history events by year (or by tag like "WC 2022")
+  const groups = new Map<string, HistoryEvent[]>()
+  for (const ev of history?.events ?? []) {
+    const key = ev.tag ?? (ev.date ? new Date(ev.date).getUTCFullYear().toString() : 'Other')
+    const arr = groups.get(key) ?? []
+    arr.push(ev)
+    groups.set(key, arr)
+  }
+  // Preserve insertion order (already newest-first from Worker), but
+  // ensure WC seasons appear before friendlies in the same year.
+  const ordered = Array.from(groups.entries()).sort((a, b) => {
+    const wA = a[0].startsWith('WC') ? 0 : 1
+    const wB = b[0].startsWith('WC') ? 0 : 1
+    if (wA !== wB) return wA - wB
+    return b[0].localeCompare(a[0])
+  })
+
+  return (
+    <div className="space-y-6">
+      {/* Palmarès — static FIFA heritage data */}
+      {heritage && (
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+            FIFA World Cup heritage
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <Kpi label="Appearances" value={String(heritage.appearances)} />
+            <Kpi label="Best result" value={heritage.bestResult} highlight={!!heritage.titles} />
+            {heritage.titles ? <Kpi label="Titles" value={String(heritage.titles)} highlight /> : null}
+            {heritage.runnerUp ? <Kpi label="Runner-up" value={String(heritage.runnerUp)} /> : null}
+            {heritage.semifinalsCount ? <Kpi label="Semi-finals" value={String(heritage.semifinalsCount)} /> : null}
+            <Kpi label="Last edition" value={heritage.lastAppearance ? String(heritage.lastAppearance) : '—'} />
+            {heritage.lastResult ? <Kpi label="Last result" value={heritage.lastResult} /> : null}
+            {heritage.bestYear ? <Kpi label="Peak year" value={String(heritage.bestYear)} /> : null}
+          </div>
+        </div>
+      )}
+
+      {/* Live API summary — last few years across WC + friendlies */}
+      {history && (
+        <div>
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+            Recent record · {history.summary.played} matches played
+          </div>
+          <div className="grid grid-cols-4 gap-3">
+            <Kpi label="Wins" value={String(history.summary.won)} />
+            <Kpi label="Draws" value={String(history.summary.drawn)} />
+            <Kpi label="Losses" value={String(history.summary.lost)} />
+            <Kpi label="Goal diff" value={`${history.summary.goalsFor - history.summary.goalsAgainst >= 0 ? '+' : ''}${history.summary.goalsFor - history.summary.goalsAgainst}`} highlight />
+          </div>
+        </div>
+      )}
+
+      {/* All historical matches grouped by tag */}
+      {loading && !history && (
+        <div className="space-y-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse" />
+          ))}
+        </div>
+      )}
+
+      {history && ordered.length === 0 && (
+        <div className="rounded-xl border border-slate-100 px-3 py-4 text-xs text-slate-500">
+          ESPN n'a pas d'historique publié pour cette sélection sur les dernières éditions.
+        </div>
+      )}
+
+      {ordered.map(([tag, evs]) => (
+        <div key={tag}>
+          <div className="flex items-baseline justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
+              {tag} · {evs.length}
+            </div>
+            <div className="text-[9px] uppercase tracking-widest text-slate-400 font-mono">
+              {tag.startsWith('WC') ? 'World Cup' : 'Friendlies / qual.'}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {evs.map((ev) => <HistoryMatchLine key={ev.id} ev={ev} teamCode={teamCode} />)}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function HistoryMatchLine({ ev, teamCode }: { ev: HistoryEvent; teamCode: string }) {
+  const cs = ev.competitions?.[0]?.competitors ?? []
+  const A = teamCode.toUpperCase()
+  const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === A)
+  const opp = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== A)
+  const extract = (s: unknown): string => {
+    if (s == null) return ''
+    if (typeof s === 'object' && s !== null) {
+      const v = (s as { displayValue?: string; value?: number }).displayValue
+        ?? (s as { value?: number }).value
+      return v != null ? String(v) : ''
+    }
+    return String(s)
+  }
+  const my = extract(mine?.score)
+  const op = extract(opp?.score)
+  const finished = my !== '' && op !== ''
+  const myN = parseInt(my, 10) || 0
+  const opN = parseInt(op, 10) || 0
+  const outcome: 'W' | 'D' | 'L' | null = !finished ? null : myN > opN ? 'W' : myN === opN ? 'D' : 'L'
+  const date = ev.date ? new Date(ev.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : '—'
+  const oppLogo = teamBadgeFallback(opp?.team?.logo, opp?.team?.abbreviation)
+
+  return (
+    <div className="rounded-xl border border-slate-100 px-3 py-2.5 flex items-center gap-3 hover:border-slate-200 transition-colors">
+      <div className="text-[10px] font-mono text-slate-500 w-24 shrink-0">{date}</div>
+      {outcome && (
+        <span className={
+          'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ' +
+          (outcome === 'W' ? 'bg-accent-green' : outcome === 'D' ? 'bg-slate-400' : 'bg-accent-red')
+        }>
+          {outcome}
+        </span>
+      )}
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        {oppLogo ? (
+          <img src={oppLogo} alt="" loading="lazy" className="w-5 h-5 object-contain shrink-0" onError={(e) => (e.currentTarget.style.display = 'none')} />
+        ) : null}
+        <span className="text-sm truncate text-slate-800">{opp?.team?.shortDisplayName ?? opp?.team?.displayName ?? '?'}</span>
+      </div>
+      {finished ? (
+        <span className="text-base font-display font-bold tabular-nums text-slate-900 shrink-0">
+          {my}–{op}
+        </span>
+      ) : (
+        <span className="text-[10px] font-mono text-slate-400 shrink-0">scheduled</span>
+      )}
     </div>
   )
 }
