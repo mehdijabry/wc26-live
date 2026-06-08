@@ -138,12 +138,12 @@ export function IosInstallPrompt() {
             }}
           >
             <div
-              className="flex items-center bg-black text-white rounded-full overflow-hidden max-w-full"
-              style={{ boxShadow: '0 12px 32px -8px rgba(0,0,0,0.5)' }}
+              className="flex items-center bg-black/55 backdrop-blur-md text-white rounded-full overflow-hidden max-w-full"
+              style={{ boxShadow: '0 12px 32px -8px rgba(0,0,0,0.4)' }}
             >
               <button
                 onClick={() => setOpenModal(true)}
-                className="flex items-center gap-2.5 pl-3.5 pr-4 py-2.5 active:bg-slate-900 transition-colors min-w-0"
+                className="flex items-center gap-2.5 pl-3.5 pr-4 py-2.5 active:bg-black/30 transition-colors min-w-0"
               >
                 <img src="/wc26-emblem.svg" alt="" className="w-7 h-7 shrink-0" />
                 <div className="flex flex-col text-left leading-tight min-w-0">
@@ -158,7 +158,7 @@ export function IosInstallPrompt() {
               <button
                 onClick={(e) => { e.stopPropagation(); dismiss() }}
                 aria-label="Dismiss"
-                className="self-stretch px-3 text-white/70 hover:text-white border-l border-white/15 flex items-center justify-center text-lg leading-none active:bg-slate-900 transition-colors"
+                className="self-stretch px-3 text-white/70 hover:text-white border-l border-white/15 flex items-center justify-center text-lg leading-none active:bg-black/30 transition-colors"
               >
                 ×
               </button>
