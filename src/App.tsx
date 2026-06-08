@@ -12,6 +12,7 @@ import { LiveTicker } from './components/LiveTicker'
 import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
 import { LottieLoader } from './components/LottieLoader'
+import { Ad } from './components/AdSlot'
 
 // Each section is its own page now — lazy-loaded per route so a slow
 // chunk doesn't block sibling pages. The previous design had ALL lazy
@@ -196,13 +197,14 @@ function HomePage() {
   return (
     <>
       <Hero />
-      {/* Today's matches + live scores — primary content on the landing page
-          now, so visitors see live football immediately instead of having to
-          scroll past the WC stuff. */}
+      {/* Native ad between hero news + daily matches — looks like another
+          news card so it doesn't break the scroll. */}
+      <div className="container max-w-6xl mx-auto px-6"><Ad slot="home-mid" /></div>
       <Suspense fallback={<PageSkeleton caption="Loading today's matches…" />}>
         <DailyMatches />
       </Suspense>
       <WC26PromoSection />
+      <div className="container max-w-6xl mx-auto px-6"><Ad slot="home-footer" /></div>
     </>
   )
 }
@@ -211,6 +213,7 @@ function WC26Page() {
   return (
     <>
       <Groups />
+      <div className="container max-w-6xl mx-auto px-6"><Ad slot="wc26-mid" /></div>
       <Schedule />
     </>
   )
@@ -284,6 +287,7 @@ function PredictionsPage() {
       <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
         <BracketWizard />
       </Suspense>
+      <div className="container max-w-6xl mx-auto px-6"><Ad slot="predict-mid" /></div>
       <Suspense fallback={<PageSkeleton caption="Loading match predictions…" />}>
         <Predictions />
       </Suspense>
@@ -293,25 +297,34 @@ function PredictionsPage() {
 
 function TodayPage() {
   return (
-    <Suspense fallback={<PageSkeleton caption="Loading today's fixtures…" />}>
-      <DailyMatches />
-    </Suspense>
+    <>
+      <Suspense fallback={<PageSkeleton caption="Loading today's fixtures…" />}>
+        <DailyMatches />
+      </Suspense>
+      <div className="container max-w-6xl mx-auto px-6"><Ad slot="today-strip" /></div>
+    </>
   )
 }
 
 function SquadsPage() {
   return (
-    <Suspense fallback={<PageSkeleton caption="Loading squads…" />}>
-      <Players />
-    </Suspense>
+    <>
+      <Suspense fallback={<PageSkeleton caption="Loading squads…" />}>
+        <Players />
+      </Suspense>
+      <div className="container max-w-6xl mx-auto px-6"><Ad slot="squads-footer" /></div>
+    </>
   )
 }
 
 function BoardPage() {
   return (
-    <Suspense fallback={<PageSkeleton caption="Loading the leaderboard…" />}>
-      <Leaderboard />
-    </Suspense>
+    <>
+      <Suspense fallback={<PageSkeleton caption="Loading the leaderboard…" />}>
+        <Leaderboard />
+      </Suspense>
+      <div className="container max-w-6xl mx-auto px-6"><Ad slot="board-mid" /></div>
+    </>
   )
 }
 

@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { BracketPoster, type BracketPosterData } from './BracketPoster'
+import { Ad } from './AdSlot'
 import type { GroupLetter } from '../store/bracket'
 
 type PublicBracket = {
@@ -128,6 +129,7 @@ export function PublicProfile({ slug }: { slug: string }) {
             → make a prediction
           </Link>
         </div>
+        <Ad slot="profile-footer" className="mt-6" />
       </div>
     </motion.div>
   )
