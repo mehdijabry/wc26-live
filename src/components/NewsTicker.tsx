@@ -96,15 +96,19 @@ export function NewsTicker() {
           href={featured?.href ?? '#'}
           target="_blank"
           rel="noopener noreferrer"
-          className="lg:col-span-2 group relative overflow-hidden rounded-2xl bg-marine-950 text-cream block min-h-[18rem]"
+          className="lg:col-span-2 group relative overflow-hidden rounded-2xl bg-marine-950 text-cream block min-h-[22rem]"
         >
           {featured?.image && (
             <div
-              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
+              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 brightness-[0.55]"
               style={{ backgroundImage: `url(${featured.image})` }}
             />
           )}
-          <div className="absolute inset-0 bg-gradient-to-t from-marine-950 via-marine-950/70 to-transparent" />
+          {/* Double gradient: dark base everywhere + extra-dark bottom slab where the
+              text sits, so the headline always has enough contrast no matter what
+              the underlying photo looks like (faces, light jerseys, sky, etc.). */}
+          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/25" />
+          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/75 to-transparent" />
           <AnimatePresence mode="wait">
             <motion.div
               key={featured?.id}
@@ -113,19 +117,20 @@ export function NewsTicker() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
               className="relative h-full flex flex-col justify-end p-7"
+              style={{ textShadow: '0 2px 18px rgba(0,0,0,0.85)' }}
             >
-              <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-accent-gold mb-2">
+              <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-accent-gold mb-2 drop-shadow">
                 {featured?.source} · {relativeTime(featured?.publishedAt)}
               </div>
-              <h2 className="font-display font-bold text-2xl sm:text-3xl leading-tight max-w-3xl">
+              <h2 className="font-display font-bold text-2xl sm:text-3xl leading-tight max-w-3xl text-white">
                 {featured?.headline}
               </h2>
               {featured?.description && (
-                <p className="mt-3 text-sm text-cream/80 max-w-2xl line-clamp-2">
+                <p className="mt-3 text-sm text-cream/90 max-w-2xl line-clamp-2">
                   {featured.description}
                 </p>
               )}
-              <div className="mt-4 inline-flex items-center gap-2 text-xs tracking-widest uppercase text-cream/70">
+              <div className="mt-4 inline-flex items-center gap-2 text-xs tracking-widest uppercase text-accent-gold">
                 Read on ESPN <span aria-hidden>→</span>
               </div>
             </motion.div>
