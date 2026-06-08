@@ -10,6 +10,7 @@ import { BottomNav } from './components/BottomNav'
 import { LiveTicker } from './components/LiveTicker'
 import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
+import { LottieLoader } from './components/LottieLoader'
 
 // Heavy / below-the-fold sections are lazy-loaded so the first paint stays light.
 // This dropped initial JS by ~40% in the production build measured locally.
@@ -142,11 +143,8 @@ function App() {
           "not signed in" while Supabase exchanges the URL token. */}
       {completingSignIn && (
         <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center">
-          <div className="glass rounded-2xl px-6 py-4 flex items-center gap-3 ring-glow">
-            <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-gold/60 opacity-75" />
-              <span className="relative inline-flex h-3 w-3 rounded-full bg-accent-gold" />
-            </span>
+          <div className="bg-white rounded-2xl px-8 py-6 shadow-xl flex flex-col items-center gap-2">
+            <LottieLoader name="ball-spin" size={56} />
             <span className="text-sm text-slate-800 font-mono">Completing sign-in…</span>
           </div>
         </div>
@@ -188,10 +186,8 @@ function App() {
 function SectionSkeleton() {
   return (
     <div className="py-20 sm:py-28 border-t border-slate-200/70">
-      <div className="container max-w-6xl mx-auto px-6">
-        <div className="h-3 w-24 bg-slate-100 rounded animate-pulse mb-4" />
-        <div className="h-10 w-64 bg-slate-100 rounded animate-pulse mb-3" />
-        <div className="h-4 w-80 bg-slate-100 rounded animate-pulse" />
+      <div className="container max-w-6xl mx-auto px-6 flex flex-col items-center">
+        <LottieLoader name="ball-spin" size={72} caption="Loading…" />
       </div>
     </div>
   )

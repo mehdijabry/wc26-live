@@ -1,143 +1,156 @@
-# 🎬 WC26 Live — Lottie Animations Setup
+# 🎬 WC26 Live — Lottie Animations Setup (100% GRATUIT)
+
+## ⚠️ Règle d'or sur LottieFiles
+
+Sur chaque page d'animation, dans la section **"Download as"** à droite :
+
+| Option | Statut |
+|---|---|
+| **Lottie JSON** (~5-20 KB) | ✅ **GRATUIT** — toujours dispo |
+| **dotLottie** (~1-3 KB, sans 👑) | ✅ **GRATUIT** — *meilleur choix* |
+| ~~Optimized Lottie JSON 👑~~ | ❌ Payant (Pro) — ÉVITE |
+| ~~Optimized dotLottie 👑~~ | ❌ Payant (Pro) — ÉVITE |
+
+**Toujours prendre `dotLottie` (sans crown) ou `Lottie JSON`.**
+
+---
 
 ## 📁 Dossier de destination
-
-Tous les fichiers téléchargés vont dans :
 
 ```
 /Users/Mehdi/Desktop/wc2026-hub/public/lottie/
 ```
 
-(le dossier existe déjà, ne pas le supprimer)
-
-## 🎯 Format à télécharger
-
-Sur lottiefiles.com, pour chaque animation :
-1. Clique **"Download"**
-2. Sélectionne **`.lottie`** (format optimisé, ~10x plus léger que JSON)
-3. Renomme le fichier téléchargé EXACTEMENT comme indiqué ci-dessous
-4. Déplace dans `/Users/Mehdi/Desktop/wc2026-hub/public/lottie/`
-
-> 💡 Si tu n'as que le format `.json`, ça marche aussi — change l'extension dans `src/components/LottieLoader.tsx` (ligne `const src = \`/lottie/${name}.lottie\``).
+(le dossier existe déjà — `mkdir public/lottie` a été fait)
 
 ---
 
-## 📋 Les 8 animations curées
+## 📋 Les 8 animations — TOUTES GRATUITES
 
-### 1. `whistle.lottie` 🟡 SIFFLET ARBITRE
-**Pour** : chargement Schedule / fixtures (l'arbitre siffle le coup d'envoi)
-**Lien** : https://lottiefiles.com/marketplace/football-158 *(pack "Football Animation Pack" — contient "football whistle")*
-**Alternative gratuite** : https://lottiefiles.com/free-animations/football *(filtre "whistle")*
-**Nom final** : `whistle.lottie`
-
----
-
-### 2. `ball-spin.lottie` ⚪️ BALLON QUI TOURNE
-**Pour** : loaders génériques courts (badges chargement, refresh)
-**Lien** : https://lottiefiles.com/12710-spinning-ball
-**Nom final** : `ball-spin.lottie`
+### 1. `ball-spin.lottie` ⚪️ BALLON QUI TOURNE
+**Pour** : refresh micro-loaders, badges chargement
+**Lien direct** : https://lottiefiles.com/12710-spinning-ball
+**Sur la page** : clique **"dotLottie"** (1.6 KB, sans 👑)
+**Renomme en** : `ball-spin.lottie`
 
 ---
 
-### 3. `ball-kick.lottie` ⚽️ BALLON TIRÉ / CHAUSSURE
-**Pour** : chargement Predictions / BracketWizard (envoyer son pronostic)
-**Lien** : https://lottiefiles.com/animation/soccer-ball-10080310 *(par WebSensePro)*
-**Alternative** : https://lottiefiles.com/animation/soccer-ball-8857427 *(par Moon Studio)*
-**Nom final** : `ball-kick.lottie`
+### 2. `ball-kick.lottie` ⚽️ JOUEUR QUI SHOOTE
+**Pour** : Predictions / BracketWizard loading
+**Lien direct** : https://lottiefiles.com/free-animation/soccer-player-kick-on-the-ball-DoHT9f3SkM
+**Sur la page** : clique **"dotLottie"** (sans 👑)
+**Renomme en** : `ball-kick.lottie`
 
 ---
 
-### 4. `trophy.lottie` 🏆 TROPHÉE
-**Pour** : Bracket export PNG / révélation Final / Leaderboard top 1
-**Lien** : https://lottiefiles.com/8846-trophy
-**Nom final** : `trophy.lottie`
+### 3. `whistle.lottie` 🟡 LOADING SOCCER (remplace le sifflet — pas trouvé gratuit pur)
+**Pour** : Schedule / fixtures loading (coup d'envoi)
+**Lien direct** : https://lottiefiles.com/free-animation/loading-soccer-mQpwzVYi49
+**Sur la page** : clique **"dotLottie"** (sans 👑)
+**Renomme en** : `whistle.lottie`
 
 ---
 
-### 5. `goal-net.lottie` 🥅 FILET QUI ONDULE
-**Pour** : LiveTicker mise à jour score / notif "GOAL!"
-**Lien** : https://lottiefiles.com/free-animations/soccer-match *(filtre "goal" / "net")*
-**Alternative** : https://lottiefiles.com/free-animation/soccer-player-goal-celebration-leUZblmIie *(célébration de but)*
-**Nom final** : `goal-net.lottie`
+### 4. `trophy.lottie` 🏆 TROPHÉE QUI BRILLE
+**Pour** : Bracket export PNG / Leaderboard top 1 / Final reveal
+**Lien direct** : https://lottiefiles.com/8846-trophy
+**Sur la page** : clique **"dotLottie"** (sans 👑)
+**Renomme en** : `trophy.lottie`
+
+*(Alternatives si celle-ci ne te plaît pas, toutes gratuites :)*
+- https://lottiefiles.com/4768-trophy *(par NorthSea — plus minimaliste)*
+- https://lottiefiles.com/35683-trophy *(par zanwei.guo — moderne)*
+- https://lottiefiles.com/2837-trophy-animation *(par Vinoth E — classique gold)*
 
 ---
 
-### 6. `stadium-crowd.lottie` 🏟 FOULE QUI ACCLAME
-**Pour** : chargement TeamSheet / page d'une équipe (l'ambiance du stade)
-**Lien** : https://lottiefiles.com/free-animations/soccer
-**À chercher** : "stadium", "crowd", "fans"
-**Nom final** : `stadium-crowd.lottie`
+### 5. `goal-net.lottie` 🥅 BUT MARQUÉ / CÉLÉBRATION
+**Pour** : LiveTicker "GOAL!", notif score
+**Lien direct** : https://lottiefiles.com/free-animation/soccer-player-goal-celebration-leUZblmIie
+**Sur la page** : clique **"dotLottie"** (sans 👑)
+**Renomme en** : `goal-net.lottie`
 
 ---
 
-### 7. `jersey-swap.lottie` 👕 2 MAILLOTS QUI SWAPPENT
-**Pour** : chargement Squad / Players section (échange de maillots)
-**Lien** : https://lottiefiles.com/marketplace/football-158 *(contient "shirt")*
-**Alternative** : https://lottiefiles.com/17434-soccer-player
-**Nom final** : `jersey-swap.lottie`
+### 6. `stadium-crowd.lottie` 🏟 BALLON ROULANT (substitut foule)
+**Pour** : TeamSheet loading / page équipe
+**Lien direct** : https://lottiefiles.com/free-animation/ball-soccer-pvLzQfrE3Q
+**Sur la page** : clique **"dotLottie"** (sans 👑)
+**Renomme en** : `stadium-crowd.lottie`
+
+*Note : la "foule qui acclame" n'existe pas en libre. Le ballon qui roule est la meilleure alternative thématique gratuite.*
 
 ---
 
-### 8. `card-yellow.lottie` 🟨 CARTON JAUNE
-**Pour** : erreurs / warnings (login failed, API down, etc.) — l'arbitre te sort un carton
-**Lien** : https://lottiefiles.com/marketplace/football-158 *(contient "referee card")*
-**Alternative** : https://lottiefiles.com/free-animations/football *(filtre "card")*
-**Nom final** : `card-yellow.lottie`
+### 7. `jersey-swap.lottie` 👕 JOUEUR EN MOUVEMENT
+**Pour** : Squad / Players loading
+**Lien direct** : https://lottiefiles.com/free-animation/soccer-player-flying-kick-the-ball-XPMiq5OvFB
+**Sur la page** : clique **"dotLottie"** (sans 👑)
+**Renomme en** : `jersey-swap.lottie`
 
 ---
 
-## 🎁 Bonus — Le pack tout-en-un (recommandé)
+### 8. `card-yellow.lottie` 🟨 CARTON / WARNING
+**Pour** : erreurs (login failed, API down)
+**Lien direct** : recherche libre sur https://lottiefiles.com/search?q=warning+card&type=free
+**Suggestion à chercher** : "warning yellow" / "card yellow"
+**Renomme en** : `card-yellow.lottie`
 
-Au lieu de télécharger 8 fichiers séparés, le pack **Football Animation Pack** contient déjà sifflet, ballon, médaille, filet, écran score, maillot, chaussure, chrono, trophée et carton arbitre — tout en un coup :
-
-🔗 **https://lottiefiles.com/marketplace/football-158**
-
-Si tu prends ce pack :
-1. Dézippe-le
-2. Renomme les fichiers selon la liste ci-dessus
-3. Déplace dans `public/lottie/`
+*Si tu trouves pas de carton de foot gratuit, n'importe quelle animation "warning" / "alert" gratuite fait le job — c'est juste un visuel d'erreur.*
 
 ---
 
-## ✅ Vérification après téléchargement
+## 🚀 Procédure en 5 minutes
 
-Une fois les fichiers en place :
+1. Ouvre les 7 premiers liens (le 8 est optionnel)
+2. Sur chaque page → bouton **"Download"** → choisis **"dotLottie"** (le 1.X KB sans crown)
+3. Va dans ton dossier `~/Downloads/`
+4. Renomme les fichiers téléchargés selon la colonne **"Renomme en"** ci-dessus
+5. Déplace-les dans `/Users/Mehdi/Desktop/wc2026-hub/public/lottie/`
 
 ```bash
-ls -la /Users/Mehdi/Desktop/wc2026-hub/public/lottie/
+# Commande Terminal pour bouger tout d'un coup :
+mv ~/Downloads/*.lottie /Users/Mehdi/Desktop/wc2026-hub/public/lottie/
+ls /Users/Mehdi/Desktop/wc2026-hub/public/lottie/
 ```
 
-Tu devrais voir :
+Tu devrais voir au moins :
 ```
-whistle.lottie
 ball-spin.lottie
 ball-kick.lottie
+whistle.lottie
 trophy.lottie
 goal-net.lottie
 stadium-crowd.lottie
 jersey-swap.lottie
-card-yellow.lottie
 ```
-
-Puis dis-moi **"lottie ready"** et je wire les animations dans les Suspense fallbacks (`SectionSkeleton`, `GroupsSkeleton`, `BracketWizard StepGroups` quand `!ready`, etc.) — partout où il y a actuellement un skeleton statique.
 
 ---
 
-## 🛠 Comment c'est intégré côté code
+## ✅ Quand t'as fini
 
-J'ai déjà créé `src/components/LottieLoader.tsx`. À l'usage :
+Dis-moi **"lottie ready"** ou **"fait"**.
 
-```tsx
-import { LottieLoader } from './components/LottieLoader'
+Je wire ensuite les animations dans tous les Suspense fallbacks du site :
+- `Schedule` loading → `whistle`
+- `Predictions` loading → `ball-kick`
+- `BracketWizard` step 1 quand `!ready` → `ball-spin`
+- `LiveTicker` mise à jour score → `goal-net`
+- `TeamSheet` loading → `stadium-crowd`
+- `Squad` / `Players` loading → `jersey-swap`
+- `Leaderboard` top 1 / Final winner → `trophy`
+- Errors → `card-yellow`
 
-// Schedule loader
-<LottieLoader name="whistle" caption="Coup d'envoi imminent…" size={80} />
+---
 
-// Predictions loader
-<LottieLoader name="ball-kick" size={64} loop />
+## 🛠 Si tu ne trouves pas le bon bouton de download
 
-// Generic micro-loader (badges, refresh)
-<LottieLoader name="ball-spin" size={32} />
-```
+LottieFiles a redesigné leur UI plusieurs fois. Si la page ressemble pas à ton screenshot :
 
-Si un fichier `.lottie` manque, un fallback CSS ring spinner s'affiche — donc rien ne casse pendant que tu télécharges.
+1. Sur certaines pages, le bouton **"Download"** est en haut à droite (vert)
+2. Sur d'autres, c'est dans une sidebar "Download as"
+3. **Toujours chercher** : un format **sans crown 👑** (les crowns = payant)
+4. **dotLottie** est préféré (10x plus léger que JSON)
+5. Si seul **Lottie JSON** est gratuit, prends-le et change l'extension du fichier (`.json` → `.lottie` ne marche pas — je vais devoir adapter le composant)
+
+Si tu te retrouves avec des `.json` au lieu de `.lottie`, dis-moi — je modifie `LottieLoader.tsx` pour gérer les 2 formats.

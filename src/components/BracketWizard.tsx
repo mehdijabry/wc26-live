@@ -5,6 +5,7 @@ import { useBracket, koMatchIds, type GroupLetter } from '../store/bracket'
 import { useAuth } from '../store/auth'
 import { useLiveBracketData, type LiveTeam } from '../lib/liveBracket'
 import { SectionHeader } from './Groups'
+import { LottieLoader } from './LottieLoader'
 import { cn } from '../lib/utils'
 
 // Local alias so the per-step code reads cleanly.
@@ -131,8 +132,8 @@ function StepGroups() {
 
   if (!ready) {
     return (
-      <div className="glass rounded-2xl p-8 text-center text-sm text-slate-500">
-        Loading groups from ESPN… If this persists, refresh the page.
+      <div className="glass rounded-2xl py-12 flex flex-col items-center justify-center">
+        <LottieLoader name="ball-kick" size={100} caption="Fetching the draw from ESPN…" />
       </div>
     )
   }
@@ -513,6 +514,11 @@ function StepExport() {
           <span className="text-[10px] text-slate-500 font-mono">{user ? 'public profile' : 'sign in first'}</span>
         </button>
       </div>
+      {busy && (
+        <div className="flex items-center justify-center py-6">
+          <LottieLoader name={busy === 'pub' ? 'trophy' : 'ball-spin'} size={64} />
+        </div>
+      )}
       {msg.ok && <div className="text-xs text-accent-green font-mono mb-4">✓ {msg.ok}</div>}
       {msg.err && <div className="text-xs text-red-400 font-mono mb-4">{msg.err}</div>}
 

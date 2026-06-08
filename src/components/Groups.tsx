@@ -9,6 +9,7 @@ import {
 } from '../store/tournament'
 import { TeamSheet } from './TeamSheet'
 import { teamBadgeFallback } from '../lib/utils'
+import { LottieLoader } from './LottieLoader'
 
 // Editorial Continental Champions — one team per confederation gets a
 // subtle gradient/ring tone. Uses ESPN abbreviations.
@@ -230,24 +231,8 @@ function GroupNextMatch({ group }: { group: ReturnType<typeof deriveLiveGroups>[
 
 function GroupsSkeleton() {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mt-8">
-      {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="glass rounded-2xl p-5 animate-pulse">
-          <div className="flex items-center justify-between mb-4">
-            <div className="h-7 w-24 bg-slate-100 rounded" />
-            <div className="h-3 w-16 bg-slate-100 rounded" />
-          </div>
-          <div className="space-y-2">
-            {Array.from({ length: 4 }).map((_, j) => (
-              <div key={j} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-slate-50">
-                <div className="w-6 h-6 rounded-full bg-slate-100" />
-                <div className="h-3 flex-1 bg-slate-100 rounded" />
-                <div className="w-5 h-5 bg-slate-100 rounded" />
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+    <div className="mt-12 flex flex-col items-center justify-center py-16">
+      <LottieLoader name="whistle" size={120} caption="Fetching the draw from ESPN…" />
     </div>
   )
 }

@@ -15,6 +15,7 @@ import {
 import { useTournament, recordForTeam, matchesForTeam } from '../store/tournament'
 import { teamBadgeFallback } from '../lib/utils'
 import { heritageFor } from '../data/wcHeritage'
+import { LottieLoader } from './LottieLoader'
 
 /**
  * Team detail sheet — full-page modal opened from a country click in Groups.
@@ -330,10 +331,8 @@ function InfosTab({
 function EffectifTab({ athletes, loading }: { athletes: RosterAthlete[]; loading: boolean }) {
   if (loading && athletes.length === 0) {
     return (
-      <div className="space-y-2">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />
-        ))}
+      <div className="flex flex-col items-center justify-center py-12">
+        <LottieLoader name="jersey-swap" size={96} caption="Loading the squad…" />
       </div>
     )
   }
@@ -445,10 +444,8 @@ function HistoryTab({
 
       {/* All historical matches grouped by tag */}
       {loading && !history && (
-        <div className="space-y-2">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="h-12 bg-slate-100 rounded-xl animate-pulse" />
-          ))}
+        <div className="flex flex-col items-center justify-center py-10">
+          <LottieLoader name="stadium-crowd" size={88} caption="Diving into the archives…" />
         </div>
       )}
 
