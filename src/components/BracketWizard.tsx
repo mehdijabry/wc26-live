@@ -4,6 +4,15 @@ import { toPng } from 'html-to-image'
 import { useBracket, koMatchIds, type GroupLetter } from '../store/bracket'
 import { useAuth } from '../store/auth'
 import { useLiveBracketData, type LiveTeam } from '../lib/liveBracket'
+import {
+  R32_TEMPLATE,
+  R16_TEMPLATE,
+  QF_TEMPLATE,
+  SF_TEMPLATE,
+  resolveSlot,
+  solveThirdPlaceAssignment,
+  buildThirdGroupMap,
+} from '../lib/fifaBracket'
 import { SectionHeader } from './Groups'
 import { LottieLoader } from './LottieLoader'
 import { cn } from '../lib/utils'
@@ -343,38 +352,60 @@ function KoSide({ team, selected, onClick }: { team: Team | null; selected: bool
  * R32: zip top-2 from groups + 8 best thirds (simplified: A1 v B2 etc).
  * R16+: zip winners of previous stage in order.
  */
+/**
+ * Build the matchups for any KO stage using the FIFA WC26 deterministic
+ * template (src/lib/fifaBracket.ts) instead of the previous naive
+ * sequential pairing.
+ *
+ * The old logic paired pool[0]vs pool[1], pool[2]vspool[3], … which paid
+ * no attention to which group each team came from. That's why Brazil
+ * (Group D 1st) was meeting Morocco (Group D 3rd) in R32 — both ended up
+ * adjacent in the pool. FIFA's bracket explicitly forbids same-group
+ * matchups in R32, so we encode the real M73-M88 template.
+ *
+ * For the 3rd-place slots ('3-ABCDF' etc.), we solve a bipartite match
+ * between the user's 8 advancing 3rds and the 8 slots that need one,
+ * respecting each slot's allowed-groups set (FIFA's Annex C 495 scenarios).
+ */
 function useDerivedKoPairs(stage: 'R32' | 'R16' | 'QF' | 'SF'): Array<[Team | null, Team | null]> {
   const { groupStandings, thirdPlaceAdvancing, koWinners } = useBracket()
   const { lookup } = useLiveBracketData()
 
   return useMemo(() => {
     if (stage === 'R32') {
-      // Build the pool: top-2 of each group + 8 thirds
-      const pool: string[] = []
-      GROUPS.forEach((g) => {
-        const s = groupStandings[g]
-        if (s && s.length >= 2) pool.push(s[0], s[1])
+      // Map each 3rd-placed team code → its group letter
+      const thirdGroupMap = buildThirdGroupMap(groupStandings)
+      // Solve which advancing 3rd goes to which R32 slot
+      const thirdAssignment = solveThirdPlaceAssignment(
+        thirdPlaceAdvancing,
+        (code) => thirdGroupMap.get(code)
+      )
+      // Walk the 16 R32 slots in template order
+      return R32_TEMPLATE.map<[Team | null, Team | null]>((slot) => {
+        const homeCode = resolveSlot(slot.home, groupStandings, thirdAssignment, slot.id)
+        const awayCode = resolveSlot(slot.away, groupStandings, thirdAssignment, slot.id)
+        return [
+          homeCode ? lookup(homeCode) ?? null : null,
+          awayCode ? lookup(awayCode) ?? null : null,
+        ]
       })
-      // Append picked thirds (in pick order — that's fine for v1)
-      thirdPlaceAdvancing.forEach((c) => pool.push(c))
-      // Pair sequentially: (p0,p1), (p2,p3), …
-      const pairs: Array<[Team | null, Team | null]> = []
-      for (let i = 0; i < 16; i++) {
-        const a = pool[i * 2] ? lookup(pool[i * 2]) ?? null : null
-        const b = pool[i * 2 + 1] ? lookup(pool[i * 2 + 1]) ?? null : null
-        pairs.push([a, b])
-      }
-      return pairs
     }
-    const prevPrefix = stage === 'R16' ? 'R32' : stage === 'QF' ? 'R16' : 'QF'
-    const prevWinners = koMatchIds(prevPrefix).map((mid) => koWinners[mid] ?? null)
-    const pairs: Array<[Team | null, Team | null]> = []
-    for (let i = 0; i < prevWinners.length; i += 2) {
-      const a = prevWinners[i] ? lookup(prevWinners[i]!) ?? null : null
-      const b = prevWinners[i + 1] ? lookup(prevWinners[i + 1]!) ?? null : null
-      pairs.push([a, b])
-    }
-    return pairs
+
+    // R16 / QF / SF: each match consumes 2 specific upstream winners
+    // (per FIFA template), not a sequential zip.
+    const template =
+      stage === 'R16' ? R16_TEMPLATE :
+      stage === 'QF'  ? QF_TEMPLATE  :
+                        SF_TEMPLATE
+    return template.map<[Team | null, Team | null]>((m) => {
+      const [sa, sb] = m.sources
+      const wa = koWinners[sa]
+      const wb = koWinners[sb]
+      return [
+        wa ? lookup(wa) ?? null : null,
+        wb ? lookup(wb) ?? null : null,
+      ]
+    })
   }, [stage, groupStandings, thirdPlaceAdvancing, koWinners, lookup])
 }
 
