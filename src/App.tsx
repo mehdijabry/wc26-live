@@ -18,7 +18,6 @@ import { LottieLoader } from './components/LottieLoader'
 // components inside a single <Suspense>; if any one resolved late, the
 // entire `#bracket-predict` (and friends) anchor was missing from the
 // DOM, which is why "My Bracket" navigation appeared to do nothing.
-const Bracket = lazy(() => import('./components/Bracket').then((m) => ({ default: m.Bracket })))
 const Stadiums = lazy(() => import('./components/Stadiums').then((m) => ({ default: m.Stadiums })))
 const Predictions = lazy(() => import('./components/Predictions').then((m) => ({ default: m.Predictions })))
 const Players = lazy(() => import('./components/Players').then((m) => ({ default: m.Players })))
@@ -200,14 +199,9 @@ function HomePage() {
 
 function BracketPage() {
   return (
-    <>
-      <Suspense fallback={<PageSkeleton caption="Loading the KO tree…" />}>
-        <Bracket />
-      </Suspense>
-      <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
-        <BracketWizard />
-      </Suspense>
-    </>
+    <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
+      <BracketWizard />
+    </Suspense>
   )
 }
 

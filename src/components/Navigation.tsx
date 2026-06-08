@@ -7,7 +7,7 @@ import { UserMenu } from './UserMenu'
 // anchor-jump that breaks when a section is still inside a lazy Suspense.
 const links: Array<{ label: string; to: string }> = [
   { label: 'Home', to: '/' },
-  { label: 'KO Tree', to: '/bracket' },
+  { label: 'My Bracket', to: '/bracket' },
   { label: 'Predict', to: '/predict' },
   { label: 'Today', to: '/today' },
   { label: 'Squads', to: '/squads' },
