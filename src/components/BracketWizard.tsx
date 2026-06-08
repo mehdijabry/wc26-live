@@ -1,11 +1,33 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { toPng } from 'html-to-image'
-import { groups, teamByCode, teams, type Team } from '../data/teams'
 import { useBracket, koMatchIds, type GroupLetter } from '../store/bracket'
 import { useAuth } from '../store/auth'
+import { useLiveBracketData, type LiveTeam } from '../lib/liveBracket'
 import { SectionHeader } from './Groups'
 import { cn } from '../lib/utils'
+
+// Local alias so the per-step code reads cleanly.
+type Team = LiveTeam
+
+/**
+ * Compact team logo — replaces the legacy emoji `{t.flag}` spans. Uses
+ * the ESPN logo URL with a flagcdn fallback baked into the lookup.
+ */
+function Flag({ team, size = 'md' }: { team: Pick<LiveTeam, 'logo' | 'code'> | null | undefined; size?: 'sm' | 'md' | 'lg' | 'xl' }) {
+  const cls = size === 'sm' ? 'w-4 h-4' : size === 'lg' ? 'w-7 h-7' : size === 'xl' ? 'w-9 h-9' : 'w-5 h-5'
+  if (!team) return <span className={cls + ' inline-block rounded-full bg-slate-200'} />
+  if (!team.logo) return <span className={cls + ' inline-flex items-center justify-center text-base'}>🏳️</span>
+  return (
+    <img
+      src={team.logo}
+      alt=""
+      loading="lazy"
+      className={cls + ' object-contain shrink-0'}
+      onError={(e) => (e.currentTarget.style.display = 'none')}
+    />
+  )
+}
 
 type Step = 'groups' | 'thirds' | 'r32' | 'r16' | 'qf' | 'sf' | 'final' | 'export'
 
@@ -104,25 +126,48 @@ export function BracketWizard() {
 
 function StepGroups() {
   const { groupStandings, setGroupRank } = useBracket()
+  const { liveGroups, lookup, ready } = useLiveBracketData()
   const filled = GROUPS.filter((g) => (groupStandings[g]?.length ?? 0) === 4).length
+
+  if (!ready) {
+    return (
+      <div className="glass rounded-2xl p-8 text-center text-sm text-slate-500">
+        Loading groups from ESPN… If this persists, refresh the page.
+      </div>
+    )
+  }
 
   return (
     <div>
       <div className="text-xs text-slate-500 mb-4 font-mono">
-        {filled} / 12 groups ranked
+        {filled} / 12 groups ranked · ESPN live data
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {GROUPS.map((letter) => (
-          <GroupRanker key={letter} letter={letter} value={groupStandings[letter] ?? []} onChange={(o) => setGroupRank(letter, o)} />
+          <GroupRanker
+            key={letter}
+            letter={letter}
+            value={groupStandings[letter] ?? []}
+            codes={liveGroups[letter]}
+            lookup={lookup}
+            onChange={(o) => setGroupRank(letter, o)}
+          />
         ))}
       </div>
     </div>
   )
 }
 
-function GroupRanker({ letter, value, onChange }: { letter: GroupLetter; value: string[]; onChange: (o: string[]) => void }) {
-  const codes = groups[letter] ?? []
-  const ranked = value.length === 4 ? value : codes // fallback to original if no pick yet
+function GroupRanker({
+  letter, value, codes, lookup, onChange,
+}: {
+  letter: GroupLetter
+  value: string[]
+  codes: string[]
+  lookup: (code: string | undefined | null) => Team | undefined
+  onChange: (o: string[]) => void
+}) {
+  const ranked = value.length === 4 ? value : codes // fallback to ESPN order if no pick yet
   const tone: Record<number, string> = { 0: 'border-accent-gold/40', 1: 'border-accent-green/40', 2: 'border-yellow-700/30', 3: 'border-red-900/30' }
   const tag: Record<number, string> = { 0: '1st', 1: '2nd', 2: '3rd', 3: '4th' }
 
@@ -141,12 +186,12 @@ function GroupRanker({ letter, value, onChange }: { letter: GroupLetter; value: 
       </div>
       <div className="space-y-1.5">
         {ranked.map((code, i) => {
-          const t = teamByCode(code)
+          const t = lookup(code)
           if (!t) return null
           return (
             <div key={code} className={cn('flex items-center gap-3 px-3 py-2 rounded-lg border bg-slate-50', tone[i])}>
               <span className="text-[10px] font-mono w-6 text-slate-500">{tag[i]}</span>
-              <span className="text-xl">{t.flag}</span>
+              <Flag team={t} />
               <span className="text-sm flex-1 truncate">{t.name}</span>
               <div className="flex flex-col">
                 <button onClick={() => move(i, -1)} disabled={i === 0} className="text-slate-500 hover:text-slate-900 text-xs leading-none disabled:opacity-20">▲</button>
@@ -166,11 +211,12 @@ function GroupRanker({ letter, value, onChange }: { letter: GroupLetter; value: 
 
 function StepThirds() {
   const { groupStandings, thirdPlaceAdvancing, toggleThirdAdvancing } = useBracket()
+  const { lookup } = useLiveBracketData()
   const thirds = GROUPS.map((letter) => {
     const standings = groupStandings[letter]
     if (!standings || standings.length < 3) return null
     const code = standings[2]
-    const t = teamByCode(code)
+    const t = lookup(code)
     return t ? { letter, t } : null
   }).filter(Boolean) as Array<{ letter: GroupLetter; t: Team }>
 
@@ -203,7 +249,7 @@ function StepThirds() {
               )}
             >
               <span className="text-[10px] font-mono text-slate-500 w-6">3{letter}</span>
-              <span className="text-lg">{t.flag}</span>
+              <Flag team={t} size="md" />
               <span className="text-xs flex-1 truncate">{t.name}</span>
               {picked && <span className="text-accent-gold text-xs">✓</span>}
             </button>
@@ -261,7 +307,7 @@ function KoSide({ team, selected, onClick }: { team: Team | null; selected: bool
           : 'bg-slate-50 hover:bg-white/[0.06]'
       )}
     >
-      <span className="text-xl">{team.flag}</span>
+      <Flag team={team} size="lg" />
       <span className="text-sm flex-1 truncate text-left">{team.name}</span>
       {selected && <span className="text-accent-gold text-xs">✓</span>}
     </button>
@@ -275,6 +321,7 @@ function KoSide({ team, selected, onClick }: { team: Team | null; selected: bool
  */
 function useDerivedKoPairs(stage: 'R32' | 'R16' | 'QF' | 'SF'): Array<[Team | null, Team | null]> {
   const { groupStandings, thirdPlaceAdvancing, koWinners } = useBracket()
+  const { lookup } = useLiveBracketData()
 
   return useMemo(() => {
     if (stage === 'R32') {
@@ -289,24 +336,22 @@ function useDerivedKoPairs(stage: 'R32' | 'R16' | 'QF' | 'SF'): Array<[Team | nu
       // Pair sequentially: (p0,p1), (p2,p3), …
       const pairs: Array<[Team | null, Team | null]> = []
       for (let i = 0; i < 16; i++) {
-        const a = pool[i * 2] ? teamByCode(pool[i * 2]) ?? null : null
-        const b = pool[i * 2 + 1] ? teamByCode(pool[i * 2 + 1]) ?? null : null
+        const a = pool[i * 2] ? lookup(pool[i * 2]) ?? null : null
+        const b = pool[i * 2 + 1] ? lookup(pool[i * 2 + 1]) ?? null : null
         pairs.push([a, b])
       }
       return pairs
     }
-    const prev = stage === 'R16' ? 'R32' : stage === 'QF' ? 'R16' : 'SF'  // for SF we look at QF
     const prevPrefix = stage === 'R16' ? 'R32' : stage === 'QF' ? 'R16' : 'QF'
-    void prev
     const prevWinners = koMatchIds(prevPrefix).map((mid) => koWinners[mid] ?? null)
     const pairs: Array<[Team | null, Team | null]> = []
     for (let i = 0; i < prevWinners.length; i += 2) {
-      const a = prevWinners[i] ? teamByCode(prevWinners[i]!) ?? null : null
-      const b = prevWinners[i + 1] ? teamByCode(prevWinners[i + 1]!) ?? null : null
+      const a = prevWinners[i] ? lookup(prevWinners[i]!) ?? null : null
+      const b = prevWinners[i + 1] ? lookup(prevWinners[i + 1]!) ?? null : null
       pairs.push([a, b])
     }
     return pairs
-  }, [stage, groupStandings, thirdPlaceAdvancing, koWinners])
+  }, [stage, groupStandings, thirdPlaceAdvancing, koWinners, lookup])
 }
 
 /* -------------------------------------------------------------------------- */
@@ -315,6 +360,7 @@ function useDerivedKoPairs(stage: 'R32' | 'R16' | 'QF' | 'SF'): Array<[Team | nu
 
 function StepFinal() {
   const { koWinners, setKoWinner, setThirdPlaceWinner, setFinalWinner, thirdPlaceWinner, finalWinner } = useBracket()
+  const { lookup } = useLiveBracketData()
   const sfWinners = koMatchIds('SF').map((id) => koWinners[id])
   // SF losers (3rd place playoff)
   const sfLosers = useMemo(() => {
@@ -340,7 +386,7 @@ function StepFinal() {
     })
     .filter(Boolean) as Team[]
 
-  const finalists: Team[] = sfWinners.map((c) => (c ? teamByCode(c) ?? null : null)).filter(Boolean) as Team[]
+  const finalists: Team[] = sfWinners.map((c) => (c ? lookup(c) ?? null : null)).filter(Boolean) as Team[]
 
   return (
     <div className="space-y-6">
@@ -357,7 +403,7 @@ function StepFinal() {
                 thirdPlaceWinner === t.code ? 'bg-orange-600/15 ring-1 ring-orange-500/40' : 'bg-slate-50 hover:bg-white/[0.06]'
               )}
             >
-              <span className="text-xl">{t.flag}</span>
+              <Flag team={t} size="lg" />
               <span className="text-sm flex-1 truncate text-left">{t.name}</span>
               {thirdPlaceWinner === t.code && <span className="text-orange-400 text-xs">🥉</span>}
             </button>
@@ -378,7 +424,7 @@ function StepFinal() {
                 finalWinner === t.code ? 'bg-gradient-to-br from-accent-gold/25 to-yellow-700/10 ring-2 ring-accent-gold/50' : 'bg-slate-50 hover:bg-white/[0.06]'
               )}
             >
-              <span className="text-3xl">{t.flag}</span>
+              <Flag team={t} size="xl" />
               <span className="text-base font-display font-bold flex-1 text-left">{t.name}</span>
               {finalWinner === t.code && <span className="text-accent-gold text-2xl">🏆</span>}
             </button>
@@ -495,11 +541,12 @@ function StepExport() {
 function BracketPoster() {
   const { groupStandings, thirdPlaceAdvancing, koWinners, thirdPlaceWinner, finalWinner } = useBracket()
   const { profile } = useAuth()
+  const { lookup } = useLiveBracketData()
 
-  function tx(code: string | undefined) {
-    if (!code) return { flag: '⚪️', name: 'TBD' }
-    const t = teamByCode(code)
-    return t ? { flag: t.flag, name: t.name } : { flag: '⚪️', name: code }
+  function tx(code: string | undefined): { logo?: string; name: string; code?: string } {
+    if (!code) return { name: 'TBD' }
+    const t = lookup(code)
+    return t ? { logo: t.logo, name: t.name, code: t.code } : { name: code }
   }
 
   return (
@@ -522,13 +569,13 @@ function BracketPoster() {
             <div key={g} className="bg-white/[0.04] rounded-lg p-2.5 text-[11px]">
               <div className="font-display font-bold text-accent-gold mb-1">Group {g}</div>
               {s.slice(0, 4).map((code, i) => {
-                const t = teamByCode(code)
+                const t = lookup(code)
                 if (!t) return null
                 const adv = i < 2 || (i === 2 && thirdPlaceAdvancing.includes(code))
                 return (
                   <div key={code} className={cn('flex items-center gap-1.5 truncate', adv ? '' : 'opacity-40')}>
                     <span>{i === 0 ? '1' : i === 1 ? '2' : i === 2 ? '3' : '4'}</span>
-                    <span>{t.flag}</span>
+                    <Flag team={t} size="sm" />
                     <span className="truncate">{t.name}</span>
                     {adv && i === 2 && <span className="text-accent-green">★</span>}
                   </div>
@@ -556,7 +603,9 @@ function BracketPoster() {
                 const t = tx(code)
                 return (
                   <div key={id} className="bg-white/[0.04] rounded px-2 py-1.5 text-[11px] flex items-center gap-1.5 truncate">
-                    <span>{t.flag}</span>
+                    {t.logo
+                      ? <img src={t.logo} alt="" className="w-4 h-4 object-contain shrink-0" />
+                      : <span className="w-4 h-4 inline-block">·</span>}
                     <span className="truncate">{t.name}</span>
                   </div>
                 )
@@ -571,13 +620,19 @@ function BracketPoster() {
         <div className="bg-gradient-to-br from-accent-gold/30 to-yellow-700/10 rounded-xl p-4 text-center">
           <div className="text-[10px] uppercase tracking-widest text-accent-gold font-mono">Champion</div>
           {finalWinner ? (
-            <div className="font-display font-bold text-2xl mt-1">{tx(finalWinner).flag} {tx(finalWinner).name}</div>
+            <div className="font-display font-bold text-2xl mt-1 flex items-center justify-center gap-2">
+              {tx(finalWinner).logo && <img src={tx(finalWinner).logo!} alt="" className="w-8 h-8 object-contain" />}
+              <span>{tx(finalWinner).name}</span>
+            </div>
           ) : <div className="text-slate-500 text-sm mt-1">TBD</div>}
         </div>
         <div className="bg-gradient-to-br from-orange-700/30 to-orange-900/10 rounded-xl p-4 text-center">
           <div className="text-[10px] uppercase tracking-widest text-orange-300 font-mono">3rd place</div>
           {thirdPlaceWinner ? (
-            <div className="font-display font-bold text-xl mt-1">{tx(thirdPlaceWinner).flag} {tx(thirdPlaceWinner).name}</div>
+            <div className="font-display font-bold text-xl mt-1 flex items-center justify-center gap-2">
+              {tx(thirdPlaceWinner).logo && <img src={tx(thirdPlaceWinner).logo!} alt="" className="w-7 h-7 object-contain" />}
+              <span>{tx(thirdPlaceWinner).name}</span>
+            </div>
           ) : <div className="text-slate-500 text-sm mt-1">TBD</div>}
         </div>
       </div>
@@ -591,5 +646,3 @@ function BracketPoster() {
 
 // Re-export Team type for KoSide
 export type { Team }
-// silence the "teams" unused warning
-void teams
