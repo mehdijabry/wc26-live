@@ -146,7 +146,15 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
             className="min-h-screen sm:min-h-0 sm:max-w-3xl sm:mx-auto sm:my-8 bg-white sm:rounded-3xl sm:shadow-2xl overflow-hidden"
           >
             {/* Header — flag, name, big watermark, close, share */}
-            <div className="relative px-5 sm:px-7 pt-5 pb-3 border-b border-slate-100">
+            {/* pt adapts to PWA standalone — on mobile this modal uses
+                min-h-screen which fills behind the notch, so we need the
+                safe-area inset to keep the close × clickable. On sm+
+                breakpoints the modal is centered with my-8 so no inset
+                needed. */}
+            <div
+              className="relative px-5 sm:px-7 pb-3 border-b border-slate-100 sm:pt-5"
+              style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.25rem)' }}
+            >
               <div className="absolute top-1/2 right-4 -translate-y-1/2 font-display font-black text-7xl sm:text-8xl text-slate-100 select-none pointer-events-none tracking-tighter">
                 {abbr}
               </div>

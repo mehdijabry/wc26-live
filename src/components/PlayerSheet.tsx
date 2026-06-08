@@ -161,7 +161,14 @@ export function PlayerSheet({
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 30, opacity: 0 }}
             transition={{ type: 'spring', damping: 28, stiffness: 240 }}
-            className="fixed inset-x-2 sm:inset-x-4 bottom-2 top-12 sm:top-16 z-[130] mx-auto max-w-2xl bg-paper rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            className="fixed inset-x-2 sm:inset-x-4 z-[130] mx-auto max-w-2xl bg-paper rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            // top/bottom adapt to PWA standalone (notch + home indicator).
+            // The original top-12 (48px) sat right at the notch edge on
+            // iPhone 14+ — now we add the safe-area to keep it clear.
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.5rem)',
+            }}
           >
             {/* Header */}
             <div className="relative px-5 py-4 border-b border-slate-200 flex items-center gap-4">

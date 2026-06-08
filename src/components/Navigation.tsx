@@ -120,6 +120,14 @@ export function Navigation() {
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 28, stiffness: 240 }}
               className="fixed top-0 right-0 bottom-0 z-[60] w-[80%] max-w-xs bg-white border-l border-slate-200 p-6 md:hidden overflow-y-auto"
+              // Safe-area padding so the close × button and WC26 logo at the
+              // top of the drawer aren't clipped by the notch / Dynamic Island
+              // when the app runs in PWA standalone mode. Same trick as the
+              // main nav header.
+              style={{
+                paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)',
+                paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
+              }}
             >
               <div className="flex items-center justify-between mb-8">
                 <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2.5">
