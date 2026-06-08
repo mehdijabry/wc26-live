@@ -1,17 +1,19 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { KONAMI, logIntro, randomMoroccoQuote } from '../lib/morocco'
+import { KONAMI, logIntro } from '../lib/morocco'
 import { TONGUE_IN_CHEEK_ODDS } from '../lib/morocco'
 
 /**
  * Atlas Lions — global Morocco easter-egg layer.
  * - ASCII intro logged to console on mount.
  * - Listens for Konami code → confetti + champion overlay.
- * - Shows an occasional toast quote (every ~90s, visible 5s, then dismisses).
+ *
+ * (The recurring toast that surfaced Morocco quotes every ~90s was
+ * removed per user feedback — felt intrusive on long-dwell pages like
+ * /today and the bracket wizard.)
  */
 export function AtlasLions() {
   const [konamiHit, setKonamiHit] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
 
   useEffect(() => {
     logIntro()
@@ -34,52 +36,10 @@ export function AtlasLions() {
     return () => window.removeEventListener('keydown', handler)
   }, [])
 
-  // Occasional toast — first shows after 25s, then every 90s, visible for 5s
-  useEffect(() => {
-    let timer: number
-    const showToast = () => {
-      setToast(randomMoroccoQuote())
-      timer = window.setTimeout(() => setToast(null), 5000)
-    }
-    const first = window.setTimeout(showToast, 25000)
-    const interval = window.setInterval(showToast, 90000)
-    return () => {
-      clearTimeout(first)
-      clearInterval(interval)
-      clearTimeout(timer)
-    }
-  }, [])
-
   return (
-    <>
-      {/* Occasional toast — bottom center, dismissible */}
-      <AnimatePresence>
-        {toast && (
-          <motion.div
-            key={toast}
-            initial={{ y: 30, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 30, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 280, damping: 24 }}
-            className="fixed bottom-6 inset-x-0 z-40 flex justify-center px-4 pointer-events-none"
-          >
-            <button
-              onClick={() => setToast(null)}
-              className="pointer-events-auto group max-w-md flex items-center gap-3 px-4 py-2.5 rounded-full backdrop-blur-xl bg-white border border-red-500/15 shadow-2xl text-xs text-slate-800 hover:bg-white/95 transition-colors"
-            >
-              <span className="text-base">🦁</span>
-              <span className="text-left flex-1 leading-snug">{toast}</span>
-              <span className="text-slate-600 group-hover:text-slate-600 text-[10px] font-mono">×</span>
-            </button>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Konami overlay */}
-      <AnimatePresence>
-        {konamiHit && <KonamiOverlay />}
-      </AnimatePresence>
-    </>
+    <AnimatePresence>
+      {konamiHit && <KonamiOverlay />}
+    </AnimatePresence>
   )
 }
 
