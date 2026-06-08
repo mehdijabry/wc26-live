@@ -117,7 +117,13 @@ function App() {
       <StickyCountdown />
       <LiveTicker />
 
-      <main>
+      {/* Pushes all page content down by the safe-area top inset when the
+          site runs as an installed PWA (iOS adds env(safe-area-inset-top)
+          ~47-59px once launched from the Home Screen icon). In a normal
+          browser the inset is 0 so nothing changes. Without this the Sign
+          in button + WC26 logo slide under the iPhone notch / Dynamic
+          Island. */}
+      <main style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/wc26" element={<WC26Page />} />

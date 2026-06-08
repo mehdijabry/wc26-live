@@ -38,8 +38,17 @@ export function Navigation() {
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6 }}
         className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
-          scrolled ? 'py-3 backdrop-blur-xl bg-paper/70 border-b border-slate-200/70' : 'py-5'
+          scrolled ? 'backdrop-blur-xl bg-paper/70 border-b border-slate-200/70' : ''
         }`}
+        // Safe-area-aware padding: in iOS standalone (PWA from home screen)
+        // there's no Safari chrome, so without this the WC26 logo + Sign in
+        // button slide under the notch / Dynamic Island. env(safe-area-
+        // inset-top) is 0 in browser mode, ~47-59px on notched iPhones in
+        // standalone mode — so this gracefully adapts to both.
+        style={{
+          paddingTop: `calc(env(safe-area-inset-top, 0px) + ${scrolled ? '0.75rem' : '1.25rem'})`,
+          paddingBottom: scrolled ? '0.75rem' : '1.25rem',
+        }}
       >
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group">
