@@ -35,6 +35,7 @@ type AthleteOverview = {
     statsSummary?: {
       displayName?: string
       statistics?: Array<{
+        name?: string
         abbreviation?: string
         displayName?: string
         shortDisplayName?: string
