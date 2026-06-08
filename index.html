@@ -3,9 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0f" />
+    <meta name="theme-color" content="#0a2540" />
     <link rel="icon" type="image/svg+xml" href="/wc26-emblem.svg" />
     <link rel="canonical" href="https://wc26.mehdijabry.dev/" />
+
+    <!-- PWA manifest + iOS "Add to Home Screen" support.
+         iOS doesn't honor manifest.json fully, so we duplicate the
+         critical metadata via apple-* tags so the saved icon + standalone
+         launch behave like a native app. -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="WC26 Live" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-icon" href="/wc26-emblem.svg" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/wc26-emblem.svg" />
 
     <!-- Google Search Console verification -->
     <meta name="google-site-verification" content="ooSl9AUG8WbW5zaA8Ezq6-JSe4jtxn_L4Ch4z2vhskY" />

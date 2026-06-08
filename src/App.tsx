@@ -13,6 +13,7 @@ import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
 import { LottieLoader } from './components/LottieLoader'
 import { Ad } from './components/AdSlot'
+import { IosInstallPrompt } from './components/IosInstallPrompt'
 
 // Each section is its own page now — lazy-loaded per route so a slow
 // chunk doesn't block sibling pages. The previous design had ALL lazy
@@ -137,6 +138,11 @@ function App() {
 
       <Footer />
       <BottomNav />
+
+      {/* Floating "Add to Home Screen" prompt for iPhone Safari users.
+          Self-gates: only shows on iOS Safari, not in standalone mode,
+          not if previously dismissed. */}
+      <IosInstallPrompt />
 
       {/* Konami code Atlas Lions easter egg — keep loaded everywhere */}
       <Suspense fallback={null}>

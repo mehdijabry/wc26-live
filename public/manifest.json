@@ -1,0 +1,27 @@
+{
+  "name": "WC26 Live · Pressing 90'",
+  "short_name": "WC26 Live",
+  "description": "World Cup 2026 — live scores, brackets, predictions, every team & stadium.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f6f3ee",
+  "theme_color": "#0a2540",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/wc26-emblem.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/wc26-emblem.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "categories": ["sports", "news", "entertainment"]
+}
