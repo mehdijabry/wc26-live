@@ -39,20 +39,15 @@ function App() {
   const pushLocalToCloud = usePredictions((s) => s.pushLocalToCloud)
   const location = useLocation()
 
-  // Intro splash now uses localStorage so it only ever plays on the
-  // first visit per browser, not on every reload. Was sessionStorage
-  // which fired every new tab — annoying on a multi-tab workflow.
-  // Shortened to 1.2s (was 1.8s) so it doesn't drag.
-  const [intro, setIntro] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
-    return localStorage.getItem('wc26:introSeen') !== '1'
-  })
+  // Intro splash now fires on every page load — user wants the WC26
+  // emblem reveal as a signature launch moment. Was previously gated
+  // by localStorage (after first visit, never again) which made the
+  // app feel static. 1.2s is short enough to not annoy on quick
+  // reloads, long enough to register as branding.
+  const [intro, setIntro] = useState<boolean>(typeof window !== 'undefined')
   useEffect(() => {
     if (!intro) return
-    const t = setTimeout(() => {
-      setIntro(false)
-      try { localStorage.setItem('wc26:introSeen', '1') } catch { /* ignore */ }
-    }, 1200)
+    const t = setTimeout(() => setIntro(false), 1200)
     return () => clearTimeout(t)
   }, [intro])
 
