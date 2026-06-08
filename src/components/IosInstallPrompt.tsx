@@ -138,7 +138,7 @@ export function IosInstallPrompt() {
             }}
           >
             <div
-              className="flex items-center bg-black text-cream rounded-full overflow-hidden max-w-full"
+              className="flex items-center bg-black text-white rounded-full overflow-hidden max-w-full"
               style={{ boxShadow: '0 12px 32px -8px rgba(0,0,0,0.5)' }}
             >
               <button
@@ -150,7 +150,7 @@ export function IosInstallPrompt() {
                   <span className="text-[9px] uppercase tracking-[0.2em] text-accent-gold font-mono">
                     Install · 1 step
                   </span>
-                  <span className="text-[13px] font-semibold whitespace-nowrap">
+                  <span className="text-[13px] font-semibold whitespace-nowrap text-white">
                     Add to Home Screen
                   </span>
                 </div>
@@ -158,7 +158,7 @@ export function IosInstallPrompt() {
               <button
                 onClick={(e) => { e.stopPropagation(); dismiss() }}
                 aria-label="Dismiss"
-                className="self-stretch px-3 text-cream/60 hover:text-cream border-l border-white/15 flex items-center justify-center text-lg leading-none active:bg-slate-900 transition-colors"
+                className="self-stretch px-3 text-white/70 hover:text-white border-l border-white/15 flex items-center justify-center text-lg leading-none active:bg-slate-900 transition-colors"
               >
                 ×
               </button>
