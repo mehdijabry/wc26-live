@@ -115,10 +115,37 @@ export type HistoryResponse = {
   fetchedAt: string
 }
 
+// WC26 tournament window — June 11 → July 19, 2026. Constraining the
+// ESPN scoreboard to this date range avoids contamination from
+// pre-tournament friendlies + CAF/UEFA qualifiers, which is what
+// caused the connected-component group derivation to produce nonsense
+// clusters ("Morocco / Mexico / Canada / Australia" in Group A,
+// Morocco AND Group D both showing) because qualifier games linked
+// teams across groups. With the date filter we only see the 72 actual
+// group-stage matches → clean adjacency map → 12 correct groups.
+const TOURNAMENT_DATE_RANGE = '20260611-20260719'
+
+// ESPN's site.api endpoint allows CORS from any origin (we verified
+// `access-control-allow-origin: *`), so we can call it directly from
+// the browser without going through the proxy worker. The worker
+// doesn't forward query strings, which is why date-filtered calls
+// were returning only 2 events — we bypass it for scoreboard.
+const ESPN_DIRECT = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
+
+async function jgetDirect<T>(url: string): Promise<T> {
+  const resp = await fetch(url)
+  if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`)
+  return resp.json() as Promise<T>
+}
+
 export const api = {
   health: () => jget<{ ok: boolean; service: string; t: string }>('/health'),
-  scoreboard: () => jget<EspnScoreboard>('/scoreboard'),
-  fixtures: () => jget<EspnScoreboard>('/fixtures'),
+  scoreboard: () => jgetDirect<EspnScoreboard>(
+    `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=200`
+  ),
+  fixtures: () => jgetDirect<EspnScoreboard>(
+    `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=200`
+  ),
   tournament: () => jget<TournamentResponse>('/tournament'),
   standings: () => jget<unknown>('/standings'),
   match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
