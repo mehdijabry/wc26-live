@@ -42,7 +42,14 @@ export function LiveTicker() {
   if (!loaded || events.length === 0) return null
 
   return (
-    <div className="fixed top-[60px] inset-x-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-200 md:hidden">
+    <div
+      className="fixed inset-x-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-200 md:hidden"
+      // Adapts to PWA standalone (safe-area-inset-top ~47-59px on notched
+      // iPhones). In browser the inset is 0 so we keep the original 60px
+      // offset that clears the nav header. Without this the ticker would
+      // sit on top of (or under) the Sign in button.
+      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 60px)' }}
+    >
       <div className="overflow-x-auto no-scrollbar">
         <div className="flex gap-2 px-3 py-2 min-w-max">
           {events.map((ev) => <TickerCard key={ev.id} ev={ev} />)}
