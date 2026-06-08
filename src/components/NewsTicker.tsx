@@ -100,19 +100,14 @@ export function NewsTicker() {
         >
           {featured?.image && (
             <div
-              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 brightness-[0.4]"
+              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105"
               style={{ backgroundImage: `url(${featured.image})` }}
             />
           )}
-          {/* Triple-layered overlay so the text block ALWAYS has a guaranteed
-              dark backdrop regardless of the underlying photo (sky, jersey,
-              faces). Order, back→front:
-                1) Full-card uniform tint
-                2) Bottom-half darker gradient
-                3) Solid near-opaque slab right behind the text block */}
-          <div className="absolute inset-0 bg-black/45" />
-          <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black via-black/90 via-50% to-transparent" />
-          <div className="absolute inset-x-0 bottom-0 h-[60%] bg-black/55 backdrop-blur-[1px]" />
+          {/* Single clean gradient — image fully visible at the top, fades
+              to ~85% black at the bottom where the text sits. Pure
+              top→bottom, no extra slabs muddying the photo. */}
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-black/15 to-black/85" />
           <AnimatePresence mode="wait">
             <motion.div
               key={featured?.id}
@@ -121,7 +116,7 @@ export function NewsTicker() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
               className="relative h-full flex flex-col justify-end p-7"
-              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.7)' }}
+              style={{ textShadow: '0 2px 12px rgba(0,0,0,0.85)' }}
             >
               <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-cream/90 mb-2.5">
                 {featured?.source} · {relativeTime(featured?.publishedAt)}
