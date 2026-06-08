@@ -10,8 +10,9 @@ import { fetchNews, type NewsArticle } from '../lib/api'
  *
  * Cadence:
  *   - Full re-fetch every 5 minutes.
- *   - On-screen featured article rotates every 15 seconds.
- *   - User can click left/right arrows or click on a side card to jump.
+ *   - On-screen featured article rotates every 40 seconds (was 15s — user
+ *     said dots were flicking too fast, wanted 40s+ between articles).
+ *   - User can click any dot or side card to jump immediately.
  *
  * Click an article → opens the original ESPN story in a new tab.
  */
@@ -42,12 +43,13 @@ export function NewsTicker() {
     return () => { stop = true; if (timer) clearTimeout(timer) }
   }, [])
 
-  // Auto-advance every 15s.
+  // Auto-advance every 40s (user feedback: 15s was too fast to read the
+  // headline + description, jumping from one dot to the next felt jittery).
   useEffect(() => {
     if (articles.length < 2) return
     const t = window.setInterval(() => {
       setIdx((i) => (i + 1) % articles.length)
-    }, 15_000)
+    }, 40_000)
     return () => clearInterval(t)
   }, [articles.length])
 
