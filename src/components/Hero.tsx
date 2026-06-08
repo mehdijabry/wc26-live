@@ -6,6 +6,7 @@ import { timeUntil, userTimezone, fmtDate } from '../lib/utils'
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import { nextLiveOrUpcoming, useTournament } from '../store/tournament'
 import { eventTeams } from '../lib/api'
+import { NewsTicker } from './NewsTicker'
 
 export function Hero() {
   const [tick, setTick] = useState(0)
@@ -47,25 +48,16 @@ export function Hero() {
           </span>
         </motion.div>
 
-        {/* Title — single line, refined editorial serif */}
-        <motion.h1
+        {/* Newsfeed — replaces the static "World Cup 2026 Live" title.
+            Auto-rotates a featured ESPN article every 15s, full refresh
+            every 5min. See src/components/NewsTicker.tsx. */}
+        <motion.div
           initial={{ y: 18, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           transition={{ duration: 0.6 }}
-          className="font-display font-bold tracking-tight text-ink-900 text-[44px] leading-[1.02] sm:text-6xl md:text-7xl mb-4"
         >
-          World Cup <span className="text-accent-gold">2026</span> <span className="text-slate-500 font-normal italic">— Live</span>
-        </motion.h1>
-
-        <motion.p
-          initial={{ y: 18, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.1 }}
-          className="text-slate-600 text-base sm:text-lg max-w-2xl mb-10 leading-relaxed"
-        >
-          Every match, every group, every stadium — synced to your timezone, your
-          predictions, your watchlist.
-        </motion.p>
+          <NewsTicker />
+        </motion.div>
 
         {/* Countdown */}
         <motion.div

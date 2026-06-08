@@ -231,6 +231,83 @@ export const api = {
   },
 }
 
+/* -------------------------------------------------------------------------- */
+/* News articles — straight from ESPN per-league /news endpoint               */
+/* CORS is open, no key required. We fan out across the leagues we care       */
+/* about and merge by `published` desc client-side.                           */
+/* -------------------------------------------------------------------------- */
+
+export type NewsArticle = {
+  id: string
+  headline: string
+  description: string
+  publishedAt: string
+  image?: string
+  href?: string
+  byline?: string
+  source: string   // "Premier League", "FIFA World Cup", etc. (derived)
+}
+
+const NEWS_LEAGUES: Array<{ slug: string; label: string }> = [
+  { slug: 'fifa.world',      label: 'FIFA World Cup' },
+  { slug: 'uefa.champions',  label: 'Champions League' },
+  { slug: 'eng.1',           label: 'Premier League' },
+  { slug: 'esp.1',           label: 'LaLiga' },
+  { slug: 'ita.1',           label: 'Serie A' },
+  { slug: 'ger.1',           label: 'Bundesliga' },
+  { slug: 'fra.1',           label: 'Ligue 1' },
+  { slug: 'caf.nations_qualifying', label: 'CAF qualifying' },
+  { slug: 'fifa.friendly',   label: 'Friendlies' },
+]
+
+type EspnArticle = {
+  id?: number | string
+  headline?: string
+  description?: string
+  published?: string
+  byline?: string
+  images?: Array<{ url?: string }>
+  links?: { web?: { href?: string }; mobile?: { href?: string } }
+}
+
+export async function fetchNews(perLeague = 4): Promise<NewsArticle[]> {
+  const all = await Promise.all(
+    NEWS_LEAGUES.map(async (lg) => {
+      try {
+        const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${lg.slug}/news?limit=${perLeague}`
+        const r = await fetch(url)
+        if (!r.ok) return []
+        const d = await r.json() as { articles?: EspnArticle[] }
+        const arr = d.articles ?? []
+        return arr.map((a) => ({
+          id: String(a.id ?? a.headline ?? Math.random()),
+          headline: a.headline ?? '',
+          description: a.description ?? '',
+          publishedAt: a.published ?? '',
+          image: a.images?.[0]?.url,
+          href: a.links?.web?.href ?? a.links?.mobile?.href,
+          byline: a.byline,
+          source: lg.label,
+        })) as NewsArticle[]
+      } catch {
+        return []
+      }
+    })
+  )
+  const merged = all.flat()
+  // Dedup by headline + sort newest first
+  const seen = new Set<string>()
+  const deduped: NewsArticle[] = []
+  for (const a of merged) {
+    const key = a.headline.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    deduped.push(a)
+  }
+  deduped.sort((a, b) => (b.publishedAt || '').localeCompare(a.publishedAt || ''))
+  return deduped
+}
+
 // "YYYYMMDD" for a Date in the USER's local timezone — what ESPN expects
 // when you want matches that take place on a given LOCAL day. Was UTC
 // before, which mis-bucketed late-evening games (e.g. a 22h00 EDT game
