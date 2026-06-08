@@ -253,11 +253,28 @@ function StepThirds() {
     return t ? { letter, t } : null
   }).filter(Boolean) as Array<{ letter: GroupLetter; t: Team }>
 
+  // GUARD: purge entries in thirdPlaceAdvancing that no longer correspond
+  // to a current 3rd-placed team. Stale picks from a previous ranking
+  // pinned the count at 8 → the disabled={max} guard then blocked the
+  // user from making any new selection ("I can only select Ivory Coast
+  // and Senegal" was the symptom).
+  const validThirdCodes = new Set(thirds.map((t) => t.t.code))
+  useEffect(() => {
+    const stale = thirdPlaceAdvancing.filter((c) => !validThirdCodes.has(c))
+    if (stale.length === 0) return
+    // Deselect each stale code so the count goes back to "real picks"
+    stale.forEach((c) => toggleThirdAdvancing(c))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [thirdPlaceAdvancing.join(','), Array.from(validThirdCodes).sort().join(',')])
+
+  // Only count picks that are still valid for the cap logic.
+  const validPicked = thirdPlaceAdvancing.filter((c) => validThirdCodes.has(c))
+
   return (
     <div>
       <div className="text-xs text-slate-500 mb-4 font-mono">
         Select <span className="text-accent-gold">8 of 12</span> best third-placed teams that will advance to the Round of 32.
-        Currently picked: <span className="text-slate-900">{thirdPlaceAdvancing.length}</span>
+        Currently picked: <span className="text-slate-900">{validPicked.length}</span>
       </div>
       {thirds.length < 12 && (
         <div className="glass rounded-xl p-4 mb-4 text-xs text-yellow-300">
@@ -267,7 +284,7 @@ function StepThirds() {
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
         {thirds.map(({ letter, t }) => {
           const picked = thirdPlaceAdvancing.includes(t.code)
-          const max = thirdPlaceAdvancing.length >= 8 && !picked
+          const max = validPicked.length >= 8 && !picked
           return (
             <button
               key={t.code}
