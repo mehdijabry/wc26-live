@@ -57,7 +57,19 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
     return () => obs.disconnect()
   }, [])
 
-  // Inject Adsterra script when visible — pattern depends on format
+  // Inject Adsterra into the slot when visible.
+  //
+  // KEY PROBLEM with multiple banners on one page: Adsterra's invoke.js
+  // reads `window.atOptions` to know which zone to serve. If we put
+  // several <script>atOptions = {...}</script> tags into the parent
+  // document, they ALL write to the same global — last one wins, and
+  // since the browser dedupes the cached invoke.js for repeated zone
+  // URLs (same hash), most slots end up empty.
+  //
+  // Fix: for standard banners, render the entire atOptions + invoke.js
+  // pair inside a sandboxed <iframe srcDoc> so each ad has its own
+  // window.atOptions scope. Native banners already use a unique
+  // `container-{KEY}` div so they're fine in the parent document.
   useEffect(() => {
     if (!visible || !containerRef.current) return
     const host = containerRef.current.querySelector<HTMLDivElement>('.ad-host')
@@ -65,9 +77,8 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
     host.dataset.injected = '1'
 
     if (format === 'native') {
-      // Native Banner pattern:
-      //   <script async data-cfasync="false" src=".../{KEY}/invoke.js"></script>
-      //   <div id="container-{KEY}"></div>
+      // Native Banner pattern: container div with id == container-{KEY},
+      // then loader script — each one has its own DOM target so no clash.
       const div = document.createElement('div')
       div.id = `container-${zoneKey}`
       host.appendChild(div)
@@ -78,28 +89,54 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
       loader.src = `${INVOKE_DOMAIN}/${zoneKey}/invoke.js`
       host.appendChild(loader)
     } else {
-      // Standard Banner pattern:
-      //   <script>atOptions = { key, format: 'iframe', height, width, params }</script>
-      //   <script src=".../{KEY}/invoke.js"></script>
+      // Standard Banner — isolate inside an iframe srcDoc so atOptions
+      // can't be overwritten by another banner elsewhere on the page.
       const sizes = BANNER_SIZE[format]
-      const config = document.createElement('script')
-      config.type = 'text/javascript'
-      // Adsterra's invoke.js reads window.atOptions on load
-      config.textContent =
-        `atOptions = { 'key': '${zoneKey}', 'format': 'iframe', 'height': ${sizes.h}, 'width': ${sizes.w}, 'params': {} };`
-      host.appendChild(config)
+      const html = [
+        '<!doctype html><html><head>',
+        '<meta charset="utf-8">',
+        '<style>html,body{margin:0;padding:0;background:transparent;overflow:hidden;}</style>',
+        '</head><body>',
+        '<script type="text/javascript">',
+        `atOptions = { 'key': '${zoneKey}', 'format': 'iframe', 'height': ${sizes.h}, 'width': ${sizes.w}, 'params': {} };`,
+        '</script>',
+        `<script type="text/javascript" src="${INVOKE_DOMAIN}/${zoneKey}/invoke.js"></script>`,
+        '</body></html>',
+      ].join('')
 
-      const loader = document.createElement('script')
-      loader.type = 'text/javascript'
-      loader.src = `${INVOKE_DOMAIN}/${zoneKey}/invoke.js`
-      host.appendChild(loader)
+      const frame = document.createElement('iframe')
+      frame.srcdoc = html
+      frame.width = String(sizes.w)
+      frame.height = String(sizes.h)
+      frame.scrolling = 'no'
+      frame.title = 'Sponsored content'
+      frame.style.border = '0'
+      frame.style.display = 'block'
+      frame.setAttribute('loading', 'lazy')
+      host.appendChild(frame)
     }
 
-    // After 6s, if no actual ad markup landed, collapse the slot
+    // After 12s, if nothing rendered, collapse the slot. Raised from 6s
+    // because Adsterra's first impression on a fresh zone can be slow
+    // (warmup) — better to wait and show real ads than to collapse early.
     const t = window.setTimeout(() => {
-      const rendered = host.querySelector('iframe, ins, [id*="adsterra"], [class*="adsterra"]')
-      if (!rendered) setEmpty(true)
-    }, 6_000)
+      if (format === 'native') {
+        const container = host.querySelector(`#container-${zoneKey}`)
+        const hasContent = container && container.children.length > 0
+        if (!hasContent) setEmpty(true)
+      } else {
+        // For iframe-based banner: it's always present, but if it stays
+        // blank the iframe's body will be empty. Try to peek.
+        try {
+          const frame = host.querySelector('iframe') as HTMLIFrameElement | null
+          const doc = frame?.contentDocument
+          const hasContent = !!doc?.body?.children?.length && doc.body.innerHTML.trim().length > 100
+          if (!hasContent) setEmpty(true)
+        } catch {
+          // Cross-origin: assume it filled (Adsterra often renders into a child iframe)
+        }
+      }
+    }, 12_000)
     return () => clearTimeout(t)
   }, [visible, zoneKey, format])
 
