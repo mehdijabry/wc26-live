@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useAuth } from '../store/auth'
+import { useBracket } from '../store/bracket'
 import { AuthModal } from './AuthModal'
 
 const TIER_COLORS: Record<string, string> = {
@@ -12,12 +14,21 @@ const TIER_COLORS: Record<string, string> = {
 
 export function UserMenu() {
   const { user, profile, signOut, loading, updateAlias } = useAuth()
+  const isPublished = useBracket((s) => s.isPublished)
+  const shareSlug = useBracket((s) => s.shareSlug)
+  const loadBracket = useBracket((s) => s.load)
   const [modalOpen, setModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Pull bracket state on login so we know whether to show the
+  // "View my public bracket" link in the dropdown.
+  useEffect(() => {
+    if (user) void loadBracket()
+  }, [user, loadBracket])
 
   async function saveAlias() {
     const v = draft.trim()
@@ -135,9 +146,30 @@ export function UserMenu() {
               <span>★ best {profile?.best_streak ?? 0}</span>
             </div>
 
+            {/* Quick links — surface the user's own bracket so they
+                can actually find what they published. */}
+            <div className="mt-4 space-y-1.5">
+              <Link
+                to="/bracket"
+                onClick={() => setMenuOpen(false)}
+                className="block w-full px-3 py-2 rounded-lg bg-accent-gold/10 hover:bg-accent-gold/20 text-xs text-slate-800 transition-colors"
+              >
+                🏆 My bracket
+              </Link>
+              {isPublished && shareSlug && (
+                <Link
+                  to={`/u/${shareSlug}`}
+                  onClick={() => setMenuOpen(false)}
+                  className="block w-full px-3 py-2 rounded-lg bg-accent-green/10 hover:bg-accent-green/20 text-xs text-slate-800 transition-colors"
+                >
+                  🌍 View my public profile <span className="text-slate-500 font-mono">/u/{shareSlug}</span>
+                </Link>
+              )}
+            </div>
+
             <button
               onClick={signOut}
-              className="mt-4 w-full px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-xs text-slate-600 transition-colors"
+              className="mt-3 w-full px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-xs text-slate-600 transition-colors"
             >
               Sign out
             </button>

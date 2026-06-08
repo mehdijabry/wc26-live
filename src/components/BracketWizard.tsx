@@ -620,8 +620,27 @@ function StepExport() {
           <LottieLoader name={busy === 'pub' ? 'trophy' : 'ball-spin'} size={64} />
         </div>
       )}
-      {msg.ok && <div className="text-xs text-accent-green font-mono mb-4">✓ {msg.ok}</div>}
-      {msg.err && <div className="text-xs text-red-400 font-mono mb-4">{msg.err}</div>}
+      {msg.ok && (
+        <div className="bg-accent-green/10 border border-accent-green/30 rounded-xl px-4 py-3 mb-4 text-sm text-slate-800 flex items-center gap-3 flex-wrap">
+          <span className="text-accent-green font-bold">✓</span>
+          {msg.ok.startsWith('Published →') ? (
+            <>
+              <span className="font-mono text-xs">Published. Share this link:</span>
+              <a
+                href={msg.ok.replace('Published → ', '')}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-accent-gold font-mono text-xs underline break-all"
+              >
+                {msg.ok.replace('Published → ', '')}
+              </a>
+            </>
+          ) : (
+            <span>{msg.ok}</span>
+          )}
+        </div>
+      )}
+      {msg.err && <div className="text-xs text-red-400 font-mono mb-4 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{msg.err}</div>}
 
       {bracket.isPublished && bracket.shareSlug && (
         <div className="glass rounded-xl p-4 mb-5 text-sm">
