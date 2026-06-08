@@ -100,15 +100,19 @@ export function NewsTicker() {
         >
           {featured?.image && (
             <div
-              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 brightness-[0.55]"
+              className="absolute inset-0 bg-cover bg-center transition-transform duration-700 group-hover:scale-105 brightness-[0.4]"
               style={{ backgroundImage: `url(${featured.image})` }}
             />
           )}
-          {/* Double gradient: dark base everywhere + extra-dark bottom slab where the
-              text sits, so the headline always has enough contrast no matter what
-              the underlying photo looks like (faces, light jerseys, sky, etc.). */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/55 to-black/25" />
-          <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/95 via-black/75 to-transparent" />
+          {/* Triple-layered overlay so the text block ALWAYS has a guaranteed
+              dark backdrop regardless of the underlying photo (sky, jersey,
+              faces). Order, back→front:
+                1) Full-card uniform tint
+                2) Bottom-half darker gradient
+                3) Solid near-opaque slab right behind the text block */}
+          <div className="absolute inset-0 bg-black/45" />
+          <div className="absolute inset-x-0 bottom-0 h-3/4 bg-gradient-to-t from-black via-black/90 via-50% to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-[60%] bg-black/55 backdrop-blur-[1px]" />
           <AnimatePresence mode="wait">
             <motion.div
               key={featured?.id}
@@ -117,20 +121,22 @@ export function NewsTicker() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.5 }}
               className="relative h-full flex flex-col justify-end p-7"
-              style={{ textShadow: '0 2px 18px rgba(0,0,0,0.85)' }}
+              style={{ textShadow: '0 2px 20px rgba(0,0,0,0.95), 0 0 8px rgba(0,0,0,0.7)' }}
             >
-              <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-accent-gold mb-2 drop-shadow">
+              <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-cream/90 mb-2.5">
                 {featured?.source} · {relativeTime(featured?.publishedAt)}
               </div>
-              <h2 className="font-display font-bold text-2xl sm:text-3xl leading-tight max-w-3xl text-white">
+              {/* Headline = gold for max pop */}
+              <h2 className="font-display font-bold text-2xl sm:text-3xl leading-tight max-w-3xl text-accent-gold">
                 {featured?.headline}
               </h2>
+              {/* Description = pure white */}
               {featured?.description && (
-                <p className="mt-3 text-sm text-cream/90 max-w-2xl line-clamp-2">
+                <p className="mt-3 text-sm text-white max-w-2xl line-clamp-2 leading-relaxed">
                   {featured.description}
                 </p>
               )}
-              <div className="mt-4 inline-flex items-center gap-2 text-xs tracking-widest uppercase text-accent-gold">
+              <div className="mt-4 inline-flex items-center gap-2 text-xs tracking-widest uppercase text-accent-gold font-semibold">
                 Read on ESPN <span aria-hidden>→</span>
               </div>
             </motion.div>
