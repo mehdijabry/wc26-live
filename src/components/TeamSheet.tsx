@@ -16,6 +16,7 @@ import { useTournament, recordForTeam, matchesForTeam } from '../store/tournamen
 import { teamBadgeFallback } from '../lib/utils'
 import { heritageFor } from '../data/wcHeritage'
 import { LottieLoader } from './LottieLoader'
+import { PlayerSheet } from './PlayerSheet'
 
 /**
  * Team detail sheet — full-page modal opened from a country click in Groups.
@@ -569,6 +570,8 @@ function Kpi({ label, value, children, highlight }: { label: string; value?: Rea
 }
 
 function SquadTable({ athletes }: { athletes: RosterAthlete[] }) {
+  const [openId, setOpenId] = useState<string | number | undefined>(undefined)
+  const [openMeta, setOpenMeta] = useState<{ name?: string; photo?: string } | undefined>(undefined)
   const buckets: Record<string, RosterAthlete[]> = { GK: [], DEF: [], MID: [], FW: [], Other: [] }
   for (const a of athletes) {
     const pos = (a.position?.abbreviation ?? '').toUpperCase()
@@ -594,23 +597,50 @@ function SquadTable({ athletes }: { athletes: RosterAthlete[] }) {
             </div>
             <div>
               {list.map((a, i) => (
-                <AthleteRow key={a.id ?? `${k}-${i}`} a={a} alt={i % 2 === 1} />
+                <AthleteRow
+                  key={a.id ?? `${k}-${i}`}
+                  a={a}
+                  alt={i % 2 === 1}
+                  onOpen={(id, meta) => { setOpenId(id); setOpenMeta(meta) }}
+                />
               ))}
             </div>
           </div>
         )
       })}
+      <PlayerSheet
+        open={!!openId}
+        onClose={() => setOpenId(undefined)}
+        athleteId={openId}
+        fallbackName={openMeta?.name}
+        fallbackPhoto={openMeta?.photo}
+      />
     </div>
   )
 }
 
-function AthleteRow({ a, alt }: { a: RosterAthlete; alt?: boolean }) {
+function AthleteRow({
+  a, alt, onOpen,
+}: {
+  a: RosterAthlete
+  alt?: boolean
+  onOpen: (id: string | number | undefined, meta: { name?: string; photo?: string }) => void
+}) {
   const name = a.displayName ?? a.fullName ?? a.shortName ?? '?'
   const photo = a.headshot?.href
   const flag = a.flag?.href
   const jersey = a.jersey != null ? String(a.jersey) : ''
+  const handleClick = () => onOpen(a.id, { name, photo })
   return (
-    <div className={'grid grid-cols-[2rem_1fr_auto] gap-3 items-center px-3 py-2.5 ' + (alt ? 'bg-slate-50/60' : '')}>
+    <button
+      type="button"
+      onClick={handleClick}
+      className={
+        'w-full grid grid-cols-[2rem_1fr_auto] gap-3 items-center px-3 py-2.5 text-left transition-colors hover:bg-slate-100 ' +
+        (alt ? 'bg-slate-50/60' : '')
+      }
+      title={`Open ${name}'s stats`}
+    >
       <span className="text-sm text-slate-700 font-mono tabular-nums">{jersey || '—'}</span>
       <div className="flex items-center gap-2.5 min-w-0">
         {photo ? (
@@ -626,7 +656,7 @@ function AthleteRow({ a, alt }: { a: RosterAthlete; alt?: boolean }) {
         </div>
       </div>
       <span className="text-sm text-slate-500 font-mono tabular-nums">{a.age ?? '—'}</span>
-    </div>
+    </button>
   )
 }
 

@@ -1,5 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchNews, type NewsArticle } from '../lib/api'
 
 /**
@@ -59,6 +59,21 @@ export function NewsTicker() {
     return [1, 2, 3].map((d) => articles[(idx + d) % articles.length]).filter(Boolean)
   }, [articles, idx])
 
+  // Touch-swipe support (mobile): drag the news block left = next article,
+  // right = previous. 50px threshold so accidental small taps don't fire.
+  const touchStartX = useRef<number | null>(null)
+  function onTouchStart(e: React.TouchEvent) {
+    touchStartX.current = e.touches[0]?.clientX ?? null
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    if (touchStartX.current == null) return
+    const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current
+    touchStartX.current = null
+    if (Math.abs(dx) < 50 || articles.length < 2) return
+    if (dx < 0) setIdx((i) => (i + 1) % articles.length)
+    else        setIdx((i) => (i - 1 + articles.length) % articles.length)
+  }
+
   if (loading) {
     return (
       <div className="my-6 grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -79,7 +94,7 @@ export function NewsTicker() {
   }
 
   return (
-    <div className="my-6">
+    <div className="my-6" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       {/* Top strip — pill + counter */}
       <div className="flex items-center justify-between mb-3 text-[10px] font-mono uppercase tracking-[0.22em] text-slate-500">
         <span className="flex items-center gap-2">

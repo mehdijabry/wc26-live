@@ -136,13 +136,13 @@ export function Hero() {
         </motion.div>
       </div>
 
-      {/* WC26 official emblem — floating */}
+      {/* WC26 official emblem — small bottom-right corner, subtle */}
       <motion.div
         aria-hidden
-        className="hidden lg:block absolute right-12 top-28 w-56 h-56 pointer-events-none"
-        animate={{ y: [0, -16, 0], rotate: [0, 4, -4, 0] }}
-        transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-        style={{ filter: 'drop-shadow(0 12px 40px rgba(212,175,55,0.25))' }}
+        className="hidden lg:block absolute right-6 bottom-6 w-16 h-16 pointer-events-none opacity-60"
+        animate={{ y: [0, -4, 0] }}
+        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
+        style={{ filter: 'drop-shadow(0 4px 12px rgba(212,175,55,0.2))' }}
       >
         <img src="/wc26-emblem.svg" alt="FIFA World Cup 26 emblem" className="w-full h-full" />
       </motion.div>
