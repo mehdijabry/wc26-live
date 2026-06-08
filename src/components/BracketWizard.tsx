@@ -526,7 +526,7 @@ function StepExport() {
     setBusy('png')
     setMsg({})
     try {
-      const png = await toPng(ref.current, { backgroundColor: '#0a0a0f', pixelRatio: 2 })
+      const png = await toPng(ref.current, { backgroundColor: '#f6f3ee', pixelRatio: 2 })
       const link = document.createElement('a')
       link.download = `wc26-bracket-${profile?.alias ?? 'me'}.png`
       link.href = png
@@ -603,7 +603,7 @@ function StepExport() {
       )}
 
       <div className="overflow-x-auto">
-        <div ref={ref} className="min-w-[1100px] p-8 bg-gradient-to-br from-ink-900 via-ink-800 to-ink-900 rounded-2xl">
+        <div ref={ref} className="min-w-[1100px] p-8 bg-gradient-to-br from-paper via-cream to-paper rounded-2xl border border-slate-200">
           <BracketPoster />
         </div>
       </div>
@@ -643,7 +643,7 @@ function BracketPoster() {
         {GROUPS.map((g) => {
           const s = groupStandings[g] ?? []
           return (
-            <div key={g} className="bg-white/[0.04] rounded-lg p-2.5 text-[11px]">
+            <div key={g} className="bg-white border border-slate-200/70 rounded-lg p-2.5 text-[11px]">
               <div className="font-display font-bold text-accent-gold mb-1">Group {g}</div>
               {s.slice(0, 4).map((code, i) => {
                 const t = lookup(code)
@@ -679,7 +679,7 @@ function BracketPoster() {
                 const code = koWinners[id]
                 const t = tx(code)
                 return (
-                  <div key={id} className="bg-white/[0.04] rounded px-2 py-1.5 text-[11px] flex items-center gap-1.5 truncate">
+                  <div key={id} className="bg-white border border-slate-200/70 rounded px-2 py-1.5 text-[11px] flex items-center gap-1.5 truncate">
                     {t.logo
                       ? <img src={t.logo} alt="" className="w-4 h-4 object-contain shrink-0" />
                       : <span className="w-4 h-4 inline-block">·</span>}
