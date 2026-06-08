@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { api, eventTeams, statusLabel, ymdUtc, type DailyResponse, type EspnEvent } from '../lib/api'
+import { api, eventTeams, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
 
@@ -19,8 +19,11 @@ export function DailyMatches() {
   const [activeSlugs, setActiveSlugs] = useState<Set<string> | null>(null) // null = all
 
   const date = useMemo(() => {
+    // Use LOCAL date so 'Today' for the user really means today in their
+    // timezone — not UTC. A 22h kickoff EDT used to vanish into UTC's
+    // next day; this fixes it.
     const d = new Date()
-    d.setUTCDate(d.getUTCDate() + offset)
+    d.setDate(d.getDate() + offset)
     return d
   }, [offset])
   const dateLabel = useMemo(
@@ -40,7 +43,7 @@ export function DailyMatches() {
     async function load() {
       try {
         setLoading(data === null)
-        const fresh = await api.today(ymdUtc(date))
+        const fresh = await api.today(ymdLocal(date))
         if (stop) return
         setData(fresh)
       } catch {
