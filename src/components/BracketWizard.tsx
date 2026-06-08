@@ -603,7 +603,7 @@ function StepExport() {
       )}
 
       <div className="overflow-x-auto">
-        <div ref={ref} className="min-w-[1400px] bg-[#0b0d12] rounded-2xl overflow-hidden">
+        <div ref={ref} className="min-w-[1800px] bg-[#0b0d12] rounded-2xl overflow-hidden">
           <BracketPoster />
         </div>
       </div>
@@ -700,10 +700,10 @@ function BracketPoster() {
                           isThirdAdv && 'ring-1 ring-accent-green/40',
                         )}
                       >
-                        <span className="font-mono w-3 text-white/50">{i + 1}</span>
+                        <span className="font-mono w-3 text-white/50 shrink-0">{i + 1}</span>
                         <Flag team={t} size="sm" />
-                        <span className="truncate font-medium uppercase tracking-wide">
-                          {t.shortName || t.name.slice(0, 3).toUpperCase()}
+                        <span className="font-semibold uppercase tracking-wide text-[11px]">
+                          {t.code}
                         </span>
                         {isThirdAdv && <span className="text-accent-green text-[9px] ml-auto">★</span>}
                       </div>
@@ -809,25 +809,25 @@ function BracketPoster() {
                 className={cn(
                   'bg-white/[0.04] border border-white/10 rounded',
                   isHero
-                    ? 'px-2.5 py-3 ring-1 ring-accent-gold/30 bg-white/[0.08]'
-                    : compact ? 'px-1.5 py-1.5' : 'px-2 py-2',
+                    ? 'px-3 py-3.5 ring-1 ring-accent-gold/30 bg-white/[0.08]'
+                    : compact ? 'px-2.5 py-2' : 'px-2.5 py-2.5',
                 )}
               >
                 <div className={cn(
-                  'text-white/40 font-mono tracking-wider mb-1',
-                  isHero ? 'text-[9px]' : 'text-[8px]'
+                  'text-white/40 font-mono tracking-wider mb-1.5',
+                  isHero ? 'text-[10px]' : 'text-[9px]'
                 )}>
-                  {fifaMatchNumberFor(id) ? `M${fifaMatchNumberFor(id)}` : id}
+                  M{fifaMatchNumberFor(id) ?? '—'}
                 </div>
                 <div className={cn(
-                  'flex items-center gap-1.5',
-                  isHero ? 'text-[12px]' : compact ? 'text-[10px]' : 'text-[11px]'
+                  'flex items-center gap-2',
+                  isHero ? 'text-[13px]' : compact ? 'text-[11px]' : 'text-[12px]'
                 )}>
                   {t.logo
-                    ? <img src={t.logo} alt="" className={cn('object-contain shrink-0', isHero ? 'w-5 h-5' : 'w-4 h-4')} />
-                    : <span className={cn('inline-block rounded-full bg-white/10', isHero ? 'w-5 h-5' : 'w-4 h-4')} />}
+                    ? <img src={t.logo} alt="" className={cn('object-contain shrink-0', isHero ? 'w-6 h-6' : 'w-5 h-5')} />
+                    : <span className={cn('inline-block rounded-full bg-white/10 shrink-0', isHero ? 'w-6 h-6' : 'w-5 h-5')} />}
                   <span className={cn(
-                    'truncate uppercase font-medium tracking-wide',
+                    'uppercase font-semibold tracking-wider',
                     winnerCode ? 'text-white' : 'text-white/40'
                   )}>
                     {winnerCode ? (t.code ?? t.name) : 'TBD'}
