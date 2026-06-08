@@ -1,15 +1,18 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import { Link, NavLink } from 'react-router-dom'
 import { UserMenu } from './UserMenu'
 
-const links = [
-  { label: 'Groups', href: '#groups' },
-  { label: 'Schedule', href: '#schedule' },
-  { label: 'KO Tree', href: '#bracket' },
-  { label: 'Predict', href: '#predict' },
-  { label: 'My Bracket', href: '#bracket-predict' },
-  { label: 'Today', href: '#today' },
-  { label: 'Board', href: '#leaderboard' },
+// Real route-based navigation now — each link is its own page, no more
+// anchor-jump that breaks when a section is still inside a lazy Suspense.
+const links: Array<{ label: string; to: string }> = [
+  { label: 'Home', to: '/' },
+  { label: 'KO Tree', to: '/bracket' },
+  { label: 'Predict', to: '/predict' },
+  { label: 'Today', to: '/today' },
+  { label: 'Squads', to: '/squads' },
+  { label: 'Board', to: '/board' },
+  { label: 'Stadiums', to: '/stadiums' },
 ]
 
 export function Navigation() {
@@ -39,7 +42,7 @@ export function Navigation() {
         }`}
       >
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
-          <a href="#hero" className="flex items-center gap-2.5 group">
+          <Link to="/" className="flex items-center gap-2.5 group">
             <img
               src="/wc26-emblem.svg"
               alt="WC26"
@@ -54,18 +57,24 @@ export function Navigation() {
                 <span className="text-accent-red font-semibold">90′</span>
               </div>
             </div>
-          </a>
+          </Link>
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1">
             {links.map((l) => (
-              <a
-                key={l.href}
-                href={l.href}
-                className="px-3 py-1.5 text-sm text-slate-600 hover:text-slate-900 rounded-full hover:bg-slate-100 transition-colors"
+              <NavLink
+                key={l.to}
+                to={l.to}
+                end={l.to === '/'}
+                className={({ isActive }) =>
+                  'px-3 py-1.5 text-sm rounded-full transition-colors ' +
+                  (isActive
+                    ? 'bg-slate-900 text-white'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100')
+                }
               >
                 {l.label}
-              </a>
+              </NavLink>
             ))}
           </nav>
 
@@ -104,7 +113,7 @@ export function Navigation() {
               className="fixed top-0 right-0 bottom-0 z-[60] w-[80%] max-w-xs bg-white border-l border-slate-200 p-6 md:hidden overflow-y-auto"
             >
               <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-2.5">
+                <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2.5">
                   <img src="/wc26-emblem.svg" alt="" className="w-7 h-7" />
                   <div className="leading-tight">
                     <div className="font-display font-bold tracking-tight text-sm">
@@ -115,7 +124,7 @@ export function Navigation() {
                       <span className="text-accent-red font-semibold">90′</span>
                     </div>
                   </div>
-                </div>
+                </Link>
                 <button
                   onClick={() => setMenuOpen(false)}
                   aria-label="Close menu"
@@ -127,14 +136,20 @@ export function Navigation() {
 
               <nav className="space-y-1">
                 {links.map((l) => (
-                  <a
-                    key={l.href}
-                    href={l.href}
+                  <NavLink
+                    key={l.to}
+                    to={l.to}
+                    end={l.to === '/'}
                     onClick={() => setMenuOpen(false)}
-                    className="block px-4 py-3 rounded-xl text-base hover:bg-slate-100 text-slate-800 hover:text-slate-900 transition-colors"
+                    className={({ isActive }) =>
+                      'block px-4 py-3 rounded-xl text-base transition-colors ' +
+                      (isActive
+                        ? 'bg-slate-900 text-white'
+                        : 'hover:bg-slate-100 text-slate-800 hover:text-slate-900')
+                    }
                   >
                     {l.label}
-                  </a>
+                  </NavLink>
                 ))}
               </nav>
 

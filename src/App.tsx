@@ -1,5 +1,6 @@
 import { useEffect, lazy, Suspense, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
+import { Routes, Route, useLocation, useParams } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { StickyCountdown } from './components/StickyCountdown'
 import { Hero } from './components/Hero'
@@ -12,8 +13,11 @@ import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
 import { LottieLoader } from './components/LottieLoader'
 
-// Heavy / below-the-fold sections are lazy-loaded so the first paint stays light.
-// This dropped initial JS by ~40% in the production build measured locally.
+// Each section is its own page now — lazy-loaded per route so a slow
+// chunk doesn't block sibling pages. The previous design had ALL lazy
+// components inside a single <Suspense>; if any one resolved late, the
+// entire `#bracket-predict` (and friends) anchor was missing from the
+// DOM, which is why "My Bracket" navigation appeared to do nothing.
 const Bracket = lazy(() => import('./components/Bracket').then((m) => ({ default: m.Bracket })))
 const Stadiums = lazy(() => import('./components/Stadiums').then((m) => ({ default: m.Stadiums })))
 const Predictions = lazy(() => import('./components/Predictions').then((m) => ({ default: m.Predictions })))
@@ -32,18 +36,22 @@ function App() {
   const dismissAuthError = useAuth((s) => s.dismissAuthError)
   const syncFromCloud = usePredictions((s) => s.syncFromCloud)
   const pushLocalToCloud = usePredictions((s) => s.pushLocalToCloud)
-  // Show the intro splash once per browser session (sessionStorage). Resets
-  // on tab close so repeat visitors in the same session don't see it twice.
+  const location = useLocation()
+
+  // Intro splash now uses localStorage so it only ever plays on the
+  // first visit per browser, not on every reload. Was sessionStorage
+  // which fired every new tab — annoying on a multi-tab workflow.
+  // Shortened to 1.2s (was 1.8s) so it doesn't drag.
   const [intro, setIntro] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
-    return sessionStorage.getItem('wc26:introSeen') !== '1'
+    return localStorage.getItem('wc26:introSeen') !== '1'
   })
   useEffect(() => {
     if (!intro) return
     const t = setTimeout(() => {
       setIntro(false)
-      try { sessionStorage.setItem('wc26:introSeen', '1') } catch { /* ignore */ }
-    }, 1800)
+      try { localStorage.setItem('wc26:introSeen', '1') } catch { /* ignore */ }
+    }, 1200)
     return () => clearTimeout(t)
   }, [intro])
 
@@ -61,27 +69,21 @@ function App() {
     })()
   }, [user, pushLocalToCloud, syncFromCloud])
 
-  // Simple path-based routing for public profile pages /u/:slug
-  const profileMatch = window.location.pathname.match(/^\/u\/([\w-]+)$/)
-  if (profileMatch) {
-    return (
-      <Suspense fallback={<div className="min-h-svh flex items-center justify-center text-slate-500 text-sm">Loading profile…</div>}>
-        <PublicProfile slug={profileMatch[1]} />
-      </Suspense>
-    )
-  }
+  // Auto-scroll to top on route change — feels like a real multi-page app
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' })
+  }, [location.pathname])
 
   return (
     <div className="min-h-svh pb-20 md:pb-0">
-      {/* Intro splash — WC26 emblem + Pressing 90' lockup fading in/out.
-          Plays once per session, mirrors the Fernani Fabric splitter intro. */}
+      {/* Intro splash — once per device, 1.2s */}
       <AnimatePresence>
         {intro && (
           <motion.div
             key="wc26-intro"
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.55, ease: 'easeOut' }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
             className="fixed inset-0 z-[80] bg-paper flex flex-col items-center justify-center"
           >
             <motion.img
@@ -89,29 +91,23 @@ function App() {
               alt=""
               initial={{ scale: 0.85, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
+              transition={{ duration: 0.5, ease: 'easeOut' }}
               className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.25)]"
             />
             <motion.div
-              initial={{ opacity: 0, y: 14 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.7, delay: 0.45 }}
-              className="mt-6 text-center"
+              transition={{ duration: 0.45, delay: 0.25 }}
+              className="mt-5 text-center"
             >
               <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-marine-950">
                 WC<span className="text-accent-gold">26</span> Live
               </div>
-              <div className="mt-2 font-mono text-[10px] sm:text-xs tracking-brand uppercase">
+              <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase">
                 <span className="text-slate-600">Pressing</span>{' '}
                 <span className="text-accent-red font-semibold">90′</span>
               </div>
             </motion.div>
-            <motion.div
-              initial={{ width: 0 }}
-              animate={{ width: '120px' }}
-              transition={{ duration: 0.9, delay: 0.7 }}
-              className="mt-6 h-px bg-accent-gold/40"
-            />
           </motion.div>
         )}
       </AnimatePresence>
@@ -119,28 +115,29 @@ function App() {
       <Navigation />
       <StickyCountdown />
       <LiveTicker />
+
       <main>
-        <Hero />
-        <Groups />
-        <Schedule />
-        <Suspense fallback={<SectionSkeleton />}>
-          <Bracket />
-          <Stadiums />
-          <Players />
-          <Predictions />
-          <BracketWizard />
-          <Leaderboard />
-          <DailyMatches />
-        </Suspense>
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/bracket" element={<BracketPage />} />
+          <Route path="/predict" element={<PredictPage />} />
+          <Route path="/today" element={<TodayPage />} />
+          <Route path="/squads" element={<SquadsPage />} />
+          <Route path="/board" element={<BoardPage />} />
+          <Route path="/stadiums" element={<StadiumsPage />} />
+          <Route path="/u/:slug" element={<ProfilePage />} />
+          <Route path="*" element={<HomePage />} />
+        </Routes>
       </main>
+
       <Footer />
       <BottomNav />
+
+      {/* Konami code Atlas Lions easter egg — keep loaded everywhere */}
       <Suspense fallback={null}>
         <AtlasLions />
       </Suspense>
 
-      {/* Auth-callback overlay — keeps the home view from flashing as
-          "not signed in" while Supabase exchanges the URL token. */}
       {completingSignIn && (
         <div className="fixed inset-0 z-[60] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl px-8 py-6 shadow-xl flex flex-col items-center gap-2">
@@ -150,10 +147,6 @@ function App() {
         </div>
       )}
 
-      {/* OAuth provider error — Supabase / Google round-trip failure.
-          We surface the actual message instead of silently dropping the
-          user back to a logged-out home; otherwise it looks like the
-          sign-in just didn't happen, which is what the user reported. */}
       {authError && (
         <div className="fixed top-20 inset-x-0 z-[70] flex justify-center px-4 pointer-events-none">
           <div className="pointer-events-auto max-w-xl w-full bg-red-50 border border-red-200 rounded-2xl shadow-lg p-4 flex items-start gap-3">
@@ -183,13 +176,88 @@ function App() {
   )
 }
 
-function SectionSkeleton() {
+/* -------------------------------------------------------------------------- */
+/* Routes — each page has its own Suspense so they load independently         */
+/* -------------------------------------------------------------------------- */
+
+function PageSkeleton({ caption }: { caption?: string }) {
   return (
-    <div className="py-20 sm:py-28 border-t border-slate-200/70">
-      <div className="container max-w-6xl mx-auto px-6 flex flex-col items-center">
-        <LottieLoader name="ball-spin" size={72} caption="Loading…" />
-      </div>
+    <div className="py-32 flex flex-col items-center justify-center">
+      <LottieLoader name="ball-spin" size={80} caption={caption ?? 'Loading…'} />
     </div>
+  )
+}
+
+function HomePage() {
+  return (
+    <>
+      <Hero />
+      <Groups />
+      <Schedule />
+    </>
+  )
+}
+
+function BracketPage() {
+  return (
+    <>
+      <Suspense fallback={<PageSkeleton caption="Loading the KO tree…" />}>
+        <Bracket />
+      </Suspense>
+      <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
+        <BracketWizard />
+      </Suspense>
+    </>
+  )
+}
+
+function PredictPage() {
+  return (
+    <Suspense fallback={<PageSkeleton caption="Loading the predictions board…" />}>
+      <Predictions />
+    </Suspense>
+  )
+}
+
+function TodayPage() {
+  return (
+    <Suspense fallback={<PageSkeleton caption="Loading today's fixtures…" />}>
+      <DailyMatches />
+    </Suspense>
+  )
+}
+
+function SquadsPage() {
+  return (
+    <Suspense fallback={<PageSkeleton caption="Loading squads…" />}>
+      <Players />
+    </Suspense>
+  )
+}
+
+function BoardPage() {
+  return (
+    <Suspense fallback={<PageSkeleton caption="Loading the leaderboard…" />}>
+      <Leaderboard />
+    </Suspense>
+  )
+}
+
+function StadiumsPage() {
+  return (
+    <Suspense fallback={<PageSkeleton caption="Loading host venues…" />}>
+      <Stadiums />
+    </Suspense>
+  )
+}
+
+function ProfilePage() {
+  const { slug } = useParams<{ slug: string }>()
+  if (!slug) return <PageSkeleton caption="Profile not found" />
+  return (
+    <Suspense fallback={<PageSkeleton caption="Loading profile…" />}>
+      <PublicProfile slug={slug} />
+    </Suspense>
   )
 }
 
