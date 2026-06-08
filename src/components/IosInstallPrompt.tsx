@@ -47,11 +47,22 @@ function isIosSafari() {
 
 function isStandalone() {
   if (typeof window === 'undefined') return false
-  // iOS adds navigator.standalone === true when launched from Home Screen.
-  // PWA-on-Android (and recent iOS too) reports display-mode:standalone.
+  // iOS Safari sets navigator.standalone === true ONLY when launched from
+  // the home-screen icon (not from inside Safari). This is the gold check.
   const nav = navigator as Navigator & { standalone?: boolean }
-  if (nav.standalone) return true
-  if (window.matchMedia?.('(display-mode: standalone)').matches) return true
+  if (nav.standalone === true) return true
+  // Android Chrome PWA + iOS 16.4+ also expose this CSS media query.
+  // Cover all PWA display modes just in case (some browsers use 'fullscreen'
+  // or 'minimal-ui' for installed apps).
+  if (window.matchMedia) {
+    if (window.matchMedia('(display-mode: standalone)').matches) return true
+    if (window.matchMedia('(display-mode: fullscreen)').matches) return true
+    if (window.matchMedia('(display-mode: minimal-ui)').matches) return true
+  }
+  // Some installed PWAs land on /?source=pwa or similar after install — not
+  // a guarantee but a soft signal we can use as a backstop. Disabled by
+  // default since URL params can be spoofed; uncomment if needed.
+  // if (location.search.includes('standalone=1')) return true
   return false
 }
 
@@ -60,15 +71,44 @@ export function IosInstallPrompt() {
   const [openModal, setOpenModal] = useState(false)
 
   useEffect(() => {
-    // Don't even mount on non-iOS or installed apps
+    // Don't even mount on non-iOS browsers
     if (!isIosSafari()) return
-    if (isStandalone()) return
-    try {
-      if (localStorage.getItem(DISMISSED_KEY)) return
-    } catch { /* ignore */ }
-    // Delay the button slightly so it doesn't fight with the page load
-    const t = window.setTimeout(() => setShow(true), 2_500)
-    return () => clearTimeout(t)
+
+    // Decision function — run it on mount, again after a short delay
+    // (iOS sometimes lags exposing navigator.standalone right after launch),
+    // and again on visibilitychange / display-mode change.
+    let cancelled = false
+    function evaluate() {
+      if (cancelled) return
+      if (isStandalone()) {
+        // App is installed and opened from home screen icon → never show
+        setShow(false)
+        return
+      }
+      try {
+        if (localStorage.getItem(DISMISSED_KEY)) return
+      } catch { /* ignore */ }
+      setShow(true)
+    }
+
+    // First check after a small delay so the page renders first
+    const initial = window.setTimeout(evaluate, 2_500)
+    // Re-check when the user returns to the tab — useful if they install
+    // the app and come back to the still-open Safari tab.
+    const onVis = () => { if (!document.hidden) evaluate() }
+    document.addEventListener('visibilitychange', onVis)
+    // Some browsers emit a 'change' event on the display-mode media query
+    // when the app transitions standalone (rare but cheap to listen for).
+    const mq = window.matchMedia?.('(display-mode: standalone)')
+    const onMq = () => evaluate()
+    mq?.addEventListener?.('change', onMq)
+
+    return () => {
+      cancelled = true
+      clearTimeout(initial)
+      document.removeEventListener('visibilitychange', onVis)
+      mq?.removeEventListener?.('change', onMq)
+    }
   }, [])
 
   function dismiss() {
