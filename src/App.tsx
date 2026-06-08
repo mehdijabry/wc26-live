@@ -1,6 +1,6 @@
 import { useEffect, lazy, Suspense, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Routes, Route, useLocation, useParams } from 'react-router-dom'
+import { Routes, Route, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { StickyCountdown } from './components/StickyCountdown'
 import { Hero } from './components/Hero'
@@ -118,6 +118,7 @@ function App() {
       <main>
         <Routes>
           <Route path="/" element={<HomePage />} />
+          <Route path="/wc26" element={<WC26Page />} />
           <Route path="/bracket" element={<BracketPage />} />
           <Route path="/predict" element={<PredictPage />} />
           <Route path="/today" element={<TodayPage />} />
@@ -191,9 +192,79 @@ function HomePage() {
   return (
     <>
       <Hero />
+      {/* Today's matches + live scores — primary content on the landing page
+          now, so visitors see live football immediately instead of having to
+          scroll past the WC stuff. */}
+      <Suspense fallback={<PageSkeleton caption="Loading today's matches…" />}>
+        <DailyMatches />
+      </Suspense>
+      <WC26PromoSection />
+    </>
+  )
+}
+
+function WC26Page() {
+  return (
+    <>
       <Groups />
       <Schedule />
     </>
+  )
+}
+
+/**
+ * Hero card on the home page that funnels visitors into the WC-specific
+ * hub (groups, schedule, bracket predictor). Keeps the WC content
+ * accessible without forcing it on everyone landing on /.
+ */
+function WC26PromoSection() {
+  return (
+    <section className="py-16 sm:py-24 border-t border-slate-200/70 bg-gradient-to-b from-paper to-cream/50">
+      <div className="container max-w-6xl mx-auto px-6">
+        <div className="rounded-3xl bg-marine-950 text-cream p-8 sm:p-12 relative overflow-hidden">
+          {/* Background emblem */}
+          <img
+            src="/wc26-emblem.svg"
+            aria-hidden
+            className="absolute -right-8 -bottom-8 w-64 h-64 opacity-10 pointer-events-none"
+          />
+
+          <div className="relative max-w-2xl">
+            <div className="text-[11px] tracking-[0.22em] uppercase font-mono text-accent-gold mb-3">
+              🏆 The main event
+            </div>
+            <h2 className="font-display font-bold text-3xl sm:text-5xl leading-tight tracking-tight">
+              WC<span className="text-accent-gold">26</span> · <span className="italic text-cream/80">The whole tournament hub</span>
+            </h2>
+            <p className="mt-4 text-cream/80 text-base sm:text-lg max-w-xl leading-relaxed">
+              All 12 groups · the live schedule · countdown to kickoff · the full bracket predictor with PNG export.
+              Everything World Cup 26 in one place.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link
+                to="/wc26"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 transition-colors"
+              >
+                Enter the WC26 Hub →
+              </Link>
+              <Link
+                to="/bracket"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 hover:bg-white/20 text-cream text-sm font-semibold transition-colors"
+              >
+                🏆 Make my bracket
+              </Link>
+              <Link
+                to="/today"
+                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 hover:bg-white/20 text-cream text-sm font-semibold transition-colors"
+              >
+                ⚽ Today&apos;s matches
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
   )
 }
 
