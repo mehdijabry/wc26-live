@@ -651,26 +651,19 @@ function BracketPoster() {
 
   return (
     <div className="bg-[#0b0d12] text-white">
-      {/* HEADER */}
-      <div className="px-10 pt-8 pb-6 flex items-center justify-between border-b border-white/10">
-        <div>
-          <div className="text-[11px] tracking-[0.22em] uppercase text-accent-gold font-mono">
-            {profile?.alias ?? 'fan'}&apos;s prediction
+      {/* HEADER — centred fan name + logo */}
+      <div className="px-10 pt-8 pb-6 flex flex-col items-center gap-3 border-b border-white/10">
+        <img src="/wc26-emblem.svg" alt="" className="w-20 h-20" />
+        <div className="text-center">
+          <div className="font-display font-bold text-2xl leading-none tracking-tight">
+            WC<span className="text-accent-gold">26</span> Live
           </div>
-          <div className="font-display font-bold tracking-tight text-[44px] leading-none mt-2">
-            COUPE DU MONDE <span className="text-accent-gold">2026</span> — LE CALENDRIER
+          <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-white/60 mt-1.5">
+            Pressing <span className="text-accent-red font-semibold">90&apos;</span>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <div className="text-right">
-            <div className="font-display font-bold text-lg leading-none">
-              WC<span className="text-accent-gold">26</span> Live
-            </div>
-            <div className="text-[10px] tracking-[0.18em] uppercase font-mono text-white/60 mt-1.5">
-              Pressing <span className="text-accent-red font-semibold">90&apos;</span>
-            </div>
-          </div>
-          <img src="/wc26-emblem.svg" alt="" className="w-16 h-16" />
+        <div className="mt-1 text-[11px] tracking-[0.22em] uppercase text-accent-gold font-mono">
+          {profile?.alias ?? 'fan'}&apos;s prediction
         </div>
       </div>
 
