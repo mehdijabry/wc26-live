@@ -14,7 +14,7 @@ export function Stadiums() {
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="16 host cities"
-          title="The Venues"
+          title="WC26's Stadiums"
           sub="From Estadio Azteca (1970, 1986, 2026 — a three-peat) to MetLife in New Jersey hosting the final. 16 stadiums across three nations."
         />
 

@@ -24,7 +24,7 @@ export function Players() {
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
           eyebrow="every starter"
-          title="Player Lab"
+          title="WC26 Squads"
           sub="Each player, club, minutes, goals, season form — plus a WC26 Live Score (0-100) that weighs consistency, position-weighted output, recent form, and availability. Updates daily."
         />
 

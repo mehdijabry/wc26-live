@@ -34,7 +34,8 @@ const tabs: Tab[] = [
     ),
   },
   {
-    to: '/bracket', label: 'Bracket',
+    // Merged Bracket + Predict into the single 'WC26 Prediction' route.
+    to: '/predictions', label: 'Predict',
     icon: (a) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path d="M3 5h6v4h6v6h6M3 11h6M9 17h6" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round" />
@@ -42,7 +43,7 @@ const tabs: Tab[] = [
     ),
   },
   {
-    to: '/predict', label: 'Predict',
+    to: '/wc26', label: 'WC26',
     icon: (a) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
         <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinejoin="round" />

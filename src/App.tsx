@@ -119,8 +119,12 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/wc26" element={<WC26Page />} />
-          <Route path="/bracket" element={<BracketPage />} />
-          <Route path="/predict" element={<PredictPage />} />
+          {/* WC26 Prediction = full bracket wizard + match-by-match
+              predictions stacked in one page. Old /bracket and /predict
+              URLs redirect here so any shared link still works. */}
+          <Route path="/predictions" element={<PredictionsPage />} />
+          <Route path="/bracket" element={<PredictionsPage />} />
+          <Route path="/predict" element={<PredictionsPage />} />
           <Route path="/today" element={<TodayPage />} />
           <Route path="/squads" element={<SquadsPage />} />
           <Route path="/board" element={<BoardPage />} />
@@ -249,10 +253,10 @@ function WC26PromoSection() {
                 Enter the WC26 Hub →
               </Link>
               <Link
-                to="/bracket"
+                to="/predictions"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 hover:bg-white/20 text-cream text-sm font-semibold transition-colors"
               >
-                🏆 Make my bracket
+                🏆 Make my prediction
               </Link>
               <Link
                 to="/today"
@@ -268,19 +272,22 @@ function WC26PromoSection() {
   )
 }
 
-function BracketPage() {
+/**
+ * WC26 Prediction — merged 'Predict' (match-by-match scoring) and
+ * 'Bracket' (full-tournament wizard) into one page, per user request.
+ * Bracket goes first because it's the headline feature; the individual
+ * match predictions live below for fans who want to score every game.
+ */
+function PredictionsPage() {
   return (
-    <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
-      <BracketWizard />
-    </Suspense>
-  )
-}
-
-function PredictPage() {
-  return (
-    <Suspense fallback={<PageSkeleton caption="Loading the predictions board…" />}>
-      <Predictions />
-    </Suspense>
+    <>
+      <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
+        <BracketWizard />
+      </Suspense>
+      <Suspense fallback={<PageSkeleton caption="Loading match predictions…" />}>
+        <Predictions />
+      </Suspense>
+    </>
   )
 }
 

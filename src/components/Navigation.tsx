@@ -8,11 +8,11 @@ import { UserMenu } from './UserMenu'
 const links: Array<{ label: string; to: string }> = [
   { label: 'Home', to: '/' },
   { label: 'WC26', to: '/wc26' },
-  { label: 'My Bracket', to: '/bracket' },
-  { label: 'Predict', to: '/predict' },
+  { label: 'WC26 Prediction', to: '/predictions' },
   { label: 'Today', to: '/today' },
-  { label: 'Squads', to: '/squads' },
+  { label: 'WC26 Squads', to: '/squads' },
   { label: 'Board', to: '/board' },
+  { label: "WC26's Stadiums", to: '/stadiums' },
 ]
 
 export function Navigation() {
