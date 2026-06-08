@@ -74,7 +74,15 @@ export function Leaderboard() {
 
         {supabase && !loading && sorted.length === 0 && (
           <div className="glass rounded-2xl p-6 text-center text-slate-500">
-            No bracketers yet. <span className="text-accent-gold">Sign in</span> to be first on the board.
+            {user ? (
+              <>
+                No bracketers yet. <a href="/bracket" className="text-accent-gold underline">Publish your bracket</a> to be first on the board.
+              </>
+            ) : (
+              <>
+                No bracketers yet. <span className="text-accent-gold">Sign in</span> to be first on the board.
+              </>
+            )}
           </div>
         )}
 

@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { openingMatchUTC } from '../data/matches'
 import { timeUntil, userTimezone, fmtDate } from '../lib/utils'
 import { DotLottieReact } from '@lottiefiles/dotlottie-react'
@@ -128,12 +129,12 @@ export function Hero() {
           transition={{ duration: 0.8, delay: 0.4 }}
           className="mt-8 flex flex-wrap gap-3"
         >
-          <a
-            href="#predict"
+          <Link
+            to="/bracket"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 transition-colors"
           >
             Start your bracket →
-          </a>
+          </Link>
           <a
             href="#groups"
             className="inline-flex items-center gap-2 px-6 py-3 rounded-full glass glass-hover text-sm font-semibold"
