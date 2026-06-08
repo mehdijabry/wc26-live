@@ -1,12 +1,12 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { teamByCode } from '../data/teams'
-import { koMatchIds } from '../store/bracket'
-import { cn } from '../lib/utils'
+import { BracketPoster, type BracketPosterData } from './BracketPoster'
+import type { GroupLetter } from '../store/bracket'
 
 type PublicBracket = {
-  id: number
+  user_id: string
   alias: string
   country: string | null
   tier: string
@@ -20,6 +20,14 @@ type PublicBracket = {
   updated_at: string
 }
 
+/**
+ * Public page for a published bracket. Renders the same FootMercato-style
+ * poster as the PNG export so anyone landing on /u/{slug} sees exactly
+ * what the owner downloaded / shared. Was an ad-hoc layout before that
+ * looked nothing like the export — user complaint:
+ *   « c'est bon mais ca affiche l'ancien affichage pas comme l'image
+ *     téléchargée ».
+ */
 export function PublicProfile({ slug }: { slug: string }) {
   const [data, setData] = useState<PublicBracket | null>(null)
   const [loading, setLoading] = useState(true)
@@ -42,136 +50,85 @@ export function PublicProfile({ slug }: { slug: string }) {
     })()
   }, [slug])
 
-  function tx(code: string | null | undefined) {
-    if (!code) return { flag: '⚪️', name: 'TBD' }
-    const t = teamByCode(code)
-    return t ? { flag: t.flag, name: t.name } : { flag: '⚪️', name: code }
+  if (loading) {
+    return (
+      <div className="min-h-svh flex items-center justify-center text-slate-500">
+        Loading bracket…
+      </div>
+    )
   }
 
-  if (loading) {
-    return <div className="min-h-svh flex items-center justify-center text-slate-500">Loading bracket…</div>
-  }
   if (notFound) {
     return (
       <div className="min-h-svh flex flex-col items-center justify-center text-center px-6">
         <div className="text-5xl mb-3">🤷</div>
         <div className="font-display text-2xl mb-2">No bracket here</div>
         <div className="text-sm text-slate-500">
-          The user <code className="text-accent-gold">{slug}</code> hasn't published their bracket yet.
+          The user <code className="text-accent-gold">{slug}</code> hasn&apos;t published their bracket yet.
         </div>
-        <a href="/" className="mt-6 px-5 py-2 rounded-full bg-accent-gold text-ink-900 text-sm font-semibold">← Back to WC26 Live</a>
+        <Link to="/" className="mt-6 px-5 py-2 rounded-full bg-accent-gold text-ink-900 text-sm font-semibold">
+          ← Back to WC26 Live
+        </Link>
       </div>
     )
   }
+
   if (!data) return null
 
-  const GROUPS = ['A','B','C','D','E','F','G','H','I','J','K','L'] as const
+  const posterData: BracketPosterData = {
+    alias: data.alias,
+    groupStandings: data.group_standings as Partial<Record<GroupLetter, string[]>>,
+    thirdPlaceAdvancing: data.third_place_advancing,
+    koWinners: data.ko_winners,
+    thirdPlaceWinner: data.third_place_winner,
+    finalWinner: data.final_winner,
+  }
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="min-h-svh pb-12"
-    >
-      <header className="border-b border-slate-200/70 py-6">
-        <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2">
-            <img src="/wc26-emblem.svg" alt="" className="w-8 h-8" />
-            <span className="font-display font-bold tracking-tight">WC<span className="text-accent-gold">26</span> Live</span>
-          </a>
-          <a href="/" className="text-sm text-slate-600 hover:text-slate-900">← Hub</a>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-svh pb-12">
+      {/* Top bar with hub link + share copy */}
+      <header className="border-b border-slate-200/70 py-4">
+        <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between flex-wrap gap-3">
+          <Link to="/" className="flex items-center gap-2">
+            <img src="/wc26-emblem.svg" alt="" className="w-7 h-7" />
+            <span className="font-display font-bold tracking-tight">
+              WC<span className="text-accent-gold">26</span> Live
+            </span>
+          </Link>
+          <div className="flex items-center gap-3 text-xs">
+            <span className="font-mono text-slate-500">
+              {data.tier} · {data.total_points ?? 0} pts · updated {new Date(data.updated_at).toLocaleDateString()}
+            </span>
+            <button
+              onClick={() => {
+                void navigator.clipboard?.writeText(window.location.href)
+              }}
+              className="px-3 py-1.5 rounded-full bg-accent-gold/15 hover:bg-accent-gold/25 text-accent-gold font-semibold transition-colors"
+              title="Copy this bracket URL"
+            >
+              🔗 Copy link
+            </button>
+            <Link to="/bracket" className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
+              Make your own →
+            </Link>
+          </div>
         </div>
       </header>
 
-      <main className="container max-w-6xl mx-auto px-6 py-12">
-        <div className="text-xs uppercase tracking-widest text-accent-gold font-mono">A bracket by</div>
-        <h1 className="font-display font-bold text-4xl sm:text-5xl mt-1">
-          {data.alias}
-          {data.country && <span className="text-slate-500 text-2xl ml-3">· {data.country}</span>}
-        </h1>
-        <div className="mt-2 text-xs font-mono text-slate-500 flex items-center gap-3">
-          <span className="text-accent-gold">{data.tier} tier</span>
-          <span>·</span>
-          <span>{data.total_points ?? 0} pts</span>
-          <span>·</span>
-          <span>updated {new Date(data.updated_at).toLocaleDateString()}</span>
-        </div>
-
-        {/* Final winner */}
-        <div className="mt-8 grid grid-cols-2 gap-3">
-          <div className="bg-gradient-to-br from-accent-gold/25 to-yellow-700/10 rounded-2xl p-5 text-center ring-1 ring-accent-gold/30">
-            <div className="text-[10px] uppercase tracking-widest text-accent-gold font-mono">Their champion</div>
-            <div className="font-display font-bold text-3xl mt-2">
-              {tx(data.final_winner).flag} {tx(data.final_winner).name}
-            </div>
-          </div>
-          <div className="bg-gradient-to-br from-orange-700/25 to-orange-900/10 rounded-2xl p-5 text-center">
-            <div className="text-[10px] uppercase tracking-widest text-orange-300 font-mono">3rd place</div>
-            <div className="font-display font-bold text-2xl mt-2">
-              {tx(data.third_place_winner).flag} {tx(data.third_place_winner).name}
-            </div>
-          </div>
-        </div>
-
-        {/* Group standings */}
-        <h2 className="mt-12 mb-4 font-display font-bold text-2xl">Group standings</h2>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-          {GROUPS.map((g) => {
-            const s = (data.group_standings[g] ?? []) as string[]
-            return (
-              <div key={g} className="glass rounded-2xl p-4">
-                <div className="font-display font-bold text-lg mb-2">Group <span className="text-accent-gold">{g}</span></div>
-                {s.slice(0, 4).map((code, i) => {
-                  const t = tx(code)
-                  const adv = i < 2 || (i === 2 && (data.third_place_advancing as string[]).includes(code))
-                  return (
-                    <div key={code + i} className={cn('flex items-center gap-2 px-2 py-1 text-sm', adv ? '' : 'opacity-40')}>
-                      <span className="text-xs text-slate-500 w-4">{i + 1}</span>
-                      <span>{t.flag}</span>
-                      <span className="truncate flex-1">{t.name}</span>
-                      {adv && i === 2 && <span className="text-accent-green text-xs">★</span>}
-                    </div>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Knockouts */}
-        <h2 className="mt-12 mb-4 font-display font-bold text-2xl">Knockout bracket</h2>
+      {/* The poster itself — identical to the PNG download */}
+      <div className="container mx-auto px-4 py-8">
         <div className="overflow-x-auto">
-          <div className="grid grid-cols-5 gap-3 min-w-[800px]">
-            {[
-              { label: 'R32', ids: koMatchIds('R32') },
-              { label: 'R16', ids: koMatchIds('R16') },
-              { label: 'QF',  ids: koMatchIds('QF') },
-              { label: 'SF',  ids: koMatchIds('SF') },
-              { label: 'Final', ids: ['FINAL-1'] },
-            ].map((col) => (
-              <div key={col.label}>
-                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">{col.label}</div>
-                <div className="space-y-1.5">
-                  {col.ids.map((id) => {
-                    const code = data.ko_winners[id]
-                    const t = tx(code)
-                    return (
-                      <div key={id} className="glass rounded px-2 py-1.5 text-xs flex items-center gap-1.5">
-                        <span>{t.flag}</span>
-                        <span className="truncate">{t.name}</span>
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            ))}
+          <div className="min-w-[1400px] lg:min-w-[1800px] bg-[#0b0d12] rounded-2xl overflow-hidden shadow-2xl">
+            <BracketPoster data={posterData} />
           </div>
         </div>
-
-        <div className="mt-12 text-center text-xs font-mono text-slate-500">
-          <a href="/" className="text-accent-gold hover:underline">→ Make your own prediction at wc26.mehdijabry.dev</a>
+        <div className="mt-8 text-center text-[11px] font-mono text-slate-500">
+          Scroll horizontally to see the full bracket. Want yours on this board?{' '}
+          <Link to="/bracket" className="text-accent-gold hover:underline">
+            → make a prediction
+          </Link>
         </div>
-      </main>
+      </div>
     </motion.div>
   )
 }
