@@ -80,8 +80,10 @@ export function IosInstallPrompt() {
 
   return createPortal(
     <>
-      {/* Floating button — only on iOS Safari, sits above the mobile
-          bottom nav (bottom: 88px keeps it clear of BottomNav). */}
+      {/* Floating pill — single compact element so it fits on iPhone
+          screen width (390px+ but with safe-area padding eating the
+          edges). Dismiss × is inside the pill, not a separate button,
+          which also stops the × from being clipped by the viewport. */}
       <AnimatePresence>
         {show && !openModal && (
           <motion.div
@@ -90,31 +92,37 @@ export function IosInstallPrompt() {
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 80, opacity: 0 }}
             transition={{ type: 'spring', damping: 22, stiffness: 220 }}
-            className="fixed left-1/2 -translate-x-1/2 z-[80] flex items-center gap-1.5"
+            className="fixed inset-x-4 z-[80] flex justify-center"
             style={{
-              // BottomNav reserves ~64-80px on iPhone, plus safe-area inset.
-              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 88px)',
+              bottom: 'calc(env(safe-area-inset-bottom, 0px) + 84px)',
             }}
           >
-            <button
-              onClick={() => setOpenModal(true)}
-              className="flex items-center gap-2 pl-4 pr-5 py-3 rounded-full bg-marine-950 text-cream shadow-2xl shadow-marine-950/40 active:scale-95 transition-transform"
+            <div
+              className="flex items-center bg-marine-950 text-cream rounded-full overflow-hidden max-w-full"
               style={{ boxShadow: '0 12px 32px -8px rgba(10,37,64,0.45)' }}
             >
-              <img src="/wc26-emblem.svg" alt="" className="w-6 h-6" />
-              <div className="flex flex-col text-left leading-tight">
-                <span className="text-[10px] uppercase tracking-[0.2em] text-accent-gold font-mono">Install</span>
-                <span className="text-sm font-semibold whitespace-nowrap">Add WC26 to Home Screen</span>
-              </div>
-              <span aria-hidden className="text-cream/70 text-lg ml-1">→</span>
-            </button>
-            <button
-              onClick={dismiss}
-              aria-label="Dismiss"
-              className="w-9 h-9 rounded-full bg-slate-900/80 text-cream/70 shadow-xl flex items-center justify-center"
-            >
-              ×
-            </button>
+              <button
+                onClick={() => setOpenModal(true)}
+                className="flex items-center gap-2.5 pl-3.5 pr-4 py-2.5 active:bg-marine-900 transition-colors min-w-0"
+              >
+                <img src="/wc26-emblem.svg" alt="" className="w-7 h-7 shrink-0" />
+                <div className="flex flex-col text-left leading-tight min-w-0">
+                  <span className="text-[9px] uppercase tracking-[0.2em] text-accent-gold font-mono">
+                    Install · 1 step
+                  </span>
+                  <span className="text-[13px] font-semibold whitespace-nowrap">
+                    Add to Home Screen
+                  </span>
+                </div>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); dismiss() }}
+                aria-label="Dismiss"
+                className="self-stretch px-3 text-cream/60 hover:text-cream border-l border-white/10 flex items-center justify-center text-lg leading-none active:bg-marine-900 transition-colors"
+              >
+                ×
+              </button>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
