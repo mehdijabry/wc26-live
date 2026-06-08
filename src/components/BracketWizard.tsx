@@ -168,7 +168,30 @@ function GroupRanker({
   lookup: (code: string | undefined | null) => Team | undefined
   onChange: (o: string[]) => void
 }) {
-  const ranked = value.length === 4 ? value : codes // fallback to ESPN order if no pick yet
+  // GUARD: a previously-saved ranking is only valid if its team set is
+  // EXACTLY the live group's team set. Otherwise we fall back to the
+  // live ESPN order. This used to be `value.length === 4 ? value : codes`
+  // which silently kept stale picks across data refreshes — e.g. a user
+  // who ranked Group A back when our derivation incorrectly placed
+  // Morocco there would keep seeing Morocco in Group A even after the
+  // groups were fixed. The validity check below uses set equality, so
+  // a single mismatched team forces a reset.
+  const liveSet = new Set(codes)
+  const savedSet = new Set(value)
+  const sameTeams =
+    value.length === 4 &&
+    codes.length === 4 &&
+    value.every((c) => liveSet.has(c)) &&
+    codes.every((c) => savedSet.has(c))
+  const ranked = sameTeams ? value : codes
+
+  // If we had to drop a stale ranking, persist the reset so the rest of
+  // the wizard (best-3rd / R32 / etc.) doesn't see ghost codes.
+  if (!sameTeams && value.length === 4) {
+    // Defer to avoid setting state during render
+    queueMicrotask(() => onChange([]))
+  }
+
   const tone: Record<number, string> = { 0: 'border-accent-gold/40', 1: 'border-accent-green/40', 2: 'border-yellow-700/30', 3: 'border-red-900/30' }
   const tag: Record<number, string> = { 0: '1st', 1: '2nd', 2: '3rd', 3: '4th' }
 
