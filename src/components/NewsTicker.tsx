@@ -142,13 +142,12 @@ export function NewsTicker() {
 
         {/* Next-up vertical column */}
         <div className="flex flex-col gap-3">
-          {upcoming.map((a, i) => (
+          {upcoming.map((a) => (
             <a
               key={a.id}
               href={a.href ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
-              onMouseEnter={() => setIdx((idx + i + 1) % articles.length)}
               className="group bg-paper/70 hover:bg-paper border border-slate-200/70 rounded-xl p-3 transition-colors block"
             >
               <div className="flex gap-3 items-start">
