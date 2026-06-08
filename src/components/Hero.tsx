@@ -24,59 +24,46 @@ export function Hero() {
   const isLiveNow = liveOrNext?.status?.type?.state === 'in'
 
   return (
-    <section id="hero" className="relative overflow-hidden pt-24 pb-12 sm:pt-32 sm:pb-20">
-      {/* Animated background blobs */}
-      <div className="pointer-events-none absolute inset-0 -z-10">
-        <motion.div
-          aria-hidden
-          className="absolute -top-32 -right-32 w-[600px] h-[600px] rounded-full bg-accent-gold/20 blur-[120px]"
-          animate={{ scale: [1, 1.2, 1], opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 8, repeat: Infinity }}
-        />
-        <motion.div
-          aria-hidden
-          className="absolute top-40 -left-20 w-[400px] h-[400px] rounded-full bg-accent-green/15 blur-[100px]"
-          animate={{ scale: [1, 1.3, 1], opacity: [0.2, 0.4, 0.2] }}
-          transition={{ duration: 10, repeat: Infinity, delay: 1 }}
-        />
-      </div>
-
+    <section id="hero" className="relative overflow-hidden pt-28 pb-10 sm:pt-32 sm:pb-14 border-b border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
-        {/* Pre-title */}
+        {/* Editorial top strip — kicker line à la footmercato */}
         <motion.div
-          initial={{ y: 20, opacity: 0 }}
-          animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.6 }}
-          className="flex items-center gap-2 mb-6"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5 }}
+          className="flex items-center justify-between text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-4"
         >
-          <span className="pill">
-            <span className="w-2 h-2 rounded-full bg-accent-red animate-pulse" />
-            48 nations · 16 cities · 104 matches
+          <div className="flex items-center gap-3">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-accent-red animate-pulse" />
+              FIFA · 48 nations · 16 cities
+            </span>
+            <span className="hidden sm:inline text-slate-400">·</span>
+            <span className="hidden sm:inline">USA · MEX · CAN</span>
+          </div>
+          <span className="hidden md:inline text-slate-400">
+            June 11 → July 19, 2026
           </span>
-          <span className="pill">🇺🇸 🇲🇽 🇨🇦 hosts</span>
         </motion.div>
 
-        {/* Title */}
+        {/* Title — single line, refined editorial serif */}
         <motion.h1
-          initial={{ y: 30, opacity: 0 }}
+          initial={{ y: 18, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.1 }}
-          className="font-display font-bold tracking-tighter text-5xl sm:text-7xl md:text-8xl leading-[0.9] mb-6"
+          transition={{ duration: 0.6 }}
+          className="font-display font-bold tracking-tight text-ink-900 text-[44px] leading-[1.02] sm:text-6xl md:text-7xl mb-4"
         >
-          The <span className="gradient-text">World Cup 2026</span>
-          <br />
-          Live
+          World Cup <span className="text-accent-gold">2026</span> <span className="text-slate-500 font-normal italic">— Live</span>
         </motion.h1>
 
         <motion.p
-          initial={{ y: 30, opacity: 0 }}
+          initial={{ y: 18, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
-          transition={{ duration: 0.8, delay: 0.2 }}
-          className="text-slate-600 text-lg sm:text-xl max-w-2xl mb-10 leading-relaxed"
+          transition={{ duration: 0.6, delay: 0.1 }}
+          className="text-slate-600 text-base sm:text-lg max-w-2xl mb-10 leading-relaxed"
         >
           Every match, every group, every stadium — synced to your timezone, your
-          predictions, your watchlist. From kickoff in Mexico City to the final at
-          MetLife Stadium.
+          predictions, your watchlist.
         </motion.p>
 
         {/* Countdown */}

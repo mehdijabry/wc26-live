@@ -26,22 +26,22 @@ export function StickyCountdown() {
 
   return (
     <motion.div
-      initial={{ y: -40, opacity: 0 }}
+      initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      transition={{ duration: 0.6, delay: 0.3 }}
-      className="hidden md:block fixed top-[60px] inset-x-0 z-40 pointer-events-none"
+      transition={{ duration: 0.5, delay: 0.4 }}
+      className="hidden md:block fixed top-[84px] inset-x-0 z-40 pointer-events-none"
     >
       <div className="container max-w-6xl mx-auto px-6 flex justify-center">
         <div
           className={
-            'pointer-events-auto inline-flex items-center gap-3 sm:gap-4 px-3 sm:px-5 py-2 rounded-full text-xs font-mono backdrop-blur-xl border ' +
+            'pointer-events-auto inline-flex items-center gap-3 px-4 py-1.5 rounded-full text-[10px] font-mono backdrop-blur-xl border tabular-nums ' +
             (hot
-              ? 'bg-gradient-to-r from-red-50 via-yellow-50 to-red-50 border-yellow-300/50 animate-pulse-slow'
-              : 'bg-white border-slate-200 shadow-sm')
+              ? 'bg-red-50/90 border-red-200/60'
+              : 'bg-white/90 border-slate-200/80 shadow-[0_2px_8px_rgba(0,0,0,0.04)]')
           }
         >
-          <span className="text-slate-500 uppercase tracking-widest hidden sm:inline">
-            {hot ? 'KICKOFF IN' : 'OPENING IN'}
+          <span className="text-slate-500 uppercase tracking-[0.18em]">
+            {hot ? 'Kickoff in' : 'Opens in'}
           </span>
           <Digit label="d" value={t.d} />
           <Sep />
@@ -61,19 +61,17 @@ function Digit({ value, label, hot }: { value: number; label: string; hot?: bool
     <span className="inline-flex items-baseline gap-0.5">
       <span
         className={
-          'tabular-nums font-semibold ' +
-          (hot
-            ? 'text-yellow-700 text-sm sm:text-base'
-            : 'text-slate-900 text-sm sm:text-base')
+          'tabular-nums font-semibold text-xs ' +
+          (hot ? 'text-red-700' : 'text-slate-900')
         }
       >
         {String(value).padStart(2, '0')}
       </span>
-      <span className="text-[9px] text-slate-500 uppercase">{label}</span>
+      <span className="text-[9px] text-slate-400 uppercase">{label}</span>
     </span>
   )
 }
 
 function Sep() {
-  return <span className="text-slate-600">:</span>
+  return <span className="text-slate-300">·</span>
 }
