@@ -11,9 +11,26 @@ const TIER_COLORS: Record<string, string> = {
 }
 
 export function UserMenu() {
-  const { user, profile, signOut, loading } = useAuth()
+  const { user, profile, signOut, loading, updateAlias } = useAuth()
   const [modalOpen, setModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function saveAlias() {
+    const v = draft.trim()
+    if (!v) { setError('Choose a name'); return }
+    if (v.length < 2 || v.length > 20) { setError('2–20 characters'); return }
+    if (!/^[a-zA-Z0-9_-]+$/.test(v)) { setError('Letters, numbers, _ or - only'); return }
+    setBusy(true)
+    setError(null)
+    const r = await updateAlias(v)
+    setBusy(false)
+    if (r.error) { setError(r.error); return }
+    setEditing(false)
+  }
 
   if (loading) {
     return <div className="w-24 h-8 rounded-full bg-slate-100 animate-pulse" />
@@ -54,7 +71,55 @@ export function UserMenu() {
             <div className="text-xs uppercase tracking-widest text-slate-500 font-mono mb-1">
               Signed in as
             </div>
-            <div className="font-display font-bold text-lg truncate">{alias}</div>
+            {editing ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void saveAlias()
+                      if (e.key === 'Escape') { setEditing(false); setError(null) }
+                    }}
+                    placeholder="your_alias"
+                    className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-300 text-sm font-display font-bold focus:outline-none focus:ring-2 focus:ring-accent-gold/40"
+                    maxLength={20}
+                  />
+                  <button
+                    onClick={saveAlias}
+                    disabled={busy}
+                    className="px-2.5 py-1 rounded bg-accent-gold text-ink-900 text-xs font-semibold disabled:opacity-40"
+                    title="Save"
+                  >
+                    ✓
+                  </button>
+                  <button
+                    onClick={() => { setEditing(false); setError(null) }}
+                    className="px-2 py-1 rounded text-slate-500 hover:bg-slate-100 text-xs"
+                    title="Cancel"
+                  >
+                    ×
+                  </button>
+                </div>
+                {error && <div className="text-[10px] text-red-500 font-mono">{error}</div>}
+                <div className="text-[10px] text-slate-400 font-mono">
+                  2-20 chars · letters, numbers, _ or -
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <div className="font-display font-bold text-lg truncate flex-1">{alias}</div>
+                <button
+                  onClick={() => { setDraft(alias); setEditing(true); setError(null) }}
+                  aria-label="Edit alias"
+                  className="shrink-0 w-6 h-6 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center text-xs transition-colors"
+                  title="Edit your alias"
+                >
+                  ✏️
+                </button>
+              </div>
+            )}
             <div className={`text-xs font-mono mt-0.5 ${TIER_COLORS[tier]}`}>
               {tier} tier
             </div>
