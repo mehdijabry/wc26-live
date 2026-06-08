@@ -87,16 +87,16 @@ export function PublicProfile({ slug }: { slug: string }) {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-svh pb-12">
-      {/* Top bar with hub link + share copy */}
-      <header className="border-b border-slate-200/70 py-4">
+      {/* Sub-bar — page-specific actions only. The WC26 Live brand link
+          used to live here too but it duplicated the global Navigation
+          and on mobile the two stacked on top of each other (notch +
+          PWA standalone made it worse). Brand stays in <Navigation />. */}
+      <section className="pt-24 sm:pt-28 pb-3 border-b border-slate-200/70">
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between flex-wrap gap-3">
-          <Link to="/" className="flex items-center gap-2">
-            <img src="/wc26-emblem.svg" alt="" className="w-7 h-7" />
-            <span className="font-display font-bold tracking-tight">
-              WC<span className="text-accent-gold">26</span> Live
-            </span>
-          </Link>
-          <div className="flex items-center gap-3 text-xs">
+          <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-slate-500">
+            Public bracket · <span className="text-accent-gold">{data.alias}</span>
+          </div>
+          <div className="flex items-center gap-2 text-xs flex-wrap">
             <span className="font-mono text-slate-500">
               {data.tier} · {data.total_points ?? 0} pts · updated {new Date(data.updated_at).toLocaleDateString()}
             </span>
@@ -109,12 +109,12 @@ export function PublicProfile({ slug }: { slug: string }) {
             >
               🔗 Copy link
             </button>
-            <Link to="/bracket" className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
+            <Link to="/predictions" className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors">
               Make your own →
             </Link>
           </div>
         </div>
-      </header>
+      </section>
 
       {/* The poster itself — identical to the PNG download */}
       <div className="container mx-auto px-4 py-8">
