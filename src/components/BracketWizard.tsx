@@ -526,7 +526,7 @@ function StepExport() {
     setBusy('png')
     setMsg({})
     try {
-      const png = await toPng(ref.current, { backgroundColor: '#f6f3ee', pixelRatio: 2 })
+      const png = await toPng(ref.current, { backgroundColor: '#0b0d12', pixelRatio: 2 })
       const link = document.createElement('a')
       link.download = `wc26-bracket-${profile?.alias ?? 'me'}.png`
       link.href = png
@@ -603,7 +603,7 @@ function StepExport() {
       )}
 
       <div className="overflow-x-auto">
-        <div ref={ref} className="min-w-[1100px] p-8 bg-gradient-to-br from-paper via-cream to-paper rounded-2xl border border-slate-200">
+        <div ref={ref} className="min-w-[1400px] bg-[#0b0d12] rounded-2xl overflow-hidden">
           <BracketPoster />
         </div>
       </div>
@@ -612,7 +612,17 @@ function StepExport() {
 }
 
 /* -------------------------------------------------------------------------- */
-/* BracketPoster — the rendered, exportable bracket image                     */
+/* BracketPoster — FootMercato-style exportable bracket image                 */
+/*                                                                            */
+/* Three zones, stacked top→bottom on a near-black background:                */
+/*   1. Header bar — title + WC26 emblem (right-aligned).                     */
+/*   2. Group strip — 12 columns, each = one group with its 4 ranked teams.   */
+/*   3. KO bracket — 8 columns: R32-L | R16-L | QF-L | SF-L | FINAL | SF-R |  */
+/*      QF-R | R16-R | R32-R, with the FIFA emblem behind the centre column. */
+/*                                                                            */
+/* Match rows reuse the same MatchRow component on both sides so the visual   */
+/* density matches FootMercato. The bracket "lines" are pure CSS borders so   */
+/* html-to-image renders cleanly without canvas painting hacks.               */
 /* -------------------------------------------------------------------------- */
 
 function BracketPoster() {
@@ -626,99 +636,229 @@ function BracketPoster() {
     return t ? { logo: t.logo, name: t.name, code: t.code } : { name: code }
   }
 
+  // Left/right halves of the bracket — derived from R16_TEMPLATE.sources so
+  // they stay in sync if FIFA ever shuffles. Left half feeds SF-1 (QF-1+QF-2),
+  // right half feeds SF-2 (QF-3+QF-4).
+  const leftR32  = ['R32-2','R32-5','R32-1','R32-3','R32-11','R32-12','R32-9','R32-10']
+  const rightR32 = ['R32-4','R32-6','R32-7','R32-8','R32-14','R32-16','R32-13','R32-15']
+  const leftR16  = ['R16-1','R16-2','R16-5','R16-6']
+  const rightR16 = ['R16-3','R16-4','R16-7','R16-8']
+  const leftQF   = ['QF-1','QF-2']
+  const rightQF  = ['QF-3','QF-4']
+
+  const champion = tx(finalWinner ?? undefined)
+  const bronze   = tx(thirdPlaceWinner ?? undefined)
+
   return (
-    <div className="text-slate-900">
-      <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-200">
+    <div className="bg-[#0b0d12] text-white">
+      {/* HEADER */}
+      <div className="px-10 pt-8 pb-6 flex items-center justify-between border-b border-white/10">
         <div>
-          <div className="text-xs uppercase tracking-widest text-accent-gold font-mono">{profile?.alias ?? 'fan'}'s prediction</div>
-          <div className="font-display font-bold text-3xl">FIFA World Cup 26 — Full Bracket</div>
+          <div className="text-[11px] tracking-[0.22em] uppercase text-accent-gold font-mono">
+            {profile?.alias ?? 'fan'}&apos;s prediction
+          </div>
+          <div className="font-display font-bold tracking-tight text-[44px] leading-none mt-2">
+            COUPE DU MONDE <span className="text-accent-gold">2026</span> — LE CALENDRIER
+          </div>
         </div>
-        <div className="text-[10px] font-mono text-slate-500 text-right">
-          WC26 Live<br />by mehdijabry.dev
-        </div>
-      </div>
-
-      {/* Group standings */}
-      <div className="grid grid-cols-3 md:grid-cols-4 gap-2 mb-6">
-        {GROUPS.map((g) => {
-          const s = groupStandings[g] ?? []
-          return (
-            <div key={g} className="bg-white border border-slate-200/70 rounded-lg p-2.5 text-[11px]">
-              <div className="font-display font-bold text-accent-gold mb-1">Group {g}</div>
-              {s.slice(0, 4).map((code, i) => {
-                const t = lookup(code)
-                if (!t) return null
-                const adv = i < 2 || (i === 2 && thirdPlaceAdvancing.includes(code))
-                return (
-                  <div key={code} className={cn('flex items-center gap-1.5 truncate', adv ? '' : 'opacity-40')}>
-                    <span>{i === 0 ? '1' : i === 1 ? '2' : i === 2 ? '3' : '4'}</span>
-                    <Flag team={t} size="sm" />
-                    <span className="truncate">{t.name}</span>
-                    {adv && i === 2 && <span className="text-accent-green">★</span>}
-                  </div>
-                )
-              })}
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="font-display font-bold text-lg leading-none">
+              WC<span className="text-accent-gold">26</span> Live
             </div>
-          )
-        })}
-      </div>
-
-      {/* Knockout columns */}
-      <div className="grid grid-cols-5 gap-3">
-        {[
-          { stage: 'R32', label: 'Round of 32', ids: koMatchIds('R32') },
-          { stage: 'R16', label: 'Round of 16', ids: koMatchIds('R16') },
-          { stage: 'QF',  label: 'Quarter-finals', ids: koMatchIds('QF') },
-          { stage: 'SF',  label: 'Semi-finals', ids: koMatchIds('SF') },
-          { stage: 'F',   label: 'Final', ids: ['FINAL-1'] },
-        ].map((col) => (
-          <div key={col.label}>
-            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">{col.label}</div>
-            <div className="space-y-1.5">
-              {col.ids.map((id) => {
-                const code = koWinners[id]
-                const t = tx(code)
-                return (
-                  <div key={id} className="bg-white border border-slate-200/70 rounded px-2 py-1.5 text-[11px] flex items-center gap-1.5 truncate">
-                    {t.logo
-                      ? <img src={t.logo} alt="" className="w-4 h-4 object-contain shrink-0" />
-                      : <span className="w-4 h-4 inline-block">·</span>}
-                    <span className="truncate">{t.name}</span>
-                  </div>
-                )
-              })}
+            <div className="text-[10px] tracking-[0.18em] uppercase font-mono text-white/60 mt-1.5">
+              Pressing <span className="text-accent-red font-semibold">90&apos;</span>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* Final winner & 3rd */}
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <div className="bg-gradient-to-br from-accent-gold/30 to-yellow-700/10 rounded-xl p-4 text-center">
-          <div className="text-[10px] uppercase tracking-widest text-accent-gold font-mono">Champion</div>
-          {finalWinner ? (
-            <div className="font-display font-bold text-2xl mt-1 flex items-center justify-center gap-2">
-              {tx(finalWinner).logo && <img src={tx(finalWinner).logo!} alt="" className="w-8 h-8 object-contain" />}
-              <span>{tx(finalWinner).name}</span>
-            </div>
-          ) : <div className="text-slate-500 text-sm mt-1">TBD</div>}
-        </div>
-        <div className="bg-gradient-to-br from-orange-700/30 to-orange-900/10 rounded-xl p-4 text-center">
-          <div className="text-[10px] uppercase tracking-widest text-orange-300 font-mono">3rd place</div>
-          {thirdPlaceWinner ? (
-            <div className="font-display font-bold text-xl mt-1 flex items-center justify-center gap-2">
-              {tx(thirdPlaceWinner).logo && <img src={tx(thirdPlaceWinner).logo!} alt="" className="w-7 h-7 object-contain" />}
-              <span>{tx(thirdPlaceWinner).name}</span>
-            </div>
-          ) : <div className="text-slate-500 text-sm mt-1">TBD</div>}
+          <img src="/wc26-emblem.svg" alt="" className="w-16 h-16" />
         </div>
       </div>
 
-      <div className="mt-6 text-[10px] font-mono text-slate-600 text-center">
-        wc26.mehdijabry.dev · 48 nations · 16 cities · 104 matches · June 11 → July 19, 2026
+      {/* GROUP STRIP — 12 columns */}
+      <div className="px-6 pt-6 pb-8 border-b border-white/10">
+        <div className="grid grid-cols-12 gap-2">
+          {GROUPS.map((g) => {
+            const s = groupStandings[g] ?? []
+            return (
+              <div key={g} className="bg-white/[0.04] border border-white/10 rounded-lg p-2.5">
+                <div className="font-display font-bold text-[13px] text-accent-gold mb-2 tracking-wide">
+                  GROUPE <span className="text-white">{g}</span>
+                </div>
+                <div className="space-y-1">
+                  {s.slice(0, 4).map((code, i) => {
+                    const t = lookup(code)
+                    if (!t) return null
+                    const adv = i < 2 || (i === 2 && thirdPlaceAdvancing.includes(code))
+                    const isThirdAdv = i === 2 && thirdPlaceAdvancing.includes(code)
+                    return (
+                      <div
+                        key={code}
+                        className={cn(
+                          'flex items-center gap-1.5 text-[10px] rounded px-1.5 py-1',
+                          adv ? 'bg-white/[0.06] text-white' : 'text-white/40',
+                          i === 0 && 'ring-1 ring-accent-gold/40',
+                          isThirdAdv && 'ring-1 ring-accent-green/40',
+                        )}
+                      >
+                        <span className="font-mono w-3 text-white/50">{i + 1}</span>
+                        <Flag team={t} size="sm" />
+                        <span className="truncate font-medium uppercase tracking-wide">
+                          {t.shortName || t.name.slice(0, 3).toUpperCase()}
+                        </span>
+                        {isThirdAdv && <span className="text-accent-green text-[9px] ml-auto">★</span>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* KO BRACKET */}
+      <div className="relative px-6 py-10">
+        {/* Centre FIFA-style emblem behind the bracket */}
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-[0.06]">
+          <img src="/wc26-emblem.svg" alt="" className="w-[360px] h-[360px]" />
+        </div>
+
+        <div className="relative grid grid-cols-9 gap-2 items-center">
+          {/* LEFT SIDE — R32 → R16 → QF → SF */}
+          <BracketColumn label="1/16" side="left" matches={leftR32}  tx={tx} compact />
+          <BracketColumn label="1/8"  side="left" matches={leftR16}  tx={tx} />
+          <BracketColumn label="1/4"  side="left" matches={leftQF}   tx={tx} />
+          <BracketColumn label="1/2"  side="left" matches={['SF-1']} tx={tx} hero />
+
+          {/* CENTRE — FINAL + Champion + Bronze */}
+          <div className="px-2">
+            <div className="text-[10px] tracking-[0.22em] uppercase text-center text-accent-gold mb-3 font-mono">
+              Finale
+            </div>
+            <div className="bg-gradient-to-br from-accent-gold/30 via-yellow-900/15 to-accent-gold/30 border border-accent-gold/40 rounded-xl p-4 text-center">
+              <div className="text-[9px] tracking-[0.22em] uppercase text-accent-gold font-mono">Champion</div>
+              {finalWinner ? (
+                <div className="flex items-center justify-center gap-2 mt-2.5">
+                  {champion.logo && <img src={champion.logo} alt="" className="w-10 h-10 object-contain" />}
+                  <span className="font-display font-bold text-xl">{champion.name}</span>
+                </div>
+              ) : (
+                <div className="text-white/40 text-sm mt-3">—</div>
+              )}
+              <div className="mt-3 pt-3 border-t border-accent-gold/20">
+                <div className="text-[9px] tracking-[0.22em] uppercase text-orange-300 font-mono">3rd Place</div>
+                {thirdPlaceWinner ? (
+                  <div className="flex items-center justify-center gap-2 mt-2">
+                    {bronze.logo && <img src={bronze.logo} alt="" className="w-7 h-7 object-contain" />}
+                    <span className="font-display font-bold text-base">{bronze.name}</span>
+                  </div>
+                ) : (
+                  <div className="text-white/40 text-sm mt-2">—</div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT SIDE — mirrored */}
+          <BracketColumn label="1/2"  side="right" matches={['SF-2']}  tx={tx} hero />
+          <BracketColumn label="1/4"  side="right" matches={rightQF}   tx={tx} />
+          <BracketColumn label="1/8"  side="right" matches={rightR16}  tx={tx} />
+          <BracketColumn label="1/16" side="right" matches={rightR32}  tx={tx} compact />
+        </div>
+      </div>
+
+      {/* Footer strip */}
+      <div className="border-t border-white/10 px-10 py-4 flex items-center justify-between text-[10px] font-mono text-white/40">
+        <span>wc26.mehdijabry.dev</span>
+        <span className="text-center flex-1">
+          <span className="mx-1">🇨🇦</span><span className="mx-1">🇲🇽</span><span className="mx-1">🇺🇸</span>
+          <span className="mx-2">·</span>48 nations · 16 cities · 104 matches
+          <span className="mx-2">·</span>June 11 → July 19, 2026
+        </span>
+        <span>powered by ESPN live</span>
       </div>
     </div>
   )
+
+  /* ------------------- helpers (closures over tx, koWinners) -------------- */
+
+  function BracketColumn({
+    label, side, matches, tx, compact, hero,
+  }: {
+    label: string
+    side: 'left' | 'right'
+    matches: string[]
+    tx: (code: string | undefined) => { logo?: string; name: string; code?: string }
+    compact?: boolean
+    hero?: boolean
+  }) {
+    void side
+    return (
+      <div className="flex flex-col">
+        <div className="text-[10px] tracking-[0.22em] uppercase text-white/50 font-mono mb-3 text-center">
+          {label}
+        </div>
+        <div className={cn('flex flex-col', compact ? 'gap-1.5' : hero ? 'gap-3' : 'gap-2.5')}>
+          {matches.map((id) => {
+            const winnerCode = koWinners[id]
+            const t = tx(winnerCode)
+            const isHero = hero
+            return (
+              <div
+                key={id}
+                className={cn(
+                  'bg-white/[0.04] border border-white/10 rounded',
+                  isHero
+                    ? 'px-2.5 py-3 ring-1 ring-accent-gold/30 bg-white/[0.08]'
+                    : compact ? 'px-1.5 py-1.5' : 'px-2 py-2',
+                )}
+              >
+                <div className={cn(
+                  'text-white/40 font-mono tracking-wider mb-1',
+                  isHero ? 'text-[9px]' : 'text-[8px]'
+                )}>
+                  {fifaMatchNumberFor(id) ? `M${fifaMatchNumberFor(id)}` : id}
+                </div>
+                <div className={cn(
+                  'flex items-center gap-1.5',
+                  isHero ? 'text-[12px]' : compact ? 'text-[10px]' : 'text-[11px]'
+                )}>
+                  {t.logo
+                    ? <img src={t.logo} alt="" className={cn('object-contain shrink-0', isHero ? 'w-5 h-5' : 'w-4 h-4')} />
+                    : <span className={cn('inline-block rounded-full bg-white/10', isHero ? 'w-5 h-5' : 'w-4 h-4')} />}
+                  <span className={cn(
+                    'truncate uppercase font-medium tracking-wide',
+                    winnerCode ? 'text-white' : 'text-white/40'
+                  )}>
+                    {winnerCode ? (t.code ?? t.name) : 'TBD'}
+                  </span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+}
+
+// Look up the FIFA match number (73-104) given our internal id (R32-1, SF-2…)
+function fifaMatchNumberFor(id: string): number | undefined {
+  if (id.startsWith('R32-')) {
+    return R32_TEMPLATE.find((m) => m.id === id)?.fifaMatch
+  }
+  if (id.startsWith('R16-')) {
+    return R16_TEMPLATE.find((m) => m.id === id)?.fifaMatch
+  }
+  if (id.startsWith('QF-')) {
+    return QF_TEMPLATE.find((m) => m.id === id)?.fifaMatch
+  }
+  if (id.startsWith('SF-')) {
+    return SF_TEMPLATE.find((m) => m.id === id)?.fifaMatch
+  }
+  if (id === 'FINAL-1') return 104
+  if (id === 'TP-1') return 103
+  return undefined
 }
 
 // Re-export Team type for KoSide
