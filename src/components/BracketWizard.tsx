@@ -58,6 +58,36 @@ const GROUPS: GroupLetter[] = ['A','B','C','D','E','F','G','H','I','J','K','L']
 export function BracketWizard() {
   const [step, setStep] = useState<Step>('groups')
   const stepIdx = STEP_ORDER.indexOf(step)
+  const { user } = useAuth()
+  const bracket = useBracket()
+  const groupStandings = bracket.groupStandings
+  const thirdPlaceAdvancing = bracket.thirdPlaceAdvancing
+  const koWinners = bracket.koWinners
+  const finalWinner = bracket.finalWinner
+  const thirdPlaceWinner = bracket.thirdPlaceWinner
+
+  // Pull saved bracket from Supabase the moment the wizard mounts (once
+  // per session). Previously this only fired in StepExport, so a user
+  // visiting /bracket fresh saw an empty state instead of their saved
+  // picks. Cloud > localStorage when both exist for a logged-in user.
+  const loadedRef = useRef(false)
+  useEffect(() => {
+    if (!user || loadedRef.current) return
+    loadedRef.current = true
+    void bracket.load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
+
+  // Auto-save (debounced 1.5s) on any state change while logged in. Drops
+  // the need to remember pressing the Save button — every nudge of a team
+  // arrow or KO winner click silently persists to Supabase. The Save
+  // button in StepExport still works for manual confirmation.
+  useEffect(() => {
+    if (!user || !loadedRef.current) return
+    const t = setTimeout(() => { void bracket.save() }, 1500)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, groupStandings, thirdPlaceAdvancing, koWinners, finalWinner, thirdPlaceWinner])
 
   return (
     <section id="bracket-predict" className="py-20 sm:py-28 border-t border-slate-200/70">
