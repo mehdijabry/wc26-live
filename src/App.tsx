@@ -12,7 +12,8 @@ import { LiveTicker } from './components/LiveTicker'
 import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
 import { LottieLoader } from './components/LottieLoader'
-import { Ad } from './components/AdSlot'
+import { Ad, AdPair } from './components/AdSlot'
+import { AmazonShelf } from './components/AmazonShelf'
 import { IosInstallPrompt } from './components/IosInstallPrompt'
 
 // Each section is its own page now — lazy-loaded per route so a slow
@@ -240,12 +241,20 @@ function HomePage() {
   return (
     <>
       <Hero />
-      {/* Native ad between hero news + daily matches — looks like another
-          news card so it doesn't break the scroll. */}
-      <div className="container max-w-6xl mx-auto px-6"><Ad slot="home-mid" /></div>
+      {/* Mid-page slot: double 300x250 banner pair instead of a single
+          slot. Doubles impressions-per-pageview to compensate for the
+          revenue drop we took switching away from Adsterra's native
+          banner format (which auctions dating / clickbait spam). */}
+      <div className="container max-w-6xl mx-auto px-6 my-6">
+        <AdPair />
+      </div>
       <Suspense fallback={<PageSkeleton caption="Loading today's matches…" />}>
         <DailyMatches />
       </Suspense>
+      {/* Amazon affiliate shelf — editorial 'gear we like' row. Replaces
+          one Adsterra footer slot. Direct CPA, no third-party creative
+          review needed (we hand-pick every product). */}
+      <AmazonShelf heading="Football gear we like" count={3} />
       <WC26PromoSection />
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="home-footer" /></div>
     </>
@@ -330,7 +339,9 @@ function PredictionsPage() {
       <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
         <BracketWizard />
       </Suspense>
-      <div className="container max-w-6xl mx-auto px-6"><Ad slot="predict-mid" /></div>
+      <div className="container max-w-6xl mx-auto px-6 my-6">
+        <AdPair />
+      </div>
       <Suspense fallback={<PageSkeleton caption="Loading match predictions…" />}>
         <Predictions />
       </Suspense>

@@ -244,3 +244,26 @@ export function Ad({ slot, className }: { slot: SlotName; className?: string }) 
   if (!cfg.key) return null
   return <AdSlot zoneKey={cfg.key} format={cfg.format} className={className} />
 }
+
+/**
+ * AdPair — two 300x250 banners side-by-side on desktop, stacked on mobile.
+ * Use this in any inline "mid-page" slot where we used to render one native
+ * card. Doubles the impressions-per-pageview without using the dating-bait
+ * native format. Fits cleanly inside the standard max-w-6xl container.
+ */
+export function AdPair({ className }: { className?: string }) {
+  return (
+    <div className={'flex flex-col sm:flex-row items-stretch justify-center gap-3 sm:gap-6 ' + (className ?? '')}>
+      <AdSlot
+        zoneKey={ADSTERRA_ZONES.banner300}
+        format="banner-300x250"
+        className="flex-1 max-w-[330px] mx-auto sm:mx-0"
+      />
+      <AdSlot
+        zoneKey={ADSTERRA_ZONES.banner300}
+        format="banner-300x250"
+        className="flex-1 max-w-[330px] mx-auto sm:mx-0"
+      />
+    </div>
+  )
+}
