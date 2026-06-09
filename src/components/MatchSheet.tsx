@@ -551,32 +551,24 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function EventIcon({ type }: { type: string | undefined }) {
   const t = (type ?? '').toLowerCase()
 
-  // Goal — classic black-and-white football. White base, central
-  // pentagon and five stitch lines to the rim. Larger viewBox (32×32)
-  // so the pattern reads cleanly at 20px render size.
+  // Goal — high-detail football SVG (public/icons/soccer-ball.svg).
+  // True hex/pentagon pattern from the SVG Repo noto-style asset, sized
+  // at w-5 to match the rest of the timeline row.
   if (t === 'goal' || t === 'penalty-goal') {
-    return <SoccerBall ariaLabel="Goal" />
+    return <img src="/icons/soccer-ball.svg" alt="Goal" className="w-5 h-5 shrink-0" />
   }
 
-  // Own goal — football with a red 'own goal' badge offset to the
-  // bottom-right. Same recognisable shape so users still see 'goal',
-  // but the OG tag makes the side clear.
+  // Own goal — same ball, recoloured red, with 'CSC' (contre son camp)
+  // stamped on the white panel. One asset, no extra overlays.
   if (t === 'own-goal') {
-    return (
-      <span className="relative inline-flex">
-        <SoccerBall ariaLabel="Own goal" />
-        <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-mono font-bold bg-accent-red text-white px-0.5 leading-none rounded-sm">
-          OG
-        </span>
-      </span>
-    )
+    return <img src="/icons/soccer-ball-csc.svg" alt="Own goal (CSC)" className="w-5 h-5 shrink-0" />
   }
 
   // Penalty missed — football with a red diagonal strike-through
   if (t === 'penalty-kick-missed' || (t === 'penalty' && type?.includes('miss'))) {
     return (
-      <span className="relative inline-flex">
-        <SoccerBall ariaLabel="Penalty missed" />
+      <span className="relative inline-flex w-5 h-5 shrink-0">
+        <img src="/icons/soccer-ball.svg" alt="Penalty missed" className="w-5 h-5" />
         <span className="absolute inset-0 flex items-center justify-center">
           <svg viewBox="0 0 20 20" className="w-5 h-5">
             <path d="M3 3 L17 17" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" />
@@ -637,8 +629,8 @@ function EventIcon({ type }: { type: string | undefined }) {
   // Penalty (taking, not yet resolved) — football with 'P' badge
   if (t === 'penalty') {
     return (
-      <span className="relative inline-flex">
-        <SoccerBall ariaLabel="Penalty" />
+      <span className="relative inline-flex w-5 h-5 shrink-0">
+        <img src="/icons/soccer-ball.svg" alt="Penalty" className="w-5 h-5" />
         <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-mono font-bold bg-slate-900 text-white px-0.5 leading-none rounded-sm">
           P
         </span>
@@ -649,36 +641,6 @@ function EventIcon({ type }: { type: string | undefined }) {
   return <span className="text-slate-300">•</span>
 }
 
-/**
- * Football icon — true truncated-icosahedron suggestion: central
- * black pentagon + five partial pentagons rotating around it, plus
- * thin stitch lines for the hex panels. Same construction the icon
- * Footmercato / L'Équipe / Sofascore use, sized for legibility at
- * 20-24px CSS render.
- */
-function SoccerBall({ ariaLabel }: { ariaLabel: string }) {
-  return (
-    <svg viewBox="0 0 32 32" className="w-5 h-5" aria-label={ariaLabel}>
-      {/* White body */}
-      <circle cx="16" cy="16" r="14" fill="#ffffff" stroke="#0f172a" strokeWidth="1.5" />
-      {/* Central pentagon */}
-      <polygon points="16,10 20.7,13.4 18.9,18.9 13.1,18.9 11.3,13.4" fill="#0f172a" />
-      {/* Five partial pentagons at the rim — visible portions of the
-          surrounding pentagons in the truncated icosahedron pattern. */}
-      <path d="M14 4 L18 4 L19 9 L13 9 Z" fill="#0f172a" />
-      <path d="M25 11 L28 14 L26 17 L21.7 14.5 Z" fill="#0f172a" />
-      <path d="M21 22 L24 25 L19 27 L17.5 22.5 Z" fill="#0f172a" />
-      <path d="M11 22 L8 25 L13 27 L14.5 22.5 Z" fill="#0f172a" />
-      <path d="M7 11 L4 14 L6 17 L10.3 14.5 Z" fill="#0f172a" />
-      {/* Connecting hex-panel edges (thin stitches) */}
-      <line x1="16" y1="10"   x2="16" y2="9"    stroke="#0f172a" strokeWidth="0.9" />
-      <line x1="20.7" y1="13.4" x2="21.7" y2="14.5" stroke="#0f172a" strokeWidth="0.9" />
-      <line x1="18.9" y1="18.9" x2="17.5" y2="22.5" stroke="#0f172a" strokeWidth="0.9" />
-      <line x1="13.1" y1="18.9" x2="14.5" y2="22.5" stroke="#0f172a" strokeWidth="0.9" />
-      <line x1="11.3" y1="13.4" x2="10.3" y2="14.5" stroke="#0f172a" strokeWidth="0.9" />
-    </svg>
-  )
-}
 
 /**
  * Turn an ESPN keyEvent into UI strings:
