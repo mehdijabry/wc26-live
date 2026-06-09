@@ -286,46 +286,109 @@ function leagueIdFromUid(uid?: string): string | null {
   return m ? m[1] : null
 }
 
+/**
+ * Detect the category (Women / Youth age band) embedded in a slug.
+ * Returns null for senior men's (the default — we never label it
+ * 'Men' explicitly to keep the UI clean, same as Sofascore/FotMob).
+ */
+function detectCategory(slug: string): { code: 'W' | 'U23' | 'U21' | 'U20' | 'U19' | 'U18' | 'U17' | 'U15'; label: string } | null {
+  const lower = slug.toLowerCase()
+  // Women — ESPN uses 'w.' prefix or '-women-' or 'female' marker
+  if (
+    lower.startsWith('w.') || lower.includes('.w.') ||
+    lower.includes('-w-') || lower.includes('-women') ||
+    /\bwomen\b/.test(lower) || /\bfemale\b/.test(lower)
+  ) {
+    return { code: 'W', label: 'Women' }
+  }
+  // Youth — match the highest age first (U23 before U2 etc.)
+  if (lower.includes('u23')) return { code: 'U23', label: 'U23' }
+  if (lower.includes('u21')) return { code: 'U21', label: 'U21' }
+  if (lower.includes('u20')) return { code: 'U20', label: 'U20' }
+  if (lower.includes('u19')) return { code: 'U19', label: 'U19' }
+  if (lower.includes('u18')) return { code: 'U18', label: 'U18' }
+  if (lower.includes('u17')) return { code: 'U17', label: 'U17' }
+  if (lower.includes('u15')) return { code: 'U15', label: 'U15' }
+  return null
+}
+
+// Strip a category marker from a slug so the BASE competition can be
+// matched against LEAGUE_META. e.g. 'w.uefa.champions' → 'uefa.champions',
+// 'u21-international-friendly' → 'international-friendly'.
+function stripCategory(slug: string): string {
+  return slug
+    .replace(/^w\.|\.w\.|-w-|w-|-women-?|women-?/gi, '')
+    .replace(/u(15|17|18|19|20|21|23)[-.]?/gi, '')
+    .replace(/--+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+}
+
 function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } {
   const seasonSlug: string | undefined = (ev as unknown as { season?: { slug?: string } }).season?.slug
+  const uid = (ev as unknown as { uid?: string }).uid
+
+  // Detect category FIRST so we can apply it as a suffix to every
+  // competition label (Champions League · U21, LaLiga · Women, etc.)
+  const cat = detectCategory(seasonSlug ?? '')
+
+  // Look up the BASE competition (men's senior) — strip category markers
+  // from the slug before matching so 'w.uefa.champions' still finds UCL.
+  const baseSlug = cat ? stripCategory(seasonSlug ?? '') : seasonSlug
+
   // Prefer the per-season slug lookup first (covers our canonical mappings)
-  if (seasonSlug && LEAGUE_META[seasonSlug]) return LEAGUE_META[seasonSlug]
+  let base = baseSlug ? LEAGUE_META[baseSlug] : undefined
+  // Try with year prefix re-prepended too — '2026-uefa.champions'
+  if (!base && baseSlug) base = LEAGUE_META['2026-' + baseSlug.replace(/^\d+-/, '')]
 
   // Then the ESPN league ID embedded in event.uid (`s:600~l:11109~e:…`).
-  // This catches the generic season slugs like 'group-stage' / 'regular-
-  // season' / 'apertura---finals' where ESPN encodes the league only in
-  // the uid. Without this we'd render bare 'Group Stage' which means
-  // nothing on its own.
-  const uid = (ev as unknown as { uid?: string }).uid
-  const leagueId = leagueIdFromUid(uid)
-  if (leagueId && LEAGUE_BY_ID[leagueId]) return LEAGUE_BY_ID[leagueId]
+  // Catches generic season slugs like 'group-stage' / 'regular-season' /
+  // 'apertura---finals' where ESPN encodes the league only in the uid.
+  if (!base) {
+    const leagueId = leagueIdFromUid(uid)
+    if (leagueId && LEAGUE_BY_ID[leagueId]) base = LEAGUE_BY_ID[leagueId]
+  }
 
-  // Substring fallbacks — strip the year prefix first if present
-  const bare = seasonSlug?.replace(/^\d+-/, '') ?? ''
-  if (bare.includes('fifa.world')) {
-    if (bare.includes('worldq')) return { label: 'WC Qualifiers', tier: 11, slug: 'fifa.worldq' }
-    return { label: 'FIFA World Cup', tier: 0, slug: 'fifa.world' }
+  // Substring fallbacks
+  if (!base) {
+    const bare = (baseSlug ?? '').replace(/^\d+-/, '')
+    if (bare.includes('fifa.world')) {
+      base = bare.includes('worldq')
+        ? { label: 'WC Qualifiers', tier: 11, slug: 'fifa.worldq' }
+        : { label: 'FIFA World Cup', tier: 0, slug: 'fifa.world' }
+    } else if (bare.includes('uefa.champions')) {
+      base = { label: 'Champions League', tier: 1, slug: 'uefa.champions' }
+    } else if (bare.includes('uefa.europa.conf')) {
+      base = { label: 'Conference League', tier: 9, slug: 'uefa.europa.conf' }
+    } else if (bare.includes('uefa.europa')) {
+      base = { label: 'Europa League', tier: 8, slug: 'uefa.europa' }
+    } else if (bare.includes('uefa.euro')) {
+      base = { label: 'UEFA Euro', tier: 10, slug: 'uefa.euro' }
+    } else if (bare.includes('conmebol.libert')) {
+      base = { label: 'Copa Libertadores', tier: 2, slug: 'conmebol.libertadores' }
+    } else if (bare.includes('international-friendly')) {
+      base = { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' }
+    } else if (bare.includes('club-friendly') || bare.includes('club.friendly')) {
+      base = { label: 'Club friendlies', tier: 19, slug: 'club.friendly' }
+    } else {
+      // Last resort — title-case the slug
+      const pretty = bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other'
+      base = { label: pretty, tier: 16, slug: seasonSlug ?? 'other' }
+    }
   }
-  if (bare.includes('uefa.champions'))  return { label: 'Champions League', tier: 1, slug: 'uefa.champions' }
-  if (bare.includes('uefa.europa.conf')) return { label: 'Conference League', tier: 9, slug: 'uefa.europa.conf' }
-  if (bare.includes('uefa.europa'))     return { label: 'Europa League', tier: 8, slug: 'uefa.europa' }
-  if (bare.includes('conmebol.libert')) return { label: 'Copa Libertadores', tier: 2, slug: 'conmebol.libertadores' }
-  if (bare.includes('international-friendly')) return { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' }
-  if (bare.includes('club-friendly') || bare.includes('club.friendly')) return { label: 'Club friendlies', tier: 19, slug: 'club.friendly' }
-  if (bare.includes('u17') || bare.includes('u19') || bare.includes('u20') || bare.includes('u21') || bare.includes('u23')) {
-    return { label: 'Youth internationals', tier: 20, slug: 'youth' }
+
+  // Apply category suffix + adjust tier so men's stays above women's
+  // and youth (matches FIFA/UEFA fixture display conventions). Slugs
+  // get the category appended so men's UCL and women's UCL group
+  // separately on the day board.
+  if (cat) {
+    const tierBump = cat.code === 'W' ? 1 : cat.code === 'U23' ? 4 : 6
+    return {
+      label: `${base.label} · ${cat.label}`,
+      tier: base.tier + tierBump,
+      slug: `${base.slug}.${cat.code.toLowerCase()}`,
+    }
   }
-  if (bare.includes('women') || bare.startsWith('w.')) {
-    return { label: 'Women’s football', tier: 14, slug: 'women' }
-  }
-  // Last resort — title-case the slug + add ' · Other' suffix so users
-  // at least see it's not a known league
-  const pretty = bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other'
-  return {
-    label: pretty,
-    tier: 16,
-    slug: seasonSlug ?? 'other',
-  }
+  return base
 }
 
 /**
