@@ -254,7 +254,7 @@ function HomePage() {
       {/* Amazon affiliate shelf — editorial 'gear we like' row. Replaces
           one Adsterra footer slot. Direct CPA, no third-party creative
           review needed (we hand-pick every product). */}
-      <AmazonShelf heading="Football gear we like" count={3} />
+      <AmazonShelf heading="Football gear we like" />
       <WC26PromoSection />
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="home-footer" /></div>
     </>
