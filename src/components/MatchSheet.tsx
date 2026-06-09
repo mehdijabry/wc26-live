@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { teamBadgeFallback } from '../lib/utils'
+import { broadcastersFor, type Broadcaster } from '../lib/api'
 
 /**
  * MatchSheet — modal opened by tapping any match card on the daily
@@ -91,10 +92,13 @@ function scoreOf(c: Competitor | undefined): string {
 export function MatchSheet({
   open,
   eventId,
+  competitionSlug,
   onClose,
 }: {
   open: boolean
   eventId: string | undefined
+  /** Resolved by tagEvent() in the caller — used for curated broadcaster lookup. */
+  competitionSlug?: string
   onClose: () => void
 }) {
   const [data, setData] = useState<SummaryResponse | null>(null)
@@ -282,37 +286,18 @@ export function MatchSheet({
                 </div>
               )}
 
-              {/* Broadcast — where to watch. ESPN data is mostly US-centric
-                  but we surface what they give us; users in other regions
-                  see a note explaining their local broadcaster may differ. */}
-              {broadcasts.length > 0 && (
-                <Section title="Where to watch">
-                  <div className="flex flex-wrap gap-2">
-                    {broadcasts.map((b, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200/70"
-                      >
-                        <span className="text-[9px] font-mono uppercase tracking-wider text-slate-400">
-                          {b.type?.shortName ?? 'TV'}
-                        </span>
-                        <span className="text-sm font-semibold text-slate-900">
-                          {b.media?.shortName ?? b.media?.name ?? b.media?.callLetters ?? '—'}
-                        </span>
-                        {b.region && b.region !== 'us' && (
-                          <span className="text-[9px] font-mono uppercase text-slate-400">
-                            {b.region}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  <div className="text-[10px] font-mono text-slate-400 mt-3 leading-relaxed">
-                    Official broadcasters via ESPN — your local listings
-                    may differ depending on your country and provider.
-                  </div>
-                </Section>
-              )}
+              {/* Diffusion — broadcasters grouped by country. Curated
+                  rights map for major competitions (UCL, top 5 leagues,
+                  WC, AFCON, etc.). For competitions outside the map
+                  (Maurice Revello / Torneo Intermedio / friendlies),
+                  we fall back to whatever ESPN exposes (US-centric).
+                  The section ALWAYS appears when there's at least one
+                  data point — no silently empty modal. */}
+              <BroadcastSection
+                competitionSlug={competitionSlug}
+                espnBroadcasts={broadcasts}
+              />
+
 
               {/* Events timeline */}
               {events.length > 0 && (
@@ -469,6 +454,96 @@ function deriveRoundLabel(seasonSlug: string, noteHeadline: string): string | nu
 function legSuffix(head: string): string | null {
   const m = /(1st|2nd)\s+Leg/i.exec(head)
   return m ? ' · ' + m[1] + ' Leg' : null
+}
+
+/* -------------------------------------------------------------------------- */
+/* Broadcasters section — curated 'Diffusion' card                            */
+/* -------------------------------------------------------------------------- */
+
+function BroadcastSection({
+  competitionSlug,
+  espnBroadcasts,
+}: {
+  competitionSlug: string | undefined
+  espnBroadcasts: Broadcast[]
+}) {
+  const byCountry = competitionSlug ? broadcastersFor(competitionSlug) : null
+
+  if (!byCountry && espnBroadcasts.length === 0) return null
+
+  return (
+    <Section title="Diffusion · Where to watch">
+      {/* Curated rights map (per competition, per country) */}
+      {byCountry && byCountry.length > 0 && (
+        <div className="space-y-3">
+          {byCountry.map((row) => (
+            <div key={row.country} className="flex items-start gap-3">
+              <div className="flex items-center gap-1.5 w-32 shrink-0">
+                <span className="text-base leading-none">{row.flag}</span>
+                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 truncate">
+                  {row.name}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5 flex-1">
+                {row.broadcasters.map((b, i) => (
+                  <BroadcasterPill key={i} b={b} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ESPN's broadcast feed — only shown when we have NO curated rights
+          (else it'd duplicate US entries already in the curated map). */}
+      {!byCountry && espnBroadcasts.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {espnBroadcasts.map((b, i) => (
+            <div
+              key={i}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200/70"
+            >
+              <span className="text-[9px] font-mono uppercase tracking-wider text-slate-400">
+                {b.type?.shortName ?? 'TV'}
+              </span>
+              <span className="text-sm font-semibold text-slate-900">
+                {b.media?.shortName ?? b.media?.name ?? b.media?.callLetters ?? '—'}
+              </span>
+              {b.region && (
+                <span className="text-[9px] font-mono uppercase text-slate-400">
+                  {b.region}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="text-[10px] font-mono text-slate-400 mt-3 leading-relaxed">
+        {byCountry
+          ? '2025-26 rights — verify your provider for local listings.'
+          : 'Provided by ESPN — local listings may vary.'}
+      </div>
+    </Section>
+  )
+}
+
+function BroadcasterPill({ b }: { b: Broadcaster }) {
+  return (
+    <div className={
+      'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border ' +
+      (b.free
+        ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'
+        : b.type === 'streaming'
+          ? 'bg-accent-gold/10 border-accent-gold/30 text-marine-900'
+          : 'bg-white border-slate-200/70 text-slate-900')
+    }>
+      <span className="text-[8px] font-mono uppercase tracking-wider opacity-60">
+        {b.free ? 'FREE' : b.type === 'streaming' ? 'STREAM' : 'TV'}
+      </span>
+      <span className="font-semibold">{b.name}</span>
+    </div>
+  )
 }
 
 /** De-duplicate broadcasts by media+region so we don't show 'Paramount+ Paramount+'. */

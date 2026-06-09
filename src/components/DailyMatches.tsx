@@ -36,7 +36,7 @@ export function DailyMatches() {
   const [data, setData] = useState<DailyResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeSlugs, setActiveSlugs] = useState<Set<string> | null>(null) // null = all
-  const [openMatchId, setOpenMatchId] = useState<string | null>(null)
+  const [openMatch, setOpenMatch] = useState<{ id: string; slug: string } | null>(null)
 
   const date = useMemo(() => {
     const d = new Date()
@@ -243,16 +243,22 @@ export function DailyMatches() {
 
           {!loading &&
             filteredComps.map((comp) => (
-              <CompetitionBlock key={comp.slug} comp={comp} onPick={(id) => setOpenMatchId(id)} />
+              <CompetitionBlock
+                key={comp.slug}
+                comp={comp}
+                onPick={(id) => setOpenMatch({ id, slug: comp.slug })}
+              />
             ))}
         </div>
       </div>
 
-      {/* Match detail modal */}
+      {/* Match detail modal — passes the comp slug so the Diffusion
+          section can pull broadcasters from the curated rights map. */}
       <MatchSheet
-        open={!!openMatchId}
-        eventId={openMatchId ?? undefined}
-        onClose={() => setOpenMatchId(null)}
+        open={!!openMatch}
+        eventId={openMatch?.id}
+        competitionSlug={openMatch?.slug}
+        onClose={() => setOpenMatch(null)}
       />
     </section>
   )

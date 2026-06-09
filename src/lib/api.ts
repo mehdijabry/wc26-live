@@ -465,6 +465,282 @@ export function competitionLogo(slug: string): string | null {
 // imports competitionFlag it'll be a build error pointing here.
 export const competitionFlag = competitionLogo
 
+/* -------------------------------------------------------------------------- */
+/* Broadcast rights — per competition, per country                            */
+/*                                                                            */
+/* ESPN's free API returns broadcasters but only for the US market. There is  */
+/* no comprehensive free API for global per-country football TV rights. This  */
+/* map is curated manually from public rights deal announcements for the     */
+/* 2025-26 season. It needs annual review when rights re-tender.              */
+/*                                                                            */
+/* Country codes are ISO 3166 alpha-2. The country list focuses on (1) the   */
+/* big-five European audiences, (2) the host countries USA / MEX / CAN for   */
+/* WC26, (3) the Maghreb / MENA region (Morocco bias). Add more as needed.  */
+/* -------------------------------------------------------------------------- */
+
+export type Broadcaster = { name: string; type: 'tv' | 'streaming'; free?: boolean }
+
+const FREE_TV = (name: string): Broadcaster => ({ name, type: 'tv', free: true })
+const TV = (name: string): Broadcaster => ({ name, type: 'tv' })
+const STREAM = (name: string): Broadcaster => ({ name, type: 'streaming' })
+
+const BROADCAST_RIGHTS: Record<string, Record<string, Broadcaster[]>> = {
+  'fifa.world': {
+    FR: [FREE_TV('TF1'), FREE_TV('M6'), TV('beIN Sports')],
+    GB: [FREE_TV('BBC'), FREE_TV('ITV')],
+    US: [TV('FOX'), TV('Telemundo')],
+    DE: [FREE_TV('ARD'), FREE_TV('ZDF'), STREAM('MagentaTV')],
+    IT: [FREE_TV('RAI')],
+    ES: [FREE_TV('La 1 (RTVE)'), STREAM('DAZN')],
+    NL: [TV('NOS'), STREAM('Videoland')],
+    BE: [FREE_TV('RTBF'), FREE_TV('VRT'), TV('Pickx Sports')],
+    PT: [FREE_TV('RTP'), TV('SIC')],
+    MA: [FREE_TV('SNRT (Al Aoula · Arryadia)')],
+    DZ: [FREE_TV('ENTV')],
+    TN: [FREE_TV('Watania')],
+    SA: [TV('SSC')],
+    AE: [TV('AD Sports')],
+    QA: [TV('beIN Sports MENA')],
+    MX: [TV('Televisa'), TV('TV Azteca')],
+    CA: [TV('TSN'), TV('CTV')],
+    BR: [FREE_TV('Globo'), TV('SporTV'), TV('CazéTV')],
+    AR: [TV('TyC Sports'), TV('TV Pública')],
+    JP: [TV('TV Asahi'), TV('Fuji TV'), TV('NHK'), STREAM('ABEMA')],
+  },
+
+  'uefa.champions': {
+    FR: [TV('Canal+'), TV('beIN Sports')],
+    GB: [TV('TNT Sports'), STREAM('discovery+')],
+    US: [STREAM('Paramount+'), TV('CBS')],
+    DE: [STREAM('Amazon Prime Video'), STREAM('DAZN')],
+    IT: [TV('Sky Sport'), STREAM('Amazon Prime Video')],
+    ES: [TV('Movistar Plus+')],
+    NL: [STREAM('Ziggo Sport'), STREAM('SBS6')],
+    BE: [TV('Pickx Sports'), TV('VTM')],
+    PT: [TV('Eleven Sports'), TV('TVI')],
+    MA: [TV('beIN Sports MENA')],
+    DZ: [TV('beIN Sports MENA')],
+    TN: [TV('beIN Sports MENA')],
+    SA: [TV('SSC')],
+    QA: [TV('beIN Sports MENA')],
+    MX: [STREAM('HBO Max'), TV('TUDN')],
+    CA: [STREAM('Paramount+'), TV('DAZN')],
+    BR: [STREAM('HBO Max'), TV('SBT'), STREAM('TNT Sports')],
+  },
+
+  'uefa.europa': {
+    FR: [TV('Canal+'), TV('W9')],
+    GB: [TV('TNT Sports')],
+    US: [STREAM('Paramount+')],
+    DE: [STREAM('RTL+')],
+    IT: [TV('Sky Sport'), STREAM('DAZN')],
+    ES: [TV('Movistar Plus+')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'uefa.europa.conf': {
+    FR: [TV('Canal+')],
+    GB: [TV('TNT Sports')],
+    US: [STREAM('Paramount+')],
+    DE: [STREAM('RTL+')],
+    IT: [TV('Sky Sport')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'eng.1': {
+    FR: [TV('Canal+ Foot')],
+    GB: [TV('Sky Sports'), TV('TNT Sports'), STREAM('Amazon Prime')],
+    US: [TV('NBC Sports'), STREAM('Peacock'), TV('USA Network')],
+    DE: [TV('Sky Deutschland'), STREAM('WOW')],
+    IT: [TV('Sky Sport'), STREAM('NOW')],
+    ES: [STREAM('DAZN'), TV('Movistar Plus+')],
+    MA: [TV('beIN Sports MENA')],
+    SA: [TV('SSC')],
+    MX: [TV('Sky México'), STREAM('Caliente TV')],
+  },
+
+  'esp.1': {
+    FR: [TV('beIN Sports')],
+    GB: [STREAM('LaLiga TV'), STREAM('Premier Sports')],
+    US: [STREAM('ESPN+')],
+    DE: [STREAM('DAZN')],
+    IT: [STREAM('DAZN')],
+    ES: [TV('Movistar Plus+'), STREAM('DAZN'), TV('M+ LaLiga TV')],
+    MA: [TV('beIN Sports MENA')],
+    MX: [TV('Sky México')],
+  },
+
+  'ger.1': {
+    FR: [TV('beIN Sports')],
+    GB: [TV('Sky Sports')],
+    US: [STREAM('ESPN+')],
+    DE: [TV('Sky Deutschland'), STREAM('DAZN'), STREAM('WOW')],
+    IT: [TV('Sky Sport')],
+    ES: [TV('Movistar Plus+')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'ita.1': {
+    FR: [TV('beIN Sports')],
+    GB: [TV('TNT Sports')],
+    US: [TV('CBS Sports'), STREAM('Paramount+')],
+    DE: [STREAM('DAZN')],
+    IT: [STREAM('DAZN'), TV('Sky Sport')],
+    ES: [STREAM('DAZN')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'fra.1': {
+    FR: [STREAM('Ligue 1+'), TV('beIN Sports')],
+    GB: [TV('TNT Sports')],
+    US: [TV('beIN Sports'), STREAM('Fubo')],
+    DE: [STREAM('DAZN')],
+    IT: [STREAM('DAZN')],
+    ES: [STREAM('DAZN')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'usa.1': {
+    US: [STREAM('Apple TV (MLS Season Pass)'), TV('FOX'), TV('FS1')],
+    CA: [STREAM('Apple TV (MLS Season Pass)'), TV('TSN')],
+    MX: [STREAM('Apple TV (MLS Season Pass)')],
+    GB: [STREAM('Apple TV (MLS Season Pass)')],
+    FR: [STREAM('Apple TV (MLS Season Pass)')],
+  },
+
+  'mex.1': {
+    MX: [TV('Televisa'), TV('TV Azteca'), TV('TUDN'), STREAM('ViX')],
+    US: [TV('TUDN'), TV('Univision'), STREAM('ViX')],
+    CA: [TV('TUDN'), STREAM('ViX')],
+  },
+
+  'conmebol.libertadores': {
+    FR: [TV('beIN Sports')],
+    GB: [STREAM('Premier Sports')],
+    US: [TV('beIN Sports'), TV('FS1'), TV('Telemundo')],
+    DE: [STREAM('DAZN')],
+    IT: [STREAM('Mola TV')],
+    ES: [TV('Movistar Plus+')],
+    BR: [FREE_TV('Globo'), TV('SBT'), STREAM('ESPN'), STREAM('Paramount+')],
+    AR: [TV('ESPN'), TV('Fox Sports'), STREAM('Star+')],
+    CL: [STREAM('ESPN'), STREAM('Star+')],
+    CO: [STREAM('ESPN'), STREAM('Star+')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'conmebol.america': {
+    FR: [TV('beIN Sports')],
+    US: [TV('FOX'), TV('FS1'), TV('Univision'), TV('Telemundo')],
+    BR: [FREE_TV('Globo'), TV('SporTV')],
+    AR: [TV('TyC Sports'), TV('DSports')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'concacaf.gold': {
+    FR: [TV('beIN Sports')],
+    US: [TV('FOX'), TV('FS1'), TV('Univision'), TV('TUDN')],
+    MX: [TV('Univision'), TV('TUDN')],
+    CA: [TV('OneSoccer'), TV('TLN')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'caf.nations': {
+    FR: [TV('beIN Sports')],
+    GB: [STREAM('FIFA+')],
+    US: [STREAM('beIN Sports')],
+    MA: [FREE_TV('SNRT (Al Aoula · Arryadia)'), TV('beIN Sports MENA')],
+    DZ: [FREE_TV('ENTV')],
+    TN: [FREE_TV('Watania')],
+    EG: [TV('On Sport'), TV('beIN Sports MENA')],
+    SA: [TV('SSC'), TV('beIN Sports MENA')],
+    QA: [TV('beIN Sports MENA')],
+  },
+
+  'uefa.euro': {
+    FR: [FREE_TV('TF1'), FREE_TV('M6'), TV('beIN Sports')],
+    GB: [FREE_TV('BBC'), FREE_TV('ITV')],
+    US: [STREAM('FuboTV'), TV('FOX')],
+    DE: [FREE_TV('ARD'), FREE_TV('ZDF'), STREAM('MagentaTV')],
+    IT: [FREE_TV('RAI'), TV('Sky Sport')],
+    ES: [FREE_TV('La 1 (RTVE)')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'uefa.nations': {
+    FR: [TV('M6'), TV('beIN Sports')],
+    GB: [STREAM('Viaplay')],
+    US: [STREAM('FuboTV'), TV('Fox Sports')],
+    DE: [STREAM('DAZN'), FREE_TV('ARD'), FREE_TV('ZDF')],
+    IT: [TV('Sky Sport'), TV('Mediaset')],
+    ES: [FREE_TV('La 1 (RTVE)')],
+    MA: [TV('beIN Sports MENA')],
+  },
+
+  'sau.1': {
+    SA: [TV('SSC'), STREAM('Shahid')],
+    MA: [TV('SSC'), STREAM('Shahid')],
+    AE: [TV('SSC')],
+    EG: [TV('SSC')],
+    FR: [TV('beIN Sports')],
+    GB: [STREAM('DAZN')],
+  },
+
+  'bra.1': {
+    BR: [FREE_TV('Globo'), STREAM('Premiere'), STREAM('Globoplay'), STREAM('Amazon Prime')],
+    US: [STREAM('Paramount+'), TV('ESPN')],
+    PT: [TV('Sport TV')],
+  },
+
+  'arg.1': {
+    AR: [TV('TNT Sports'), TV('ESPN'), TV('TV Pública')],
+    BR: [STREAM('Star+')],
+    US: [STREAM('Fanatiz'), TV('ESPN')],
+    ES: [STREAM('DAZN')],
+  },
+}
+
+const COUNTRY_NAMES: Record<string, string> = {
+  FR: 'France', GB: 'United Kingdom', US: 'United States', DE: 'Germany',
+  IT: 'Italy', ES: 'Spain', NL: 'Netherlands', BE: 'Belgium', PT: 'Portugal',
+  MA: 'Morocco', DZ: 'Algeria', TN: 'Tunisia', EG: 'Egypt',
+  SA: 'Saudi Arabia', AE: 'United Arab Emirates', QA: 'Qatar',
+  MX: 'Mexico', CA: 'Canada', BR: 'Brazil', AR: 'Argentina',
+  CL: 'Chile', CO: 'Colombia', JP: 'Japan',
+}
+
+const COUNTRY_FLAGS: Record<string, string> = {
+  FR: '🇫🇷', GB: '🇬🇧', US: '🇺🇸', DE: '🇩🇪', IT: '🇮🇹', ES: '🇪🇸',
+  NL: '🇳🇱', BE: '🇧🇪', PT: '🇵🇹', MA: '🇲🇦', DZ: '🇩🇿', TN: '🇹🇳',
+  EG: '🇪🇬', SA: '🇸🇦', AE: '🇦🇪', QA: '🇶🇦', MX: '🇲🇽', CA: '🇨🇦',
+  BR: '🇧🇷', AR: '🇦🇷', CL: '🇨🇱', CO: '🇨🇴', JP: '🇯🇵',
+}
+
+/**
+ * Returns broadcasters grouped by country for a competition. Strips
+ * the category suffix (.w / .u20 / .u23) so women's UCL inherits the
+ * UCL rights. Returns null when we don't have data for the comp.
+ */
+export function broadcastersFor(slug: string): Array<{ country: string; flag: string; name: string; broadcasters: Broadcaster[] }> | null {
+  const base = slug.replace(/\.(w|u\d{2})$/i, '')
+  const map = BROADCAST_RIGHTS[base]
+  if (!map) return null
+  return Object.entries(map).map(([code, list]) => ({
+    country: code,
+    flag: COUNTRY_FLAGS[code] ?? '',
+    name: COUNTRY_NAMES[code] ?? code,
+    broadcasters: list,
+  }))
+}
+
+/**
+ * Looks up the season slug for an event and resolves to a competition
+ * slug we can use for broadcaster lookup. Same logic as tagEvent() but
+ * exposed for callers that already have the event.
+ */
+export function competitionSlugFromEvent(ev: EspnEvent): string {
+  return tagEvent(ev).slug
+}
+
 /**
  * Derive round / stake context from an ESPN event so the UI can show
  * 'Round of 16 · 2nd Leg', 'Matchday 5', 'Final', etc. Returns null
