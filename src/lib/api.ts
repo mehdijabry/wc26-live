@@ -1293,13 +1293,25 @@ export const api = {
       byLeague.set(tag.slug, cur)
       if (ev.status?.type?.state === 'in') hasLive = true
     }
-    // Sort each league's events by kickoff
+    // Sort each league's events by play state first — live games
+    // surface to the top of the section so visitors don't have to scan
+    // past pre-match cards to find what's actually on right now. Then
+    // upcoming (sorted by kickoff so the next one to start is first),
+    // then finished. State weight: in=0, pre=1, post=2.
+    const stateWeight = (ev: EspnEvent): number => {
+      const s = ev.status?.type?.state
+      return s === 'in' ? 0 : s === 'pre' ? 1 : 2
+    }
     const competitions: DailyComp[] = Array.from(byLeague.entries())
       .map(([slug, v]) => ({
         slug,
         label: v.label,
         tier: v.tier,
-        events: v.events.sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')),
+        events: v.events.sort((a, b) => {
+          const dw = stateWeight(a) - stateWeight(b)
+          if (dw !== 0) return dw
+          return (a.date ?? '').localeCompare(b.date ?? '')
+        }),
       }))
       // Tier 0 first, then by tier, then by label
       .sort((a, b) => a.tier - b.tier || a.label.localeCompare(b.label))

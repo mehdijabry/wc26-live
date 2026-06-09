@@ -3,6 +3,8 @@ import {
   api,
   competitionSlugFromEvent,
   eventTeams,
+  isMatchPaused,
+  liveClock,
   statusLabel,
   ymdUtc,
   type DailyResponse,
@@ -19,6 +21,14 @@ import { MatchSheet } from './MatchSheet'
  */
 export function LiveTicker() {
   const [events, setEvents] = useState<EspnEvent[]>([])
+  // fetchedAt timestamp the last full ESPN payload arrived at — used by
+  // liveClock() to project the on-card minute forward between polls so
+  // '67' rolls up to '68' organically without waiting for the next 60s
+  // refresh. Same pattern DailyMatches.tsx uses for its match rows.
+  const [fetchedAt, setFetchedAt] = useState<number>(Date.now())
+  // Ticks the React tree every 5s so the projected liveClock minute can
+  // re-compute without us re-fetching ESPN. Cheap rerender, no network.
+  const [, setTick] = useState(0)
   const [loaded, setLoaded] = useState(false)
   // User asked: 'il faut que les matchs soient cliquable et qu'il
   // affichent la meme sheet que ceux de la page home avec les meme infos
@@ -45,6 +55,7 @@ export function LiveTicker() {
           return (a.date ?? '').localeCompare(b.date ?? '')
         })
         setEvents(all.slice(0, 20))
+        setFetchedAt(Date.now())
         setLoaded(true)
       } catch {
         if (!stop) setLoaded(true)
@@ -52,7 +63,11 @@ export function LiveTicker() {
     }
     load()
     const id = setInterval(load, 60_000) // refresh every minute
-    return () => { stop = true; clearInterval(id) }
+    // Tick every 5s so the projected liveClock minute roll-up renders
+    // even when ESPN hasn't been re-fetched yet. Light: just a counter
+    // bump, no network, no DOM thrash beyond the few visible <span>s.
+    const tickId = setInterval(() => setTick((n) => n + 1), 5_000)
+    return () => { stop = true; clearInterval(id); clearInterval(tickId) }
   }, [])
 
   if (!loaded || events.length === 0) return null
@@ -72,6 +87,7 @@ export function LiveTicker() {
             <TickerCard
               key={ev.id}
               ev={ev}
+              fetchedAt={fetchedAt}
               onPick={() =>
                 setOpenMatch({ id: ev.id, slug: competitionSlugFromEvent(ev) })
               }
@@ -89,7 +105,9 @@ export function LiveTicker() {
   )
 }
 
-function TickerCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
+function TickerCard({
+  ev, fetchedAt, onPick,
+}: { ev: EspnEvent; fetchedAt: number; onPick: () => void }) {
   const { home, away } = eventTeams(ev)
   const s = statusLabel(ev)
   const homeLogo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation)
@@ -98,6 +116,14 @@ function TickerCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
     ? new Date(ev.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     : ''
   const showScore = s.live || s.finished
+
+  // Real-time minute pulled from ESPN's displayClock and projected
+  // forward via liveClock(). Paused (halftime) shows 'HT' instead.
+  // Matches the format DailyMatches.tsx uses on the home page so the
+  // ticker reads as "67'" rather than just "LIVE".
+  const liveMinute = s.live
+    ? (isMatchPaused(s.detail) ? 'HT' : liveClock(s.rawClock, fetchedAt))
+    : null
 
   return (
     <button
@@ -117,7 +143,9 @@ function TickerCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-red/60 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent-red" />
             </span>
-            <span className="text-accent-red font-semibold">LIVE</span>
+            <span className="text-accent-red font-semibold">
+              {liveMinute && liveMinute !== 'LIVE' ? `${liveMinute}${liveMinute === 'HT' ? '' : "'"}` : 'LIVE'}
+            </span>
           </>
         ) : s.finished ? (
           <span>FT</span>
