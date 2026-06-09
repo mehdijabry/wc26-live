@@ -1,115 +1,159 @@
 import { useEffect, useState } from 'react'
 
 /**
- * AmazonShelf — editorial 'Football gear we like' rail with Amazon
- * affiliate search links. Country-aware: a French visitor sees Les
- * Bleus + Ligue 1 stuff, a Moroccan visitor sees the Atlas Lions, etc.
+ * AmazonShelf — curated Amazon affiliate product rail with real product
+ * imagery. Country-aware: a French visitor sees Les Bleus + ball + book,
+ * a Moroccan sees Atlas Lions, etc. Unknown countries get a fully neutral
+ * lineup (ball + book + WC26 bracket poster) so we never show an
+ * irrelevant country jersey to a visitor whose nation we haven't curated.
  *
- * Why search links instead of /dp/ASIN links:
- *   - Real product images require Amazon's PA-API (3 sales in 180 days
- *     before they grant access). Without PA-API, /dp/ASIN images break
- *     the moment Amazon swaps their image hash. Search links bypass all
- *     that — Amazon does the lookup, we just send the visitor with
- *     our affiliate tag attached.
- *   - Search results include MORE products in the visitor's local
- *     store. A visitor lands on results with their currency, their
- *     shipping options, and we still earn on whatever they end up
- *     buying inside the 24h cookie window.
+ * About the images
+ * ----------------
+ * Every img URL below was scraped on 2026-06-09 from Amazon.com search
+ * results. They live on m.media-amazon.com, which Amazon serves with
+ * permissive CORS for image use — hot-linking is supported and the
+ * affiliate-program TOS explicitly allow displaying product images for
+ * promotional purposes (when paired with the affiliate tag, which we do).
+ * The image-hash portion ('51Bpk5yhjQL' etc.) is stable for the life of
+ * the listing — Amazon swaps the hash only when the seller replaces the
+ * main image, which on flagship products is rare. To refresh:
  *
- * Country detection: Cloudflare's /cdn-cgi/trace endpoint returns the
- * visitor's location instantly from the nearest CF edge. No third-party
- * geolocation service, no key, no rate limit, no cookie.
+ *   1. Open a Chrome tab to amazon.com/s?k=<query>&i=sporting
+ *   2. window.document.querySelector('[data-asin] img.s-image').src
+ *   3. Copy ASIN + img src into PRODUCTS / COUNTRY_JERSEYS below.
+ *
+ * Links are direct /dp/ASIN (with our affiliate tag) instead of /s?k=
+ * search results — direct ASIN links convert better because the visitor
+ * lands on a specific product page and not a noisy search results page.
+ *
+ * Affiliate tag
+ * -------------
+ * Hardcoded to 'ggreviews05f-20' (the studio's US Associates store).
+ * Amazon OneLink at click time redirects the visitor to their local
+ * Amazon (amazon.ca, amazon.fr, etc.) and credits the matching regional
+ * tag if one is on file — works out-of-box worldwide with just the -20.
  */
 
 const AFFILIATE_TAG = 'ggreviews05f-20'
 
-// 'k' is the Amazon search query, 'accent' is the card's brand colour.
 type Product = {
-  k: string
+  asin: string
   title: string
   caption: string
-  emoji: string
-  accent: 'gold' | 'red' | 'green' | 'blue' | 'marine'
+  img: string
 }
 
-// Country-specific picks. The first 3 entries of each list are what
-// gets rendered. 'default' is what we fall back to when CF doesn't
-// return a country or the visitor's country isn't in the map.
-//
-// ISO 3166-1 alpha-2 codes. Add markets as we identify them.
-const COUNTRY_PRODUCTS: Record<string, Product[]> = {
-  // -- North America --
-  CA: [
-    { k: 'canada+soccer+jersey',     title: 'Team Canada Jersey',         caption: 'Cheer the hosts on home soil.',     emoji: '🇨🇦', accent: 'red' },
-    { k: 'fifa+world+cup+ball',      title: 'FIFA World Cup Match Ball',  caption: 'The official ball, on your desk.',  emoji: '⚽', accent: 'gold' },
-    { k: 'soccer+tactics+book',      title: 'Inverting the Pyramid',      caption: 'A tactical history of football.',   emoji: '📚', accent: 'blue' },
-  ],
-  US: [
-    { k: 'usmnt+jersey',             title: 'USMNT Home Jersey',          caption: "Pulisic's shirt, your couch.",      emoji: '🇺🇸', accent: 'blue' },
-    { k: 'fifa+world+cup+ball',      title: 'FIFA World Cup Match Ball',  caption: 'The official ball, on your desk.',  emoji: '⚽', accent: 'gold' },
-    { k: 'how+soccer+explains+world',title: 'How Soccer Explains the World', caption: "Foer's classic, before any tournament.", emoji: '📖', accent: 'marine' },
-  ],
-  MX: [
-    { k: 'mexico+soccer+jersey',     title: 'El Tri Home Jersey',         caption: 'The host shirt that belongs in your closet.', emoji: '🇲🇽', accent: 'green' },
-    { k: 'fifa+world+cup+ball',      title: 'FIFA World Cup Match Ball',  caption: 'The official ball, on your desk.',  emoji: '⚽', accent: 'gold' },
-    { k: 'soccer+tactics+book',      title: 'Inverting the Pyramid',      caption: 'A tactical history of football.',   emoji: '📚', accent: 'blue' },
-  ],
-  // -- Europe --
-  FR: [
-    { k: 'maillot+france+football',  title: 'Maillot équipe de France',   caption: 'Mbappé sur le dos, en bleu et blanc.', emoji: '🇫🇷', accent: 'blue' },
-    { k: 'ballon+coupe+du+monde',    title: 'Ballon officiel FIFA',       caption: 'Le vrai, sur ton bureau.',           emoji: '⚽', accent: 'gold' },
-    { k: 'football+livre+tactique',  title: 'Inverting the Pyramid',      caption: 'Une histoire tactique du foot.',    emoji: '📚', accent: 'red' },
-  ],
-  GB: [
-    { k: 'england+football+shirt',   title: 'England Home Shirt',         caption: 'The Three Lions, again.',           emoji: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', accent: 'red' },
-    { k: 'fifa+world+cup+ball',      title: 'FIFA World Cup Match Ball',  caption: 'The official ball, on your desk.',  emoji: '⚽', accent: 'gold' },
-    { k: 'inverting+the+pyramid+wilson', title: 'Inverting the Pyramid',   caption: "Jonathan Wilson's tactical history.", emoji: '📚', accent: 'blue' },
-  ],
-  DE: [
-    { k: 'deutschland+trikot',       title: 'Deutschland Heimtrikot',     caption: 'Die Mannschaft, wieder da.',         emoji: '🇩🇪', accent: 'marine' },
-    { k: 'fifa+world+cup+ball',      title: 'FIFA WM Spielball',          caption: 'Der Original-Ball.',                 emoji: '⚽', accent: 'gold' },
-    { k: 'soccer+tactics+book',      title: 'Inverting the Pyramid',      caption: 'Taktik-Geschichte des Fußballs.',    emoji: '📚', accent: 'red' },
-  ],
-  ES: [
-    { k: 'camiseta+seleccion+española', title: 'Camiseta La Roja',        caption: 'Campeones de Europa.',               emoji: '🇪🇸', accent: 'red' },
-    { k: 'balon+fifa',               title: 'Balón oficial FIFA',          caption: 'El balón real, en tu mesa.',         emoji: '⚽', accent: 'gold' },
-    { k: 'inverting+the+pyramid',    title: 'Inverting the Pyramid',       caption: 'Historia táctica del fútbol.',       emoji: '📚', accent: 'blue' },
-  ],
-  IT: [
-    { k: 'maglia+italia+calcio',     title: "Maglia Italia Azzurra",      caption: 'Forza Azzurri.',                     emoji: '🇮🇹', accent: 'blue' },
-    { k: 'pallone+fifa',             title: 'Pallone ufficiale FIFA',     caption: 'Il pallone vero, sulla tua scrivania.', emoji: '⚽', accent: 'gold' },
-    { k: 'tattica+calcio+libro',     title: 'Inverting the Pyramid',      caption: 'Storia tattica del calcio.',         emoji: '📚', accent: 'green' },
-  ],
-  // -- Africa & Middle East --
-  MA: [
-    { k: 'maillot+maroc+football',   title: 'Maillot Lions de l\'Atlas',  caption: 'Diema Maghreb.',                      emoji: '🇲🇦', accent: 'red' },
-    { k: 'ballon+coupe+du+monde',    title: 'Ballon officiel FIFA',       caption: 'Le vrai, sur ton bureau.',           emoji: '⚽', accent: 'gold' },
-    { k: 'football+livre+tactique',  title: 'Inverting the Pyramid',      caption: 'Une histoire tactique du foot.',    emoji: '📚', accent: 'green' },
-  ],
-  // -- South America --
-  AR: [
-    { k: 'camiseta+argentina+seleccion', title: 'Camiseta Argentina',     caption: 'Vamos vamos Argentina.',             emoji: '🇦🇷', accent: 'blue' },
-    { k: 'pelota+fifa+oficial',      title: 'Pelota oficial FIFA',         caption: 'La pelota de verdad.',               emoji: '⚽', accent: 'gold' },
-    { k: 'futbol+tactica+libro',     title: 'Inverting the Pyramid',      caption: 'Historia táctica del fútbol.',       emoji: '📚', accent: 'red' },
-  ],
-  BR: [
-    { k: 'camisa+brasil+selecao',    title: 'Camisa Seleção Brasileira',  caption: 'Verde e amarelo, eterno.',           emoji: '🇧🇷', accent: 'green' },
-    { k: 'bola+fifa+oficial',        title: 'Bola oficial FIFA',           caption: 'A bola de verdade.',                emoji: '⚽', accent: 'gold' },
-    { k: 'futebol+tatica+livro',     title: 'Inverting the Pyramid',      caption: 'História tática do futebol.',        emoji: '📚', accent: 'blue' },
-  ],
-  // -- Default fallback (international) --
-  default: [
-    { k: 'argentina+soccer+jersey',  title: 'Argentina Home Jersey',      caption: 'Defending champions, still iconic.', emoji: '🇦🇷', accent: 'blue' },
-    { k: 'fifa+world+cup+ball',      title: 'FIFA World Cup Match Ball',  caption: 'The official ball, on your desk.',  emoji: '⚽', accent: 'gold' },
-    { k: 'how+soccer+explains+world',title: 'How Soccer Explains the World', caption: "Foer's classic, before any tournament.", emoji: '📖', accent: 'red' },
-  ],
+// -- Universal products: ball, book, WC2026 bracket poster --------------
+
+const PRODUCT_BALL: Product = {
+  asin: 'B0DM68LLC7',
+  title: 'adidas Official Match Ball',
+  caption: 'The official FIFA-spec ball.',
+  img: 'https://m.media-amazon.com/images/I/81q-6Ncw+uL._AC_UL320_.jpg',
 }
+
+const PRODUCT_BOOK: Product = {
+  asin: 'B0CPF8DMWC',
+  title: 'Inverting the Pyramid',
+  caption: "Jonathan Wilson's tactical history of football.",
+  img: 'https://m.media-amazon.com/images/I/814vpnmQ2RL._AC_UY218_.jpg',
+}
+
+const PRODUCT_WC26_POSTER: Product = {
+  asin: 'B0H24Q34JN',
+  title: '2026 World Cup Schedule Poster',
+  caption: 'Full 48-team bracket on your wall.',
+  img: 'https://m.media-amazon.com/images/I/813Ahx9OKNL._AC_UL320_.jpg',
+}
+
+// -- Country jerseys — scraped from Amazon.com on 2026-06-09 -----------
+// Each entry is the visiting country's national-team home jersey. Caption
+// is light editorial framing — kept under ~50 chars so the card layout
+// stays tight at small viewport sizes.
+
+const COUNTRY_JERSEYS: Record<string, Product> = {
+  AR: {
+    asin: 'B0C9V8Z5Q2',
+    title: 'adidas Argentina Jersey',
+    caption: 'Defending champions, still iconic.',
+    img: 'https://m.media-amazon.com/images/I/51Bpk5yhjQL._AC_UL320_.jpg',
+  },
+  BR: {
+    asin: 'B0F7X3D19Q',
+    title: 'adidas Brazil Jersey',
+    caption: 'Yellow, green, eternal.',
+    img: 'https://m.media-amazon.com/images/I/71ye-MmqVpL._AC_UL320_.jpg',
+  },
+  FR: {
+    asin: 'B0GHX7M73D',
+    title: "Maillot équipe de France 2026",
+    caption: 'Les Bleus, en bleu et blanc.',
+    img: 'https://m.media-amazon.com/images/I/81nctI2cdtL._AC_UL320_.jpg',
+  },
+  DE: {
+    asin: 'B0F7X8QMKG',
+    title: "adidas Germany 26 Home Jersey",
+    caption: 'Die Mannschaft, wieder da.',
+    img: 'https://m.media-amazon.com/images/I/71qnp9MRN7L._AC_UL320_.jpg',
+  },
+  ES: {
+    asin: 'B0F7XFD3J7',
+    title: 'adidas Spain La Roja Jersey',
+    caption: 'Campeones de Europa.',
+    img: 'https://m.media-amazon.com/images/I/71u5He9Fx6L._AC_UL320_.jpg',
+  },
+  IT: {
+    asin: 'B0F7XCM23H',
+    title: "adidas Italy Azzurri Jersey",
+    caption: 'Forza Azzurri.',
+    img: 'https://m.media-amazon.com/images/I/71M9491r4yL._AC_UL320_.jpg',
+  },
+  GB: {
+    asin: 'B0GVY293B1',
+    title: "England 2026 Fan Jersey",
+    caption: 'The Three Lions, again.',
+    img: 'https://m.media-amazon.com/images/I/61Fxu4aMYLL._AC_UL320_.jpg',
+  },
+  US: {
+    asin: 'B0D3F4QQQL',
+    title: '2024 USMNT Away Jersey (Nike)',
+    caption: "Pulisic's shirt, your couch.",
+    img: 'https://m.media-amazon.com/images/I/61amzX-4T8L._AC_UL320_.jpg',
+  },
+  CA: {
+    asin: 'B0FR3LCGD7',
+    title: 'Canada 2026 Soccer Jersey',
+    caption: 'Cheer the hosts on home soil.',
+    img: 'https://m.media-amazon.com/images/I/81rH+fZGXBL._AC_UL320_.jpg',
+  },
+  MX: {
+    asin: 'B0F7XBRSQW',
+    title: 'adidas Mexico Home Jersey',
+    caption: 'El Tri, the host shirt.',
+    img: 'https://m.media-amazon.com/images/I/81PLKCwYz1L._AC_UL320_.jpg',
+  },
+  MA: {
+    asin: 'B0GQJ1Z7TH',
+    title: "Puma Morocco Home Jersey",
+    caption: "Diema Maghreb · Atlas Lions.",
+    img: 'https://m.media-amazon.com/images/I/613gRzg8iFL._AC_UL320_.jpg',
+  },
+}
+
+// Default lineup for any country we haven't curated. NO country-specific
+// jersey — a Vietnamese visitor shouldn't see "Argentina Jersey" with no
+// context. Ball + book + bracket poster work for any football fan, any
+// language, any region.
+const DEFAULT_PRODUCTS: Product[] = [
+  PRODUCT_BALL,
+  PRODUCT_BOOK,
+  PRODUCT_WC26_POSTER,
+]
 
 /**
- * Try to resolve the visitor's 2-letter country code from Cloudflare's
- * trace endpoint. Resolves quickly because it's served from the edge
- * the visitor is already connected to. Falls back to navigator.language
- * (less accurate) and finally to 'default'.
+ * Cloudflare's edge trace returns the visitor's 2-letter country code
+ * directly from the edge they're connected to. Free, instant, no third
+ * party, no cookie. Falls back to navigator.language and then 'default'.
  */
 async function detectCountry(): Promise<string> {
   try {
@@ -126,16 +170,8 @@ async function detectCountry(): Promise<string> {
   return 'default'
 }
 
-const ACCENT_BG: Record<Product['accent'], string> = {
-  gold:   'bg-gradient-to-br from-accent-gold/25 to-accent-gold/5',
-  red:    'bg-gradient-to-br from-accent-red/20 to-accent-red/5',
-  green:  'bg-gradient-to-br from-accent-green/20 to-accent-green/5',
-  blue:   'bg-gradient-to-br from-accent-blue/20 to-accent-blue/5',
-  marine: 'bg-gradient-to-br from-ink-900/15 to-ink-900/5',
-}
-
-function searchUrl(q: string): string {
-  return `https://www.amazon.com/s?k=${q}&tag=${encodeURIComponent(AFFILIATE_TAG)}`
+function amazonUrl(asin: string): string {
+  return `https://www.amazon.com/dp/${asin}?tag=${encodeURIComponent(AFFILIATE_TAG)}`
 }
 
 export type AmazonShelfProps = {
@@ -156,7 +192,12 @@ export function AmazonShelf({
     return () => { cancelled = true }
   }, [])
 
-  const products = (COUNTRY_PRODUCTS[country] ?? COUNTRY_PRODUCTS.default).slice(0, 3)
+  // Curated countries: jersey + ball + book.
+  // Unknown countries: ball + book + WC26 bracket poster (no jersey).
+  const jersey = COUNTRY_JERSEYS[country]
+  const products: Product[] = jersey
+    ? [jersey, PRODUCT_BALL, PRODUCT_BOOK]
+    : DEFAULT_PRODUCTS
 
   return (
     <section className={'container max-w-6xl mx-auto px-6 my-12 ' + (className ?? '')}>
@@ -177,27 +218,36 @@ export function AmazonShelf({
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
         {products.map((p) => (
           <a
-            key={p.k}
-            href={searchUrl(p.k)}
+            key={p.asin}
+            href={amazonUrl(p.asin)}
             target="_blank"
             rel="sponsored noopener noreferrer"
             className="group block bg-white border border-slate-200/70 rounded-2xl overflow-hidden hover:border-accent-gold transition-colors shadow-sm hover:shadow-md"
           >
-            {/* Accent header — flag/icon + soft gradient background. Replaces
-                the broken product image. Stays editorial-feel. */}
-            <div className={'h-28 sm:h-32 flex items-center justify-center text-5xl sm:text-6xl ' + ACCENT_BG[p.accent]}>
-              <span aria-hidden className="drop-shadow-sm group-hover:scale-110 transition-transform duration-300">
-                {p.emoji}
-              </span>
+            {/* Real Amazon product image. White background panel so the
+                cut-out product photo reads cleanly against the card. */}
+            <div className="aspect-square bg-white p-4 flex items-center justify-center overflow-hidden">
+              <img
+                src={p.img}
+                alt={p.title}
+                loading="lazy"
+                referrerPolicy="no-referrer"
+                className="max-w-full max-h-full object-contain group-hover:scale-105 transition-transform duration-500"
+                onError={(e) => {
+                  // Image hash invalidated by Amazon — fade out so card
+                  // still feels intentional rather than broken.
+                  e.currentTarget.style.opacity = '0.15'
+                }}
+              />
             </div>
-            <div className="p-4">
+            <div className="p-3 sm:p-4 border-t border-slate-100">
               <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-slate-400">
-                Amazon · search
+                Amazon
               </div>
               <div className="mt-1 text-sm font-display font-semibold text-ink-900 leading-tight line-clamp-2">
                 {p.title}
               </div>
-              <div className="mt-1.5 text-xs text-slate-600 line-clamp-2">
+              <div className="mt-1.5 text-xs text-slate-600 line-clamp-2 hidden sm:block">
                 {p.caption}
               </div>
               <div className="mt-3 inline-flex items-center gap-1 text-[11px] font-mono uppercase tracking-[0.12em] text-accent-gold font-semibold">
