@@ -84,7 +84,13 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
   // and cancel the in-flight fetch. We track the requested team in a
   // ref so a subsequent team change cancels the previous request.
   useEffect(() => {
-    if (!open || !teamCode || tab !== 'history') return
+    // History used to only load when the History tab opened. The Infos
+    // tab now also needs it (Form / Goals / Results KPIs read from
+    // history.summary + history.events since the WC tournament store
+    // only has WC matches — for teams that haven't kicked off yet,
+    // those numbers all read 0 / —). Loading on modal-open populates
+    // Infos straight away.
+    if (!open || !teamCode) return
     if (history) return // already loaded for this team
     const requested = teamCode
     setHistoryLoading(true)
@@ -224,7 +230,15 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
               )}
 
               {tab === 'infos' && (
-                <InfosTab team={team} record={record} teamMatches={teamMatches} teamCode={teamCode ?? ''} loading={loading} />
+                <InfosTab
+                  team={team}
+                  record={record}
+                  teamMatches={teamMatches}
+                  teamCode={teamCode ?? ''}
+                  loading={loading}
+                  history={history}
+                  historyLoading={historyLoading}
+                />
               )}
 
               {tab === 'effectif' && (
@@ -263,56 +277,110 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
 // ---------- Tabs ---------------------------------------------------------
 
 function InfosTab({
-  team, record, teamMatches, teamCode, loading,
+  team, record, teamMatches, teamCode, loading, history, historyLoading,
 }: {
   team: EspnTeamPayload['team']
   record: ReturnType<typeof recordForTeam>
   teamMatches: EspnEvent[]
   teamCode: string
   loading: boolean
+  history: HistoryResponse | null
+  historyLoading: boolean
 }) {
   const next = teamMatches.find((ev) => ev.status?.type?.state !== 'post')
 
-  // Form bullets — last 5 finished matches as W/D/L circles
-  const form = teamMatches
-    .filter((ev) => ev.status?.type?.state === 'post')
-    .slice(-5)
-    .map((ev) => {
-      const cs = ev.competitions?.[0]?.competitors ?? []
-      const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === teamCode.toUpperCase())
-      const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== teamCode.toUpperCase())
-      const my = parseInt(mine?.score ?? '0', 10)
-      const op = parseInt(other?.score ?? '0', 10)
-      return my > op ? 'W' : my === op ? 'D' : 'L'
-    })
+  // The Form / Goals / Results KPIs read from two stacked sources:
+  //   1. WC tournament matches (teamMatches / record) — most relevant
+  //      stat once the WC has started, since those are the games the
+  //      visitor cares about right now.
+  //   2. ESPN team history (qualifiers + friendlies + recent club /
+  //      international games via /team-history endpoint) — necessary
+  //      BEFORE kickoff because a team like Canada has 0 played WC
+  //      matches and otherwise the page reads as 0W 0D 0L / no form.
+  //
+  // We prefer the WC numbers when they exist (record.played > 0), and
+  // fall back to the broader history.summary when the tournament hasn't
+  // produced data yet for this team. The form bullets always come from
+  // the latest available source — usually the last 5 history.events,
+  // upgraded to WC results as soon as a knockout game finishes.
+  const usingHistory = record.played === 0 && history !== null
+
+  const stats = usingHistory && history
+    ? {
+        won: history.summary.won,
+        drawn: history.summary.drawn,
+        lost: history.summary.lost,
+        goalsFor: history.summary.goalsFor,
+        goalsAgainst: history.summary.goalsAgainst,
+        source: `${history.summary.played} recent matches`,
+      }
+    : {
+        won: record.won,
+        drawn: record.drawn,
+        lost: record.lost,
+        goalsFor: record.goalsFor,
+        goalsAgainst: record.goalsAgainst,
+        source: `WC26 · ${record.played} played`,
+      }
+
+  // Form bullets — last 5 *finished* matches from whichever source we
+  // chose above. Compute W/D/L by comparing our team's score to the
+  // opponent's. ESPN's /schedule endpoint nests score as { value }, so
+  // we read both shapes defensively.
+  const formSource: EspnEvent[] =
+    !usingHistory
+      ? teamMatches.filter((ev) => ev.status?.type?.state === 'post')
+      : (history?.events ?? []).filter((ev) => ev.status?.type?.state === 'post')
+
+  const form = formSource.slice(-5).map((ev) => {
+    const cs = ev.competitions?.[0]?.competitors ?? []
+    const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === teamCode.toUpperCase())
+    const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== teamCode.toUpperCase())
+    const myScore = typeof mine?.score === 'object' ? (mine.score as { value?: number }).value : Number(mine?.score)
+    const opScore = typeof other?.score === 'object' ? (other.score as { value?: number }).value : Number(other?.score)
+    const my = typeof myScore === 'number' && !Number.isNaN(myScore) ? myScore : 0
+    const op = typeof opScore === 'number' && !Number.isNaN(opScore) ? opScore : 0
+    return my > op ? 'W' : my === op ? 'D' : 'L'
+  })
 
   return (
     <div className="space-y-5">
-      {/* KPI grid à la footmercato */}
+      {/* KPI grid à la footmercato. Footer label tells the visitor which
+          data source the numbers reflect — WC26 in-tournament once games
+          are played, else 'recent matches' (qualifiers + friendlies) so
+          the panel never looks empty for a team that hasn't kicked off. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Kpi label="Form">
-          {form.length === 0 ? <span className="text-slate-400 text-xs font-mono">—</span> : (
-            <div className="flex gap-1">
-              {form.map((f, i) => (
-                <span key={i} className={
-                  'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ' +
-                  (f === 'W' ? 'bg-accent-green' : f === 'D' ? 'bg-slate-400' : 'bg-accent-red')
-                }>
-                  {f}
-                </span>
-              ))}
-            </div>
-          )}
+          {form.length === 0
+            ? (historyLoading
+                ? <span className="text-slate-400 text-xs font-mono">…</span>
+                : <span className="text-slate-400 text-xs font-mono">—</span>)
+            : (
+              <div className="flex gap-1">
+                {form.map((f, i) => (
+                  <span key={i} className={
+                    'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ' +
+                    (f === 'W' ? 'bg-accent-green' : f === 'D' ? 'bg-slate-400' : 'bg-accent-red')
+                  }>
+                    {f}
+                  </span>
+                ))}
+              </div>
+            )}
         </Kpi>
-        <Kpi label="Goals" value={`${record.goalsFor > 0 ? '+' : ''}${record.goalsFor} / -${record.goalsAgainst}`} />
+        <Kpi label="Goals" value={`${stats.goalsFor > 0 ? '+' : ''}${stats.goalsFor} / -${stats.goalsAgainst}`} />
         <Kpi label="Results" value={
           <>
-            <span className="text-accent-green">{record.won}W</span>{' '}
-            <span className="text-slate-500">{record.drawn}D</span>{' '}
-            <span className="text-accent-red">{record.lost}L</span>
+            <span className="text-accent-green">{stats.won}W</span>{' '}
+            <span className="text-slate-500">{stats.drawn}D</span>{' '}
+            <span className="text-accent-red">{stats.lost}L</span>
           </>
         } />
         <Kpi label="Squad size" value={team?.record?.items?.[0]?.stats?.length ? String(team.record.items[0].stats.length) : '—'} />
+      </div>
+
+      <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-slate-400">
+        Stats · {stats.source}
       </div>
 
       {/* Next match card */}
