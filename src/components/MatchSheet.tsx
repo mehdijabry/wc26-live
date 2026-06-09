@@ -207,12 +207,22 @@ export function MatchSheet({
   const venue = comp?.venue?.fullName ?? data?.gameInfo?.venue?.fullName
   const venueLoc = comp?.venue?.address ?? data?.gameInfo?.venue?.address
   // Match timeline lives at the top-level keyEvents on the summary
-  // payload. Filter out the noise (kickoff / halftime / final whistle
-  // texts) so the user only sees actionable plays.
+  // payload. Strict allowlist — ESPN ships a LOT of structural noise
+  // (start-delay / end-delay = VAR pauses, kickoff, halftime,
+  // start-2nd-half, etc.) and the user only cares about the actionable
+  // moments. Anything not goal / card / sub / penalty / VAR-decision
+  // is hidden.
   const rawEvents = data?.keyEvents ?? comp?.details ?? []
+  const ALLOWED = new Set([
+    'goal', 'own-goal',
+    'yellow-card', 'red-card', 'second-yellow',
+    'substitution',
+    'penalty', 'penalty-kick-missed', 'penalty-goal',
+    'var-decision',
+  ])
   const events = rawEvents.filter((ev) => {
-    const t = (ev.type?.type ?? ev.type?.text ?? '').toLowerCase()
-    return !/(kickoff|halftime|end\s+(?:of\s+)?(?:regular|game|first|second)|stoppage)/.test(t)
+    const t = (ev.type?.type ?? '').toLowerCase()
+    return ALLOWED.has(t)
   })
   const stats = data?.boxscore?.teams ?? []
   const rosters = data?.rosters ?? []
@@ -401,32 +411,12 @@ export function MatchSheet({
                 </Section>
               )}
 
-              {/* Stats */}
+              {/* Stats — possession, shots, cards, passes, etc. ESPN ships
+                  ~28 stats per team during live; we show the ones that
+                  matter and skip the obscure ratio metrics. */}
               {stats.length === 2 && stats[0].statistics?.length && stats[1].statistics?.length && (
                 <Section title="Team stats">
-                  <div className="space-y-2.5">
-                    {(stats[0].statistics ?? []).slice(0, 12).map((s, i) => {
-                      const homeStat = s
-                      const awayStat = stats[1].statistics?.[i]
-                      if (!awayStat) return null
-                      const homeVal = parseFloat((homeStat.displayValue ?? '0').replace('%', '')) || 0
-                      const awayVal = parseFloat((awayStat.displayValue ?? '0').replace('%', '')) || 0
-                      const total = homeVal + awayVal || 1
-                      return (
-                        <div key={i}>
-                          <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 mb-1">
-                            <span className="text-slate-900 font-semibold">{homeStat.displayValue ?? '—'}</span>
-                            <span className="uppercase tracking-wider">{s.displayName ?? s.abbreviation}</span>
-                            <span className="text-slate-900 font-semibold">{awayStat.displayValue ?? '—'}</span>
-                          </div>
-                          <div className="h-1.5 rounded-full bg-slate-200 flex overflow-hidden">
-                            <div className="bg-marine-900" style={{ width: `${(homeVal / total) * 100}%` }} />
-                            <div className="bg-accent-gold ml-auto" style={{ width: `${(awayVal / total) * 100}%` }} />
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
+                  <TeamStatsTable home={stats[0]} away={stats[1]} />
                 </Section>
               )}
 
@@ -766,6 +756,91 @@ function BroadcasterPill({ b }: { b: Broadcaster }) {
       <span className="font-semibold">{b.name}</span>
     </div>
   )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Team stats — pretty labels, ordered, grouped                               */
+/* -------------------------------------------------------------------------- */
+
+// Display order + human label per ESPN stat key. Anything not in this map
+// is hidden (skips obscure ratio metrics like 'shotPct' which already
+// derives from totalShots / shotsOnTarget). Order matters — first row
+// = most important.
+const STAT_LABELS: Array<{ key: string; label: string; pct?: boolean }> = [
+  { key: 'possessionPct',     label: 'Possession',         pct: true },
+  { key: 'totalShots',        label: 'Shots' },
+  { key: 'shotsOnTarget',     label: 'Shots on target' },
+  { key: 'blockedShots',      label: 'Blocked shots' },
+  { key: 'wonCorners',        label: 'Corners' },
+  { key: 'offsides',          label: 'Offsides' },
+  { key: 'foulsCommitted',    label: 'Fouls' },
+  { key: 'yellowCards',       label: 'Yellow cards' },
+  { key: 'redCards',          label: 'Red cards' },
+  { key: 'saves',             label: 'Saves' },
+  { key: 'penaltyKickGoals',  label: 'Penalty goals' },
+  { key: 'penaltyKickShots',  label: 'Penalties taken' },
+  { key: 'accuratePasses',    label: 'Accurate passes' },
+  { key: 'totalPasses',       label: 'Total passes' },
+  { key: 'passPct',           label: 'Pass accuracy',      pct: true },
+  { key: 'accurateCrosses',   label: 'Accurate crosses' },
+  { key: 'totalCrosses',      label: 'Crosses' },
+  { key: 'accurateLongBalls', label: 'Accurate long balls' },
+  { key: 'totalLongBalls',    label: 'Long balls' },
+  { key: 'effectiveTackles',  label: 'Tackles won' },
+  { key: 'totalTackles',      label: 'Tackles' },
+  { key: 'interceptions',     label: 'Interceptions' },
+  { key: 'effectiveClearance', label: 'Clearances' },
+]
+
+type BoxscoreTeam = NonNullable<NonNullable<SummaryResponse['boxscore']>['teams']>[number]
+
+function TeamStatsTable({ home, away }: { home: BoxscoreTeam; away: BoxscoreTeam }) {
+  // Index by name for O(1) lookup
+  const homeBy: Record<string, string> = {}
+  const awayBy: Record<string, string> = {}
+  for (const s of home.statistics ?? []) if (s.name) homeBy[s.name] = s.displayValue ?? ''
+  for (const s of away.statistics ?? []) if (s.name) awayBy[s.name] = s.displayValue ?? ''
+
+  return (
+    <div className="space-y-2.5">
+      {STAT_LABELS.map(({ key, label, pct }) => {
+        const hv = homeBy[key]
+        const av = awayBy[key]
+        if (hv == null && av == null) return null
+        // Parse numeric so we can build the comparison bar
+        const hn = parseFloat((hv ?? '0').replace('%', '')) || 0
+        const an = parseFloat((av ?? '0').replace('%', '')) || 0
+        const total = hn + an || 1
+        const hPct = (hn / total) * 100
+        const aPct = (an / total) * 100
+        const displayH = pct ? formatPct(hv) : hv
+        const displayA = pct ? formatPct(av) : av
+        return (
+          <div key={key}>
+            <div className="flex items-center justify-between text-[11px] font-mono mb-1">
+              <span className="text-slate-900 font-semibold tabular-nums w-12 text-left">{displayH || '—'}</span>
+              <span className="text-slate-500 uppercase tracking-wider">{label}</span>
+              <span className="text-slate-900 font-semibold tabular-nums w-12 text-right">{displayA || '—'}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-slate-100 flex overflow-hidden">
+              <div className="bg-marine-900 transition-[width]" style={{ width: `${hPct}%` }} />
+              <div className="bg-accent-gold transition-[width] ml-auto" style={{ width: `${aPct}%` }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// 0.42 → '42%', '42.7' → '43%', '90%' → '90%'
+function formatPct(v: string | undefined): string {
+  if (v == null) return ''
+  if (v.endsWith('%')) return v
+  const n = parseFloat(v)
+  if (isNaN(n)) return v
+  if (n > 0 && n < 1) return `${Math.round(n * 100)}%`
+  return `${Math.round(n)}%`
 }
 
 /** De-duplicate broadcasts by media+region so we don't show 'Paramount+ Paramount+'. */
