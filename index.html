@@ -127,61 +127,6 @@
     </script>
   </head>
   <body>
-    <!-- Launch splash. Pure HTML + CSS — runs the moment the browser
-         parses this tag, completely independent of React. The
-         emblem scales in over 0.6s, the wordmark fades in 0.3s later,
-         the whole panel holds at full visibility for 1.5s, then the
-         entire splash fades out over 0.6s and removes itself from the
-         DOM. Total visible time: ~2.7s. Because it's a single
-         CSS-driven animation (not React + boot dual-splash), there's
-         no possibility of overlapping animations or a half-played
-         splash showing through onto the home page. -->
-    <div id="launch-splash">
-      <img src="/wc26-emblem.svg" alt="" class="ls-emblem" width="112" height="112"/>
-      <div class="ls-wordmark">
-        <div class="ls-title">WC<span>26</span> Live</div>
-        <div class="ls-sub">Pressing <span>90'</span></div>
-      </div>
-    </div>
-    <style>
-      #launch-splash{
-        position:fixed;inset:0;z-index:9999;background:#0a2540;
-        display:flex;flex-direction:column;align-items:center;justify-content:center;
-        font-family:system-ui,-apple-system,sans-serif;color:#f6f3ee;
-        animation: ls-fade-out 0.6s ease-in-out 2.1s forwards;
-      }
-      .ls-emblem{
-        opacity:0;transform:scale(.88);
-        filter:drop-shadow(0 8px 30px rgba(212,175,55,0.35));
-        animation: ls-in 0.6s ease-out 0s forwards;
-      }
-      .ls-wordmark{
-        margin-top:22px;opacity:0;transform:translateY(8px);
-        animation: ls-text-in 0.55s ease-out 0.3s forwards;
-      }
-      .ls-title{font-weight:700;font-size:30px;letter-spacing:-0.5px;text-align:center}
-      .ls-title span{color:#d4af37}
-      .ls-sub{margin-top:8px;font-family:ui-monospace,Menlo,monospace;
-              font-size:11px;letter-spacing:2px;text-transform:uppercase;
-              text-align:center;opacity:.7}
-      .ls-sub span{color:#c1272d;font-weight:600}
-      @keyframes ls-in { to { opacity:1; transform:scale(1) } }
-      @keyframes ls-text-in { to { opacity:1; transform:translateY(0) } }
-      @keyframes ls-fade-out {
-        from { opacity:1; visibility:visible }
-        to { opacity:0; visibility:hidden }
-      }
-    </style>
-    <script>
-      // After the CSS fade-out keyframe finishes (2.1s delay + 0.6s
-      // duration = ~2.7s total), unmount the splash entirely so it
-      // can't intercept clicks on the home page underneath.
-      setTimeout(() => {
-        const s = document.getElementById('launch-splash')
-        if (s) s.remove()
-      }, 2800)
-    </script>
-
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
 

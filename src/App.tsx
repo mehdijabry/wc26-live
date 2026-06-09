@@ -1,4 +1,5 @@
-import { useEffect, lazy, Suspense } from 'react'
+import { useEffect, useState, lazy, Suspense } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { Routes, Route, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { StickyCountdown } from './components/StickyCountdown'
@@ -38,12 +39,16 @@ function App() {
   const pushLocalToCloud = usePredictions((s) => s.pushLocalToCloud)
   const location = useLocation()
 
-  // Launch splash is owned by index.html (#launch-splash) — pure CSS
-  // animation that runs at z:9999 from first byte until it removes
-  // itself ~2.8s later. No React-side splash any more, so there's
-  // exactly one animation, no double-render, no fade-through onto the
-  // home page. App renders normally underneath; users only see it
-  // once the splash has cleaned itself up.
+  // Intro splash — same setup as before the domain migration. React
+  // motion.div, cream background matching the rest of the site,
+  // 1.2s visible, 0.4s fade. No HTML boot splash, no double-render,
+  // no CSS keyframes fighting Framer Motion.
+  const [intro, setIntro] = useState<boolean>(typeof window !== 'undefined')
+  useEffect(() => {
+    if (!intro) return
+    const t = setTimeout(() => setIntro(false), 1200)
+    return () => clearTimeout(t)
+  }, [intro])
 
   // Init auth on mount
   useEffect(() => {
@@ -66,8 +71,41 @@ function App() {
 
   return (
     <div className="min-h-svh pb-20 md:pb-0">
-      {/* Launch splash lives in index.html (#launch-splash) — pure
-          CSS. No React intro any more. */}
+      {/* Intro splash — original cream-themed reveal. */}
+      <AnimatePresence>
+        {intro && (
+          <motion.div
+            key="wc26-intro"
+            initial={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.4, ease: 'easeOut' }}
+            className="fixed inset-0 z-[80] bg-paper flex flex-col items-center justify-center"
+          >
+            <motion.img
+              src="/wc26-emblem.svg"
+              alt=""
+              initial={{ scale: 0.85, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.5, ease: 'easeOut' }}
+              className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.25)]"
+            />
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.25 }}
+              className="mt-5 text-center"
+            >
+              <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-marine-950">
+                WC<span className="text-accent-gold">26</span> Live
+              </div>
+              <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase">
+                <span className="text-slate-600">Pressing</span>{' '}
+                <span className="text-accent-red font-semibold">90′</span>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       <Navigation />
       <StickyCountdown />
