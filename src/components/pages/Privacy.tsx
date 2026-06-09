@@ -30,7 +30,7 @@ export function Privacy() {
           "<strong>us</strong>", "<strong>our</strong>") respects your
           privacy. This page explains what we collect, why, who we share it
           with, and what rights you have. If anything here is unclear, write
-          to <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">jabrymyriam@gmail.com</a> and
+          to <a href="mailto:info@pressing90.live" className="text-accent-gold underline">info@pressing90.live</a> and
           we'll fix the language.
         </p>
 
@@ -204,8 +204,8 @@ export function Privacy() {
         </ul>
         <p>
           To exercise any of these, email{' '}
-          <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">
-            jabrymyriam@gmail.com
+          <a href="mailto:info@pressing90.live" className="text-accent-gold underline">
+            info@pressing90.live
           </a>{' '}
           from the address tied to your account. We'll respond inside 30 days.
         </p>
@@ -227,8 +227,8 @@ export function Privacy() {
           Postgres, encryption at rest). We never store passwords — only
           Supabase-managed Argon2 hashes. We patch dependencies on a
           rolling basis. If you find a security issue, write to{' '}
-          <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">
-            jabrymyriam@gmail.com
+          <a href="mailto:info@pressing90.live" className="text-accent-gold underline">
+            info@pressing90.live
           </a>{' '}
           — we'll respond quickly and credit you (if you want) in the fix.
         </p>
@@ -247,8 +247,8 @@ export function Privacy() {
         </h2>
         <p>
           Privacy questions, requests, complaints:{' '}
-          <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">
-            jabrymyriam@gmail.com
+          <a href="mailto:info@pressing90.live" className="text-accent-gold underline">
+            info@pressing90.live
           </a>
           .
         </p>

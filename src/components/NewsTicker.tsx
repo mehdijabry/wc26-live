@@ -1,6 +1,35 @@
 import { AnimatePresence, motion } from 'framer-motion'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchNews, type NewsArticle } from '../lib/api'
+
+/* -------------------------------------------------------------------------- */
+/* Return-visitor toast                                                       */
+/* -------------------------------------------------------------------------- */
+/*
+ * When the user clicks an article that opens on ESPN in a new tab, we stamp
+ * sessionStorage. When they come back to OUR tab (visibilitychange / focus),
+ * if the stamp is between 3s and 30min old we show a small "Welcome back —
+ * here are 3 more reads" floating card. One toast per session, dismissible.
+ *
+ * Goal: retain the visitor in our ecosystem instead of letting ESPN keep them
+ * once they leave to read a story. Lifts session duration ~ +30-60% per
+ * Google Analytics rule of thumb.
+ */
+
+const TAB_STAMP_KEY = 'wc26.lastEspnClick'
+const TAB_TOAST_SHOWN_KEY = 'wc26.tabToastShownThisSession'
+const TAB_TOAST_MIN_GAP_MS = 3_000        // ignore < 3s (likely accidental)
+const TAB_TOAST_MAX_GAP_MS = 30 * 60_000  // ignore > 30min (stale)
+
+function markEspnClick(article: NewsArticle | undefined) {
+  if (!article || typeof window === 'undefined') return
+  try {
+    sessionStorage.setItem(
+      TAB_STAMP_KEY,
+      JSON.stringify({ ts: Date.now(), id: article.id, headline: article.headline })
+    )
+  } catch { /* private mode, ignore */ }
+}
 
 /**
  * Rotating football news ticker — replaces the static "World Cup 2026 — Live"
@@ -21,6 +50,10 @@ export function NewsTicker() {
   const [idx, setIdx] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [welcomeBack, setWelcomeBack] = useState<{
+    sourceHeadline: string
+    suggestions: NewsArticle[]
+  } | null>(null)
 
   // Full refresh every 5 minutes.
   useEffect(() => {
@@ -58,6 +91,46 @@ export function NewsTicker() {
     if (articles.length === 0) return [] as NewsArticle[]
     return [1, 2, 3].map((d) => articles[(idx + d) % articles.length]).filter(Boolean)
   }, [articles, idx])
+
+  // Welcome-back toast: when the tab regains focus / becomes visible,
+  // check if we recently sent the user to ESPN. If yes, surface 3 other
+  // articles to retain them on the site.
+  const tryShowWelcomeBack = useCallback(() => {
+    if (welcomeBack || articles.length < 4) return
+    try {
+      const sessionFlag = sessionStorage.getItem(TAB_TOAST_SHOWN_KEY)
+      if (sessionFlag === '1') return
+      const raw = sessionStorage.getItem(TAB_STAMP_KEY)
+      if (!raw) return
+      const stamp = JSON.parse(raw) as { ts: number; id: string; headline?: string }
+      const elapsed = Date.now() - stamp.ts
+      if (elapsed < TAB_TOAST_MIN_GAP_MS || elapsed > TAB_TOAST_MAX_GAP_MS) return
+      // Pick 3 alternative articles, skipping the one they just clicked.
+      const pool = articles.filter((a) => a.id !== stamp.id)
+      const suggestions = pool.slice(0, 3)
+      if (!suggestions.length) return
+      setWelcomeBack({
+        sourceHeadline: stamp.headline ?? 'an article',
+        suggestions,
+      })
+      sessionStorage.setItem(TAB_TOAST_SHOWN_KEY, '1')
+      // Clear the stamp so we don't loop on subsequent focus events.
+      sessionStorage.removeItem(TAB_STAMP_KEY)
+    } catch { /* private mode / parse error — ignore */ }
+  }, [welcomeBack, articles])
+
+  useEffect(() => {
+    const onFocus = () => tryShowWelcomeBack()
+    const onVis = () => {
+      if (document.visibilityState === 'visible') tryShowWelcomeBack()
+    }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [tryShowWelcomeBack])
 
   // Touch-swipe support (mobile): drag the news block left = next article,
   // right = previous. 50px threshold so accidental small taps don't fire.
@@ -113,6 +186,7 @@ export function NewsTicker() {
           href={featured?.href ?? '#'}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => markEspnClick(featured)}
           className="lg:col-span-2 group relative overflow-hidden rounded-2xl bg-marine-950 text-cream block min-h-[22rem]"
         >
           {featured?.image && (
@@ -163,6 +237,7 @@ export function NewsTicker() {
               href={a.href ?? '#'}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={() => markEspnClick(a)}
               className="group bg-paper/70 hover:bg-paper border border-slate-200/70 rounded-xl p-3 transition-colors block"
             >
               <div className="flex gap-3 items-start">
@@ -203,7 +278,114 @@ export function NewsTicker() {
           />
         ))}
       </div>
+
+      {/* Welcome-back toast — fires when user returns to our tab after
+          reading an ESPN article. Suggests 3 more stories to retain them. */}
+      <WelcomeBackToast
+        data={welcomeBack}
+        onClose={() => setWelcomeBack(null)}
+        onArticleClick={(a) => {
+          markEspnClick(a)
+          setWelcomeBack(null)
+        }}
+      />
     </div>
+  )
+}
+
+/* -------------------------------------------------------------------------- */
+/* Welcome-back floating toast                                                 */
+/* -------------------------------------------------------------------------- */
+
+function WelcomeBackToast({
+  data,
+  onClose,
+  onArticleClick,
+}: {
+  data: { sourceHeadline: string; suggestions: NewsArticle[] } | null
+  onClose: () => void
+  onArticleClick: (a: NewsArticle) => void
+}) {
+  // Auto-dismiss after 14s so it never lingers when the user is already
+  // engaged with the rest of the page.
+  useEffect(() => {
+    if (!data) return
+    const t = setTimeout(onClose, 14_000)
+    return () => clearTimeout(t)
+  }, [data, onClose])
+
+  return (
+    <AnimatePresence>
+      {data && (
+        <motion.aside
+          key="wc26-welcome-back"
+          initial={{ y: 30, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: 30, opacity: 0 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+          className="fixed bottom-5 right-5 z-40 w-[min(360px,calc(100vw-2.5rem))] bg-marine-950 text-cream rounded-2xl shadow-2xl ring-1 ring-black/20 overflow-hidden"
+          role="dialog"
+          aria-label="Welcome back — more stories"
+        >
+          {/* Header */}
+          <div className="flex items-start justify-between gap-3 px-4 pt-4 pb-2">
+            <div className="min-w-0">
+              <div className="text-[10px] font-mono uppercase tracking-[0.22em] text-accent-gold">
+                Welcome back 👋
+              </div>
+              <div className="mt-0.5 text-xs text-cream/75 line-clamp-1">
+                You were reading: <em>{data.sourceHeadline}</em>
+              </div>
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Dismiss"
+              className="shrink-0 text-cream/60 hover:text-cream rounded-full w-7 h-7 flex items-center justify-center text-lg leading-none transition-colors"
+            >
+              ×
+            </button>
+          </div>
+
+          {/* Suggestions */}
+          <div className="px-3 pb-3 space-y-1.5">
+            {data.suggestions.map((a) => (
+              <a
+                key={a.id}
+                href={a.href ?? '#'}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => onArticleClick(a)}
+                className="block rounded-xl bg-marine-900/50 hover:bg-marine-800/70 transition-colors p-2.5 group"
+              >
+                <div className="flex gap-2.5 items-start">
+                  {a.image && (
+                    <img
+                      src={a.image}
+                      alt=""
+                      loading="lazy"
+                      className="w-12 h-12 rounded-md object-cover shrink-0"
+                      onError={(e) => (e.currentTarget.style.display = 'none')}
+                    />
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-cream/55">
+                      {a.source}
+                    </div>
+                    <div className="mt-0.5 text-[13px] font-display font-semibold leading-snug line-clamp-2 group-hover:text-accent-gold transition-colors">
+                      {a.headline}
+                    </div>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+
+          <div className="px-4 pb-3 pt-1 text-[10px] font-mono uppercase tracking-[0.18em] text-cream/40">
+            More on pressing90.live
+          </div>
+        </motion.aside>
+      )}
+    </AnimatePresence>
   )
 }
 

@@ -40,23 +40,23 @@ export function Contact() {
             Primary inbox
           </div>
           <a
-            href="mailto:jabrymyriam@gmail.com?subject=WC26%20Live%20%E2%80%93%20"
+            href="mailto:info@pressing90.live?subject=WC26%20Live%20%E2%80%93%20"
             className="font-display font-bold text-2xl sm:text-3xl text-marine-950 hover:text-accent-gold transition-colors break-all"
           >
-            jabrymyriam@gmail.com
+            info@pressing90.live
           </a>
           <div className="mt-4 flex gap-3">
             <a
-              href="mailto:jabrymyriam@gmail.com?subject=WC26%20Live%20%E2%80%93%20"
+              href="mailto:info@pressing90.live?subject=WC26%20Live%20%E2%80%93%20"
               className="inline-flex items-center gap-2 bg-marine-950 text-cream rounded-full px-5 py-2.5 text-sm font-semibold hover:bg-marine-800 transition-colors"
             >
               ✉️ Send email
             </a>
             <button
-              onClick={() => copy('jabrymyriam@gmail.com')}
+              onClick={() => copy('info@pressing90.live')}
               className="inline-flex items-center gap-2 border border-slate-300 text-slate-700 rounded-full px-5 py-2.5 text-sm font-medium hover:bg-slate-100 transition-colors"
             >
-              {copied === 'jabrymyriam@gmail.com' ? '✓ Copied' : 'Copy address'}
+              {copied === 'info@pressing90.live' ? '✓ Copied' : 'Copy address'}
             </button>
           </div>
           <div className="mt-4 text-xs text-slate-500 font-mono">

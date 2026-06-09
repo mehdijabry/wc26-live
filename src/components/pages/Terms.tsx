@@ -40,8 +40,8 @@ export function Terms() {
         <p>
           The Site is operated by <strong>mehdijabry.dev studio</strong>, a
           freelance web studio based in Canada. Contact:{' '}
-          <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">
-            jabrymyriam@gmail.com
+          <a href="mailto:info@pressing90.live" className="text-accent-gold underline">
+            info@pressing90.live
           </a>.
         </p>
 
@@ -138,8 +138,8 @@ export function Terms() {
           advertisers and we are not responsible for the products or
           services they promote. If you see an ad that is invasive,
           misleading, deceptive, or breaks the law, please report it to{' '}
-          <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">
-            jabrymyriam@gmail.com
+          <a href="mailto:info@pressing90.live" className="text-accent-gold underline">
+            info@pressing90.live
           </a>{' '}
           so we can blacklist the creative.
         </p>
@@ -177,8 +177,8 @@ export function Terms() {
         <p>
           If you are a rights holder and you believe we have used your
           material in a way that exceeds fair use, please email{' '}
-          <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">
-            jabrymyriam@gmail.com
+          <a href="mailto:info@pressing90.live" className="text-accent-gold underline">
+            info@pressing90.live
           </a>{' '}
           with:
         </p>
@@ -218,8 +218,8 @@ export function Terms() {
         </h2>
         <p>
           Questions about these terms:{' '}
-          <a href="mailto:jabrymyriam@gmail.com" className="text-accent-gold underline">
-            jabrymyriam@gmail.com
+          <a href="mailto:info@pressing90.live" className="text-accent-gold underline">
+            info@pressing90.live
           </a>
           .
         </p>
