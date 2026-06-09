@@ -401,44 +401,69 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
 }
 
 /**
- * Flag emoji for a competition slug. Used by the UI to put a small
- * country marker next to 'Brasileirão · Série B' so the user knows
- * which country a generic league name refers to. Tournament slugs
- * (UCL / WC / etc.) return a tournament-specific icon instead.
+ * Official competition logo URL (ESPN CDN) for a given canonical slug.
+ *
+ * Every entry verified via:
+ *   curl '.../{slug}/scoreboard' | jq '.leagues[0].logos'
+ * and the default href is what's stored here. Returns null for any slug
+ * we DON'T have an official asset for — the caller renders nothing in
+ * that case (no emoji fallback, per user instruction: "soit tu mets les
+ * logos officiels … soit rien").
+ *
+ * Category suffix (.w / .u20 / .u23) is stripped before lookup so the
+ * women's UCL still resolves to the UCL logo.
  */
-export function competitionFlag(slug: string): string {
-  // Tournament icons first
-  if (slug.startsWith('fifa.world')) return '🏆'
-  if (slug.startsWith('uefa.champions')) return '⭐'
-  if (slug.startsWith('uefa.europa.conf')) return '🟢'
-  if (slug.startsWith('uefa.europa')) return '🟠'
-  if (slug.startsWith('uefa.euro')) return '🇪🇺'
-  if (slug.startsWith('uefa.nations')) return '🇪🇺'
-  if (slug.startsWith('conmebol.libert')) return '🏆'
-  if (slug.startsWith('conmebol.sudameric')) return '🏆'
-  if (slug.startsWith('conmebol.america')) return '🌎'
-  if (slug.startsWith('concacaf.gold')) return '🌎'
-  if (slug.startsWith('concacaf.nations')) return '🌎'
-  if (slug.startsWith('caf.nations')) return '🌍'
-  if (slug.startsWith('afc.asian')) return '🌏'
-  if (slug.includes('fifa.friendly') || slug === 'fifa.friendly' || slug === 'international-friendly') return '🌍'
-  if (slug === 'club.friendly') return '⚽'
-  if (slug === 'youth') return '🧒'
-  if (slug === 'women') return '⚽'
-  // Country leagues — slug pattern XXX.N (eng.1, esp.2, bra.1)
-  const country = slug.split('.')[0]
-  const FLAGS: Record<string, string> = {
-    eng: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', esp: '🇪🇸', ger: '🇩🇪', ita: '🇮🇹', fra: '🇫🇷',
-    bra: '🇧🇷', arg: '🇦🇷', ned: '🇳🇱', por: '🇵🇹', bel: '🇧🇪',
-    tur: '🇹🇷', sco: '🏴󠁧󠁢󠁳󠁣󠁴󠁿', sau: '🇸🇦', usa: '🇺🇸', mex: '🇲🇽',
-    chi: '🇨🇱', col: '🇨🇴', uru: '🇺🇾', per: '🇵🇪', ecu: '🇪🇨',
-    jpn: '🇯🇵', kor: '🇰🇷', aus: '🇦🇺', uae: '🇦🇪', qat: '🇶🇦',
-    egy: '🇪🇬', mar: '🇲🇦', ksa: '🇸🇦', den: '🇩🇰', swe: '🇸🇪',
-    nor: '🇳🇴', fin: '🇫🇮', swi: '🇨🇭', aut: '🇦🇹', cze: '🇨🇿',
-    pol: '🇵🇱', rou: '🇷🇴', gre: '🇬🇷', cro: '🇭🇷', srb: '🇷🇸',
-  }
-  return FLAGS[country] ?? '⚽'
+const COMPETITION_LOGOS: Record<string, string> = {
+  // Major tournaments
+  'fifa.world':             'https://a.espncdn.com/i/leaguelogos/soccer/500/4.png',
+  'uefa.champions':         'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png',
+  'uefa.europa':            'https://a.espncdn.com/i/leaguelogos/soccer/500/2310.png',
+  'uefa.europa.conf':       'https://a.espncdn.com/i/leaguelogos/soccer/500/20296.png',
+  'uefa.euro':              'https://a.espncdn.com/i/leaguelogos/soccer/500/74.png',
+  'uefa.nations':           'https://a.espncdn.com/i/leaguelogos/soccer/500/2395.png',
+  'conmebol.libertadores':  'https://a.espncdn.com/i/leaguelogos/soccer/500/58.png',
+  'conmebol.america':       'https://a.espncdn.com/i/leaguelogos/soccer/500/83.png',
+  'conmebol.sudamericana':  'https://a.espncdn.com/i/leaguelogos/soccer/500/1208.png',
+  'concacaf.gold':          'https://a.espncdn.com/i/leaguelogos/soccer/500/59.png',
+  'caf.nations':            'https://a.espncdn.com/i/leaguelogos/soccer/500/76.png',
+  // Top 5 — first divisions
+  'esp.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/15.png',
+  'eng.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/23.png',
+  'ger.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/10.png',
+  'ita.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/12.png',
+  'fra.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/9.png',
+  // Other major domestic
+  'usa.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/19.png',
+  'mex.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/22.png',
+  'ned.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/11.png',
+  'por.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/14.png',
+  'bel.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/6.png',
+  'tur.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/18.png',
+  'sco.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/45.png',
+  'bra.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/85.png',
+  'arg.1':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/1.png',
+  // Second tiers
+  'eng.2':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/24.png',
+  'esp.2':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/107.png',
+  'ger.2':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/97.png',
+  'ita.2':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/99.png',
+  'fra.2':                  'https://a.espncdn.com/i/leaguelogos/soccer/500/96.png',
 }
+
+/**
+ * Returns the official ESPN logo URL for a competition, or null when we
+ * don't have one verified. CALLER MUST render nothing on null — no
+ * emoji placeholder (per user instruction).
+ */
+export function competitionLogo(slug: string): string | null {
+  // Strip our category suffix (.w / .u20 / .u23 etc.) before lookup
+  const base = slug.replace(/\.(w|u\d{2})$/i, '')
+  return COMPETITION_LOGOS[base] ?? null
+}
+
+// Backwards-compat — the old emoji function is gone. If something still
+// imports competitionFlag it'll be a build error pointing here.
+export const competitionFlag = competitionLogo
 
 /**
  * Derive round / stake context from an ESPN event so the UI can show

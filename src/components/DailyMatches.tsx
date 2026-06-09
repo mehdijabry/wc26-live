@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { api, competitionFlag, eventTeams, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
+import { api, competitionLogo, eventTeams, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
 import { MatchSheet } from './MatchSheet'
@@ -274,7 +274,17 @@ function CompetitionBlock({
             {TIER_LABEL[comp.tier] ?? 'Football'}
           </div>
           <div className="font-display font-bold text-xl mt-0.5 flex items-center gap-2">
-            <span className="text-2xl leading-none" aria-hidden>{competitionFlag(comp.slug)}</span>
+            {/* Official ESPN league logo when we have one, NOTHING otherwise.
+                Per user instruction: 'soit tu mets les logos officiels …
+                soit rien' — no emoji fallback. */}
+            {competitionLogo(comp.slug) && (
+              <img
+                src={competitionLogo(comp.slug)!}
+                alt=""
+                className="w-7 h-7 object-contain shrink-0"
+                onError={(e) => { e.currentTarget.style.display = 'none' }}
+              />
+            )}
             <span className="truncate">{comp.label}</span>
           </div>
         </div>
