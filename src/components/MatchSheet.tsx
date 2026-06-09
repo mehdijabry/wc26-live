@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { teamBadgeFallback } from '../lib/utils'
-import { broadcastersFor, type Broadcaster } from '../lib/api'
+import { broadcastersFor, broadcastersForMatch, countryToFlag, type Broadcaster, type LiveBroadcaster } from '../lib/api'
 
 /**
  * MatchSheet — modal opened by tapping any match card on the daily
@@ -104,6 +104,7 @@ export function MatchSheet({
   const [data, setData] = useState<SummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [liveBroadcasts, setLiveBroadcasts] = useState<LiveBroadcaster[]>([])
 
   useEffect(() => {
     if (!open || !eventId) return
@@ -151,6 +152,23 @@ export function MatchSheet({
   const comp = data?.header?.competitions?.[0]
   const home = comp?.competitors?.find((c) => c.homeAway === 'home')
   const away = comp?.competitors?.find((c) => c.homeAway === 'away')
+
+  // Once we have the summary, fire a parallel TheSportsDB lookup for the
+  // real per-match broadcasters. Live (per-match) data takes priority
+  // over the curated comp-level map.
+  useEffect(() => {
+    if (!open || !home?.team || !away?.team || !comp?.date) {
+      setLiveBroadcasts([])
+      return
+    }
+    let cancelled = false
+    const homeName = home.team.displayName ?? home.team.shortDisplayName ?? ''
+    const awayName = away.team.displayName ?? away.team.shortDisplayName ?? ''
+    void broadcastersForMatch(homeName, awayName, comp.date).then((rows) => {
+      if (!cancelled) setLiveBroadcasts(rows)
+    })
+    return () => { cancelled = true }
+  }, [open, home?.team?.displayName, away?.team?.displayName, comp?.date])
   const status = comp?.status
   const isLive = status?.type?.state === 'in'
   const isDone = status?.type?.completed
@@ -296,6 +314,7 @@ export function MatchSheet({
               <BroadcastSection
                 competitionSlug={competitionSlug}
                 espnBroadcasts={broadcasts}
+                liveBroadcasts={liveBroadcasts}
               />
 
 
@@ -463,21 +482,64 @@ function legSuffix(head: string): string | null {
 function BroadcastSection({
   competitionSlug,
   espnBroadcasts,
+  liveBroadcasts,
 }: {
   competitionSlug: string | undefined
   espnBroadcasts: Broadcast[]
+  liveBroadcasts: LiveBroadcaster[]
 }) {
-  const byCountry = competitionSlug ? broadcastersFor(competitionSlug) : null
+  const curated = competitionSlug ? broadcastersFor(competitionSlug) : null
 
-  if (!byCountry && espnBroadcasts.length === 0) return null
+  // Merge live TheSportsDB per-match data with curated comp-level data.
+  // Per-country: take ALL live broadcasters (most accurate, this match);
+  // then add curated broadcasters for countries the live feed didn't cover.
+  const liveByCountry: Record<string, LiveBroadcaster[]> = {}
+  for (const lb of liveBroadcasts) {
+    if (!liveByCountry[lb.country]) liveByCountry[lb.country] = []
+    liveByCountry[lb.country].push(lb)
+  }
+  const haveLive = liveBroadcasts.length > 0
+  const haveCurated = curated && curated.length > 0
+  if (!haveLive && !haveCurated && espnBroadcasts.length === 0) return null
+
+  // Build the unified row set
+  type Row =
+    | { source: 'live'; country: string; flag: string; name: string; items: LiveBroadcaster[] }
+    | { source: 'curated'; country: string; flag: string; name: string; items: Broadcaster[] }
+  const rows: Row[] = []
+  const seenCountries = new Set<string>()
+
+  // Live first (most accurate)
+  for (const country of Object.keys(liveByCountry)) {
+    rows.push({
+      source: 'live',
+      country,
+      flag: countryToFlag(country),
+      name: country,
+      items: liveByCountry[country],
+    })
+    seenCountries.add(country.toLowerCase())
+  }
+  // Curated rows for countries not yet covered by live data
+  if (curated) {
+    for (const r of curated) {
+      if (seenCountries.has(r.name.toLowerCase())) continue
+      rows.push({
+        source: 'curated',
+        country: r.country,
+        flag: r.flag,
+        name: r.name,
+        items: r.broadcasters,
+      })
+    }
+  }
 
   return (
     <Section title="Diffusion · Where to watch">
-      {/* Curated rights map (per competition, per country) */}
-      {byCountry && byCountry.length > 0 && (
+      {rows.length > 0 ? (
         <div className="space-y-3">
-          {byCountry.map((row) => (
-            <div key={row.country} className="flex items-start gap-3">
+          {rows.map((row, i) => (
+            <div key={i} className="flex items-start gap-3">
               <div className="flex items-center gap-1.5 w-32 shrink-0">
                 <span className="text-base leading-none">{row.flag}</span>
                 <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 truncate">
@@ -485,46 +547,54 @@ function BroadcastSection({
                 </span>
               </div>
               <div className="flex flex-wrap gap-1.5 flex-1">
-                {row.broadcasters.map((b, i) => (
-                  <BroadcasterPill key={i} b={b} />
-                ))}
+                {row.source === 'live'
+                  ? row.items.map((lb, j) => <LiveChannelPill key={j} b={lb} />)
+                  : row.items.map((b, j) => <BroadcasterPill key={j} b={b} />)}
               </div>
             </div>
           ))}
         </div>
-      )}
-
-      {/* ESPN's broadcast feed — only shown when we have NO curated rights
-          (else it'd duplicate US entries already in the curated map). */}
-      {!byCountry && espnBroadcasts.length > 0 && (
+      ) : (
+        // Last-resort ESPN feed when neither live nor curated has data
         <div className="flex flex-wrap gap-2">
           {espnBroadcasts.map((b, i) => (
-            <div
-              key={i}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200/70"
-            >
+            <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200/70">
               <span className="text-[9px] font-mono uppercase tracking-wider text-slate-400">
                 {b.type?.shortName ?? 'TV'}
               </span>
               <span className="text-sm font-semibold text-slate-900">
-                {b.media?.shortName ?? b.media?.name ?? b.media?.callLetters ?? '—'}
+                {b.media?.shortName ?? b.media?.name ?? '—'}
               </span>
-              {b.region && (
-                <span className="text-[9px] font-mono uppercase text-slate-400">
-                  {b.region}
-                </span>
-              )}
+              {b.region && <span className="text-[9px] font-mono uppercase text-slate-400">{b.region}</span>}
             </div>
           ))}
         </div>
       )}
 
       <div className="text-[10px] font-mono text-slate-400 mt-3 leading-relaxed">
-        {byCountry
+        {haveLive
+          ? 'Live broadcast data via TheSportsDB. Local listings may still vary by provider.'
+          : haveCurated
           ? '2025-26 rights — verify your provider for local listings.'
           : 'Provided by ESPN — local listings may vary.'}
       </div>
     </Section>
+  )
+}
+
+function LiveChannelPill({ b }: { b: LiveBroadcaster }) {
+  return (
+    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-white border border-slate-200/70">
+      {b.logo && (
+        <img
+          src={b.logo}
+          alt=""
+          className="w-4 h-4 object-contain shrink-0"
+          onError={(e) => (e.currentTarget.style.display = 'none')}
+        />
+      )}
+      <span className="font-semibold text-slate-900">{b.channel}</span>
+    </div>
   )
 }
 

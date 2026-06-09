@@ -741,6 +741,103 @@ export function competitionSlugFromEvent(ev: EspnEvent): string {
   return tagEvent(ev).slug
 }
 
+/* -------------------------------------------------------------------------- */
+/* TheSportsDB — per-match TV broadcasters by country                         */
+/*                                                                            */
+/* CORS-open, free tier. Two-step lookup:                                     */
+/*   1. searchevents.php?e=Home_vs_Away  → returns TheSportsDB event id       */
+/*   2. lookuptv.php?id={tsdbId}         → returns broadcasters per country  */
+/* Results are richer than ESPN (Norwich v Palace returned DAZN Spain + RMC   */
+/* Sport France, France v N. Ireland returned TF1, etc.) and cover the same  */
+/* per-country breakdown footmercato shows. Coverage isn't 100% — some        */
+/* obscure matches return empty — so we always fall back to the curated map.  */
+/* -------------------------------------------------------------------------- */
+
+const TSDB = 'https://www.thesportsdb.com/api/v1/json/3'
+
+export type LiveBroadcaster = {
+  country: string
+  channel: string
+  logo?: string
+}
+
+const tsdbCache = new Map<string, Promise<LiveBroadcaster[]>>()
+
+export async function broadcastersForMatch(
+  homeTeam: string,
+  awayTeam: string,
+  matchDateISO: string,
+): Promise<LiveBroadcaster[]> {
+  // Cache key — same match opened repeatedly hits the cache
+  const key = `${homeTeam}|${awayTeam}|${matchDateISO.slice(0, 10)}`
+  const cached = tsdbCache.get(key)
+  if (cached) return cached
+
+  const run = (async (): Promise<LiveBroadcaster[]> => {
+    // Strip 'FC', 'Club', accent diacritics — TheSportsDB sometimes matches
+    // better with the canonical short name
+    const slug = (s: string) =>
+      s.replace(/\s+/g, '+').replace(/\./g, '').trim()
+
+    const eventName = `${slug(homeTeam)}_vs_${slug(awayTeam)}`
+    try {
+      const search = await fetch(`${TSDB}/searchevents.php?e=${eventName}`)
+      if (!search.ok) return []
+      const sj = await search.json() as { event?: Array<{ idEvent?: string; dateEvent?: string }> }
+      const candidates = sj.event ?? []
+      // Pick the one whose date matches (within ±1 day) so we don't pull a
+      // historic same-name fixture
+      const target = matchDateISO.slice(0, 10)
+      const targetTs = new Date(target).getTime()
+      const best = candidates
+        .filter((c) => c.idEvent && c.dateEvent)
+        .map((c) => ({ c, dt: Math.abs(new Date(c.dateEvent!).getTime() - targetTs) }))
+        .sort((a, b) => a.dt - b.dt)[0]
+      if (!best || best.dt > 2 * 86_400_000) return []
+
+      const tv = await fetch(`${TSDB}/lookuptv.php?id=${best.c.idEvent}`)
+      if (!tv.ok) return []
+      const tj = await tv.json() as { tvevent?: Array<{ strCountry?: string; strChannel?: string; strLogo?: string }> }
+      const out: LiveBroadcaster[] = []
+      const seen = new Set<string>()
+      for (const t of tj.tvevent ?? []) {
+        const k = `${t.strCountry ?? ''}|${t.strChannel ?? ''}`
+        if (seen.has(k) || !t.strCountry || !t.strChannel) continue
+        seen.add(k)
+        out.push({
+          country: t.strCountry,
+          channel: t.strChannel,
+          logo: t.strLogo,
+        })
+      }
+      return out
+    } catch {
+      return []
+    }
+  })()
+
+  tsdbCache.set(key, run)
+  return run
+}
+
+// Map TheSportsDB country names → ISO country codes / flag emoji for
+// merging with our curated map.
+export function countryToFlag(name: string): string {
+  const MAP: Record<string, string> = {
+    'France': '🇫🇷', 'United Kingdom': '🇬🇧', 'England': '🇬🇧', 'UK': '🇬🇧',
+    'United States': '🇺🇸', 'USA': '🇺🇸', 'Germany': '🇩🇪', 'Italy': '🇮🇹',
+    'Spain': '🇪🇸', 'Netherlands': '🇳🇱', 'Belgium': '🇧🇪', 'Portugal': '🇵🇹',
+    'Morocco': '🇲🇦', 'Algeria': '🇩🇿', 'Tunisia': '🇹🇳', 'Egypt': '🇪🇬',
+    'Saudi Arabia': '🇸🇦', 'United Arab Emirates': '🇦🇪', 'Qatar': '🇶🇦',
+    'Mexico': '🇲🇽', 'Canada': '🇨🇦', 'Brazil': '🇧🇷', 'Argentina': '🇦🇷',
+    'Chile': '🇨🇱', 'Colombia': '🇨🇴', 'Japan': '🇯🇵', 'Croatia': '🇭🇷',
+    'Switzerland': '🇨🇭', 'Austria': '🇦🇹', 'Poland': '🇵🇱', 'Sweden': '🇸🇪',
+    'Norway': '🇳🇴', 'Denmark': '🇩🇰', 'Turkey': '🇹🇷', 'Greece': '🇬🇷',
+    'International': '🌐',
+  }
+  return MAP[name] ?? ''
+}
+
 /**
  * Derive round / stake context from an ESPN event so the UI can show
  * 'Round of 16 · 2nd Leg', 'Matchday 5', 'Final', etc. Returns null
