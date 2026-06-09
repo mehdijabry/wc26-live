@@ -741,6 +741,52 @@ export function competitionSlugFromEvent(ev: EspnEvent): string {
   return tagEvent(ev).slug
 }
 
+/**
+ * Compute a live-ticking clock string from ESPN's displayClock plus the
+ * elapsed time since we fetched it. ESPN ships '32'' at fetch — we add
+ * (now - fetchedAt) minutes and render '34'' two minutes later WITHOUT
+ * re-polling. Used by the MatchCard and the MatchSheet hero so both
+ * surfaces tick in sync.
+ *
+ * Formats handled:
+ *   "32'"        → simple running clock, counts up
+ *   "45+3'"      → first/second half stoppage, increments only the +N
+ *   "32'" → 45+ → rolls past 45 once elapsed pushes past it
+ *   "HT" / ""    → returned as-is (caller checks halftime detail above)
+ */
+export function liveClock(displayClock: string, fetchedAt: number): string {
+  if (!displayClock || !fetchedAt) return displayClock || "0'"
+  const elapsed = Math.max(0, Math.floor((Date.now() - fetchedAt) / 60_000))
+  if (elapsed === 0) return displayClock
+
+  const stoppage = /^(\d+)\+(\d+)'?/.exec(displayClock)
+  if (stoppage) {
+    const base = stoppage[1]
+    const extra = parseInt(stoppage[2], 10) + elapsed
+    return `${base}+${extra}'`
+  }
+  const plain = /^(\d+)'?/.exec(displayClock)
+  if (plain) {
+    const m = parseInt(plain[1], 10)
+    const next = m + elapsed
+    if (m < 45 && next >= 45) return `45+${next - 45}'`
+    if (m < 90 && next >= 90) return `90+${next - 90}'`
+    return `${next}'`
+  }
+  return displayClock
+}
+
+/**
+ * Halftime / paused-state detection. ESPN sets status.type.detail to
+ * 'Halftime' (or 'HT' on some endpoints) when the clock is paused at
+ * 45+ between the two halves. Without this check we render the frozen
+ * '45+3'' value, which the user (rightly) complained about.
+ */
+export function isMatchPaused(detail: string | undefined): boolean {
+  if (!detail) return false
+  return /^(HT|Halftime|Half-time|Pause|Stoppage|Break)/i.test(detail)
+}
+
 /* -------------------------------------------------------------------------- */
 /* TheSportsDB — per-match TV broadcasters by country                         */
 /*                                                                            */
@@ -1051,12 +1097,31 @@ export function ymdLocal(d: Date): string {
 // Kept for backwards compat with old callers — alias to ymdLocal now.
 export const ymdUtc = ymdLocal
 
-// Helper: ESPN status → simple label
-export function statusLabel(ev: EspnEvent): { label: string; live: boolean; finished: boolean } {
+// Helper: ESPN status → simple label.
+// rawClock + paused are exposed so the caller (MatchCard) can run
+// liveClock() against them for the ticking display.
+export function statusLabel(ev: EspnEvent): {
+  label: string
+  live: boolean
+  finished: boolean
+  rawClock: string
+  paused: boolean
+} {
   const s = ev.status?.type?.state
-  if (s === 'in') return { label: ev.status?.displayClock ?? 'LIVE', live: true, finished: false }
-  if (s === 'post') return { label: ev.status?.type?.description ?? 'FT', live: false, finished: true }
-  return { label: ev.status?.type?.description ?? 'Scheduled', live: false, finished: false }
+  const detail = (ev.status?.type as { detail?: string })?.detail
+  const paused = isMatchPaused(detail)
+  const rawClock = ev.status?.displayClock ?? ''
+  if (s === 'in') {
+    return {
+      label: paused ? 'HT' : (rawClock || 'LIVE'),
+      live: true,
+      finished: false,
+      rawClock,
+      paused,
+    }
+  }
+  if (s === 'post') return { label: ev.status?.type?.description ?? 'FT', live: false, finished: true, rawClock, paused: false }
+  return { label: ev.status?.type?.description ?? 'Scheduled', live: false, finished: false, rawClock, paused: false }
 }
 
 export function eventTeams(ev: EspnEvent): { home: EspnCompetitor | undefined; away: EspnCompetitor | undefined } {

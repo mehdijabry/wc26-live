@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { api, competitionLogo, eventTeams, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
+import { api, competitionLogo, eventTeams, liveClock, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
 import { MatchSheet } from './MatchSheet'
@@ -37,6 +37,11 @@ export function DailyMatches() {
   const [loading, setLoading] = useState(true)
   const [activeSlugs, setActiveSlugs] = useState<Set<string> | null>(null) // null = all
   const [openMatch, setOpenMatch] = useState<{ id: string; slug: string } | null>(null)
+  // When did we last receive ESPN data? Used by liveClock() to add the
+  // elapsed minutes since the last poll so the on-screen minute ticks.
+  const [fetchedAt, setFetchedAt] = useState<number>(0)
+  // 1s tick to force re-renders so the live minute advances without a poll.
+  const [, setTick] = useState(0)
 
   const date = useMemo(() => {
     const d = new Date()
@@ -74,12 +79,15 @@ export function DailyMatches() {
         const fresh = await api.today(ymdLocal(date))
         if (stop) return
         setData(fresh)
+        setFetchedAt(Date.now())
       } catch {
         if (!stop) setData((prev) => prev) // keep last
       } finally {
         if (!stop) setLoading(false)
       }
-      const next = data?.hasLive ? 30_000 : 300_000
+      // 15s polling when at least one match is live so HT/FT/goal
+      // transitions catch up fast; 5min otherwise.
+      const next = data?.hasLive ? 15_000 : 300_000
       timer = window.setTimeout(load, next)
     }
     load()
@@ -89,6 +97,15 @@ export function DailyMatches() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [date.getTime()])
+
+  // 1s ticker — only spins while there's at least one live (and not
+  // halftime-paused) match on screen, so we don't burn cycles when
+  // nothing's happening.
+  useEffect(() => {
+    if (!data?.hasLive) return
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [data?.hasLive])
 
   const filteredComps = useMemo(() => {
     if (!data) return []
@@ -246,6 +263,7 @@ export function DailyMatches() {
               <CompetitionBlock
                 key={comp.slug}
                 comp={comp}
+                fetchedAt={fetchedAt}
                 onPick={(id) => setOpenMatch({ id, slug: comp.slug })}
               />
             ))}
@@ -266,9 +284,11 @@ export function DailyMatches() {
 
 function CompetitionBlock({
   comp,
+  fetchedAt,
   onPick,
 }: {
   comp: { slug: string; label: string; tier: number; events: EspnEvent[] }
+  fetchedAt: number
   onPick: (eventId: string) => void
 }) {
   if (!comp.events?.length) return null
@@ -302,7 +322,7 @@ function CompetitionBlock({
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <AnimatePresence>
           {comp.events.map((ev) => (
-            <MatchCard key={ev.id} ev={ev} onPick={() => onPick(ev.id)} />
+            <MatchCard key={ev.id} ev={ev} fetchedAt={fetchedAt} onPick={() => onPick(ev.id)} />
           ))}
         </AnimatePresence>
       </div>
@@ -310,7 +330,7 @@ function CompetitionBlock({
   )
 }
 
-function MatchCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
+function MatchCard({ ev, fetchedAt, onPick }: { ev: EspnEvent; fetchedAt: number; onPick: () => void }) {
   const { home, away } = eventTeams(ev)
   const s = statusLabel(ev)
   const kickoff = ev.date
@@ -359,19 +379,24 @@ function MatchCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
       <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mb-2">
         <span>{kickoff}</span>
         {s.live ? (
-          // 'LIVE · 87'' — caller-friendly minute next to the LIVE label so
-          // the user knows exactly where the match is. ESPN ships
-          // displayClock as '87'' / 'HT' / '45+2'' etc; we show both.
-          <span className="flex items-center gap-1.5 text-red-500 font-semibold uppercase">
-            <span className="relative flex h-1.5 w-1.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
-            </span>
-            Live
-            {s.label && s.label.toUpperCase() !== 'LIVE' && (
-              <span className="text-red-500/80 tabular-nums">· {s.label}</span>
-            )}
-          </span>
+          // 'LIVE · 87'' — minute ticked locally (liveClock) from the
+          // last fetch so the on-card minute advances between polls.
+          // Halftime = swap to 'HT' (handled by statusLabel).
+          (() => {
+            const minute = s.paused ? 'HT' : liveClock(s.rawClock, fetchedAt)
+            return (
+              <span className="flex items-center gap-1.5 text-red-500 font-semibold uppercase">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                </span>
+                {s.paused ? 'HT' : 'Live'}
+                {minute && minute.toUpperCase() !== 'LIVE' && !s.paused && (
+                  <span className="text-red-500/80 tabular-nums">· {minute}</span>
+                )}
+              </span>
+            )
+          })()
         ) : s.finished ? (
           <span className="text-slate-500">FT</span>
         ) : (

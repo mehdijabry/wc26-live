@@ -2,7 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { teamBadgeFallback } from '../lib/utils'
-import { broadcastersFor, broadcastersForMatch, countryToFlag, type Broadcaster, type LiveBroadcaster } from '../lib/api'
+import { broadcastersFor, broadcastersForMatch, countryToFlag, isMatchPaused, liveClock, type Broadcaster, type LiveBroadcaster } from '../lib/api'
 
 /**
  * MatchSheet — modal opened by tapping any match card on the daily
@@ -174,8 +174,7 @@ export function MatchSheet({
   useEffect(() => {
     if (!open) return
     const state = data?.header?.competitions?.[0]?.status?.type?.state
-    const detail = data?.header?.competitions?.[0]?.status?.type?.detail ?? ''
-    const isPaused = /^(HT|Halftime|Half-time|Pause)/i.test(detail)
+    const isPaused = isMatchPaused(data?.header?.competitions?.[0]?.status?.type?.detail)
     if (state !== 'in' || isPaused) return
     const id = window.setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(id)
@@ -281,8 +280,7 @@ export function MatchSheet({
                       // minute from displayClock + elapsed time since fetch so
                       // the counter advances every second between polls.
                       (() => {
-                        const detail = status?.type?.detail ?? ''
-                        const isHT = /^(HT|Halftime|Half-time|Pause)/i.test(detail)
+                        const isHT = isMatchPaused(status?.type?.detail)
                         const clockLabel = isHT ? 'HT' : liveClock(status?.displayClock ?? '', fetchedAt)
                         return (
                           <div className="text-[11px] uppercase tracking-widest font-mono text-red-500 flex items-center justify-center gap-1.5 mb-2 font-semibold">
@@ -768,46 +766,6 @@ function BroadcasterPill({ b }: { b: Broadcaster }) {
       <span className="font-semibold">{b.name}</span>
     </div>
   )
-}
-
-/**
- * Compute a live-ticking clock string from the ESPN displayClock value
- * plus the elapsed time since we fetched it. ESPN gives us '32'' at
- * fetch — we add (now - fetchedAt) seconds and render '34'' two minutes
- * later, without re-polling.
- *
- * Handles the standard ESPN formats:
- *   "32'"        → simple running clock
- *   "45+3'"      → first-half stoppage
- *   "90+5'"      → full-time stoppage
- *   "HT" / ""    → returned as-is (caller already checks halftime detail)
- *
- * For stoppage minutes, we increment the +N part rather than rolling
- * back into the next half (a '45+3'' shouldn't jump to 46' on its own).
- */
-function liveClock(displayClock: string, fetchedAt: number): string {
-  if (!displayClock || !fetchedAt) return displayClock || "0'"
-  const elapsed = Math.max(0, Math.floor((Date.now() - fetchedAt) / 60_000))
-  if (elapsed === 0) return displayClock
-
-  // Match '45+3'' / '90+5'' — increment only the extra-time component
-  const stoppage = /^(\d+)\+(\d+)'/.exec(displayClock)
-  if (stoppage) {
-    const base = stoppage[1]
-    const extra = parseInt(stoppage[2], 10) + elapsed
-    return `${base}+${extra}'`
-  }
-  // Plain '32'' — increment, but cap at 45 (first half) or 90 (second
-  // half boundary) so we don't roll a running minute past the half end.
-  const plain = /^(\d+)'/.exec(displayClock)
-  if (plain) {
-    const m = parseInt(plain[1], 10)
-    const next = m + elapsed
-    if (m < 45 && next >= 45) return `45+${next - 45}'`
-    if (m < 90 && next >= 90) return `90+${next - 90}'`
-    return `${next}'`
-  }
-  return displayClock
 }
 
 /** De-duplicate broadcasts by media+region so we don't show 'Paramount+ Paramount+'. */
