@@ -65,6 +65,17 @@ function App() {
     }
   }, [intro])
 
+  // Drop the inline boot splash (in index.html) on first React paint.
+  // useEffect fires AFTER commit, which means React's own intro
+  // <motion.div> (z-[80]) is already painted underneath the boot
+  // splash (z-90) when this runs — so removing the boot reveals the
+  // React intro continuously with no visible gap and no flash of
+  // the cream theme behind it.
+  useEffect(() => {
+    const boot = document.getElementById('boot-splash')
+    if (boot) boot.remove()
+  }, [])
+
   // Init auth on mount
   useEffect(() => {
     authInit()

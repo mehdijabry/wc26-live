@@ -126,13 +126,16 @@
       }
     </script>
   </head>
-  <body style="background:#0a2540;">
+  <body>
     <!-- First-paint splash. Renders BEFORE React mounts, instantly,
          using inline styles so it survives a slow JS bundle / cache
          miss / first-hit DNS handshake. The animation matches the
          React <motion.div> intro splash so the handoff is seamless.
-         React removes #boot-splash via the AnimatePresence flow once
-         the proper intro splash takes over. -->
+         App.tsx removes #boot-splash from its first useEffect — by
+         then React's intro splash is already painted underneath, so
+         the hand-off looks like one continuous animation. Body itself
+         keeps its Tailwind bg-paper class (no inline override) so
+         removing #boot-splash reveals the proper cream theme. -->
     <div id="boot-splash" style="
         position:fixed;inset:0;z-index:90;background:#0a2540;
         display:flex;flex-direction:column;align-items:center;justify-content:center;
