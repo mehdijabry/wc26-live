@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react'
-import { api, eventTeams, statusLabel, ymdUtc, type DailyResponse, type EspnEvent } from '../lib/api'
+import {
+  api,
+  competitionSlugFromEvent,
+  eventTeams,
+  statusLabel,
+  ymdUtc,
+  type DailyResponse,
+  type EspnEvent,
+} from '../lib/api'
 import { teamBadgeFallback } from '../lib/utils'
+import { MatchSheet } from './MatchSheet'
 
 /**
  * Horizontal ticker of today's live/finished/upcoming matches —
@@ -11,6 +20,13 @@ import { teamBadgeFallback } from '../lib/utils'
 export function LiveTicker() {
   const [events, setEvents] = useState<EspnEvent[]>([])
   const [loaded, setLoaded] = useState(false)
+  // User asked: 'il faut que les matchs soient cliquable et qu'il
+  // affichent la meme sheet que ceux de la page home avec les meme infos
+  // tout pareil'. Hoist the same { id, slug } modal state DailyMatches
+  // uses so clicking a ticker card opens the full event-details modal
+  // (events timeline, lineups, stats — everything that's on the home
+  // and Today pages).
+  const [openMatch, setOpenMatch] = useState<{ id: string; slug: string } | null>(null)
 
   useEffect(() => {
     let stop = false
@@ -52,14 +68,28 @@ export function LiveTicker() {
     >
       <div className="overflow-x-auto no-scrollbar">
         <div className="flex gap-2 px-3 py-2 min-w-max">
-          {events.map((ev) => <TickerCard key={ev.id} ev={ev} />)}
+          {events.map((ev) => (
+            <TickerCard
+              key={ev.id}
+              ev={ev}
+              onPick={() =>
+                setOpenMatch({ id: ev.id, slug: competitionSlugFromEvent(ev) })
+              }
+            />
+          ))}
         </div>
       </div>
+      <MatchSheet
+        open={!!openMatch}
+        eventId={openMatch?.id}
+        competitionSlug={openMatch?.slug}
+        onClose={() => setOpenMatch(null)}
+      />
     </div>
   )
 }
 
-function TickerCard({ ev }: { ev: EspnEvent }) {
+function TickerCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
   const { home, away } = eventTeams(ev)
   const s = statusLabel(ev)
   const homeLogo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation)
@@ -70,7 +100,16 @@ function TickerCard({ ev }: { ev: EspnEvent }) {
   const showScore = s.live || s.finished
 
   return (
-    <div className={'shrink-0 w-[148px] rounded-xl border px-2.5 py-1.5 ' + (s.live ? 'border-accent-red/40 bg-red-50/40' : 'border-slate-200 bg-white')}>
+    <button
+      type="button"
+      onClick={onPick}
+      aria-label={`Open ${home?.team?.abbreviation ?? '?'} vs ${away?.team?.abbreviation ?? '?'} details`}
+      className={
+        'shrink-0 w-[148px] rounded-xl border px-2.5 py-1.5 text-left ' +
+        'transition-colors active:scale-[0.98] hover:border-slate-300 ' +
+        (s.live ? 'border-accent-red/40 bg-red-50/40' : 'border-slate-200 bg-white')
+      }
+    >
       <div className="flex items-center gap-1.5 text-[9px] font-mono text-slate-500 mb-1">
         {s.live ? (
           <>
@@ -90,7 +129,7 @@ function TickerCard({ ev }: { ev: EspnEvent }) {
         <TeamLine logo={homeLogo} name={home?.team?.abbreviation ?? '?'} score={home?.score} show={showScore} />
         <TeamLine logo={awayLogo} name={away?.team?.abbreviation ?? '?'} score={away?.score} show={showScore} />
       </div>
-    </div>
+    </button>
   )
 }
 
