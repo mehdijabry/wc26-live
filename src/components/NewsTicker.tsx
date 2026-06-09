@@ -45,6 +45,14 @@ function markEspnClick(article: NewsArticle | undefined) {
  *
  * Click an article → opens the original ESPN story in a new tab.
  */
+/**
+ * One featured + three side cards = four articles visible at any time.
+ * Auto-rotation jumps idx by PAGE_SIZE so every tick refreshes ALL four
+ * cards instead of sliding the window by one (the previous behaviour,
+ * which made it look like 'the order changed but the articles didn't').
+ */
+const PAGE_SIZE = 4
+
 export function NewsTicker() {
   const [articles, setArticles] = useState<NewsArticle[]>([])
   const [idx, setIdx] = useState(0)
@@ -76,12 +84,14 @@ export function NewsTicker() {
     return () => { stop = true; if (timer) clearTimeout(timer) }
   }, [])
 
-  // Auto-advance every 40s (user feedback: 15s was too fast to read the
-  // headline + description, jumping from one dot to the next felt jittery).
+  // Auto-advance every 40s. Step by PAGE_SIZE (4) so the featured AND
+  // all three side cards all rotate to new articles at the same time —
+  // a +1 step (the old behaviour) only refreshed 1 of 4 visible cards
+  // per tick, which read as 'same articles, different order' to the user.
   useEffect(() => {
-    if (articles.length < 2) return
+    if (articles.length <= PAGE_SIZE) return
     const t = window.setInterval(() => {
-      setIdx((i) => (i + 1) % articles.length)
+      setIdx((i) => (i + PAGE_SIZE) % articles.length)
     }, 40_000)
     return () => clearInterval(t)
   }, [articles.length])
@@ -142,9 +152,9 @@ export function NewsTicker() {
     if (touchStartX.current == null) return
     const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current
     touchStartX.current = null
-    if (Math.abs(dx) < 50 || articles.length < 2) return
-    if (dx < 0) setIdx((i) => (i + 1) % articles.length)
-    else        setIdx((i) => (i - 1 + articles.length) % articles.length)
+    if (Math.abs(dx) < 50 || articles.length <= PAGE_SIZE) return
+    if (dx < 0) setIdx((i) => (i + PAGE_SIZE) % articles.length)
+    else        setIdx((i) => (i - PAGE_SIZE + articles.length) % articles.length)
   }
 
   if (loading) {
@@ -264,19 +274,26 @@ export function NewsTicker() {
         </div>
       </div>
 
-      {/* Tiny progress dots */}
+      {/* Tiny progress dots — one dot per PAGE (not per article). With
+          PAGE_SIZE = 4 and ~36 articles, that's 9 dots, each jumping to
+          a fresh set of 4 cards. Old behaviour was one dot per article
+          which both filled the row with 12 dots AND meant clicking a
+          dot only shuffled the order, not the contents. */}
       <div className="mt-4 flex items-center gap-1">
-        {articles.slice(0, 12).map((_, i) => (
-          <button
-            key={i}
-            onClick={() => setIdx(i)}
-            aria-label={`Jump to article ${i + 1}`}
-            className={
-              'h-1 rounded-full transition-all ' +
-              (i === idx ? 'w-6 bg-accent-gold' : 'w-1.5 bg-slate-300 hover:bg-slate-400')
-            }
-          />
-        ))}
+        {Array.from({ length: Math.min(12, Math.ceil(articles.length / PAGE_SIZE)) }).map((_, page) => {
+          const currentPage = Math.floor(idx / PAGE_SIZE)
+          return (
+            <button
+              key={page}
+              onClick={() => setIdx(page * PAGE_SIZE)}
+              aria-label={`Jump to page ${page + 1}`}
+              className={
+                'h-1 rounded-full transition-all ' +
+                (page === currentPage ? 'w-6 bg-accent-gold' : 'w-1.5 bg-slate-300 hover:bg-slate-400')
+              }
+            />
+          )
+        })}
       </div>
 
       {/* Welcome-back toast — fires when user returns to our tab after
