@@ -116,17 +116,32 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
       host.appendChild(frame)
     }
 
-    // After 12s, if nothing rendered, collapse the slot. Raised from 6s
-    // because Adsterra's first impression on a fresh zone can be slow
-    // (warmup) — better to wait and show real ads than to collapse early.
+    // Fill watchdog. User reported home-mid only showed ~1 page-load in
+    // 20: previous 12s timeout was killing the slot before Adsterra's
+    // invoke.js had a chance to serve a native ad (their auctioneer
+    // is slow on fresh zones — frequently 15-25s in practice). Three
+    // changes:
+    //  - bumped timeout to 30s (banner) / 45s (native, slower fill)
+    //  - for NATIVE, we no longer collapse on empty. We keep showing
+    //    the 'Sponsored' label + reserved space so the layout stays
+    //    deterministic and a late-arriving ad can still render in
+    //    place (Adsterra's invoke.js sometimes posts content well
+    //    after the watchdog fires). Cost: a sliver of blank space on
+    //    fill miss. Benefit: when it does serve, the ad lands cleanly.
+    //  - for iframe banners we still collapse on miss (an empty
+    //    iframe with a 'Sponsored' label looks broken — banners are
+    //    expected to either fill or vanish).
+    const timeoutMs = format === 'native' ? 45_000 : 30_000
     const t = window.setTimeout(() => {
       if (format === 'native') {
+        // Don't collapse — leave the placeholder so a late fill can
+        // still appear. Just log so we can spot consistent misses.
         const container = host.querySelector(`#container-${zoneKey}`)
-        const hasContent = container && container.children.length > 0
-        if (!hasContent) setEmpty(true)
+        const hasContent = !!container && container.children.length > 0
+        if (!hasContent && typeof console !== 'undefined') {
+          console.info('[adslot] native', zoneKey, 'unfilled after', timeoutMs / 1000, 's — keeping slot reserved')
+        }
       } else {
-        // For iframe-based banner: it's always present, but if it stays
-        // blank the iframe's body will be empty. Try to peek.
         try {
           const frame = host.querySelector('iframe') as HTMLIFrameElement | null
           const doc = frame?.contentDocument
@@ -136,7 +151,7 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
           // Cross-origin: assume it filled (Adsterra often renders into a child iframe)
         }
       }
-    }, 12_000)
+    }, timeoutMs)
     return () => clearTimeout(t)
   }, [visible, zoneKey, format])
 
