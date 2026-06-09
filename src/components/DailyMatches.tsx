@@ -399,7 +399,11 @@ function MatchCard({ ev, fetchedAt, onPick }: { ev: EspnEvent; fetchedAt: number
           <span className={
             'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-mono font-semibold uppercase tracking-[0.08em] ' +
             (round.knockout
-              ? 'bg-marine-950 text-white'
+              // ink-900 = #0f172a (real defined colour). Was bg-marine-950
+              // but 'marine' isn't in tailwind.config — the class silently
+              // resolved to transparent, which is why the pill rendered
+              // 'invisible' on the live site.
+              ? 'bg-ink-900 text-white'
               : 'bg-slate-100 text-slate-700 border border-slate-200')
           }>
             {round.knockout && <span aria-hidden className="opacity-80">⚔</span>}
