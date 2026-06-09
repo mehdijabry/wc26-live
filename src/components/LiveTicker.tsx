@@ -3,7 +3,6 @@ import {
   api,
   competitionSlugFromEvent,
   eventTeams,
-  isMatchPaused,
   liveClock,
   statusLabel,
   ymdUtc,
@@ -122,7 +121,7 @@ function TickerCard({
   // Matches the format DailyMatches.tsx uses on the home page so the
   // ticker reads as "67'" rather than just "LIVE".
   const liveMinute = s.live
-    ? (isMatchPaused(s.detail) ? 'HT' : liveClock(s.rawClock, fetchedAt))
+    ? (s.paused ? 'HT' : liveClock(s.rawClock, fetchedAt))
     : null
 
   return (
