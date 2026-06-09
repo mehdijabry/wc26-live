@@ -72,7 +72,11 @@ function App() {
 
   return (
     <div className="min-h-svh pb-20 md:pb-0">
-      {/* Intro splash — once per device, 1.2s */}
+      {/* Intro splash — 1.2s. Background is the SAME marine the PWA
+          manifest declares for the Android launch splash so the
+          install-icon → launch-splash → React-intro transition reads
+          as one continuous animation, not a black flash then a
+          colour change. */}
       <AnimatePresence>
         {intro && (
           <motion.div
@@ -80,7 +84,7 @@ function App() {
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.4, ease: 'easeOut' }}
-            className="fixed inset-0 z-[80] bg-paper flex flex-col items-center justify-center"
+            className="fixed inset-0 z-[80] bg-marine-950 flex flex-col items-center justify-center"
           >
             <motion.img
               src="/wc26-emblem.svg"
@@ -88,7 +92,7 @@ function App() {
               initial={{ scale: 0.85, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               transition={{ duration: 0.5, ease: 'easeOut' }}
-              className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.25)]"
+              className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.35)]"
             />
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -96,11 +100,11 @@ function App() {
               transition={{ duration: 0.45, delay: 0.25 }}
               className="mt-5 text-center"
             >
-              <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-marine-950">
+              <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-cream">
                 WC<span className="text-accent-gold">26</span> Live
               </div>
               <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase">
-                <span className="text-slate-600">Pressing</span>{' '}
+                <span className="text-cream/70">Pressing</span>{' '}
                 <span className="text-accent-red font-semibold">90′</span>
               </div>
             </motion.div>
