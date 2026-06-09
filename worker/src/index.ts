@@ -22,6 +22,11 @@ const ALLOW_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:5174',
   'https://pressing90.live',
+  'https://www.pressing90.live',
+  // Legacy origin — kept during migration window so existing PWA
+  // installs on the wc26.mehdijabry.dev subdomain keep working until
+  // the user re-opens them and lands on the 301-redirected page.
+  'https://wc26.mehdijabry.dev',
 ]
 
 // Curated competitions for the daily aggregator. Order matters — it's the

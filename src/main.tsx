@@ -4,6 +4,17 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 
+// Hard redirect from the legacy subdomain. Anyone still landing on
+// wc26.mehdijabry.dev (Facebook posts, Google cache, bookmarks, PWAs
+// installed before the domain swap) gets sent to pressing90.live with
+// their exact path + query preserved, so deep links to /predictions,
+// /u/:slug, /today etc. still work. Runs BEFORE React mounts so we
+// don't pay the cost of bootstrapping the app just to redirect.
+if (typeof window !== 'undefined' && window.location.hostname === 'wc26.mehdijabry.dev') {
+  const dest = 'https://pressing90.live' + window.location.pathname + window.location.search + window.location.hash
+  window.location.replace(dest)
+}
+
 // Register the service worker so Android Chrome / Edge / Samsung
 // Internet fire the `beforeinstallprompt` event — without this the
 // browser won't surface our 'Install app' button. The SW itself is
