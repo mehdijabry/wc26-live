@@ -215,12 +215,15 @@ export function MatchSheet({
                   <TeamColumn c={home} align="right" />
                   <div className="text-center">
                     {isLive ? (
-                      <div className="text-[10px] uppercase tracking-widest font-mono text-red-500 flex items-center justify-center gap-1.5 mb-2">
+                      // Live indicator with the current minute (e.g. 'Live · 87'')
+                      // so the user immediately sees where in the match we are.
+                      <div className="text-[11px] uppercase tracking-widest font-mono text-red-500 flex items-center justify-center gap-1.5 mb-2 font-semibold">
                         <span className="relative flex h-2 w-2">
                           <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
                           <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
                         </span>
-                        Live · {status?.displayClock ?? "0'"}
+                        Live
+                        <span className="text-red-500/85 tabular-nums">· {status?.displayClock ?? "0'"}</span>
                       </div>
                     ) : isDone ? (
                       <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2">

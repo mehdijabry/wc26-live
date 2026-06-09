@@ -233,10 +233,75 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
   '2026-club-friendly':                { label: 'Club friendlies',          tier: 19, slug: 'club.friendly' },
 }
 
+/**
+ * Fallback table — ESPN sometimes returns events with season.slug =
+ * 'group-stage' / 'regular-season' / 'apertura---finals' / 'torneo-
+ * intermedio' which tells us the ROUND but not the LEAGUE. The actual
+ * league lives in the event.uid as `l:NNNN`. This map covers the IDs
+ * we've seen ESPN serve in /all/scoreboard responses.
+ *
+ * Discover new IDs: `curl '…/all/scoreboard?dates=YYYYMMDD' | jq '.events[].uid'`
+ */
+const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }> = {
+  '775':   { label: 'FIFA World Cup',         tier: 0,  slug: 'fifa.world' },
+  '2':     { label: 'Champions League',       tier: 1,  slug: 'uefa.champions' },
+  '650':   { label: 'Copa Libertadores',      tier: 2,  slug: 'conmebol.libertadores' },
+  '15':    { label: 'LaLiga',                 tier: 3,  slug: 'esp.1' },
+  '23':    { label: 'Premier League',         tier: 4,  slug: 'eng.1' },
+  '10':    { label: 'Bundesliga',             tier: 5,  slug: 'ger.1' },
+  '12':    { label: 'Serie A',                tier: 6,  slug: 'ita.1' },
+  '9':     { label: 'Ligue 1',                tier: 7,  slug: 'fra.1' },
+  '2310':  { label: 'Europa League',          tier: 8,  slug: 'uefa.europa' },
+  '20296': { label: 'Conference League',      tier: 9,  slug: 'uefa.europa.conf' },
+  '744':   { label: 'UEFA Euro',              tier: 10, slug: 'uefa.euro' },
+  '740':   { label: 'Copa America',           tier: 10, slug: 'conmebol.america' },
+  '660':   { label: 'CONCACAF Gold Cup',      tier: 10, slug: 'concacaf.gold' },
+  '11109': { label: 'AFCON',                  tier: 10, slug: 'caf.nations' },
+  '760':   { label: 'AFC Asian Cup',          tier: 10, slug: 'afc.asian' },
+  '731':   { label: 'CONCACAF Nations League', tier: 11, slug: 'concacaf.nations' },
+  '2247':  { label: 'UEFA Nations League',    tier: 11, slug: 'uefa.nations' },
+  '4475':  { label: 'Saudi Pro League',       tier: 12, slug: 'sau.1' },
+  '21':    { label: 'Major League Soccer',    tier: 12, slug: 'usa.1' },
+  '7':     { label: 'Liga MX',                tier: 12, slug: 'mex.1' },
+  '13':    { label: 'Brasileirão',            tier: 12, slug: 'bra.1' },
+  '11':    { label: 'Primera División · Argentina', tier: 12, slug: 'arg.1' },
+  '76':    { label: 'Brasileirão · Série B',  tier: 13, slug: 'bra.2' },
+  '4060':  { label: 'Brasileirão · Série B',  tier: 13, slug: 'bra.2' },
+  '20':    { label: 'Eredivisie',             tier: 13, slug: 'ned.1' },
+  '14':    { label: 'Primeira Liga',          tier: 13, slug: 'por.1' },
+  '6':     { label: 'Belgian Pro League',     tier: 13, slug: 'bel.1' },
+  '18':    { label: 'Süper Lig',              tier: 13, slug: 'tur.1' },
+  '45':    { label: 'Scottish Premiership',   tier: 13, slug: 'sco.1' },
+  '24':    { label: 'EFL Championship',       tier: 15, slug: 'eng.2' },
+  '16':    { label: 'LaLiga 2',               tier: 15, slug: 'esp.2' },
+  '11':    { label: '2. Bundesliga',          tier: 15, slug: 'ger.2' },
+  '83':    { label: 'Serie B',                tier: 15, slug: 'ita.2' },
+  '17':    { label: 'Ligue 2',                tier: 15, slug: 'fra.2' },
+  '3922':  { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' },
+  '4001':  { label: 'Club friendlies',         tier: 19, slug: 'club.friendly' },
+}
+
+function leagueIdFromUid(uid?: string): string | null {
+  if (!uid) return null
+  const m = /l:(\d+)/.exec(uid)
+  return m ? m[1] : null
+}
+
 function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } {
   const seasonSlug: string | undefined = (ev as unknown as { season?: { slug?: string } }).season?.slug
+  // Prefer the per-season slug lookup first (covers our canonical mappings)
   if (seasonSlug && LEAGUE_META[seasonSlug]) return LEAGUE_META[seasonSlug]
-  // Fallbacks based on substrings — strip the year prefix first if present
+
+  // Then the ESPN league ID embedded in event.uid (`s:600~l:11109~e:…`).
+  // This catches the generic season slugs like 'group-stage' / 'regular-
+  // season' / 'apertura---finals' where ESPN encodes the league only in
+  // the uid. Without this we'd render bare 'Group Stage' which means
+  // nothing on its own.
+  const uid = (ev as unknown as { uid?: string }).uid
+  const leagueId = leagueIdFromUid(uid)
+  if (leagueId && LEAGUE_BY_ID[leagueId]) return LEAGUE_BY_ID[leagueId]
+
+  // Substring fallbacks — strip the year prefix first if present
   const bare = seasonSlug?.replace(/^\d+-/, '') ?? ''
   if (bare.includes('fifa.world')) {
     if (bare.includes('worldq')) return { label: 'WC Qualifiers', tier: 11, slug: 'fifa.worldq' }
@@ -254,11 +319,54 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
   if (bare.includes('women') || bare.startsWith('w.')) {
     return { label: 'Women’s football', tier: 14, slug: 'women' }
   }
+  // Last resort — title-case the slug + add ' · Other' suffix so users
+  // at least see it's not a known league
+  const pretty = bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other'
   return {
-    label: bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other',
+    label: pretty,
     tier: 16,
     slug: seasonSlug ?? 'other',
   }
+}
+
+/**
+ * Flag emoji for a competition slug. Used by the UI to put a small
+ * country marker next to 'Brasileirão · Série B' so the user knows
+ * which country a generic league name refers to. Tournament slugs
+ * (UCL / WC / etc.) return a tournament-specific icon instead.
+ */
+export function competitionFlag(slug: string): string {
+  // Tournament icons first
+  if (slug.startsWith('fifa.world')) return '🏆'
+  if (slug.startsWith('uefa.champions')) return '⭐'
+  if (slug.startsWith('uefa.europa.conf')) return '🟢'
+  if (slug.startsWith('uefa.europa')) return '🟠'
+  if (slug.startsWith('uefa.euro')) return '🇪🇺'
+  if (slug.startsWith('uefa.nations')) return '🇪🇺'
+  if (slug.startsWith('conmebol.libert')) return '🏆'
+  if (slug.startsWith('conmebol.sudameric')) return '🏆'
+  if (slug.startsWith('conmebol.america')) return '🌎'
+  if (slug.startsWith('concacaf.gold')) return '🌎'
+  if (slug.startsWith('concacaf.nations')) return '🌎'
+  if (slug.startsWith('caf.nations')) return '🌍'
+  if (slug.startsWith('afc.asian')) return '🌏'
+  if (slug.includes('fifa.friendly') || slug === 'fifa.friendly' || slug === 'international-friendly') return '🌍'
+  if (slug === 'club.friendly') return '⚽'
+  if (slug === 'youth') return '🧒'
+  if (slug === 'women') return '⚽'
+  // Country leagues — slug pattern XXX.N (eng.1, esp.2, bra.1)
+  const country = slug.split('.')[0]
+  const FLAGS: Record<string, string> = {
+    eng: '🏴󠁧󠁢󠁥󠁮󠁧󠁿', esp: '🇪🇸', ger: '🇩🇪', ita: '🇮🇹', fra: '🇫🇷',
+    bra: '🇧🇷', arg: '🇦🇷', ned: '🇳🇱', por: '🇵🇹', bel: '🇧🇪',
+    tur: '🇹🇷', sco: '🏴󠁧󠁢󠁳󠁣󠁴󠁿', sau: '🇸🇦', usa: '🇺🇸', mex: '🇲🇽',
+    chi: '🇨🇱', col: '🇨🇴', uru: '🇺🇾', per: '🇵🇪', ecu: '🇪🇨',
+    jpn: '🇯🇵', kor: '🇰🇷', aus: '🇦🇺', uae: '🇦🇪', qat: '🇶🇦',
+    egy: '🇪🇬', mar: '🇲🇦', ksa: '🇸🇦', den: '🇩🇰', swe: '🇸🇪',
+    nor: '🇳🇴', fin: '🇫🇮', swi: '🇨🇭', aut: '🇦🇹', cze: '🇨🇿',
+    pol: '🇵🇱', rou: '🇷🇴', gre: '🇬🇷', cro: '🇭🇷', srb: '🇷🇸',
+  }
+  return FLAGS[country] ?? '⚽'
 }
 
 /**

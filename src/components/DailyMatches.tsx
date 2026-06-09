@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { api, eventTeams, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
+import { api, competitionFlag, eventTeams, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
 import { MatchSheet } from './MatchSheet'
@@ -269,13 +269,16 @@ function CompetitionBlock({
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
-        <div>
+        <div className="min-w-0 flex-1">
           <div className="text-[10px] uppercase tracking-widest text-slate-600 font-mono">
             {TIER_LABEL[comp.tier] ?? 'Football'}
           </div>
-          <div className="font-display font-bold text-xl mt-0.5">{comp.label}</div>
+          <div className="font-display font-bold text-xl mt-0.5 flex items-center gap-2">
+            <span className="text-2xl leading-none" aria-hidden>{competitionFlag(comp.slug)}</span>
+            <span className="truncate">{comp.label}</span>
+          </div>
         </div>
-        <div className="text-xs font-mono text-slate-500">
+        <div className="text-xs font-mono text-slate-500 shrink-0 ml-3">
           {comp.events.length} match{comp.events.length === 1 ? '' : 'es'}
         </div>
       </div>
@@ -340,12 +343,18 @@ function MatchCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
       <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mb-2">
         <span>{kickoff}</span>
         {s.live ? (
-          <span className="flex items-center gap-1 text-red-500">
+          // 'LIVE · 87'' — caller-friendly minute next to the LIVE label so
+          // the user knows exactly where the match is. ESPN ships
+          // displayClock as '87'' / 'HT' / '45+2'' etc; we show both.
+          <span className="flex items-center gap-1.5 text-red-500 font-semibold uppercase">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
             </span>
-            {s.label}
+            Live
+            {s.label && s.label.toUpperCase() !== 'LIVE' && (
+              <span className="text-red-500/80 tabular-nums">· {s.label}</span>
+            )}
           </span>
         ) : s.finished ? (
           <span className="text-slate-500">FT</span>
