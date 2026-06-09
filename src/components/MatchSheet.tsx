@@ -65,7 +65,7 @@ type SummaryResponse = {
       date?: string
       venue?: { fullName?: string; address?: { city?: string; country?: string } }
       competitors?: Competitor[]
-      status?: { displayClock?: string; period?: number; type?: { description?: string; completed?: boolean; state?: string } }
+      status?: { displayClock?: string; period?: number; type?: { description?: string; completed?: boolean; state?: string; detail?: string; shortDetail?: string } }
       details?: EventDetail[]
       broadcasts?: Broadcast[]
       notes?: Array<{ headline?: string; text?: string }>
