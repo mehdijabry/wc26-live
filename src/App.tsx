@@ -40,15 +40,29 @@ function App() {
   const location = useLocation()
 
   // Intro splash now fires on every page load — user wants the WC26
-  // emblem reveal as a signature launch moment. Was previously gated
-  // by localStorage (after first visit, never again) which made the
-  // app feel static. 1.2s is short enough to not annoy on quick
-  // reloads, long enough to register as branding.
+  // emblem reveal as a signature launch moment. User feedback after
+  // shipping: 'l'animation n'a pas le temps de finir avant que le
+  // site s'affiche'. Bumped from 1.2s to 2.4s so the inner emblem +
+  // wordmark animations (0.5s emblem scale-in, 0.25s text delay +
+  // 0.45s fade, then a comfortable hold) actually complete and read
+  // as a deliberate brand moment before the page reveals.
   const [intro, setIntro] = useState<boolean>(typeof window !== 'undefined')
   useEffect(() => {
     if (!intro) return
-    const t = setTimeout(() => setIntro(false), 1200)
+    const t = setTimeout(() => setIntro(false), 2400)
     return () => clearTimeout(t)
+  }, [intro])
+
+  // Lock body scroll during the intro splash so it can't be scrolled
+  // away and so the splash overlay isn't visually broken by content
+  // peeking underneath during the fade-out.
+  useEffect(() => {
+    if (!intro) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = prev
+    }
   }, [intro])
 
   // Init auth on mount
@@ -83,7 +97,7 @@ function App() {
             key="wc26-intro"
             initial={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
+            transition={{ duration: 0.6, ease: 'easeInOut' }}
             className="fixed inset-0 z-[80] bg-marine-950 flex flex-col items-center justify-center"
           >
             <motion.img

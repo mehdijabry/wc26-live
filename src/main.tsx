@@ -31,6 +31,16 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+// Drop the inline boot splash from index.html now that React is about
+// to take over. Both the boot splash and the React intro splash use
+// the same marine #0a2540 background + WC26 emblem layout, so the
+// hand-off is invisible to the eye. We remove on the next animation
+// frame so React has time to paint its own splash first.
+requestAnimationFrame(() => {
+  const boot = document.getElementById('boot-splash')
+  if (boot) boot.remove()
+})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>

@@ -126,9 +126,45 @@
       }
     </script>
   </head>
-  <body>
+  <body style="background:#0a2540;">
+    <!-- First-paint splash. Renders BEFORE React mounts, instantly,
+         using inline styles so it survives a slow JS bundle / cache
+         miss / first-hit DNS handshake. The animation matches the
+         React <motion.div> intro splash so the handoff is seamless.
+         React removes #boot-splash via the AnimatePresence flow once
+         the proper intro splash takes over. -->
+    <div id="boot-splash" style="
+        position:fixed;inset:0;z-index:90;background:#0a2540;
+        display:flex;flex-direction:column;align-items:center;justify-content:center;
+        font-family:system-ui,-apple-system,sans-serif;color:#f6f3ee">
+      <img src="/wc26-emblem.svg" width="112" height="112"
+        style="filter:drop-shadow(0 8px 30px rgba(212,175,55,0.35));opacity:0;
+               animation:wc26-boot-fade 0.5s ease-out 0s forwards"/>
+      <div style="margin-top:20px;opacity:0;animation:wc26-boot-fade 0.45s ease-out 0.25s forwards">
+        <div style="font-weight:700;font-size:28px;letter-spacing:-0.5px;text-align:center">
+          WC<span style="color:#d4af37">26</span> Live
+        </div>
+        <div style="margin-top:6px;font-family:ui-monospace,Menlo,monospace;
+                    font-size:11px;letter-spacing:2px;text-transform:uppercase;
+                    text-align:center;opacity:0.7">
+          Pressing <span style="color:#c1272d;font-weight:600">90'</span>
+        </div>
+      </div>
+      <style>@keyframes wc26-boot-fade { from { opacity: 0 } to { opacity: 1 } }</style>
+    </div>
+
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Failsafe: if React never mounts (offline, JS error), still
+      // dispose of the boot splash after 8s so the page isn't blocked
+      // forever. Normal removal happens from main.tsx the instant
+      // React mounts, well before this kicks in.
+      setTimeout(() => {
+        const b = document.getElementById('boot-splash')
+        if (b) b.remove()
+      }, 8000)
+    </script>
 
     <!-- Cloudflare Web Analytics (free, no cookies, GDPR-friendly) -->
     <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
