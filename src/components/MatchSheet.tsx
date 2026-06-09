@@ -531,33 +531,38 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function EventIcon({ type }: { type: string | undefined }) {
   const t = (type ?? '').toLowerCase()
 
-  // Goal — solid black football with a white pentagon hint
+  // Goal — classic black-and-white football. White base, central
+  // pentagon and five stitch lines to the rim. Larger viewBox (32×32)
+  // so the pattern reads cleanly at 20px render size.
   if (t === 'goal' || t === 'penalty-goal') {
-    return (
-      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Goal">
-        <circle cx="8" cy="8" r="7" fill="#0f172a" />
-        <path d="M8 3l2.4 1.7-0.9 2.8-3 0-0.9-2.8z" fill="#fff" />
-      </svg>
-    )
+    return <SoccerBall ariaLabel="Goal" />
   }
 
-  // Own goal — same shape, red ball
+  // Own goal — football with a red 'own goal' badge offset to the
+  // bottom-right. Same recognisable shape so users still see 'goal',
+  // but the OG tag makes the side clear.
   if (t === 'own-goal') {
     return (
-      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Own goal">
-        <circle cx="8" cy="8" r="7" fill="#dc2626" />
-        <path d="M8 3l2.4 1.7-0.9 2.8-3 0-0.9-2.8z" fill="#fff" />
-      </svg>
+      <span className="relative inline-flex">
+        <SoccerBall ariaLabel="Own goal" />
+        <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-mono font-bold bg-accent-red text-white px-0.5 leading-none rounded-sm">
+          OG
+        </span>
+      </span>
     )
   }
 
-  // Penalty missed — outlined dark ball with strike-through
+  // Penalty missed — football with a red diagonal strike-through
   if (t === 'penalty-kick-missed' || (t === 'penalty' && type?.includes('miss'))) {
     return (
-      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Penalty missed">
-        <circle cx="8" cy="8" r="6" fill="none" stroke="#dc2626" strokeWidth="1.5" />
-        <path d="M4 4l8 8M12 4l-8 8" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
-      </svg>
+      <span className="relative inline-flex">
+        <SoccerBall ariaLabel="Penalty missed" />
+        <span className="absolute inset-0 flex items-center justify-center">
+          <svg viewBox="0 0 20 20" className="w-5 h-5">
+            <path d="M3 3 L17 17" stroke="#dc2626" strokeWidth="2.5" strokeLinecap="round" />
+          </svg>
+        </span>
+      </span>
     )
   }
 
@@ -609,17 +614,45 @@ function EventIcon({ type }: { type: string | undefined }) {
     )
   }
 
-  // Penalty (taking, not yet resolved) — black ball with small 'P'
+  // Penalty (taking, not yet resolved) — football with 'P' badge
   if (t === 'penalty') {
     return (
-      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Penalty">
-        <circle cx="8" cy="8" r="7" fill="#0f172a" />
-        <text x="8" y="11" textAnchor="middle" fill="#fff" fontSize="8" fontFamily="monospace" fontWeight="bold">P</text>
-      </svg>
+      <span className="relative inline-flex">
+        <SoccerBall ariaLabel="Penalty" />
+        <span className="absolute -bottom-0.5 -right-0.5 text-[7px] font-mono font-bold bg-slate-900 text-white px-0.5 leading-none rounded-sm">
+          P
+        </span>
+      </span>
     )
   }
 
   return <span className="text-slate-300">•</span>
+}
+
+/**
+ * Classic black-and-white football icon. Central pentagon + five
+ * stitch lines to the rim, matching the recognised hex-pentagon
+ * pattern. ViewBox is intentionally generous (32×32) so detail
+ * stays legible when CSS scales it down to 20-24px in the UI.
+ */
+function SoccerBall({ ariaLabel }: { ariaLabel: string }) {
+  return (
+    <svg viewBox="0 0 32 32" className="w-5 h-5" aria-label={ariaLabel}>
+      {/* White body */}
+      <circle cx="16" cy="16" r="14" fill="#ffffff" stroke="#0f172a" strokeWidth="1.6" />
+      {/* Central pentagon */}
+      <polygon
+        points="16,9 21.5,12.7 19.4,18.9 12.6,18.9 10.5,12.7"
+        fill="#0f172a"
+      />
+      {/* Stitch lines from each pentagon vertex to the rim */}
+      <line x1="16" y1="9"    x2="16" y2="3"    stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="21.5" y1="12.7" x2="27" y2="11"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="19.4" y1="18.9" x2="23" y2="25"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="12.6" y1="18.9" x2="9"  y2="25"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
+      <line x1="10.5" y1="12.7" x2="5"  y2="11"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
 }
 
 /**
