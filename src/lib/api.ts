@@ -234,50 +234,47 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
 }
 
 /**
- * Fallback table — ESPN sometimes returns events with season.slug =
- * 'group-stage' / 'regular-season' / 'apertura---finals' / 'torneo-
- * intermedio' which tells us the ROUND but not the LEAGUE. The actual
- * league lives in the event.uid as `l:NNNN`. This map covers the IDs
- * we've seen ESPN serve in /all/scoreboard responses.
+ * ESPN league ID → competition mapping. Each entry verified by hitting
+ *   curl https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/teams
+ * and reading sports[0].leagues[0].id. NEVER add an entry by guessing —
+ * the previous version had IDs that were off by a wide margin (e.g.
+ * '11109' was mapped to AFCON; in reality it's the Maurice Revello /
+ * Toulon Tournament U20 — Canada U20 vs Ivory Coast U23 ended up
+ * labelled 'AFCON' on the home page, which is obviously wrong and
+ * unacceptable).
  *
- * Discover new IDs: `curl '…/all/scoreboard?dates=YYYYMMDD' | jq '.events[].uid'`
+ * To add a new league:
+ *   1. Find its canonical slug in ESPN docs or the URL of its teams page
+ *   2. `curl '…/{slug}/teams' | jq '.sports[0].leagues[0].id'`
+ *   3. Cross-check by inspecting an event from /all/scoreboard with
+ *      that ID in its uid (`l:NNNN`)
  */
 const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }> = {
-  '775':   { label: 'FIFA World Cup',         tier: 0,  slug: 'fifa.world' },
-  '2':     { label: 'Champions League',       tier: 1,  slug: 'uefa.champions' },
-  '650':   { label: 'Copa Libertadores',      tier: 2,  slug: 'conmebol.libertadores' },
-  '15':    { label: 'LaLiga',                 tier: 3,  slug: 'esp.1' },
-  '23':    { label: 'Premier League',         tier: 4,  slug: 'eng.1' },
-  '10':    { label: 'Bundesliga',             tier: 5,  slug: 'ger.1' },
-  '12':    { label: 'Serie A',                tier: 6,  slug: 'ita.1' },
-  '9':     { label: 'Ligue 1',                tier: 7,  slug: 'fra.1' },
-  '2310':  { label: 'Europa League',          tier: 8,  slug: 'uefa.europa' },
-  '20296': { label: 'Conference League',      tier: 9,  slug: 'uefa.europa.conf' },
-  '744':   { label: 'UEFA Euro',              tier: 10, slug: 'uefa.euro' },
-  '740':   { label: 'Copa America',           tier: 10, slug: 'conmebol.america' },
-  '660':   { label: 'CONCACAF Gold Cup',      tier: 10, slug: 'concacaf.gold' },
-  '11109': { label: 'AFCON',                  tier: 10, slug: 'caf.nations' },
-  '760':   { label: 'AFC Asian Cup',          tier: 10, slug: 'afc.asian' },
-  '731':   { label: 'CONCACAF Nations League', tier: 11, slug: 'concacaf.nations' },
-  '2247':  { label: 'UEFA Nations League',    tier: 11, slug: 'uefa.nations' },
-  '4475':  { label: 'Saudi Pro League',       tier: 12, slug: 'sau.1' },
-  '21':    { label: 'Major League Soccer',    tier: 12, slug: 'usa.1' },
-  '7':     { label: 'Liga MX',                tier: 12, slug: 'mex.1' },
-  '13':    { label: 'Brasileirão',            tier: 12, slug: 'bra.1' },
-  '4060':  { label: 'Brasileirão · Série B',  tier: 13, slug: 'bra.2' },
-  '76':    { label: 'Primera División · Argentina', tier: 12, slug: 'arg.1' },
-  '20':    { label: 'Eredivisie',             tier: 13, slug: 'ned.1' },
-  '14':    { label: 'Primeira Liga',          tier: 13, slug: 'por.1' },
-  '6':     { label: 'Belgian Pro League',     tier: 13, slug: 'bel.1' },
-  '18':    { label: 'Süper Lig',              tier: 13, slug: 'tur.1' },
-  '45':    { label: 'Scottish Premiership',   tier: 13, slug: 'sco.1' },
-  '4072':  { label: 'EFL Championship',       tier: 15, slug: 'eng.2' },
-  '16':    { label: 'LaLiga 2',               tier: 15, slug: 'esp.2' },
-  '11':    { label: '2. Bundesliga',          tier: 15, slug: 'ger.2' },
-  '83':    { label: 'Serie B',                tier: 15, slug: 'ita.2' },
-  '4061':  { label: 'Ligue 2',                tier: 15, slug: 'fra.2' },
-  '3922':  { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' },
-  '4001':  { label: 'Club friendlies',         tier: 19, slug: 'club.friendly' },
+  // Tournaments — verified IDs
+  '606':   { label: 'FIFA World Cup',          tier: 0,  slug: 'fifa.world' },
+  '775':   { label: 'Champions League',        tier: 1,  slug: 'uefa.champions' },
+  '783':   { label: 'Copa Libertadores',       tier: 2,  slug: 'conmebol.libertadores' },
+  '776':   { label: 'Europa League',           tier: 8,  slug: 'uefa.europa' },
+  '20296': { label: 'Conference League',       tier: 9,  slug: 'uefa.europa.conf' },
+  '781':   { label: 'UEFA Euro',               tier: 10, slug: 'uefa.euro' },
+  '780':   { label: 'Copa America',            tier: 10, slug: 'conmebol.america' },
+  '4004':  { label: 'CONCACAF Gold Cup',       tier: 10, slug: 'concacaf.gold' },
+  '3908':  { label: 'AFCON',                   tier: 10, slug: 'caf.nations' },
+  '2395':  { label: 'UEFA Nations League',     tier: 11, slug: 'uefa.nations' },
+
+  // Top 5 leagues — verified IDs
+  '740':   { label: 'LaLiga',                  tier: 3,  slug: 'esp.1' },
+  '700':   { label: 'Premier League',          tier: 4,  slug: 'eng.1' },
+  '720':   { label: 'Bundesliga',              tier: 5,  slug: 'ger.1' },
+  '730':   { label: 'Serie A',                 tier: 6,  slug: 'ita.1' },
+  '710':   { label: 'Ligue 1',                 tier: 7,  slug: 'fra.1' },
+
+  // Top other domestic — verified IDs
+  '770':   { label: 'Major League Soccer',     tier: 12, slug: 'usa.1' },
+  '760':   { label: 'Liga MX',                 tier: 12, slug: 'mex.1' },
+
+  // Youth tournaments — verified by event data inspection
+  '11109': { label: 'Maurice Revello Tournament', tier: 14, slug: 'maurice.revello' },
 }
 
 function leagueIdFromUid(uid?: string): string | null {
@@ -287,28 +284,33 @@ function leagueIdFromUid(uid?: string): string | null {
 }
 
 /**
- * Detect the category (Women / Youth age band) embedded in a slug.
- * Returns null for senior men's (the default — we never label it
- * 'Men' explicitly to keep the UI clean, same as Sofascore/FotMob).
+ * Detect the category (Women / Youth age band) embedded in a string —
+ * either a season slug OR an event name. ESPN often puts the age band
+ * only in the event name ('Canada U20 at Ivory Coast U23'), not the
+ * slug, so we have to scan both. Returns null for senior men's (the
+ * default — we never label it 'Men' explicitly, same as Sofascore /
+ * FotMob conventions).
  */
-function detectCategory(slug: string): { code: 'W' | 'U23' | 'U21' | 'U20' | 'U19' | 'U18' | 'U17' | 'U15'; label: string } | null {
-  const lower = slug.toLowerCase()
-  // Women — ESPN uses 'w.' prefix or '-women-' or 'female' marker
+function detectCategory(text: string): { code: 'W' | 'U23' | 'U21' | 'U20' | 'U19' | 'U18' | 'U17' | 'U15'; label: string } | null {
+  const lower = text.toLowerCase()
+  // Women — ESPN markers across slugs and names
   if (
     lower.startsWith('w.') || lower.includes('.w.') ||
     lower.includes('-w-') || lower.includes('-women') ||
-    /\bwomen\b/.test(lower) || /\bfemale\b/.test(lower)
+    /\bwomen\b/.test(lower) || /\bfemale\b/.test(lower) ||
+    /\bwoman'?s?\b/.test(lower)
   ) {
     return { code: 'W', label: 'Women' }
   }
-  // Youth — match the highest age first (U23 before U2 etc.)
-  if (lower.includes('u23')) return { code: 'U23', label: 'U23' }
-  if (lower.includes('u21')) return { code: 'U21', label: 'U21' }
-  if (lower.includes('u20')) return { code: 'U20', label: 'U20' }
-  if (lower.includes('u19')) return { code: 'U19', label: 'U19' }
-  if (lower.includes('u18')) return { code: 'U18', label: 'U18' }
-  if (lower.includes('u17')) return { code: 'U17', label: 'U17' }
-  if (lower.includes('u15')) return { code: 'U15', label: 'U15' }
+  // Youth — \b ensures we match 'u20' but not 'studio' or random
+  // substrings. Highest age first so U23 wins over U2.
+  if (/\bu-?23\b/.test(lower)) return { code: 'U23', label: 'U23' }
+  if (/\bu-?21\b/.test(lower)) return { code: 'U21', label: 'U21' }
+  if (/\bu-?20\b/.test(lower)) return { code: 'U20', label: 'U20' }
+  if (/\bu-?19\b/.test(lower)) return { code: 'U19', label: 'U19' }
+  if (/\bu-?18\b/.test(lower)) return { code: 'U18', label: 'U18' }
+  if (/\bu-?17\b/.test(lower)) return { code: 'U17', label: 'U17' }
+  if (/\bu-?15\b/.test(lower)) return { code: 'U15', label: 'U15' }
   return null
 }
 
@@ -326,10 +328,17 @@ function stripCategory(slug: string): string {
 function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } {
   const seasonSlug: string | undefined = (ev as unknown as { season?: { slug?: string } }).season?.slug
   const uid = (ev as unknown as { uid?: string }).uid
+  const eventName = (ev as unknown as { name?: string; shortName?: string }).name ?? ''
+  const eventShort = (ev as unknown as { name?: string; shortName?: string }).shortName ?? ''
 
-  // Detect category FIRST so we can apply it as a suffix to every
-  // competition label (Champions League · U21, LaLiga · Women, etc.)
-  const cat = detectCategory(seasonSlug ?? '')
+  // Detect category from BOTH the slug AND the event name — ESPN often
+  // puts U20/U23/Women only in the name ('Canada U20 at Ivory Coast U23'
+  // with slug just 'group-stage'). Without this we'd label a U20 youth
+  // friendly as a senior men's match.
+  const cat =
+    detectCategory(seasonSlug ?? '') ??
+    detectCategory(eventName) ??
+    detectCategory(eventShort)
 
   // Look up the BASE competition (men's senior) — strip category markers
   // from the slug before matching so 'w.uefa.champions' still finds UCL.
