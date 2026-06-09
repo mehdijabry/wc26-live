@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, competitionLogo, eventTeams, liveClock, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
@@ -69,34 +69,48 @@ export function DailyMatches() {
     [date]
   )
 
-  // Initial + poll loop (30s if live, 5min otherwise)
+  // Hold a ref to the live load() so the visibility / focus handlers
+  // can trigger a fresh fetch without recreating the polling loop.
+  const loadRef = useRef<() => void>(() => {})
+
+  // Initial + poll loop.
+  //
+  // CRITICAL: the next-interval decision must be based on the FRESH
+  // response, NOT the stale `data` from the closure. Previous version
+  // read `data?.hasLive` here — on the very first call `data` was
+  // still null (initial state), so the first re-poll was scheduled
+  // 5 minutes away even when live matches WERE present. That's why
+  // goals weren't appearing 'in real time' without a manual refresh.
   useEffect(() => {
     let stop = false
     let timer: number | undefined
     async function load() {
+      let fresh: DailyResponse | null = null
       try {
-        setLoading(data === null)
-        const fresh = await api.today(ymdLocal(date))
+        fresh = await api.today(ymdLocal(date))
         if (stop) return
         setData(fresh)
         setFetchedAt(Date.now())
       } catch {
-        if (!stop) setData((prev) => prev) // keep last
+        if (!stop) setData((prev) => prev)
       } finally {
         if (!stop) setLoading(false)
       }
-      // 15s polling when at least one match is live so HT/FT/goal
-      // transitions catch up fast; 5min otherwise.
-      const next = data?.hasLive ? 15_000 : 300_000
+      if (timer) clearTimeout(timer)
+      // 8s when live → near real-time goal / clock updates.
+      // 5min otherwise. Network/error path retries in 30s.
+      const next = fresh
+        ? (fresh.hasLive ? 8_000 : 300_000)
+        : 30_000
       timer = window.setTimeout(load, next)
     }
+    loadRef.current = load
     load()
     return () => {
       stop = true
       if (timer) clearTimeout(timer)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [date.getTime()])
+  }, [date])
 
   // 1s ticker — only spins while there's at least one live (and not
   // halftime-paused) match on screen, so we don't burn cycles when
@@ -106,6 +120,24 @@ export function DailyMatches() {
     const id = window.setInterval(() => setTick((t) => t + 1), 1000)
     return () => clearInterval(id)
   }, [data?.hasLive])
+
+  // Force a fresh fetch when the user returns to the tab. Chrome
+  // throttles setTimeout on background tabs (~once per minute), so
+  // without this the user comes back to a 30-min-old scoreboard.
+  // Debounced: don't bother if the last fetch was <5s ago.
+  useEffect(() => {
+    function onVisible() {
+      if (document.hidden) return
+      if (fetchedAt && Date.now() - fetchedAt < 5_000) return
+      loadRef.current?.()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+    }
+  }, [fetchedAt])
 
   const filteredComps = useMemo(() => {
     if (!data) return []

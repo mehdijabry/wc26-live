@@ -143,9 +143,9 @@ export function MatchSheet({
         setData(j)
         setFetchedAt(Date.now())
         const status = j.header?.competitions?.[0]?.status?.type?.state
-        // 15s polling when live so halftime / FT transitions and goals
-        // catch up fast. 5 min otherwise.
-        const next = status === 'in' ? 15_000 : 300_000
+        // 8s polling when live so goals + clock updates land near-real-
+        // time without a manual refresh. 5min otherwise.
+        const next = status === 'in' ? 8_000 : 300_000
         timer = window.setTimeout(load, next)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load')
