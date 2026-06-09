@@ -21,7 +21,7 @@ const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
 const ALLOW_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:5174',
-  'https://wc26.mehdijabry.dev',
+  'https://pressing90.live',
 ]
 
 // Curated competitions for the daily aggregator. Order matters — it's the

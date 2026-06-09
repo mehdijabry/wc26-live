@@ -9,7 +9,7 @@ date: "Juin 2026"
 
 > Le hub que tu ouvres dès le matin pour vivre la Coupe du Monde 2026, prédire chaque match, télécharger ton bracket complet et défier tes potes.
 >
-> 🌍 [wc26.mehdijabry.dev](https://wc26.mehdijabry.dev/)
+> 🌍 [pressing90.live](https://pressing90.live/)
 
 ---
 
@@ -176,7 +176,7 @@ Ce site est construit par **Mehdi Jabry**, freelance web dev basé au Maroc 🇲
 
 ## Lance-toi
 
-1. Va sur [wc26.mehdijabry.dev](https://wc26.mehdijabry.dev/)
+1. Va sur [pressing90.live](https://pressing90.live/)
 2. Crée ton compte (1 min)
 3. Remplis ton bracket complet (10 min)
 4. Publie-le, télécharge l'image, partage avec tes potes

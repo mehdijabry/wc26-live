@@ -2,7 +2,7 @@
 
 ## ⏸️ État au pause (7 juin 2026, 18h45)
 
-Tout le code est **commit + push + déployé en prod** sur `https://wc26.mehdijabry.dev`.
+Tout le code est **commit + push + déployé en prod** sur `https://pressing90.live`.
 Dernier commit : `6f83529` — `feat(auth): surface OAuth provider error instead of silent fallback`.
 
 ## ✅ Ce qui marche
@@ -37,7 +37,7 @@ J'ai créé un nouveau OAuth Client dans Google Cloud aujourd'hui :
 1. Aller sur Google Cloud → Clients OAuth → ouvrir "WC26 Live OAuth v2"
 2. Cliquer "Ajouter un secret" (ou supprimer le client v2 et en créer un v3 en téléchargeant le JSON cette fois)
 3. Coller Client ID + Secret dans Supabase → `Authentication → Providers → Google` → Save
-4. Tester login Google sur wc26.mehdijabry.dev
+4. Tester login Google sur pressing90.live
 
 Cmd direct : `https://console.cloud.google.com/auth/clients?project=gen-lang-client-0440368779`
 
@@ -49,7 +49,7 @@ Cmd direct : `https://console.cloud.google.com/auth/clients?project=gen-lang-cli
 
 ## 🔑 URLs utiles
 
-- **Site prod** : https://wc26.mehdijabry.dev
+- **Site prod** : https://pressing90.live
 - **Pages dashboard** : https://dash.cloudflare.com/?to=/:account/pages/view/wc26-live
 - **Worker** : https://wc26-api.nameless-violet-5dc1.workers.dev
 - **Supabase** : https://supabase.com/dashboard/project/ssvvojhxyotlbcdosiog

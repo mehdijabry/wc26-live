@@ -167,8 +167,8 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Zone keys for wc26.mehdijabry.dev — pulled from Adsterra dashboard         */
-/* (publishers > websites > wc26.mehdijabry.dev > Get code on each unit)       */
+/* Zone keys for pressing90.live — pulled from Adsterra dashboard         */
+/* (publishers > websites > pressing90.live > Get code on each unit)       */
 /* -------------------------------------------------------------------------- */
 
 export const ADSTERRA_ZONES = {

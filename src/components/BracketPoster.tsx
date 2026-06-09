@@ -176,7 +176,7 @@ export function BracketPoster({ data }: { data: BracketPosterData }) {
       </div>
 
       <div className="border-t border-white/10 px-10 py-4 flex items-center justify-between text-[10px] font-mono text-white/40">
-        <span>wc26.mehdijabry.dev</span>
+        <span>pressing90.live</span>
         <span className="text-center flex-1">
           <span className="mx-1">🇨🇦</span><span className="mx-1">🇲🇽</span><span className="mx-1">🇺🇸</span>
           <span className="mx-2">·</span>48 nations · 16 cities · 104 matches

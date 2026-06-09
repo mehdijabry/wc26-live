@@ -9,7 +9,7 @@ date: "Juin 2026"
 
 > Site officiel de prédictions et de scores temps réel pour la FIFA Coupe du Monde 2026, propulsé par la marque éditoriale **Pressing 90′**.
 >
-> **Live :** [https://wc26.mehdijabry.dev/](https://wc26.mehdijabry.dev/)
+> **Live :** [https://pressing90.live/](https://pressing90.live/)
 > **Repo :** [github.com/mehdijabry/wc26-live](https://github.com/mehdijabry/wc26-live)
 > **Stack :** Vite + React 18 + TypeScript + Tailwind CSS · Supabase · Cloudflare Pages + Workers + KV · ESPN public API · Resend SMTP
 
@@ -35,7 +35,7 @@ Le site est **mobile-first**, **GDPR-friendly** (analytics sans cookies), et **S
 ┌─────────────────────────────────────────────────────────────────┐
 │  CLIENT (browser, iOS/Android)                                  │
 │  ├─ React 18 SPA · Tailwind · Framer Motion · Zustand          │
-│  ├─ wc26.mehdijabry.dev (Cloudflare Pages)                     │
+│  ├─ pressing90.live (Cloudflare Pages)                     │
 │  └─ Supabase JS client (auth + realtime predictions sync)      │
 └──────────────┬──────────────────────────┬───────────────────────┘
                │                          │
@@ -334,7 +334,7 @@ Trois méthodes de login, toutes via Supabase Auth :
 - OAuth client créé dans Google Cloud Console (`786367888791-...`)
 - Consent screen publié en Production → tout utilisateur Google peut se connecter
 - Callback URL : `https://ssvvojhxyotlbcdosiog.supabase.co/auth/v1/callback`
-- Origins autorisées : `localhost:5173`, `wc26.mehdijabry.dev`
+- Origins autorisées : `localhost:5173`, `pressing90.live`
 
 ### Sessions
 - Tokens JWT stockés dans `localStorage` via Supabase JS
@@ -480,7 +480,7 @@ Tier basé sur le score :
 - `<title>` : "WC26 Live · Pressing 90′ — World Cup 2026 scores, brackets & predictions"
 - `<meta name="description">` : 160 chars EN + mention "coupe du monde" pour FR
 - `<meta name="keywords">` : World Cup, WC26, FIFA, football, Atlas Lions, Pressing 90, news foot, …
-- `<link rel="canonical">` : `https://wc26.mehdijabry.dev/`
+- `<link rel="canonical">` : `https://pressing90.live/`
 - Open Graph + Twitter Card avec image OG (à venir)
 - `<meta name="robots" content="index, follow, max-image-preview:large">`
 - `<meta http-equiv="content-language" content="en, fr">`
@@ -505,12 +505,12 @@ Trois objets dans `@graph` :
 User-agent: *
 Allow: /
 Crawl-delay: 1
-Sitemap: https://wc26.mehdijabry.dev/sitemap.xml
+Sitemap: https://pressing90.live/sitemap.xml
 ```
 
 ### Search Console
 
-- Propriété ajoutée : `https://wc26.mehdijabry.dev/`
+- Propriété ajoutée : `https://pressing90.live/`
 - Vérification par balise HTML meta (token Google)
 - Sitemap soumis et accepté (9 URLs)
 - Première exploration : 7 juin 2026, 07:21 par Googlebot smartphone (mobile-first indexing)
@@ -526,7 +526,7 @@ Sitemap: https://wc26.mehdijabry.dev/sitemap.xml
 - Sans cookies, GDPR-friendly
 - Mesure : pageviews, visites uniques, top pages, sources de trafic (referrers), pays, devices, navigateurs
 - Temps réel (~30s de latence)
-- Dashboard : `dash.cloudflare.com` → Web Analytics → `wc26.mehdijabry.dev`
+- Dashboard : `dash.cloudflare.com` → Web Analytics → `pressing90.live`
 - App iOS officielle Cloudflare disponible
 
 ### Google Search Console
@@ -667,10 +667,10 @@ cd worker && npx wrangler tail
 # → dashboard supabase.com/dashboard → Logs
 
 # DNS check
-dig +short CNAME wc26.mehdijabry.dev @8.8.8.8
+dig +short CNAME pressing90.live @8.8.8.8
 
 # Vérifier les meta SEO
-curl -s https://wc26.mehdijabry.dev/ | grep -E "title|google-site-verification|cloudflareinsights"
+curl -s https://pressing90.live/ | grep -E "title|google-site-verification|cloudflareinsights"
 ```
 
 ### Structure du repo
@@ -719,7 +719,7 @@ wc26-live/
 
 - **Auteur :** Mehdi Jabry — [mehdijabry.dev](https://mehdijabry.dev)
 - **Repo :** [github.com/mehdijabry/wc26-live](https://github.com/mehdijabry/wc26-live)
-- **Production :** [wc26.mehdijabry.dev](https://wc26.mehdijabry.dev)
+- **Production :** [pressing90.live](https://pressing90.live)
 - **Pour signaler un bug :** ouvrir une issue sur le repo GitHub
 - **Pour proposer une feature :** pull request ou issue avec label `enhancement`
 
