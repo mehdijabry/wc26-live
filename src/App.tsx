@@ -1,5 +1,4 @@
-import { useEffect, lazy, Suspense, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { useEffect, lazy, Suspense } from 'react'
 import { Routes, Route, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { StickyCountdown } from './components/StickyCountdown'
