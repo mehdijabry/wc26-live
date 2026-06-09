@@ -158,79 +158,90 @@ const ESPN_ALL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/all/score
 // (Saudi/MLS/Liga MX/Eredivisie/Primeira/Belgian), then everything
 // else. Friendlies are explicitly demoted — they used to be tier 0.
 const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }> = {
-  // Tier 0 — THE event
+  // ====================================================================
+  // TIER BUDGET — keep in sync with tagEvent() category bumps + the
+  // LEAGUE_BY_ID block below. User rule: senior men NATIONAL TEAM matches
+  // ALWAYS rank above club matches, even friendlies. The fan brain reads
+  // a Norway-Argentina friendly as more interesting than a Tuesday
+  // LaLiga relegation tussle.
+  //
+  //    0 -  9   Senior MEN national teams
+  //   10 - 29   Senior MEN clubs
+  //   30 - 49   Men's youth (via tagEvent() category bump of +30..+36)
+  //   50 - 89   Women (via category bump of +50)
+  //   90+      'Other competitions' catch-all
+  // ====================================================================
+
+  // -- Senior men's NATIONAL TEAMS (always at the top) -----------------
+
+  // Tier 0 — THE tournament
   '2026-fifa.world':                 { label: 'FIFA World Cup',          tier: 0, slug: 'fifa.world' },
 
-  // Tier 1 — Champions League (the club crown)
-  '2026-uefa.champions':             { label: 'Champions League',        tier: 1, slug: 'uefa.champions' },
+  // Tier 1 — Continental crowns (Euro, Copa America, AFCON, Asian Cup, Gold Cup)
+  '2026-uefa.euro':                  { label: 'UEFA Euro',               tier: 1, slug: 'uefa.euro' },
+  '2026-conmebol.america':           { label: 'Copa America',            tier: 1, slug: 'conmebol.america' },
+  '2026-caf.nations':                 { label: 'AFCON',                   tier: 1, slug: 'caf.nations' },
+  '2026-afc.asian':                   { label: 'Asian Cup',               tier: 1, slug: 'afc.asian' },
 
-  // Tier 2 — Other elite club continental
-  '2026-conmebol.libertadores':       { label: 'Copa Libertadores',       tier: 2, slug: 'conmebol.libertadores' },
+  // Tier 2 — WC and continental qualifiers (still high-stakes)
+  '2026-fifa.worldq.uefa':            { label: 'WC Qualifiers · UEFA',    tier: 2, slug: 'fifa.worldq.uefa' },
+  '2026-fifa.worldq.conmebol':        { label: 'WC Qualifiers · CONMEBOL', tier: 2, slug: 'fifa.worldq.conmebol' },
+  '2026-fifa.worldq.afc':              { label: 'WC Qualifiers · AFC',     tier: 2, slug: 'fifa.worldq.afc' },
+  '2026-fifa.worldq.caf':              { label: 'WC Qualifiers · CAF',     tier: 2, slug: 'fifa.worldq.caf' },
+  '2026-fifa.worldq.concacaf':        { label: 'WC Qualifiers · CONCACAF', tier: 2, slug: 'fifa.worldq.concacaf' },
 
-  // Tier 3 — La Liga (user-bumped)
-  '2026-esp.1':                       { label: 'LaLiga',                  tier: 3, slug: 'esp.1' },
+  // Tier 3 — UEFA Nations League (annual, official stakes)
+  '2026-uefa.nations':                { label: 'UEFA Nations League',     tier: 3, slug: 'uefa.nations' },
 
-  // Tier 4 — Premier League
-  '2026-eng.1':                       { label: 'Premier League',          tier: 4, slug: 'eng.1' },
+  // Tier 8 — National-team friendlies (still senior men national, so
+  // above ALL club competitions — that's the user rule).
+  '2026-international-friendly':     { label: 'International friendlies', tier: 8, slug: 'fifa.friendly' },
 
-  // Tier 5 — Bundesliga
-  '2026-ger.1':                       { label: 'Bundesliga',              tier: 5, slug: 'ger.1' },
+  // -- Senior men's CLUBS ---------------------------------------------
 
-  // Tier 6 — Serie A
-  '2026-ita.1':                       { label: 'Serie A',                 tier: 6, slug: 'ita.1' },
+  // Tier 10 — Champions League (the club crown)
+  '2026-uefa.champions':             { label: 'Champions League',        tier: 10, slug: 'uefa.champions' },
 
-  // Tier 7 — Ligue 1
-  '2026-fra.1':                       { label: 'Ligue 1',                 tier: 7, slug: 'fra.1' },
+  // Tier 11 — Copa Libertadores
+  '2026-conmebol.libertadores':       { label: 'Copa Libertadores',       tier: 11, slug: 'conmebol.libertadores' },
 
-  // Tier 8 — UEFA Europa League
-  '2026-uefa.europa':                 { label: 'Europa League',           tier: 8, slug: 'uefa.europa' },
+  // Tier 12-16 — Top 5 European domestic leagues
+  '2026-esp.1':                       { label: 'LaLiga',                  tier: 12, slug: 'esp.1' },
+  '2026-eng.1':                       { label: 'Premier League',          tier: 13, slug: 'eng.1' },
+  '2026-ger.1':                       { label: 'Bundesliga',              tier: 14, slug: 'ger.1' },
+  '2026-ita.1':                       { label: 'Serie A',                 tier: 15, slug: 'ita.1' },
+  '2026-fra.1':                       { label: 'Ligue 1',                 tier: 16, slug: 'fra.1' },
 
-  // Tier 9 — UEFA Conference League
-  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 9, slug: 'uefa.europa.conf' },
+  // Tier 17-18 — Other UEFA club competitions
+  '2026-uefa.europa':                 { label: 'Europa League',           tier: 17, slug: 'uefa.europa' },
+  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 18, slug: 'uefa.europa.conf' },
 
-  // Tier 10 — Top international tournaments (when in season)
-  '2026-uefa.euro':                  { label: 'UEFA Euro',               tier: 10, slug: 'uefa.euro' },
-  '2026-conmebol.america':           { label: 'Copa America',            tier: 10, slug: 'conmebol.america' },
-  '2026-caf.nations':                 { label: 'AFCON',                   tier: 10, slug: 'caf.nations' },
-  '2026-afc.asian':                   { label: 'Asian Cup',               tier: 10, slug: 'afc.asian' },
+  // Tier 19 — Other big domestic leagues (Americas + Saudi)
+  '2026-sau.1':                       { label: 'Saudi Pro League',         tier: 19, slug: 'sau.1' },
+  '2026-usa.1':                       { label: 'Major League Soccer',     tier: 19, slug: 'usa.1' },
+  '2026-mex.1':                       { label: 'Liga MX',                 tier: 19, slug: 'mex.1' },
+  '2026-bra.1':                       { label: 'Brasileirão',             tier: 19, slug: 'bra.1' },
+  '2026-arg.1':                       { label: 'Primera División',         tier: 19, slug: 'arg.1' },
 
-  // Tier 11 — National team qualifiers
-  '2026-fifa.worldq.uefa':            { label: 'WC Qualifiers · UEFA',    tier: 11, slug: 'fifa.worldq.uefa' },
-  '2026-fifa.worldq.conmebol':        { label: 'WC Qualifiers · CONMEBOL', tier: 11, slug: 'fifa.worldq.conmebol' },
-  '2026-fifa.worldq.afc':              { label: 'WC Qualifiers · AFC',     tier: 11, slug: 'fifa.worldq.afc' },
-  '2026-fifa.worldq.caf':              { label: 'WC Qualifiers · CAF',     tier: 11, slug: 'fifa.worldq.caf' },
-  '2026-fifa.worldq.concacaf':        { label: 'WC Qualifiers · CONCACAF', tier: 11, slug: 'fifa.worldq.concacaf' },
-  '2026-uefa.nations':                { label: 'UEFA Nations League',     tier: 11, slug: 'uefa.nations' },
+  // Tier 20 — Smaller European top divisions
+  '2026-ned.1':                       { label: 'Eredivisie',              tier: 20, slug: 'ned.1' },
+  '2026-por.1':                       { label: 'Primeira Liga',           tier: 20, slug: 'por.1' },
+  '2026-bel.1':                       { label: 'Belgian Pro League',      tier: 20, slug: 'bel.1' },
+  '2026-tur.1':                       { label: 'Süper Lig',               tier: 20, slug: 'tur.1' },
+  '2026-sco.1':                       { label: 'Scottish Premiership',    tier: 20, slug: 'sco.1' },
 
-  // Tier 12 — Other big domestic leagues
-  '2026-sau.1':                       { label: 'Saudi Pro League',         tier: 12, slug: 'sau.1' },
-  '2026-usa.1':                       { label: 'Major League Soccer',     tier: 12, slug: 'usa.1' },
-  '2026-mex.1':                       { label: 'Liga MX',                 tier: 12, slug: 'mex.1' },
-  '2026-bra.1':                       { label: 'Brasileirão',             tier: 12, slug: 'bra.1' },
-  '2026-arg.1':                       { label: 'Primera División',         tier: 12, slug: 'arg.1' },
+  // Tier 21 — Other CONMEBOL clubs
+  '2026-conmebol.sudamericana':       { label: 'Copa Sudamericana',       tier: 21, slug: 'conmebol.sudamericana' },
 
-  // Tier 13 — Smaller European top divisions
-  '2026-ned.1':                       { label: 'Eredivisie',              tier: 13, slug: 'ned.1' },
-  '2026-por.1':                       { label: 'Primeira Liga',           tier: 13, slug: 'por.1' },
-  '2026-bel.1':                       { label: 'Belgian Pro League',      tier: 13, slug: 'bel.1' },
-  '2026-tur.1':                       { label: 'Süper Lig',               tier: 13, slug: 'tur.1' },
-  '2026-sco.1':                       { label: 'Scottish Premiership',    tier: 13, slug: 'sco.1' },
+  // Tier 22 — Second tiers
+  '2026-eng.2':                       { label: 'Championship (England)',   tier: 22, slug: 'eng.2' },
+  '2026-esp.2':                       { label: 'LaLiga 2',                 tier: 22, slug: 'esp.2' },
+  '2026-ger.2':                       { label: '2. Bundesliga',            tier: 22, slug: 'ger.2' },
+  '2026-ita.2':                       { label: 'Serie B',                  tier: 22, slug: 'ita.2' },
+  '2026-fra.2':                       { label: 'Ligue 2',                  tier: 22, slug: 'fra.2' },
 
-  // Tier 14 — Other CONMEBOL clubs
-  '2026-conmebol.sudamericana':       { label: 'Copa Sudamericana',       tier: 14, slug: 'conmebol.sudamericana' },
-
-  // Tier 15 — Second tiers
-  '2026-eng.2':                       { label: 'Championship (England)',   tier: 15, slug: 'eng.2' },
-  '2026-esp.2':                       { label: 'LaLiga 2',                 tier: 15, slug: 'esp.2' },
-  '2026-ger.2':                       { label: '2. Bundesliga',            tier: 15, slug: 'ger.2' },
-  '2026-ita.2':                       { label: 'Serie B',                  tier: 15, slug: 'ita.2' },
-  '2026-fra.2':                       { label: 'Ligue 2',                  tier: 15, slug: 'fra.2' },
-
-  // Tier 18 — International friendlies (demoted from old tier 0)
-  '2026-international-friendly':     { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' },
-
-  // Tier 19 — Club friendlies
-  '2026-club-friendly':                { label: 'Club friendlies',          tier: 19, slug: 'club.friendly' },
+  // Tier 29 — Club friendlies (bottom of the senior-men-club range)
+  '2026-club-friendly':                { label: 'Club friendlies',          tier: 29, slug: 'club.friendly' },
 }
 
 /**
@@ -250,31 +261,42 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
  *      that ID in its uid (`l:NNNN`)
  */
 const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }> = {
-  // Tournaments — verified IDs
+  // ======================================================================
+  // Same TIER BUDGET as LEAGUE_META above:
+  //    0 -  9   Senior MEN national teams  (THE event + continental crowns
+  //             + qualifiers + nations league + national friendlies)
+  //   10 - 29   Senior MEN clubs  (UCL → Libertadores → top 5 → MLS …)
+  //   30 - 49   Men's youth via category bump in tagEvent()
+  //   50 - 89   Women via category bump in tagEvent() (or hardcoded)
+  //   90+      'Other competitions' catch-all
+  // ======================================================================
+
+  // -- Senior MEN national teams (tier 0-9) ---------------------------
   '606':   { label: 'FIFA World Cup',          tier: 0,  slug: 'fifa.world' },
-  '775':   { label: 'Champions League',        tier: 1,  slug: 'uefa.champions' },
-  '783':   { label: 'Copa Libertadores',       tier: 2,  slug: 'conmebol.libertadores' },
-  '776':   { label: 'Europa League',           tier: 8,  slug: 'uefa.europa' },
-  '20296': { label: 'Conference League',       tier: 9,  slug: 'uefa.europa.conf' },
-  '781':   { label: 'UEFA Euro',               tier: 10, slug: 'uefa.euro' },
-  '780':   { label: 'Copa America',            tier: 10, slug: 'conmebol.america' },
-  '4004':  { label: 'CONCACAF Gold Cup',       tier: 10, slug: 'concacaf.gold' },
-  '3908':  { label: 'AFCON',                   tier: 10, slug: 'caf.nations' },
-  '2395':  { label: 'UEFA Nations League',     tier: 11, slug: 'uefa.nations' },
+  '781':   { label: 'UEFA Euro',               tier: 1,  slug: 'uefa.euro' },
+  '780':   { label: 'Copa America',            tier: 1,  slug: 'conmebol.america' },
+  '4004':  { label: 'CONCACAF Gold Cup',       tier: 1,  slug: 'concacaf.gold' },
+  '3908':  { label: 'AFCON',                   tier: 1,  slug: 'caf.nations' },
+  '2395':  { label: 'UEFA Nations League',     tier: 3,  slug: 'uefa.nations' },
 
-  // Top 5 leagues — verified IDs
-  '740':   { label: 'LaLiga',                  tier: 3,  slug: 'esp.1' },
-  '700':   { label: 'Premier League',          tier: 4,  slug: 'eng.1' },
-  '720':   { label: 'Bundesliga',              tier: 5,  slug: 'ger.1' },
-  '730':   { label: 'Serie A',                 tier: 6,  slug: 'ita.1' },
-  '710':   { label: 'Ligue 1',                 tier: 7,  slug: 'fra.1' },
+  // -- Senior MEN clubs (tier 10-29) ---------------------------------
+  '775':   { label: 'Champions League',        tier: 10, slug: 'uefa.champions' },
+  '783':   { label: 'Copa Libertadores',       tier: 11, slug: 'conmebol.libertadores' },
+  '740':   { label: 'LaLiga',                  tier: 12, slug: 'esp.1' },
+  '700':   { label: 'Premier League',          tier: 13, slug: 'eng.1' },
+  '720':   { label: 'Bundesliga',              tier: 14, slug: 'ger.1' },
+  '730':   { label: 'Serie A',                 tier: 15, slug: 'ita.1' },
+  '710':   { label: 'Ligue 1',                 tier: 16, slug: 'fra.1' },
+  '776':   { label: 'Europa League',           tier: 17, slug: 'uefa.europa' },
+  '20296': { label: 'Conference League',       tier: 18, slug: 'uefa.europa.conf' },
+  '770':   { label: 'Major League Soccer',     tier: 19, slug: 'usa.1' },
+  '760':   { label: 'Liga MX',                 tier: 19, slug: 'mex.1' },
 
-  // Top other domestic — verified IDs
-  '770':   { label: 'Major League Soccer',     tier: 12, slug: 'usa.1' },
-  '760':   { label: 'Liga MX',                 tier: 12, slug: 'mex.1' },
-
-  // Youth tournaments — verified by event data inspection
-  '11109': { label: 'Maurice Revello Tournament', tier: 14, slug: 'maurice.revello' },
+  // -- Youth tournaments (intrinsic — already youth, no bump needed) --
+  // Maurice Revello / Toulon Tournament is always U20. Hardcoding at
+  // tier 35 (mid men's-youth range) so it lands correctly even if
+  // detectCategory misses the U20 marker in a given event's slug.
+  '11109': { label: 'Maurice Revello Tournament', tier: 35, slug: 'maurice.revello' },
 
   // ⚠️ L20649 is the WOMEN'S 2027 World Cup qualifiers (UEFA). Easy to
   // mis-tag as 2026 (men's) because ESPN's scoreboard endpoint strips the
@@ -393,9 +415,11 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
     } else if (bare.includes('conmebol.libert')) {
       base = { label: 'Copa Libertadores', tier: 2, slug: 'conmebol.libertadores' }
     } else if (bare.includes('international-friendly')) {
-      base = { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' }
+      // National-team friendlies — senior men, so they rank above ALL
+      // club competitions (user rule).
+      base = { label: 'International friendlies', tier: 8, slug: 'fifa.friendly' }
     } else if (bare.includes('club-friendly') || bare.includes('club.friendly')) {
-      base = { label: 'Club friendlies', tier: 19, slug: 'club.friendly' }
+      base = { label: 'Club friendlies', tier: 29, slug: 'club.friendly' }
     } else {
       // Last resort — title-case the slug AS A COMPETITION NAME.
       //
@@ -417,35 +441,39 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
       const pretty = isRoundOnly
         ? 'Other competitions'
         : (bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other competitions')
-      base = { label: pretty, tier: 17, slug: seasonSlug ?? 'other' }
+      // Tier 90 → catch-all bucket lives below women (50-89) so the
+      // daily board never floats an unidentified competition above
+      // properly-tagged ones.
+      base = { label: pretty, tier: 90, slug: seasonSlug ?? 'other' }
     }
   }
 
-  // Apply category suffix + adjust tier so the daily board orders matches
-  // by audience priority — the user explicitly asked to demote women's
-  // and youth competitions because the general football audience prefers
-  // senior men's first.
+  // Apply category suffix + bump the tier so the daily board orders
+  // matches by audience priority. User rule (locked in): senior men's
+  // national-team matches ALWAYS rank above club matches, even when the
+  // national match is just a friendly; youth and women drop below all
+  // senior men's. So the tier budget is:
   //
-  // Tier ranges as a whole:
-  //    0 - 19  : Senior men's competitions (existing LEAGUE_BY_ID + meta)
-  //   20 - 39  : Men's youth (U23, U21, U20, U19, U18, U17, U15)
-  //   40 - 79  : Women's (any category — senior OR youth)
-  //   80+     : 'Other competitions' bucket
+  //    0 -  9  : Senior MEN national teams (WC, continental, qualifiers,
+  //              Nations League, national friendlies — friendlies last)
+  //   10 - 29  : Senior MEN clubs (UCL → top 5 → MLS → second tiers → club friendlies)
+  //   30 - 49  : Men's youth (U23 first, descending age)
+  //   50 - 89  : Women (any age, any competition)
+  //   90+     : 'Other competitions' catch-all
   //
-  // Within each category-bump range, base tier ordering is preserved
-  // (so senior UCL Men's tier 1 + 0 = 1, and youth UCL tier 1 + 20 = 21,
-  // and women's UCL tier 1 + 40 = 41 — all stay in relative order).
+  // Within each category-bump range the base tier ordering is preserved
+  // so the inside structure (UCL > Europa > Nations etc.) still holds.
   if (cat) {
     const tierBump =
-      cat.code === 'W'   ? 40 :   // Women's competitions sink to the bottom
-      cat.code === 'U23' ? 20 :   // Youth: U23 first, then descending age
-      cat.code === 'U21' ? 21 :
-      cat.code === 'U20' ? 22 :
-      cat.code === 'U19' ? 23 :
-      cat.code === 'U18' ? 24 :
-      cat.code === 'U17' ? 25 :
-      cat.code === 'U15' ? 26 :
-      30                              // Unknown category — between youth and women
+      cat.code === 'W'   ? 50 :   // Women's competitions → 50-89 range
+      cat.code === 'U23' ? 30 :   // Youth: U23 first, then descending age
+      cat.code === 'U21' ? 31 :
+      cat.code === 'U20' ? 32 :
+      cat.code === 'U19' ? 33 :
+      cat.code === 'U18' ? 34 :
+      cat.code === 'U17' ? 35 :
+      cat.code === 'U15' ? 36 :
+      40                              // Unknown category — between youth and women
     return {
       label: `${base.label} · ${cat.label}`,
       tier: base.tier + tierBump,
