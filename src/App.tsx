@@ -39,42 +39,12 @@ function App() {
   const pushLocalToCloud = usePredictions((s) => s.pushLocalToCloud)
   const location = useLocation()
 
-  // Intro splash now fires on every page load — user wants the WC26
-  // emblem reveal as a signature launch moment. User feedback after
-  // shipping: 'l'animation n'a pas le temps de finir avant que le
-  // site s'affiche'. Bumped from 1.2s to 2.4s so the inner emblem +
-  // wordmark animations (0.5s emblem scale-in, 0.25s text delay +
-  // 0.45s fade, then a comfortable hold) actually complete and read
-  // as a deliberate brand moment before the page reveals.
-  const [intro, setIntro] = useState<boolean>(typeof window !== 'undefined')
-  useEffect(() => {
-    if (!intro) return
-    const t = setTimeout(() => setIntro(false), 2400)
-    return () => clearTimeout(t)
-  }, [intro])
-
-  // Lock body scroll during the intro splash so it can't be scrolled
-  // away and so the splash overlay isn't visually broken by content
-  // peeking underneath during the fade-out.
-  useEffect(() => {
-    if (!intro) return
-    const prev = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = prev
-    }
-  }, [intro])
-
-  // Drop the inline boot splash (in index.html) on first React paint.
-  // useEffect fires AFTER commit, which means React's own intro
-  // <motion.div> (z-[80]) is already painted underneath the boot
-  // splash (z-90) when this runs — so removing the boot reveals the
-  // React intro continuously with no visible gap and no flash of
-  // the cream theme behind it.
-  useEffect(() => {
-    const boot = document.getElementById('boot-splash')
-    if (boot) boot.remove()
-  }, [])
+  // Launch splash is owned by index.html (#launch-splash) — pure CSS
+  // animation that runs at z:9999 from first byte until it removes
+  // itself ~2.8s later. No React-side splash any more, so there's
+  // exactly one animation, no double-render, no fade-through onto the
+  // home page. App renders normally underneath; users only see it
+  // once the splash has cleaned itself up.
 
   // Init auth on mount
   useEffect(() => {
@@ -97,45 +67,8 @@ function App() {
 
   return (
     <div className="min-h-svh pb-20 md:pb-0">
-      {/* Intro splash — 1.2s. Background is the SAME marine the PWA
-          manifest declares for the Android launch splash so the
-          install-icon → launch-splash → React-intro transition reads
-          as one continuous animation, not a black flash then a
-          colour change. */}
-      <AnimatePresence>
-        {intro && (
-          <motion.div
-            key="wc26-intro"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.6, ease: 'easeInOut' }}
-            className="fixed inset-0 z-[80] bg-marine-950 flex flex-col items-center justify-center"
-          >
-            <motion.img
-              src="/wc26-emblem.svg"
-              alt=""
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.5, ease: 'easeOut' }}
-              className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.35)]"
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.25 }}
-              className="mt-5 text-center"
-            >
-              <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-cream">
-                WC<span className="text-accent-gold">26</span> Live
-              </div>
-              <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase">
-                <span className="text-cream/70">Pressing</span>{' '}
-                <span className="text-accent-red font-semibold">90′</span>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Launch splash lives in index.html (#launch-splash) — pure
+          CSS. No React intro any more. */}
 
       <Navigation />
       <StickyCountdown />
