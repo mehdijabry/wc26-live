@@ -26,6 +26,10 @@ type Competitor = {
   team?: { id?: string; displayName?: string; shortDisplayName?: string; abbreviation?: string; logo?: string }
   score?: string | { displayValue?: string; value?: number }
   winner?: boolean
+  // ESPN encodes penalty shootout results on this field. Format is the
+  // standard 'goals scored in the shootout' integer; both competitors
+  // share the (X) tab next to the regular-time score.
+  shootoutScore?: number | string
   statistics?: Array<{ name?: string; displayName?: string; abbreviation?: string; displayValue?: string }>
 }
 
@@ -115,6 +119,11 @@ export function MatchSheet({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [liveBroadcasts, setLiveBroadcasts] = useState<LiveBroadcaster[]>([])
+  const [fetchedAt, setFetchedAt] = useState<number>(0)
+  // 1-second ticker — drives the live clock display so the minute counts
+  // up even between polling intervals (we poll every 30s, that's too slow
+  // for a smooth in-match feel).
+  const [, setTick] = useState(0)
 
   useEffect(() => {
     if (!open || !eventId) return
@@ -125,8 +134,6 @@ export function MatchSheet({
 
     async function load() {
       try {
-        // Pass eng.1 as a stable placeholder league — ESPN serves the
-        // event regardless. Cuts the need to map every event to its slug.
         const r = await fetch(
           `https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=${eventId}`
         )
@@ -134,9 +141,11 @@ export function MatchSheet({
         const j = (await r.json()) as SummaryResponse
         if (cancelled) return
         setData(j)
-        // Decide refresh interval from status
+        setFetchedAt(Date.now())
         const status = j.header?.competitions?.[0]?.status?.type?.state
-        const next = status === 'in' ? 30_000 : 300_000
+        // 15s polling when live so halftime / FT transitions and goals
+        // catch up fast. 5 min otherwise.
+        const next = status === 'in' ? 15_000 : 300_000
         timer = window.setTimeout(load, next)
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load')
@@ -158,6 +167,19 @@ export function MatchSheet({
     document.body.style.overflow = 'hidden'
     return () => { document.body.style.overflow = prev }
   }, [open])
+
+  // 1s ticker — only runs while the match is in progress AND not paused.
+  // Forces a re-render every second so the live clock derived from
+  // fetchedAt advances on screen even between polls.
+  useEffect(() => {
+    if (!open) return
+    const state = data?.header?.competitions?.[0]?.status?.type?.state
+    const detail = data?.header?.competitions?.[0]?.status?.type?.detail ?? ''
+    const isPaused = /^(HT|Halftime|Half-time|Pause)/i.test(detail)
+    if (state !== 'in' || isPaused) return
+    const id = window.setInterval(() => setTick((t) => t + 1), 1000)
+    return () => clearInterval(id)
+  }, [open, data?.header?.competitions?.[0]?.status?.type?.state, data?.header?.competitions?.[0]?.status?.type?.detail])
 
   const comp = data?.header?.competitions?.[0]
   const home = comp?.competitors?.find((c) => c.homeAway === 'home')
@@ -254,19 +276,33 @@ export function MatchSheet({
                   <TeamColumn c={home} align="right" />
                   <div className="text-center">
                     {isLive ? (
-                      // Live indicator with the current minute (e.g. 'Live · 87'')
-                      // so the user immediately sees where in the match we are.
-                      <div className="text-[11px] uppercase tracking-widest font-mono text-red-500 flex items-center justify-center gap-1.5 mb-2 font-semibold">
-                        <span className="relative flex h-2 w-2">
-                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                          <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-                        </span>
-                        Live
-                        <span className="text-red-500/85 tabular-nums">· {status?.displayClock ?? "0'"}</span>
-                      </div>
+                      // Live indicator. Detect halftime so we show 'HT' instead
+                      // of a frozen '45+3''. For active play, derive the live
+                      // minute from displayClock + elapsed time since fetch so
+                      // the counter advances every second between polls.
+                      (() => {
+                        const detail = status?.type?.detail ?? ''
+                        const isHT = /^(HT|Halftime|Half-time|Pause)/i.test(detail)
+                        const clockLabel = isHT ? 'HT' : liveClock(status?.displayClock ?? '', fetchedAt)
+                        return (
+                          <div className="text-[11px] uppercase tracking-widest font-mono text-red-500 flex items-center justify-center gap-1.5 mb-2 font-semibold">
+                            <span className="relative flex h-2 w-2">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                              <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                            </span>
+                            {isHT ? 'Halftime' : 'Live'}
+                            <span className="text-red-500/85 tabular-nums">· {clockLabel}</span>
+                          </div>
+                        )
+                      })()
                     ) : isDone ? (
                       <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2">
                         {status?.type?.description ?? 'Full Time'}
+                        {/* Penalty shootout? show 'FT (PSO)' so the user knows
+                            why the (X) parentheses appear next to the score. */}
+                        {(home?.shootoutScore != null || away?.shootoutScore != null) && (
+                          <span className="ml-1 text-accent-gold">· PSO</span>
+                        )}
                       </div>
                     ) : (
                       <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2">
@@ -276,9 +312,9 @@ export function MatchSheet({
                     <div className="font-display font-black text-5xl sm:text-6xl tabular-nums leading-none">
                       {isLive || isDone ? (
                         <>
-                          {scoreOf(home)}
+                          <ScoreNumber c={home} other={away} />
                           <span className="mx-2 text-slate-300">–</span>
-                          {scoreOf(away)}
+                          <ScoreNumber c={away} other={home} />
                         </>
                       ) : (
                         <span className="text-slate-300">vs</span>
@@ -435,6 +471,37 @@ export function MatchSheet({
 
   if (typeof document === 'undefined') return null
   return createPortal(node, document.body)
+}
+
+/**
+ * Renders the score number for one team with:
+ *   - text-accent-green when this team won (regular time OR penalties)
+ *   - text-accent-red   when this team lost
+ *   - text-slate-500    on draw (or unknown winner)
+ *   - PSO score in (X) tab next to the regular score when shootoutScore exists
+ * Falls back to comparing numeric scores when the winner flag isn't set.
+ */
+function ScoreNumber({ c, other }: { c?: Competitor; other?: Competitor }) {
+  if (!c) return <span>–</span>
+  const score = scoreOf(c)
+  const otherScore = scoreOf(other)
+  const num = parseInt(score, 10)
+  const oNum = parseInt(otherScore, 10)
+  const draw = !isNaN(num) && !isNaN(oNum) && num === oNum && c.shootoutScore == null
+  const won = c.winner === true || (c.winner == null && !draw && !isNaN(num) && !isNaN(oNum) && num > oNum)
+  const lost = c.winner === false || (c.winner == null && !draw && !isNaN(num) && !isNaN(oNum) && num < oNum)
+  const color = draw ? 'text-slate-500' : won ? 'text-accent-green' : lost ? 'text-accent-red' : 'text-slate-900'
+
+  return (
+    <span className={color}>
+      {score}
+      {c.shootoutScore != null && (
+        <span className="text-[0.45em] align-top ml-0.5 font-mono tracking-tighter opacity-80">
+          ({c.shootoutScore})
+        </span>
+      )}
+    </span>
+  )
 }
 
 function TeamColumn({ c, align }: { c: Competitor | undefined; align: 'left' | 'right' }) {
@@ -701,6 +768,46 @@ function BroadcasterPill({ b }: { b: Broadcaster }) {
       <span className="font-semibold">{b.name}</span>
     </div>
   )
+}
+
+/**
+ * Compute a live-ticking clock string from the ESPN displayClock value
+ * plus the elapsed time since we fetched it. ESPN gives us '32'' at
+ * fetch — we add (now - fetchedAt) seconds and render '34'' two minutes
+ * later, without re-polling.
+ *
+ * Handles the standard ESPN formats:
+ *   "32'"        → simple running clock
+ *   "45+3'"      → first-half stoppage
+ *   "90+5'"      → full-time stoppage
+ *   "HT" / ""    → returned as-is (caller already checks halftime detail)
+ *
+ * For stoppage minutes, we increment the +N part rather than rolling
+ * back into the next half (a '45+3'' shouldn't jump to 46' on its own).
+ */
+function liveClock(displayClock: string, fetchedAt: number): string {
+  if (!displayClock || !fetchedAt) return displayClock || "0'"
+  const elapsed = Math.max(0, Math.floor((Date.now() - fetchedAt) / 60_000))
+  if (elapsed === 0) return displayClock
+
+  // Match '45+3'' / '90+5'' — increment only the extra-time component
+  const stoppage = /^(\d+)\+(\d+)'/.exec(displayClock)
+  if (stoppage) {
+    const base = stoppage[1]
+    const extra = parseInt(stoppage[2], 10) + elapsed
+    return `${base}+${extra}'`
+  }
+  // Plain '32'' — increment, but cap at 45 (first half) or 90 (second
+  // half boundary) so we don't roll a running minute past the half end.
+  const plain = /^(\d+)'/.exec(displayClock)
+  if (plain) {
+    const m = parseInt(plain[1], 10)
+    const next = m + elapsed
+    if (m < 45 && next >= 45) return `45+${next - 45}'`
+    if (m < 90 && next >= 90) return `90+${next - 90}'`
+    return `${next}'`
+  }
+  return displayClock
 }
 
 /** De-duplicate broadcasts by media+region so we don't show 'Paramount+ Paramount+'. */
