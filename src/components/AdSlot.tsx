@@ -182,15 +182,20 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Zone keys for pressing90.live — pulled from Adsterra dashboard         */
-/* (publishers > websites > pressing90.live > Get code on each unit)       */
+/* Zone keys for pressing90.live — pulled from Adsterra dashboard            */
+/* (publishers > websites > pressing90.live > Get code on each unit)         */
+/*                                                                            */
+/* These keys belong to website id 5835133 (pressing90.live). The old keys   */
+/* (4206024..., 111d5dc..., 0936eaa..., cea8e56...) belonged to website id   */
+/* 5833495 (wc26.mehdijabry.dev) and have been rotated as part of the        */
+/* domain migration so Adsterra fills on the new origin.                      */
 /* -------------------------------------------------------------------------- */
 
 export const ADSTERRA_ZONES = {
-  native:     '4206024ed395c7d39e23ea899fea475b', // NativeBanner_1
-  banner320:  '111d5dc72ead6ef8616f65b57c12f258', // 320x50 (mobile)
-  banner300:  '0936eaa3f807a32e23702c0788a45a82', // 300x250 (in-content)
-  banner728:  'cea8e56ed099a4849d831cb15a84f89a', // 728x90 (leaderboard)
+  native:     '13ad785c816c91315c48ad6c67c81412', // NativeBanner_1  (id 29585660)
+  banner320:  '5a37f85f2bf02f1a8182aa14573de4f2', // 320x50_1        (id 29585661)
+  banner300:  'd2d2698cbac2921e9e5d5ed3d1298c9b', // 300x250_1       (id 29585662)
+  banner728:  '5c7b66b802463e8c4062d28399bf54bb', // 728x90_1        (id 29585663)
 } as const
 
 /**
