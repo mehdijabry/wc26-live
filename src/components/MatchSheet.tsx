@@ -392,7 +392,9 @@ export function MatchSheet({
                           <span className="w-14 font-mono text-slate-500 text-xs shrink-0 text-center">
                             {ev.clock?.displayValue ?? '—'}
                           </span>
-                          <span className="shrink-0 w-5 text-base">{eventIcon(ev.type?.type ?? ev.type?.text)}</span>
+                          <span className="shrink-0 w-7 flex items-center justify-center">
+                            <EventIcon type={ev.type?.type ?? ev.type?.text} />
+                          </span>
                           <div className="flex-1 min-w-0">
                             <div className="text-slate-900 font-medium truncate">
                               {meta.primary}
@@ -520,17 +522,104 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-function eventIcon(text: string | undefined): string {
-  const t = (text ?? '').toLowerCase()
-  if (t.includes('own-goal') || t.includes('own goal')) return '🥅'
-  if (t.includes('penalty') && t.includes('miss')) return '❌'
-  if (t.includes('goal')) return '⚽'
-  if (t.includes('yellow')) return '🟨'
-  if (t.includes('red')) return '🟥'
-  if (t.includes('sub')) return '🔁'
-  if (t.includes('penalty')) return '🎯'
-  if (t.includes('var')) return '📺'
-  return '•'
+/**
+ * Real match-event icons — same visual language Sofascore / Flashscore
+ * / Footmercato use. No emoji. SVG renders crisp at any DPI, matches
+ * the rest of the editorial look, and stays a single colour-on-colour
+ * pair (no system-emoji platform differences).
+ */
+function EventIcon({ type }: { type: string | undefined }) {
+  const t = (type ?? '').toLowerCase()
+
+  // Goal — solid black football with a white pentagon hint
+  if (t === 'goal' || t === 'penalty-goal') {
+    return (
+      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Goal">
+        <circle cx="8" cy="8" r="7" fill="#0f172a" />
+        <path d="M8 3l2.4 1.7-0.9 2.8-3 0-0.9-2.8z" fill="#fff" />
+      </svg>
+    )
+  }
+
+  // Own goal — same shape, red ball
+  if (t === 'own-goal') {
+    return (
+      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Own goal">
+        <circle cx="8" cy="8" r="7" fill="#dc2626" />
+        <path d="M8 3l2.4 1.7-0.9 2.8-3 0-0.9-2.8z" fill="#fff" />
+      </svg>
+    )
+  }
+
+  // Penalty missed — outlined dark ball with strike-through
+  if (t === 'penalty-kick-missed' || (t === 'penalty' && type?.includes('miss'))) {
+    return (
+      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Penalty missed">
+        <circle cx="8" cy="8" r="6" fill="none" stroke="#dc2626" strokeWidth="1.5" />
+        <path d="M4 4l8 8M12 4l-8 8" stroke="#dc2626" strokeWidth="1.5" strokeLinecap="round" />
+      </svg>
+    )
+  }
+
+  // Yellow card
+  if (t === 'yellow-card') {
+    return (
+      <svg viewBox="0 0 10 14" className="w-2.5 h-3.5" aria-label="Yellow card">
+        <rect width="10" height="14" rx="1" fill="#facc15" />
+      </svg>
+    )
+  }
+
+  // Red card
+  if (t === 'red-card') {
+    return (
+      <svg viewBox="0 0 10 14" className="w-2.5 h-3.5" aria-label="Red card">
+        <rect width="10" height="14" rx="1" fill="#dc2626" />
+      </svg>
+    )
+  }
+
+  // Second yellow → red — yellow over red, slightly offset like the
+  // refs do when they show it
+  if (t === 'second-yellow') {
+    return (
+      <svg viewBox="0 0 14 14" className="w-3.5 h-3.5" aria-label="Second yellow">
+        <rect x="0" y="0" width="9" height="13" rx="1" fill="#facc15" />
+        <rect x="5" y="1" width="9" height="13" rx="1" fill="#dc2626" />
+      </svg>
+    )
+  }
+
+  // Substitution — green up + red down arrows side by side
+  if (t === 'substitution') {
+    return (
+      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Substitution">
+        <path d="M4 11V4l-2 2-1-1L4.5 1.5 8 5l-1 1-2-2v7z" fill="#16a34a" />
+        <path d="M12 5v7l2-2 1 1-3.5 3.5L8 11l1-1 2 2V5z" fill="#dc2626" />
+      </svg>
+    )
+  }
+
+  // VAR — small dark pill badge
+  if (t === 'var-decision' || t === 'var') {
+    return (
+      <span className="inline-flex items-center justify-center w-7 h-4 rounded-sm bg-slate-900 text-white text-[8px] font-mono font-bold tracking-wider">
+        VAR
+      </span>
+    )
+  }
+
+  // Penalty (taking, not yet resolved) — black ball with small 'P'
+  if (t === 'penalty') {
+    return (
+      <svg viewBox="0 0 16 16" className="w-4 h-4" aria-label="Penalty">
+        <circle cx="8" cy="8" r="7" fill="#0f172a" />
+        <text x="8" y="11" textAnchor="middle" fill="#fff" fontSize="8" fontFamily="monospace" fontWeight="bold">P</text>
+      </svg>
+    )
+  }
+
+  return <span className="text-slate-300">•</span>
 }
 
 /**
