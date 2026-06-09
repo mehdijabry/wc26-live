@@ -105,16 +105,18 @@ export function DailyMatches() {
     })
   }
 
-  // Quick label for the prev/next buttons — relative day name when close,
-  // short date otherwise.
-  function dayLabel(deltaFromCurrent: -1 | 1): string {
-    const target = new Date(date)
-    target.setDate(target.getDate() + deltaFromCurrent)
-    const tgtOffset = offset + deltaFromCurrent
-    if (tgtOffset === 0) return 'Today'
-    if (tgtOffset === -1) return 'Yesterday'
-    if (tgtOffset === 1) return 'Tomorrow'
-    return target.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' })
+  // Tap the centre date to open a native date picker — lets the user
+  // jump to ANY day in one gesture instead of clicking next/previous
+  // 50 times. We hide the actual <input type="date"> behind the label
+  // and translate the picked YYYY-MM-DD back into an offset from today.
+  function onPickDate(e: React.ChangeEvent<HTMLInputElement>) {
+    const v = e.target.value
+    if (!v) return
+    const picked = new Date(v + 'T12:00:00')
+    const today = new Date()
+    today.setHours(12, 0, 0, 0)
+    const days = Math.round((picked.getTime() - today.getTime()) / 86_400_000)
+    setOffset(days)
   }
 
   return (
@@ -126,61 +128,69 @@ export function DailyMatches() {
           sub="Live scores from all major competitions — useful while you wait for World Cup kickoff. Tap any match for stats, lineups & timeline. Auto-refreshes every 30 seconds when matches are live."
         />
 
-        {/* Day navigator — unbounded Previous · {date} · Next */}
-        <div className="mt-8 glass rounded-2xl p-3 flex items-center justify-between gap-2">
+        {/* Day navigator — minimal: ‹ chevron · date (tappable date picker) · chevron ›.
+            No glass box, no extra padding. Tap the date to jump to ANY day.
+            'Jump to today' only surfaces when off-day, and it's a tiny pill. */}
+        <div className="mt-8 flex items-center justify-center gap-4 sm:gap-6">
           <button
             onClick={() => setOffset((o) => o - 1)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors text-sm text-slate-700 min-w-0"
+            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-700 transition-colors shrink-0"
             aria-label="Previous day"
           >
-            <span className="text-base shrink-0">←</span>
-            <span className="font-mono text-xs uppercase tracking-wider truncate">
-              {dayLabel(-1)}
-            </span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
 
-          <div className="text-center min-w-0 flex-1 px-2">
-            <div className="font-display font-bold text-base sm:text-lg capitalize truncate">
+          <label className="relative cursor-pointer text-center select-none">
+            <div className="font-display font-bold text-lg sm:text-xl capitalize leading-tight whitespace-nowrap">
               {offset === 0 ? 'Today' : dateLabel}
             </div>
-            {offset !== 0 ? (
-              <button
-                onClick={() => setOffset(0)}
-                className="text-[10px] font-mono uppercase tracking-widest text-accent-gold hover:underline"
-              >
-                ↺ Jump to today
-              </button>
-            ) : (
-              <div className="text-[10px] font-mono uppercase tracking-widest text-slate-500 capitalize">
-                {dateShort}
-              </div>
-            )}
-          </div>
+            <div className="mt-0.5 flex items-center justify-center gap-2 text-[10px] font-mono uppercase tracking-widest">
+              <span className="text-slate-400 capitalize">{dateShort}</span>
+              {offset !== 0 && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); setOffset(0) }}
+                  className="text-accent-gold hover:underline"
+                >
+                  · today ↺
+                </button>
+              )}
+              {data?.hasLive && (
+                <span className="flex items-center gap-1 text-red-500">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                  </span>
+                  live
+                </span>
+              )}
+            </div>
+            {/* Native date input — visually hidden, opens on tap of the date label */}
+            <input
+              type="date"
+              value={ymdLocal(date)}
+              onChange={onPickDate}
+              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+              aria-label="Pick a date"
+            />
+          </label>
 
           <button
             onClick={() => setOffset((o) => o + 1)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors text-sm text-slate-700 min-w-0"
+            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-700 transition-colors shrink-0"
             aria-label="Next day"
           >
-            <span className="font-mono text-xs uppercase tracking-wider truncate">
-              {dayLabel(1)}
-            </span>
-            <span className="text-base shrink-0">→</span>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
           </button>
         </div>
 
-        {/* Day meta */}
-        <div className="mt-3 flex items-center gap-3 text-[11px] font-mono text-slate-500 justify-end">
-          {data?.hasLive && (
-            <span className="flex items-center gap-1.5 text-red-500">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
-              </span>
-              live now
-            </span>
-          )}
-          <span>{data?.total ?? 0} match{data?.total === 1 ? '' : 'es'}</span>
+        {/* Match count — tiny, right-aligned below */}
+        <div className="mt-2 text-[10px] font-mono text-slate-400 text-center">
+          {data?.total ?? 0} match{data?.total === 1 ? '' : 'es'}
         </div>
 
         {/* Competition filter chips */}
