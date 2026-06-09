@@ -379,36 +379,56 @@ export function MatchSheet({
               />
 
 
-              {/* Events timeline — scorers (with assister in parentheses
-                  when ESPN provides one), cards, substitutions, etc. */}
+              {/* Events timeline — Footmercato-style row:
+                    74' [ball] 3-1   M. Olise (PD M. Gusto)
+                  Minute → icon → running score (goals only) → player
+                  → assister tagged 'PD' (passe décisive). For non-goal
+                  events the running score is skipped and 'PD' becomes
+                  the 'replaces' tag for subs / reason for cards. */}
               {events.length > 0 && (
                 <Section title="Match events">
-                  <ul className="space-y-2">
-                    {events.map((ev, i) => {
-                      const isHome = ev.team?.id === home?.team?.id
-                      const meta = describeEvent(ev)
-                      return (
-                        <li key={i} className={'flex items-center gap-3 text-sm ' + (isHome ? '' : 'flex-row-reverse text-right')}>
-                          <span className="w-14 font-mono text-slate-500 text-xs shrink-0 text-center">
-                            {ev.clock?.displayValue ?? '—'}
-                          </span>
-                          <span className="shrink-0 w-7 flex items-center justify-center">
-                            <EventIcon type={ev.type?.type ?? ev.type?.text} />
-                          </span>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-slate-900 font-medium truncate">
-                              {meta.primary}
-                              {meta.secondary && (
-                                <span className="text-slate-500 font-normal"> ({meta.secondary})</span>
+                  <ul className="space-y-2.5">
+                    {(() => {
+                      // Track running score as we walk through events
+                      let hs = 0, as = 0
+                      return events.map((ev, i) => {
+                        const isHome = ev.team?.id === home?.team?.id
+                        const meta = describeEvent(ev)
+                        const evType = (ev.type?.type ?? '').toLowerCase()
+                        const isGoal = evType === 'goal' || evType === 'penalty-goal' || evType === 'own-goal'
+                        if (isGoal) {
+                          if (isHome) hs++; else as++
+                        }
+                        return (
+                          <li key={i} className={'flex items-center gap-2.5 text-sm ' + (isHome ? '' : 'flex-row-reverse text-right')}>
+                            <span className="w-10 font-mono text-slate-500 text-xs shrink-0">
+                              {ev.clock?.displayValue ?? '—'}
+                            </span>
+                            <span className="shrink-0 flex items-center justify-center">
+                              <EventIcon type={evType} />
+                            </span>
+                            {isGoal && (
+                              <span className="font-mono font-bold tabular-nums text-slate-900 text-xs px-2 py-0.5 rounded bg-slate-100 shrink-0">
+                                {hs}-{as}
+                              </span>
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <div className="text-slate-900 font-medium truncate">
+                                {meta.primary}
+                                {meta.secondary && (
+                                  <span className="text-slate-500 font-normal text-xs">
+                                    {' '}({meta.detail === 'replaces' ? '↓' : 'PD'} {meta.secondary})
+                                  </span>
+                                )}
+                              </div>
+                              {meta.detail && meta.detail !== 'replaces' && (
+                                <div className="text-[10px] text-slate-500 mt-0.5 truncate">{meta.detail}</div>
                               )}
                             </div>
-                            {meta.detail && (
-                              <div className="text-[10px] text-slate-500 mt-0.5 truncate">{meta.detail}</div>
-                            )}
-                          </div>
-                        </li>
-                      )
-                    })}
+                          </li>
+                        )
+                      })
+                    })()}
                   </ul>
                 </Section>
               )}
@@ -630,27 +650,32 @@ function EventIcon({ type }: { type: string | undefined }) {
 }
 
 /**
- * Classic black-and-white football icon. Central pentagon + five
- * stitch lines to the rim, matching the recognised hex-pentagon
- * pattern. ViewBox is intentionally generous (32×32) so detail
- * stays legible when CSS scales it down to 20-24px in the UI.
+ * Football icon — true truncated-icosahedron suggestion: central
+ * black pentagon + five partial pentagons rotating around it, plus
+ * thin stitch lines for the hex panels. Same construction the icon
+ * Footmercato / L'Équipe / Sofascore use, sized for legibility at
+ * 20-24px CSS render.
  */
 function SoccerBall({ ariaLabel }: { ariaLabel: string }) {
   return (
     <svg viewBox="0 0 32 32" className="w-5 h-5" aria-label={ariaLabel}>
       {/* White body */}
-      <circle cx="16" cy="16" r="14" fill="#ffffff" stroke="#0f172a" strokeWidth="1.6" />
+      <circle cx="16" cy="16" r="14" fill="#ffffff" stroke="#0f172a" strokeWidth="1.5" />
       {/* Central pentagon */}
-      <polygon
-        points="16,9 21.5,12.7 19.4,18.9 12.6,18.9 10.5,12.7"
-        fill="#0f172a"
-      />
-      {/* Stitch lines from each pentagon vertex to the rim */}
-      <line x1="16" y1="9"    x2="16" y2="3"    stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="21.5" y1="12.7" x2="27" y2="11"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="19.4" y1="18.9" x2="23" y2="25"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="12.6" y1="18.9" x2="9"  y2="25"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
-      <line x1="10.5" y1="12.7" x2="5"  y2="11"   stroke="#0f172a" strokeWidth="1.4" strokeLinecap="round" />
+      <polygon points="16,10 20.7,13.4 18.9,18.9 13.1,18.9 11.3,13.4" fill="#0f172a" />
+      {/* Five partial pentagons at the rim — visible portions of the
+          surrounding pentagons in the truncated icosahedron pattern. */}
+      <path d="M14 4 L18 4 L19 9 L13 9 Z" fill="#0f172a" />
+      <path d="M25 11 L28 14 L26 17 L21.7 14.5 Z" fill="#0f172a" />
+      <path d="M21 22 L24 25 L19 27 L17.5 22.5 Z" fill="#0f172a" />
+      <path d="M11 22 L8 25 L13 27 L14.5 22.5 Z" fill="#0f172a" />
+      <path d="M7 11 L4 14 L6 17 L10.3 14.5 Z" fill="#0f172a" />
+      {/* Connecting hex-panel edges (thin stitches) */}
+      <line x1="16" y1="10"   x2="16" y2="9"    stroke="#0f172a" strokeWidth="0.9" />
+      <line x1="20.7" y1="13.4" x2="21.7" y2="14.5" stroke="#0f172a" strokeWidth="0.9" />
+      <line x1="18.9" y1="18.9" x2="17.5" y2="22.5" stroke="#0f172a" strokeWidth="0.9" />
+      <line x1="13.1" y1="18.9" x2="14.5" y2="22.5" stroke="#0f172a" strokeWidth="0.9" />
+      <line x1="11.3" y1="13.4" x2="10.3" y2="14.5" stroke="#0f172a" strokeWidth="0.9" />
     </svg>
   )
 }
