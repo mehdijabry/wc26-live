@@ -37,6 +37,15 @@ type EventDetail = {
   scoringPlay?: boolean
 }
 
+type Broadcast = {
+  type?: { shortName?: string; longName?: string; slug?: string } // 'TV' / 'STREAMING' / 'RADIO'
+  market?: { type?: string } // 'National' / 'Home' / 'Away'
+  media?: { shortName?: string; name?: string; callLetters?: string }
+  lang?: string
+  region?: string
+  isNational?: boolean
+}
+
 type SummaryResponse = {
   header?: {
     id?: string
@@ -46,9 +55,11 @@ type SummaryResponse = {
       competitors?: Competitor[]
       status?: { displayClock?: string; period?: number; type?: { description?: string; completed?: boolean; state?: string } }
       details?: EventDetail[]
+      broadcasts?: Broadcast[]
+      notes?: Array<{ headline?: string; text?: string }>
     }>
     league?: { name?: string; abbreviation?: string }
-    season?: { displayName?: string }
+    season?: { displayName?: string; slug?: string }
   }
   boxscore?: {
     teams?: Array<{
@@ -66,6 +77,7 @@ type SummaryResponse = {
     }>
   }>
   gameInfo?: { venue?: { fullName?: string; address?: { city?: string; country?: string } } }
+  broadcasts?: Broadcast[]
 }
 
 function scoreOf(c: Competitor | undefined): string {
@@ -145,6 +157,18 @@ export function MatchSheet({
   const stats = data?.boxscore?.teams ?? []
   const rosters = data?.rosters ?? []
 
+  // Round / stake context for the badge in the hero. Two sources:
+  //   - season.slug ('final', 'quarterfinals', etc.)
+  //   - competition.notes[0].headline ('Matchday 5', '2nd Leg - X advance')
+  const seasonSlug = data?.header?.season?.slug ?? ''
+  const noteHead = comp?.notes?.[0]?.headline ?? comp?.notes?.[0]?.text ?? ''
+  const roundLabel = deriveRoundLabel(seasonSlug, noteHead)
+
+  // Broadcasts — top-level first (more complete on summary endpoint),
+  // fall back to competition-level if missing. Dedupe by name/region.
+  const allBroadcasts: Broadcast[] = [...(data?.broadcasts ?? []), ...(comp?.broadcasts ?? [])]
+  const broadcasts = dedupeBroadcasts(allBroadcasts)
+
   const node = (
     <AnimatePresence>
       {open && (
@@ -221,10 +245,26 @@ export function MatchSheet({
                   </div>
                   <TeamColumn c={away} align="left" />
                 </div>
-                {data?.header?.league?.name && (
-                  <div className="mt-5 text-[10px] uppercase tracking-widest font-mono text-slate-500 text-center">
-                    {data.header.league.name}
-                    {data.header.season?.displayName && <> · {data.header.season.displayName}</>}
+                {(data?.header?.league?.name || roundLabel) && (
+                  <div className="mt-5 flex items-center justify-center gap-2 flex-wrap">
+                    {data?.header?.league?.name && (
+                      <span className="text-[10px] uppercase tracking-widest font-mono text-slate-500">
+                        {data.header.league.name}
+                      </span>
+                    )}
+                    {roundLabel && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 text-cream text-[10px] uppercase tracking-wider font-mono">
+                          {roundLabel}
+                        </span>
+                      </>
+                    )}
+                    {noteHead && /aggregate|advance|win/i.test(noteHead) && (
+                      <span className="basis-full text-center mt-2 text-xs text-accent-gold font-mono">
+                        {noteHead}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -237,6 +277,38 @@ export function MatchSheet({
                 <div className="p-8 text-center text-sm text-slate-500">
                   Couldn&apos;t load this match. ESPN may not have detailed data published yet.
                 </div>
+              )}
+
+              {/* Broadcast — where to watch. ESPN data is mostly US-centric
+                  but we surface what they give us; users in other regions
+                  see a note explaining their local broadcaster may differ. */}
+              {broadcasts.length > 0 && (
+                <Section title="Where to watch">
+                  <div className="flex flex-wrap gap-2">
+                    {broadcasts.map((b, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200/70"
+                      >
+                        <span className="text-[9px] font-mono uppercase tracking-wider text-slate-400">
+                          {b.type?.shortName ?? 'TV'}
+                        </span>
+                        <span className="text-sm font-semibold text-slate-900">
+                          {b.media?.shortName ?? b.media?.name ?? b.media?.callLetters ?? '—'}
+                        </span>
+                        {b.region && b.region !== 'us' && (
+                          <span className="text-[9px] font-mono uppercase text-slate-400">
+                            {b.region}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 mt-3 leading-relaxed">
+                    Official broadcasters via ESPN — your local listings
+                    may differ depending on your country and provider.
+                  </div>
+                </Section>
               )}
 
               {/* Events timeline */}
@@ -367,4 +439,44 @@ function eventIcon(text: string | undefined): string {
   if (t.includes('sub')) return '🔁'
   if (t.includes('penalty')) return '🎯'
   return '•'
+}
+
+/**
+ * Render-friendly round label from ESPN's season.slug + competition notes.
+ * Mirrors roundContext() in lib/api.ts but returns just a string for
+ * inline display in the MatchSheet hero.
+ */
+function deriveRoundLabel(seasonSlug: string, noteHeadline: string): string | null {
+  const lower = (seasonSlug + ' ' + noteHeadline).toLowerCase()
+  if (/^final$/.test(seasonSlug)) return 'Final'
+  if (lower.includes('semifinal')) return 'Semifinal' + (legSuffix(noteHeadline) ?? '')
+  if (lower.includes('quarterfinal') || seasonSlug === 'quarterfinals') return 'Quarterfinal' + (legSuffix(noteHeadline) ?? '')
+  const r = /round[-\s]of[-\s](16|32|64)/i.exec(lower)
+  if (r) return `Round of ${r[1]}` + (legSuffix(noteHeadline) ?? '')
+  if (lower.includes('play-off') || lower.includes('playoff')) return 'Play-off' + (legSuffix(noteHeadline) ?? '')
+  if (lower.includes('group-stage') || lower.includes('group stage')) {
+    const md = /match[-\s]?day\s*(\d+)/i.exec(noteHeadline)
+    return md ? `Group · MD ${md[1]}` : 'Group stage'
+  }
+  const md = /match[-\s]?day\s*(\d+)/i.exec(noteHeadline)
+  if (md) return `Matchday ${md[1]}`
+  if (lower.includes('qualifying')) return 'Qualifying round'
+  return null
+}
+function legSuffix(head: string): string | null {
+  const m = /(1st|2nd)\s+Leg/i.exec(head)
+  return m ? ' · ' + m[1] + ' Leg' : null
+}
+
+/** De-duplicate broadcasts by media+region so we don't show 'Paramount+ Paramount+'. */
+function dedupeBroadcasts(list: Broadcast[]): Broadcast[] {
+  const seen = new Set<string>()
+  const out: Broadcast[] = []
+  for (const b of list) {
+    const key = (b.media?.shortName ?? b.media?.name ?? '') + ':' + (b.region ?? '')
+    if (key === ':' || seen.has(key)) continue
+    seen.add(key)
+    out.push(b)
+  }
+  return out
 }

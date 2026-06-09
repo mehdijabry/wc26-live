@@ -144,36 +144,188 @@ const ESPN_ALL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/all/score
 
 // Per-league label + tier map. Slugs come from event.season.slug.
 // Anything not in this map falls into a generic "Other" bucket.
+//
+// Tiers are intentionally fine-grained so the user sees the BIG matches
+// first when scrolling. ESPN's scoreboard returns events in chronological
+// order; we re-bucket + sort by tier so Champions League always sits
+// above MLS, La Liga above Eredivisie, etc.
+//
+// Rough ordering rationale (per user feedback): The World Cup itself
+// outranks everything; among club competitions the UCL is king, then
+// the Top-5 leagues (La Liga bumped slightly per user preference),
+// then UEL/UECL, then second-tier internationals (Euro/Copa/AFCON
+// when they're actually running), then other big domestic leagues
+// (Saudi/MLS/Liga MX/Eredivisie/Primeira/Belgian), then everything
+// else. Friendlies are explicitly demoted — they used to be tier 0.
 const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }> = {
-  // Tier 0 — World stage
+  // Tier 0 — THE event
   '2026-fifa.world':                 { label: 'FIFA World Cup',          tier: 0, slug: 'fifa.world' },
-  '2026-international-friendly':     { label: 'International friendlies', tier: 0, slug: 'fifa.friendly' },
-  '2026-uefa.nations':                { label: 'UEFA Nations League',     tier: 0, slug: 'uefa.nations' },
-  '2026-uefa.euro':                  { label: 'UEFA Euro',               tier: 0, slug: 'uefa.euro' },
-  '2026-conmebol.america':           { label: 'Copa America',            tier: 0, slug: 'conmebol.america' },
-  '2026-caf.nations':                 { label: 'AFCON',                   tier: 0, slug: 'caf.nations' },
-  // Tier 1 — UEFA club cups
+
+  // Tier 1 — Champions League (the club crown)
   '2026-uefa.champions':             { label: 'Champions League',        tier: 1, slug: 'uefa.champions' },
-  '2026-uefa.europa':                 { label: 'Europa League',           tier: 1, slug: 'uefa.europa' },
-  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 1, slug: 'uefa.europa.conf' },
-  // Tier 2 — Top 5 leagues
-  '2026-eng.1':                       { label: 'Premier League',          tier: 2, slug: 'eng.1' },
-  '2026-esp.1':                       { label: 'LaLiga',                  tier: 2, slug: 'esp.1' },
-  '2026-ita.1':                       { label: 'Serie A',                 tier: 2, slug: 'ita.1' },
-  '2026-ger.1':                       { label: 'Bundesliga',              tier: 2, slug: 'ger.1' },
-  '2026-fra.1':                       { label: 'Ligue 1',                 tier: 2, slug: 'fra.1' },
+
+  // Tier 2 — Other elite club continental
+  '2026-conmebol.libertadores':       { label: 'Copa Libertadores',       tier: 2, slug: 'conmebol.libertadores' },
+
+  // Tier 3 — La Liga (user-bumped)
+  '2026-esp.1':                       { label: 'LaLiga',                  tier: 3, slug: 'esp.1' },
+
+  // Tier 4 — Premier League
+  '2026-eng.1':                       { label: 'Premier League',          tier: 4, slug: 'eng.1' },
+
+  // Tier 5 — Bundesliga
+  '2026-ger.1':                       { label: 'Bundesliga',              tier: 5, slug: 'ger.1' },
+
+  // Tier 6 — Serie A
+  '2026-ita.1':                       { label: 'Serie A',                 tier: 6, slug: 'ita.1' },
+
+  // Tier 7 — Ligue 1
+  '2026-fra.1':                       { label: 'Ligue 1',                 tier: 7, slug: 'fra.1' },
+
+  // Tier 8 — UEFA Europa League
+  '2026-uefa.europa':                 { label: 'Europa League',           tier: 8, slug: 'uefa.europa' },
+
+  // Tier 9 — UEFA Conference League
+  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 9, slug: 'uefa.europa.conf' },
+
+  // Tier 10 — Top international tournaments (when in season)
+  '2026-uefa.euro':                  { label: 'UEFA Euro',               tier: 10, slug: 'uefa.euro' },
+  '2026-conmebol.america':           { label: 'Copa America',            tier: 10, slug: 'conmebol.america' },
+  '2026-caf.nations':                 { label: 'AFCON',                   tier: 10, slug: 'caf.nations' },
+  '2026-afc.asian':                   { label: 'Asian Cup',               tier: 10, slug: 'afc.asian' },
+
+  // Tier 11 — National team qualifiers
+  '2026-fifa.worldq.uefa':            { label: 'WC Qualifiers · UEFA',    tier: 11, slug: 'fifa.worldq.uefa' },
+  '2026-fifa.worldq.conmebol':        { label: 'WC Qualifiers · CONMEBOL', tier: 11, slug: 'fifa.worldq.conmebol' },
+  '2026-fifa.worldq.afc':              { label: 'WC Qualifiers · AFC',     tier: 11, slug: 'fifa.worldq.afc' },
+  '2026-fifa.worldq.caf':              { label: 'WC Qualifiers · CAF',     tier: 11, slug: 'fifa.worldq.caf' },
+  '2026-fifa.worldq.concacaf':        { label: 'WC Qualifiers · CONCACAF', tier: 11, slug: 'fifa.worldq.concacaf' },
+  '2026-uefa.nations':                { label: 'UEFA Nations League',     tier: 11, slug: 'uefa.nations' },
+
+  // Tier 12 — Other big domestic leagues
+  '2026-sau.1':                       { label: 'Saudi Pro League',         tier: 12, slug: 'sau.1' },
+  '2026-usa.1':                       { label: 'Major League Soccer',     tier: 12, slug: 'usa.1' },
+  '2026-mex.1':                       { label: 'Liga MX',                 tier: 12, slug: 'mex.1' },
+  '2026-bra.1':                       { label: 'Brasileirão',             tier: 12, slug: 'bra.1' },
+  '2026-arg.1':                       { label: 'Primera División',         tier: 12, slug: 'arg.1' },
+
+  // Tier 13 — Smaller European top divisions
+  '2026-ned.1':                       { label: 'Eredivisie',              tier: 13, slug: 'ned.1' },
+  '2026-por.1':                       { label: 'Primeira Liga',           tier: 13, slug: 'por.1' },
+  '2026-bel.1':                       { label: 'Belgian Pro League',      tier: 13, slug: 'bel.1' },
+  '2026-tur.1':                       { label: 'Süper Lig',               tier: 13, slug: 'tur.1' },
+  '2026-sco.1':                       { label: 'Scottish Premiership',    tier: 13, slug: 'sco.1' },
+
+  // Tier 14 — Other CONMEBOL clubs
+  '2026-conmebol.sudamericana':       { label: 'Copa Sudamericana',       tier: 14, slug: 'conmebol.sudamericana' },
+
+  // Tier 15 — Second tiers
+  '2026-eng.2':                       { label: 'Championship (England)',   tier: 15, slug: 'eng.2' },
+  '2026-esp.2':                       { label: 'LaLiga 2',                 tier: 15, slug: 'esp.2' },
+  '2026-ger.2':                       { label: '2. Bundesliga',            tier: 15, slug: 'ger.2' },
+  '2026-ita.2':                       { label: 'Serie B',                  tier: 15, slug: 'ita.2' },
+  '2026-fra.2':                       { label: 'Ligue 2',                  tier: 15, slug: 'fra.2' },
+
+  // Tier 18 — International friendlies (demoted from old tier 0)
+  '2026-international-friendly':     { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' },
+
+  // Tier 19 — Club friendlies
+  '2026-club-friendly':                { label: 'Club friendlies',          tier: 19, slug: 'club.friendly' },
 }
 
 function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } {
   const seasonSlug: string | undefined = (ev as unknown as { season?: { slug?: string } }).season?.slug
   if (seasonSlug && LEAGUE_META[seasonSlug]) return LEAGUE_META[seasonSlug]
-  // Fallbacks based on substrings
-  if (seasonSlug?.includes('fifa.world'))  return { label: 'FIFA World Cup', tier: 0, slug: 'fifa.world' }
-  if (seasonSlug?.includes('friendly'))    return { label: 'Friendlies',     tier: 0, slug: 'fifa.friendly' }
-  if (seasonSlug?.includes('u20') || seasonSlug?.includes('u21') || seasonSlug?.includes('u23')) {
-    return { label: 'Youth internationals', tier: 4, slug: 'youth' }
+  // Fallbacks based on substrings — strip the year prefix first if present
+  const bare = seasonSlug?.replace(/^\d+-/, '') ?? ''
+  if (bare.includes('fifa.world')) {
+    if (bare.includes('worldq')) return { label: 'WC Qualifiers', tier: 11, slug: 'fifa.worldq' }
+    return { label: 'FIFA World Cup', tier: 0, slug: 'fifa.world' }
   }
-  return { label: seasonSlug?.replace(/^\d+-/, '').replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) ?? 'Other', tier: 9, slug: seasonSlug ?? 'other' }
+  if (bare.includes('uefa.champions'))  return { label: 'Champions League', tier: 1, slug: 'uefa.champions' }
+  if (bare.includes('uefa.europa.conf')) return { label: 'Conference League', tier: 9, slug: 'uefa.europa.conf' }
+  if (bare.includes('uefa.europa'))     return { label: 'Europa League', tier: 8, slug: 'uefa.europa' }
+  if (bare.includes('conmebol.libert')) return { label: 'Copa Libertadores', tier: 2, slug: 'conmebol.libertadores' }
+  if (bare.includes('international-friendly')) return { label: 'International friendlies', tier: 18, slug: 'fifa.friendly' }
+  if (bare.includes('club-friendly') || bare.includes('club.friendly')) return { label: 'Club friendlies', tier: 19, slug: 'club.friendly' }
+  if (bare.includes('u17') || bare.includes('u19') || bare.includes('u20') || bare.includes('u21') || bare.includes('u23')) {
+    return { label: 'Youth internationals', tier: 20, slug: 'youth' }
+  }
+  if (bare.includes('women') || bare.startsWith('w.')) {
+    return { label: 'Women’s football', tier: 14, slug: 'women' }
+  }
+  return {
+    label: bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other',
+    tier: 16,
+    slug: seasonSlug ?? 'other',
+  }
+}
+
+/**
+ * Derive round / stake context from an ESPN event so the UI can show
+ * 'Round of 16 · 2nd Leg', 'Matchday 5', 'Final', etc. Returns null
+ * when ESPN's data doesn't carry an explicit round (e.g. plain league
+ * regular-season fixture without a matchday note).
+ *
+ * Signals used:
+ *  - event.season.slug — 'final', 'semifinals', 'quarterfinals',
+ *    'round-of-16', 'group-stage', 'play-in', 'qualifying' …
+ *  - event.competitions[0].notes[0].headline — '2nd Leg - X advance',
+ *    'Matchday 8', 'Group A', etc.
+ */
+export function roundContext(ev: EspnEvent): {
+  label: string
+  short: string
+  knockout: boolean
+  decisive: boolean
+} | null {
+  const seasonSlug = (ev as unknown as { season?: { slug?: string; displayName?: string } }).season?.slug ?? ''
+  const notes = (ev.competitions?.[0] as { notes?: Array<{ headline?: string; text?: string }> } | undefined)?.notes ?? []
+  const head = notes[0]?.headline ?? notes[0]?.text ?? ''
+  const lower = (seasonSlug + ' ' + head).toLowerCase()
+
+  // Knockout rounds — return early since they're the clearest signal
+  if (/^final$/.test(seasonSlug) || /^(\d+(st|nd|rd|th)?\s+)?leg/i.test(head) && lower.includes('final') && !lower.includes('semi') && !lower.includes('quarter')) {
+    return { label: 'Final', short: 'F', knockout: true, decisive: true }
+  }
+  if (lower.includes('semifinal')) {
+    return { label: 'Semifinal' + (legSuffix(head) ?? ''), short: 'SF', knockout: true, decisive: legSuffix(head) === ' · 2nd Leg' || !legSuffix(head) }
+  }
+  if (lower.includes('quarterfinal') || lower.includes('quarter-final') || seasonSlug === 'quarterfinals') {
+    return { label: 'Quarterfinal' + (legSuffix(head) ?? ''), short: 'QF', knockout: true, decisive: legSuffix(head) === ' · 2nd Leg' || !legSuffix(head) }
+  }
+  const r16 = /round[-\s]of[-\s](16|32|64)/i.exec(lower)
+  if (r16) {
+    return {
+      label: `Round of ${r16[1]}` + (legSuffix(head) ?? ''),
+      short: `R${r16[1]}`,
+      knockout: true,
+      decisive: legSuffix(head) === ' · 2nd Leg',
+    }
+  }
+  if (lower.includes('play-off') || lower.includes('playoff') || lower.includes('play-in')) {
+    return { label: 'Play-off' + (legSuffix(head) ?? ''), short: 'PO', knockout: true, decisive: true }
+  }
+  if (lower.includes('group-stage') || lower.includes('group stage')) {
+    const md = /match[-\s]?day\s*(\d+)/i.exec(head)
+    return { label: md ? `Group · MD ${md[1]}` : 'Group stage', short: md ? `MD${md[1]}` : 'GS', knockout: false, decisive: false }
+  }
+  // League matchday
+  const md = /match[-\s]?day\s*(\d+)/i.exec(head)
+  if (md) return { label: `Matchday ${md[1]}`, short: `MD${md[1]}`, knockout: false, decisive: false }
+
+  // Qualifying / pre-season
+  if (lower.includes('qualifying')) {
+    return { label: 'Qualifying round', short: 'Q', knockout: true, decisive: true }
+  }
+  return null
+}
+
+// Returns ' · 1st Leg' / ' · 2nd Leg' when the headline mentions it, else null.
+function legSuffix(head: string): string | null {
+  const m = /(1st|2nd)\s+Leg/i.exec(head)
+  if (!m) return null
+  return ' · ' + m[1] + ' Leg'
 }
 
 export const api = {

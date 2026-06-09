@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useState } from 'react'
-import { api, eventTeams, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
+import { api, eventTeams, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
 import { MatchSheet } from './MatchSheet'
@@ -298,6 +298,7 @@ function MatchCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
     ? new Date(ev.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     : ''
   const showScore = s.live || s.finished
+  const round = roundContext(ev)
 
   return (
     <motion.button
@@ -309,10 +310,33 @@ function MatchCard({ ev, onPick }: { ev: EspnEvent; onPick: () => void }) {
       transition={{ duration: 0.3 }}
       className={
         'glass rounded-xl p-3.5 relative text-left w-full hover:bg-white/80 active:scale-[0.99] transition ' +
-        (s.live ? 'ring-1 ring-red-500/30' : '')
+        (s.live ? 'ring-1 ring-red-500/30' : '') +
+        (round?.decisive && !s.finished ? ' ring-1 ring-accent-red/40' : '')
       }
       aria-label={`Open match details`}
     >
+      {/* Round / stake badge — only when ESPN gave us a clean round signal.
+          Knockout matches get a darker pill; decisive (one team eliminated
+          if it loses) tags red so the user spots high-stakes fixtures. */}
+      {round && (
+        <div className="flex items-center gap-1.5 mb-2">
+          <span className={
+            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider ' +
+            (round.knockout
+              ? 'bg-slate-900 text-cream'
+              : 'bg-slate-200 text-slate-700')
+          }>
+            {round.knockout && <span aria-hidden>⚔</span>}
+            {round.label}
+          </span>
+          {round.decisive && !s.finished && (
+            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider bg-accent-red/15 text-accent-red border border-accent-red/30">
+              <span aria-hidden>★</span> Do-or-die
+            </span>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mb-2">
         <span>{kickoff}</span>
         {s.live ? (
