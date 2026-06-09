@@ -83,6 +83,17 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
   // setHistoryLoading(true) doesn't re-fire this effect, run the cleanup
   // and cancel the in-flight fetch. We track the requested team in a
   // ref so a subsequent team change cancels the previous request.
+  // Reset history when the user switches to a different team — otherwise
+  // the next teamCode is rendered against the previous team's history
+  // because the fetch effect bails on the `if (history) return` guard.
+  // Was causing 'form not showing' on every team after the first: each
+  // open kept showing the first team's history-shaped state, but the
+  // KPIs computed from a stale teamCode mismatch read as zeros.
+  useEffect(() => {
+    setHistory(null)
+    setHistoryLoading(false)
+  }, [teamCode])
+
   useEffect(() => {
     // History used to only load when the History tab opened. The Infos
     // tab now also needs it (Form / Goals / Results KPIs read from

@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   deriveLiveGroups,
   nextMatchForTeam,
@@ -10,6 +10,7 @@ import {
 import { TeamSheet } from './TeamSheet'
 import { teamBadgeFallback } from '../lib/utils'
 import { LottieLoader } from './LottieLoader'
+import { getCachedTeamForm, prefetchTeamForms, type TeamForm } from '../lib/api'
 
 // Editorial Continental Champions — one team per confederation gets a
 // subtle gradient/ring tone. Uses ESPN abbreviations.
@@ -26,6 +27,22 @@ export function Groups() {
   const [openTeam, setOpenTeam] = useState<string | null>(null)
   const { events, fetchedAt, loading, error, load } = useTournament()
   const groups = useMemo(() => deriveLiveGroups(events), [events])
+
+  // Prefetch form (last-5 W/D/L → score 0..15) for every WC team in the
+  // groups so the colored dot on each row reads as actual form instead
+  // of just 'qualifying / eliminated' static state. forceRender ticks
+  // up whenever a batch lands so the row-level getCachedTeamForm() calls
+  // pick up the new data without each row tracking its own state.
+  const [, setFormTick] = useState(0)
+  useEffect(() => {
+    if (groups.length === 0) return
+    const abbrs = groups.flatMap((g) => g.teams.map((t) => t.abbr))
+    let cancelled = false
+    void prefetchTeamForms(abbrs).then(() => {
+      if (!cancelled) setFormTick((n) => n + 1)
+    })
+    return () => { cancelled = true }
+  }, [groups])
 
   return (
     <section id="groups" className="py-20 sm:py-28">
@@ -129,17 +146,7 @@ export function Groups() {
                             title={`View ${t.name} squad`}
                           >
                             <span className="flex items-center gap-2.5 min-w-0">
-                              <span
-                                className={
-                                  'w-3 h-3 rounded-full shrink-0 ' +
-                                  (qualifying
-                                    ? 'bg-accent-green/80'
-                                    : i === 2
-                                      ? 'bg-accent-gold/50'
-                                      : 'bg-slate-700')
-                                }
-                                title={qualifying ? 'Qualifying spot' : i === 2 ? 'Third-place playoff hopeful' : 'Eliminated'}
-                              />
+                              <FormDot abbr={t.abbr} />
                               {logo ? (
                                 <img
                                   src={logo}
@@ -234,6 +241,39 @@ function GroupsSkeleton() {
     <div className="mt-12 flex flex-col items-center justify-center py-16">
       <LottieLoader name="whistle" size={120} caption="Fetching the draw from ESPN…" />
     </div>
+  )
+}
+
+/**
+ * Form-coloured indicator dot. Reads from the synchronous cache in
+ * api.ts that Groups() pre-warms on mount, so the dot pops in with the
+ * right colour as soon as the team-history batch finishes (no row-level
+ * useEffect needed).
+ *
+ * Tooltip shows the last-5 sequence (e.g. "Form: WWDLW · 10/15") so the
+ * visitor sees both the dot colour AND why.
+ */
+function FormDot({ abbr }: { abbr: string }) {
+  const form = getCachedTeamForm(abbr)
+  if (!form) {
+    return (
+      <span
+        className="w-3 h-3 rounded-full shrink-0 bg-slate-300/60 animate-pulse"
+        title="Form loading…"
+      />
+    )
+  }
+  const palette: Record<TeamForm['color'], string> = {
+    green:  'bg-emerald-500',
+    yellow: 'bg-yellow-400',
+    orange: 'bg-orange-500',
+    red:    'bg-red-500',
+  }
+  return (
+    <span
+      className={'w-3 h-3 rounded-full shrink-0 ' + palette[form.color]}
+      title={`Form: ${form.lastFive.join('') || '—'} · ${form.score}/15 (last ${form.played} matches)`}
+    />
   )
 }
 

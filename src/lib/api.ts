@@ -1046,6 +1046,123 @@ export function roundContext(ev: EspnEvent): {
 }
 
 /**
+ * Form score for a team — computed from the last 5 finished international
+ * matches via the team-history endpoint. Standard football PPG formula:
+ * win = 3pts, draw = 1pt, loss = 0pts, max = 15. Higher score = better form.
+ *
+ * Color tier follows the convention used by transfermarkt / sofascore:
+ *   12-15 → green  (excellent: ≥4 wins or all draws + 1 win)
+ *    8-11 → yellow (good: more wins than losses)
+ *    4-7  → orange (mixed: ~half wins/draws, some losses)
+ *    0-3  → red    (poor: hardly any wins)
+ */
+export type TeamForm = {
+  score: number          // 0..15
+  lastFive: ('W' | 'D' | 'L')[]
+  color: 'green' | 'yellow' | 'orange' | 'red'
+  played: number         // how many of the last 5 we actually have data for
+}
+
+function colorForFormScore(score: number): TeamForm['color'] {
+  if (score >= 12) return 'green'
+  if (score >= 8) return 'yellow'
+  if (score >= 4) return 'orange'
+  return 'red'
+}
+
+const FORM_CACHE = new Map<string, TeamForm>()
+const FORM_INFLIGHT = new Map<string, Promise<TeamForm | null>>()
+
+/**
+ * Look up a team's form synchronously from the cache. Returns null if
+ * the team hasn't been fetched yet — pair with prefetchTeamForms() at
+ * page mount to populate the cache for the teams currently visible.
+ */
+export function getCachedTeamForm(abbr: string | undefined | null): TeamForm | null {
+  if (!abbr) return null
+  return FORM_CACHE.get(abbr.toUpperCase()) ?? null
+}
+
+/**
+ * Fetch a single team's form. Shared with prefetchTeamForms(); both go
+ * through the same FORM_INFLIGHT map so simultaneous callers de-dupe.
+ */
+async function fetchTeamFormOnce(abbr: string): Promise<TeamForm | null> {
+  const code = abbr.toUpperCase()
+  if (FORM_CACHE.has(code)) return FORM_CACHE.get(code)!
+  if (FORM_INFLIGHT.has(code)) return FORM_INFLIGHT.get(code)!
+  const promise = (async (): Promise<TeamForm | null> => {
+    try {
+      const h = await jget<HistoryResponse>(`/team-history/${code.toLowerCase()}?v=2`)
+      const finished = (h.events ?? []).filter(
+        (ev) => (ev.status as { type?: { state?: string } } | undefined)?.type?.state === 'post'
+      )
+      // events come oldest-first from the worker; take the last 5
+      const lastFive = finished.slice(-5).map((ev): 'W' | 'D' | 'L' => {
+        const cs = ev.competitions?.[0]?.competitors ?? []
+        const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === code)
+        const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== code)
+        const myRaw = (mine as { score?: unknown } | undefined)?.score
+        const opRaw = (other as { score?: unknown } | undefined)?.score
+        const my = typeof myRaw === 'object' && myRaw
+          ? Number((myRaw as { value?: number }).value ?? 0)
+          : Number(myRaw ?? 0)
+        const op = typeof opRaw === 'object' && opRaw
+          ? Number((opRaw as { value?: number }).value ?? 0)
+          : Number(opRaw ?? 0)
+        const myN = Number.isFinite(my) ? my : 0
+        const opN = Number.isFinite(op) ? op : 0
+        return myN > opN ? 'W' : myN === opN ? 'D' : 'L'
+      })
+      const score = lastFive.reduce(
+        (acc, r) => acc + (r === 'W' ? 3 : r === 'D' ? 1 : 0),
+        0
+      )
+      const form: TeamForm = {
+        score,
+        lastFive,
+        color: colorForFormScore(score),
+        played: lastFive.length,
+      }
+      FORM_CACHE.set(code, form)
+      return form
+    } catch {
+      return null
+    } finally {
+      FORM_INFLIGHT.delete(code)
+    }
+  })()
+  FORM_INFLIGHT.set(code, promise)
+  return promise
+}
+
+/**
+ * Prefetch form for many teams in one go — used on the Groups page to
+ * populate dots for all 48 WC teams at once. Honours the cache so a
+ * second call with overlapping teams doesn't refetch.
+ *
+ * Concurrency cap of 8 keeps us under the browser's per-host connection
+ * limit (~6) without serialising the queue.
+ */
+export async function prefetchTeamForms(abbrs: string[]): Promise<void> {
+  const queue = [...new Set(abbrs.map((a) => a.toUpperCase()))].filter(
+    (a) => !FORM_CACHE.has(a)
+  )
+  const CONCURRENCY = 8
+  const workers: Promise<void>[] = []
+  let i = 0
+  for (let w = 0; w < CONCURRENCY; w++) {
+    workers.push((async () => {
+      while (i < queue.length) {
+        const code = queue[i++]
+        if (code) await fetchTeamFormOnce(code)
+      }
+    })())
+  }
+  await Promise.all(workers)
+}
+
+/**
  * WC2026 team→group-letter cache. Populated by ensureWcGroupMap() on the
  * first daily fetch; read synchronously by roundContext() when it spots
  * a WC group-stage event. We rebuild it the same way the Groups page
