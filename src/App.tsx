@@ -28,6 +28,10 @@ const DailyMatches = lazy(() => import('./components/DailyMatches').then((m) => 
 const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) => ({ default: m.BracketWizard })))
 const PublicProfile = lazy(() => import('./components/PublicProfile').then((m) => ({ default: m.PublicProfile })))
 const AtlasLions = lazy(() => import('./components/AtlasLions').then((m) => ({ default: m.AtlasLions })))
+const About = lazy(() => import('./components/pages/About').then((m) => ({ default: m.About })))
+const Contact = lazy(() => import('./components/pages/Contact').then((m) => ({ default: m.Contact })))
+const Privacy = lazy(() => import('./components/pages/Privacy').then((m) => ({ default: m.Privacy })))
+const Terms = lazy(() => import('./components/pages/Terms').then((m) => ({ default: m.Terms })))
 
 function App() {
   const authInit = useAuth((s) => s.init)
@@ -132,6 +136,39 @@ function App() {
           <Route path="/board" element={<BoardPage />} />
           <Route path="/stadiums" element={<StadiumsPage />} />
           <Route path="/u/:slug" element={<ProfilePage />} />
+          {/* Static pages — required for AdSense + general trust. */}
+          <Route
+            path="/about"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading…" />}>
+                <About />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/contact"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading…" />}>
+                <Contact />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/privacy"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading…" />}>
+                <Privacy />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/terms"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading…" />}>
+                <Terms />
+              </Suspense>
+            }
+          />
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>

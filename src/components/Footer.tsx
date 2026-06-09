@@ -1,3 +1,5 @@
+import { Link } from 'react-router-dom'
+
 export function Footer() {
   return (
     <footer className="border-t border-slate-200/70 py-12 text-center text-xs text-slate-500">
@@ -14,6 +16,27 @@ export function Footer() {
             </div>
           </div>
         </div>
+
+        {/* Site map — About / Contact / Privacy / Terms. Required for the
+            AdSense application and a general trust signal. */}
+        <nav className="my-5 flex items-center justify-center flex-wrap gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-[0.15em]">
+          <Link to="/about" className="text-slate-600 hover:text-accent-gold transition-colors">
+            About
+          </Link>
+          <span className="text-slate-300">·</span>
+          <Link to="/contact" className="text-slate-600 hover:text-accent-gold transition-colors">
+            Contact
+          </Link>
+          <span className="text-slate-300">·</span>
+          <Link to="/privacy" className="text-slate-600 hover:text-accent-gold transition-colors">
+            Privacy
+          </Link>
+          <span className="text-slate-300">·</span>
+          <Link to="/terms" className="text-slate-600 hover:text-accent-gold transition-colors">
+            Terms
+          </Link>
+        </nav>
+
         <div className="font-mono">
           Not affiliated with FIFA. Data sources (planned v2): ESPN public API ·
           FIFA.com v3 endpoints · Sofascore. Built by{' '}

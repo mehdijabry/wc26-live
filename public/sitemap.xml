@@ -6,43 +6,53 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#groups</loc>
+    <loc>https://pressing90.live/wc26</loc>
     <changefreq>daily</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#schedule</loc>
+    <loc>https://pressing90.live/today</loc>
     <changefreq>hourly</changefreq>
     <priority>0.9</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#bracket</loc>
+    <loc>https://pressing90.live/predictions</loc>
     <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+  <url>
+    <loc>https://pressing90.live/squads</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.7</priority>
+  </url>
+  <url>
+    <loc>https://pressing90.live/board</loc>
+    <changefreq>hourly</changefreq>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#stadiums</loc>
+    <loc>https://pressing90.live/stadiums</loc>
     <changefreq>monthly</changefreq>
     <priority>0.6</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#predict</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <loc>https://pressing90.live/about</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#bracket-predict</loc>
-    <changefreq>daily</changefreq>
-    <priority>0.9</priority>
+    <loc>https://pressing90.live/contact</loc>
+    <changefreq>monthly</changefreq>
+    <priority>0.5</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#today</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.8</priority>
+    <loc>https://pressing90.live/privacy</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
   <url>
-    <loc>https://pressing90.live/#leaderboard</loc>
-    <changefreq>hourly</changefreq>
-    <priority>0.7</priority>
+    <loc>https://pressing90.live/terms</loc>
+    <changefreq>yearly</changefreq>
+    <priority>0.3</priority>
   </url>
 </urlset>
