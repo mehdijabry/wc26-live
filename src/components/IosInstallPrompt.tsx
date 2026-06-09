@@ -4,27 +4,33 @@ import { createPortal } from 'react-dom'
 
 /**
  * IosInstallPrompt — floating "Install app" button + guided modal for
- * iPhone / iPad Safari users.
+ * mobile users. Now handles BOTH platforms:
  *
- * IMPORTANT HONESTY NOTE:
- *   Apple does NOT expose a JavaScript API to programmatically trigger
- *   "Add to Home Screen". On iOS, only the user can do it via Safari's
- *   share sheet. We can:
- *     ✅ Detect iOS Safari and surface a prominent button
- *     ✅ Hide the button if the app is already installed (standalone mode)
- *     ✅ Show clear visual instructions (Share icon → Add to Home Screen)
- *     ✅ Make sure the saved icon launches as a real app (apple-mobile-
- *        web-app-capable + manifest, set up in index.html)
- *     ❌ We CANNOT bypass the share-sheet step, no matter what
+ *   • iOS Safari — opens a 3-step guide modal (Share → Add to Home
+ *     Screen → Add). Apple gives us no programmatic install API; the
+ *     modal is the cleanest UX we can offer.
  *
- * After "Add to Home Screen", iOS uses our apple-touch-icon + the
- * apple-mobile-web-app-* meta tags + manifest.json to:
- *   - place the WC26 emblem as the app icon on the home screen
- *   - launch the site fullscreen with no Safari chrome (standalone)
- *   - use our theme color for the status bar
+ *   • Android Chrome / Edge / Samsung Internet — listens for the
+ *     `beforeinstallprompt` event the browser fires when the site
+ *     meets PWA install criteria (manifest + service worker). One
+ *     tap on our button calls `deferredPrompt.prompt()` and the
+ *     native install dialog appears. After acceptance, Chrome
+ *     installs the icon to the home screen, registers the launcher,
+ *     and (on Android 8+) creates a real app entry.
+ *
+ * Both flows hide the button when the app is already installed
+ * (standalone mode) and respect a localStorage dismiss flag.
  */
 
 const DISMISSED_KEY = 'wc26-install-dismissed'
+
+type Platform = 'ios' | 'android' | null
+
+// Native event type — not in TS lib.dom.d.ts yet.
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>
+}
 
 function isIos() {
   if (typeof navigator === 'undefined') return false
@@ -43,6 +49,11 @@ function isIosSafari() {
   if (isOtherBrowser) return false
   // Some in-app webviews fake Safari UA — narrow further.
   return /Safari/.test(ua) && /Version\//.test(ua)
+}
+
+function isAndroid() {
+  if (typeof navigator === 'undefined') return false
+  return /Android/i.test(navigator.userAgent)
 }
 
 function isStandalone() {
@@ -69,51 +80,87 @@ function isStandalone() {
 export function IosInstallPrompt() {
   const [show, setShow] = useState(false)
   const [openModal, setOpenModal] = useState(false)
+  const [platform, setPlatform] = useState<Platform>(null)
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
 
   useEffect(() => {
-    // Don't even mount on non-iOS browsers
-    if (!isIosSafari()) return
+    if (isStandalone()) return // never show if already installed
 
-    // Decision function — run it on mount, again after a short delay
-    // (iOS sometimes lags exposing navigator.standalone right after launch),
-    // and again on visibilitychange / display-mode change.
     let cancelled = false
-    function evaluate() {
-      if (cancelled) return
-      if (isStandalone()) {
-        // App is installed and opened from home screen icon → never show
-        setShow(false)
-        return
+
+    // ---------- iOS Safari flow ----------
+    if (isIosSafari()) {
+      setPlatform('ios')
+      function evaluate() {
+        if (cancelled) return
+        if (isStandalone()) { setShow(false); return }
+        try { if (localStorage.getItem(DISMISSED_KEY)) return } catch { /* ignore */ }
+        setShow(true)
       }
-      try {
-        if (localStorage.getItem(DISMISSED_KEY)) return
-      } catch { /* ignore */ }
-      setShow(true)
+      const initial = window.setTimeout(evaluate, 2_500)
+      const onVis = () => { if (!document.hidden) evaluate() }
+      document.addEventListener('visibilitychange', onVis)
+      const mq = window.matchMedia?.('(display-mode: standalone)')
+      const onMq = () => evaluate()
+      mq?.addEventListener?.('change', onMq)
+      return () => {
+        cancelled = true
+        clearTimeout(initial)
+        document.removeEventListener('visibilitychange', onVis)
+        mq?.removeEventListener?.('change', onMq)
+      }
     }
 
-    // First check after a small delay so the page renders first
-    const initial = window.setTimeout(evaluate, 2_500)
-    // Re-check when the user returns to the tab — useful if they install
-    // the app and come back to the still-open Safari tab.
-    const onVis = () => { if (!document.hidden) evaluate() }
-    document.addEventListener('visibilitychange', onVis)
-    // Some browsers emit a 'change' event on the display-mode media query
-    // when the app transitions standalone (rare but cheap to listen for).
-    const mq = window.matchMedia?.('(display-mode: standalone)')
-    const onMq = () => evaluate()
-    mq?.addEventListener?.('change', onMq)
-
-    return () => {
-      cancelled = true
-      clearTimeout(initial)
-      document.removeEventListener('visibilitychange', onVis)
-      mq?.removeEventListener?.('change', onMq)
+    // ---------- Android Chrome / Edge / Samsung Internet flow ----------
+    if (isAndroid()) {
+      // Chrome fires beforeinstallprompt when the site passes the install
+      // checks (manifest, SW with fetch handler, HTTPS, engagement heuristic).
+      // We capture the event, hide the native banner Chrome would show on
+      // its own, and present our pill instead so the install looks like a
+      // first-party action and not a browser nag.
+      function onBeforeInstall(e: Event) {
+        e.preventDefault()
+        try { if (localStorage.getItem(DISMISSED_KEY)) return } catch { /* ignore */ }
+        setPlatform('android')
+        setDeferredPrompt(e as BeforeInstallPromptEvent)
+        setShow(true)
+      }
+      function onInstalled() {
+        // Browser confirms the app was added to the home screen.
+        setShow(false)
+        setDeferredPrompt(null)
+      }
+      window.addEventListener('beforeinstallprompt', onBeforeInstall)
+      window.addEventListener('appinstalled', onInstalled)
+      return () => {
+        window.removeEventListener('beforeinstallprompt', onBeforeInstall)
+        window.removeEventListener('appinstalled', onInstalled)
+      }
     }
   }, [])
 
   function dismiss() {
     setShow(false)
     try { localStorage.setItem(DISMISSED_KEY, String(Date.now())) } catch { /* ignore */ }
+  }
+
+  async function handlePrimaryAction() {
+    if (platform === 'ios') {
+      setOpenModal(true)
+      return
+    }
+    if (platform === 'android' && deferredPrompt) {
+      try {
+        await deferredPrompt.prompt()
+        const choice = await deferredPrompt.userChoice
+        if (choice.outcome === 'accepted') setShow(false)
+        // Either way, the prompt() can only be called once per event.
+        setDeferredPrompt(null)
+      } catch {
+        // Some Chrome versions reject the prompt if called twice or off
+        // a user gesture — silent fail, button stays for next try.
+      }
+    }
   }
 
   if (!show && !openModal) return null
@@ -142,16 +189,16 @@ export function IosInstallPrompt() {
               style={{ boxShadow: '0 12px 32px -8px rgba(0,0,0,0.4)' }}
             >
               <button
-                onClick={() => setOpenModal(true)}
+                onClick={handlePrimaryAction}
                 className="flex items-center gap-2.5 pl-3.5 pr-4 py-2.5 active:bg-black/30 transition-colors min-w-0"
               >
                 <img src="/wc26-emblem.svg" alt="" className="w-7 h-7 shrink-0" />
                 <div className="flex flex-col text-left leading-tight min-w-0">
                   <span className="text-[9px] uppercase tracking-[0.2em] text-accent-gold font-mono">
-                    Install · 1 step
+                    {platform === 'android' ? 'Install · 1 tap' : 'Install · 1 step'}
                   </span>
                   <span className="text-[13px] font-semibold whitespace-nowrap text-white">
-                    Add to Home Screen
+                    {platform === 'android' ? 'Install WC26 app' : 'Add to Home Screen'}
                   </span>
                 </div>
               </button>
