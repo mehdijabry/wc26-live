@@ -386,22 +386,27 @@ function MatchCard({ ev, fetchedAt, onPick }: { ev: EspnEvent; fetchedAt: number
       }
       aria-label={`Open match details`}
     >
-      {/* Round / stake badge — only when ESPN gave us a clean round signal.
-          Knockout matches get a darker pill; decisive (one team eliminated
-          if it loses) tags red so the user spots high-stakes fixtures. */}
-      {round && (
-        <div className="flex items-center gap-1.5 mb-2">
+      {/* Round / stake badge — only when ESPN gave us a clean round signal
+          AND a non-empty label. User reported the knockout pill rendered
+          as a 'black banner with no text' for Almería vs Castellón —
+          the cause was 9px text-cream on slate-900 being technically
+          present but visually unreadable at that size. Bumped the pill
+          to 10.5px white-on-marine, added explicit min-width so very
+          short labels (Final, etc.) still feel intentional, and
+          short-circuited rendering when label.trim() comes back empty. */}
+      {round && round.label.trim().length > 0 && (
+        <div className="flex items-center gap-1.5 mb-2 flex-wrap">
           <span className={
-            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider ' +
+            'inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-mono font-semibold uppercase tracking-[0.08em] ' +
             (round.knockout
-              ? 'bg-slate-900 text-cream'
-              : 'bg-slate-200 text-slate-700')
+              ? 'bg-marine-950 text-white'
+              : 'bg-slate-100 text-slate-700 border border-slate-200')
           }>
-            {round.knockout && <span aria-hidden>⚔</span>}
+            {round.knockout && <span aria-hidden className="opacity-80">⚔</span>}
             {round.label}
           </span>
           {round.decisive && !s.finished && (
-            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider bg-accent-red/15 text-accent-red border border-accent-red/30">
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10.5px] font-mono font-semibold uppercase tracking-[0.08em] bg-accent-red/15 text-accent-red border border-accent-red/30">
               <span aria-hidden>★</span> Do-or-die
             </span>
           )}
