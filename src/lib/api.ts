@@ -275,6 +275,16 @@ const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }
 
   // Youth tournaments — verified by event data inspection
   '11109': { label: 'Maurice Revello Tournament', tier: 14, slug: 'maurice.revello' },
+
+  // Regional qualifiers — verified by event/competitor inspection on 2026-06-09.
+  // ESPN ships season.slug = 'league-phase' for the new UEFA WC qualifiers
+  // format, so without an explicit entry here the daily-matches header would
+  // render the slug as 'League Phase' (the round, not the competition).
+  '20649': { label: 'WC 2026 Qualifying · Europe', tier: 0,  slug: 'uefa.worldq' },
+
+  // USL minor league (USA tier 3). ESPN ships season.slug = 'group-stage' on
+  // these, which used to render as 'Group Stage' as the competition header.
+  '22059': { label: 'USL League One',              tier: 15, slug: 'usl.l1' },
 }
 
 function leagueIdFromUid(uid?: string): string | null {
@@ -379,9 +389,27 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
     } else if (bare.includes('club-friendly') || bare.includes('club.friendly')) {
       base = { label: 'Club friendlies', tier: 19, slug: 'club.friendly' }
     } else {
-      // Last resort — title-case the slug
-      const pretty = bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other'
-      base = { label: pretty, tier: 16, slug: seasonSlug ?? 'other' }
+      // Last resort — title-case the slug AS A COMPETITION NAME.
+      //
+      // Watch list: 'league-phase', 'group-stage', 'regular-season',
+      // 'play-off', 'final', 'qualifying'. These are ROUND markers ESPN
+      // emits as season.slug when the league isn't otherwise resolvable.
+      // Rendering them as competition headers ('League Phase', 'Group
+      // Stage') is confusing — the user can't tell which competition the
+      // match belongs to. When we can't map to a real league, label the
+      // group 'Other competitions' so it's at least visibly a catch-all
+      // and not a fake round-as-competition string.
+      const ROUND_SLUGS = new Set([
+        'league-phase', 'group-stage', 'regular-season', 'play-off',
+        'playoffs', 'final', 'finals', 'qualifying', 'qualifiers',
+        'apertura', 'clausura', 'second-round', 'first-round',
+        'knockout-round', 'promotion-semifinals', 'promotion-final',
+      ])
+      const isRoundOnly = ROUND_SLUGS.has(bare)
+      const pretty = isRoundOnly
+        ? 'Other competitions'
+        : (bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other competitions')
+      base = { label: pretty, tier: 17, slug: seasonSlug ?? 'other' }
     }
   }
 
