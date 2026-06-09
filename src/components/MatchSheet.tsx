@@ -31,9 +31,16 @@ type Competitor = {
 
 type EventDetail = {
   clock?: { displayValue?: string }
-  type?: { text?: string; id?: string }
-  team?: { id?: string }
+  type?: { text?: string; id?: string; type?: string }
+  team?: { id?: string; displayName?: string }
+  // ESPN keyEvents use 'participants' for goals — first entry is the
+  // scorer, second (when present) is the assister. Cards / subs also
+  // populate participants with the involved player(s).
+  participants?: Array<{ athlete?: { id?: string; displayName?: string } }>
+  // Friendlies / older endpoints sometimes use athletesInvolved instead.
   athletesInvolved?: Array<{ displayName?: string }>
+  text?: string
+  shortText?: string
   scoreValue?: number
   scoringPlay?: boolean
 }
@@ -62,6 +69,9 @@ type SummaryResponse = {
     league?: { name?: string; abbreviation?: string }
     season?: { displayName?: string; slug?: string }
   }
+  // ESPN summary puts the actual match timeline here, NOT under
+  // header.competitions[0].details (which is almost always empty).
+  keyEvents?: EventDetail[]
   boxscore?: {
     teams?: Array<{
       team?: { id?: string; displayName?: string; logo?: string }
@@ -175,7 +185,14 @@ export function MatchSheet({
   const kickoff = comp?.date ? new Date(comp.date) : null
   const venue = comp?.venue?.fullName ?? data?.gameInfo?.venue?.fullName
   const venueLoc = comp?.venue?.address ?? data?.gameInfo?.venue?.address
-  const events = comp?.details ?? []
+  // Match timeline lives at the top-level keyEvents on the summary
+  // payload. Filter out the noise (kickoff / halftime / final whistle
+  // texts) so the user only sees actionable plays.
+  const rawEvents = data?.keyEvents ?? comp?.details ?? []
+  const events = rawEvents.filter((ev) => {
+    const t = (ev.type?.type ?? ev.type?.text ?? '').toLowerCase()
+    return !/(kickoff|halftime|end\s+(?:of\s+)?(?:regular|game|first|second)|stoppage)/.test(t)
+  })
   const stats = data?.boxscore?.teams ?? []
   const rosters = data?.rosters ?? []
 
@@ -318,21 +335,31 @@ export function MatchSheet({
               />
 
 
-              {/* Events timeline */}
+              {/* Events timeline — scorers (with assister in parentheses
+                  when ESPN provides one), cards, substitutions, etc. */}
               {events.length > 0 && (
                 <Section title="Match events">
                   <ul className="space-y-2">
                     {events.map((ev, i) => {
                       const isHome = ev.team?.id === home?.team?.id
+                      const meta = describeEvent(ev)
                       return (
-                        <li key={i} className="flex items-center gap-3 text-sm">
-                          <span className="w-12 text-right font-mono text-slate-500 text-xs shrink-0">
+                        <li key={i} className={'flex items-center gap-3 text-sm ' + (isHome ? '' : 'flex-row-reverse text-right')}>
+                          <span className="w-14 font-mono text-slate-500 text-xs shrink-0 text-center">
                             {ev.clock?.displayValue ?? '—'}
                           </span>
-                          <span className="shrink-0 w-5">{eventIcon(ev.type?.text)}</span>
-                          <span className={'flex-1 truncate ' + (isHome ? 'text-left' : 'text-right')}>
-                            {(ev.athletesInvolved ?? []).map((a) => a.displayName).join(', ') || ev.type?.text || '—'}
-                          </span>
+                          <span className="shrink-0 w-5 text-base">{eventIcon(ev.type?.type ?? ev.type?.text)}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-slate-900 font-medium truncate">
+                              {meta.primary}
+                              {meta.secondary && (
+                                <span className="text-slate-500 font-normal"> ({meta.secondary})</span>
+                              )}
+                            </div>
+                            {meta.detail && (
+                              <div className="text-[10px] text-slate-500 mt-0.5 truncate">{meta.detail}</div>
+                            )}
+                          </div>
                         </li>
                       )
                     })}
@@ -440,12 +467,72 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function eventIcon(text: string | undefined): string {
   const t = (text ?? '').toLowerCase()
+  if (t.includes('own-goal') || t.includes('own goal')) return '🥅'
+  if (t.includes('penalty') && t.includes('miss')) return '❌'
   if (t.includes('goal')) return '⚽'
   if (t.includes('yellow')) return '🟨'
   if (t.includes('red')) return '🟥'
   if (t.includes('sub')) return '🔁'
   if (t.includes('penalty')) return '🎯'
+  if (t.includes('var')) return '📺'
   return '•'
+}
+
+/**
+ * Turn an ESPN keyEvent into UI strings:
+ *   - primary   = scorer / carded / subbed-in player
+ *   - secondary = assister (for goals) or subbed-out player (for subs)
+ *   - detail    = description suffix (e.g. 'header following a corner')
+ *
+ * For goals: participants[0] is the scorer, participants[1] (if present)
+ * is the assister. Text often contains 'Assisted by X' which we use as
+ * a fallback when participants only has one entry.
+ *
+ * For substitutions: text says 'Substitution, Team. PlayerIn replaces
+ * PlayerOut.' — we parse both names.
+ */
+function describeEvent(ev: EventDetail): { primary: string; secondary?: string; detail?: string } {
+  const type = (ev.type?.type ?? ev.type?.text ?? '').toLowerCase()
+  const text = ev.text ?? ''
+  const participants = ev.participants ?? []
+  const athleteNames = participants.map((p) => p.athlete?.displayName).filter(Boolean) as string[]
+
+  // GOAL — scorer + (assister)
+  if (type.includes('goal')) {
+    const scorer = athleteNames[0] ?? ev.athletesInvolved?.[0]?.displayName ?? 'Goal'
+    let assister = athleteNames[1]
+    if (!assister) {
+      // Fallback: parse "Assisted by X" from the text
+      const m = /Assisted by ([^.]+?)(?:\s+(?:with|following)|\.|$)/i.exec(text)
+      if (m) assister = m[1].trim()
+    }
+    return { primary: scorer, secondary: assister }
+  }
+
+  // SUBSTITUTION — 'PlayerIn replaces PlayerOut'
+  if (type.includes('sub')) {
+    const m = /^Substitution, [^.]+\.\s*(.+?)\s+replaces\s+([^.]+)\./i.exec(text)
+    if (m) {
+      return { primary: m[1].trim(), secondary: m[2].trim(), detail: 'replaces' }
+    }
+    return { primary: athleteNames.join(' → ') || ev.type?.text || 'Substitution' }
+  }
+
+  // CARDS — player name + reason from text
+  if (type.includes('yellow') || type.includes('red') || type.includes('card')) {
+    const player = athleteNames[0] ?? ''
+    const m = /shown the (?:yellow|red) card for (.+?)\./i.exec(text)
+    return {
+      primary: player || ev.type?.text || 'Card',
+      detail: m ? m[1].trim() : undefined,
+    }
+  }
+
+  // Generic fallback
+  return {
+    primary: athleteNames[0] ?? ev.type?.text ?? '—',
+    detail: ev.shortText ?? undefined,
+  }
 }
 
 /**
