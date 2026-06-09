@@ -128,10 +128,9 @@ export function Groups() {
                       if (gdB !== gdA) return gdB - gdA
                       return b.rec.goalsFor - a.rec.goalsFor
                     })
-                    .map(({ t, rec }, i) => {
+                    .map(({ t, rec }) => {
                       const champ = CONTINENTAL_CHAMPIONS[t.abbr]
                       const logo = teamBadgeFallback(t.logo, t.abbr)
-                      const qualifying = i < 2 // top 2 qualify
                       return (
                         <li key={t.abbr}>
                           <button
