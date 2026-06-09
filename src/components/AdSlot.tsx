@@ -213,12 +213,27 @@ export type SlotName =
   | 'board-mid'
   | 'profile-footer'
 
+/*
+ * IMPORTANT: do NOT route slots to ADSTERRA_ZONES.native.
+ *
+ * The native banner zone surfaces dating / 'single women near you' /
+ * clickbait creatives via Adsterra's auction even with the 'adult ads'
+ * toggle off — there's no first-party filter at the publisher level for
+ * the dating vertical specifically. User reported the home-mid slot
+ * served four dating thumbnails (one explicitly NSFW). Until either
+ *   (a) we move to AdSense / Ezoic / Media.net with stricter creative
+ *       review, or
+ *   (b) Adsterra adds a publisher-side block on the dating category,
+ * EVERY mid-page slot uses the standard iframe banner 300x250 instead.
+ * Those auctions serve mostly gambling / VPN / e-commerce — still
+ * not premium, but no faces, no NSFW, no clickbait-shame.
+ */
 const SLOT_TO_ZONE: Record<SlotName, { key: string; format: AdFormat }> = {
-  'home-mid':       { key: ADSTERRA_ZONES.native,    format: 'native' },
+  'home-mid':       { key: ADSTERRA_ZONES.banner300, format: 'banner-300x250' },
   'home-footer':    { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
   'wc26-mid':       { key: ADSTERRA_ZONES.banner300, format: 'banner-300x250' },
   'today-strip':    { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
-  'predict-mid':    { key: ADSTERRA_ZONES.native,    format: 'native' },
+  'predict-mid':    { key: ADSTERRA_ZONES.banner300, format: 'banner-300x250' },
   'squads-footer':  { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
   'board-mid':      { key: ADSTERRA_ZONES.banner300, format: 'banner-300x250' },
   'profile-footer': { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
