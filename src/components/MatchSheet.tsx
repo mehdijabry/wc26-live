@@ -415,11 +415,18 @@ export function MatchSheet({
                             <div className="flex-1 min-w-0">
                               <div className="text-slate-900 font-medium truncate">
                                 {meta.primary}
-                                {meta.secondary && (
+                                {/* Own goal — red '(CSC)' tag instead of the assister
+                                    parens, since an own goal doesn't have an assister
+                                    in any meaningful sense. */}
+                                {evType === 'own-goal' ? (
+                                  <span className="text-accent-red font-semibold text-xs">
+                                    {' '}(CSC)
+                                  </span>
+                                ) : meta.secondary ? (
                                   <span className="text-slate-500 font-normal text-xs">
                                     {' '}({meta.detail === 'replaces' ? '↓' : 'PD'} {meta.secondary})
                                   </span>
-                                )}
+                                ) : null}
                               </div>
                               {meta.detail && meta.detail !== 'replaces' && (
                                 <div className="text-[10px] text-slate-500 mt-0.5 truncate">{meta.detail}</div>
