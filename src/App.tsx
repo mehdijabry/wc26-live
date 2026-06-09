@@ -1,6 +1,6 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Routes, Route, useLocation, useParams, Link } from 'react-router-dom'
+import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { StickyCountdown } from './components/StickyCountdown'
 import { Hero } from './components/Hero'
@@ -23,7 +23,6 @@ import { IosInstallPrompt } from './components/IosInstallPrompt'
 // DOM, which is why "My Bracket" navigation appeared to do nothing.
 const Stadiums = lazy(() => import('./components/Stadiums').then((m) => ({ default: m.Stadiums })))
 const Predictions = lazy(() => import('./components/Predictions').then((m) => ({ default: m.Predictions })))
-const Players = lazy(() => import('./components/Players').then((m) => ({ default: m.Players })))
 const Leaderboard = lazy(() => import('./components/Leaderboard').then((m) => ({ default: m.Leaderboard })))
 const DailyMatches = lazy(() => import('./components/DailyMatches').then((m) => ({ default: m.DailyMatches })))
 const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) => ({ default: m.BracketWizard })))
@@ -133,7 +132,11 @@ function App() {
           <Route path="/bracket" element={<PredictionsPage />} />
           <Route path="/predict" element={<PredictionsPage />} />
           <Route path="/today" element={<TodayPage />} />
-          <Route path="/squads" element={<SquadsPage />} />
+          {/* /squads (the player WC26-Live-Score grid) was removed in the
+              2026-06-09 reorg. Redirecting any bookmark/old-link traffic
+              to /wc26 so visitors landing on the old URL still get team
+              info instead of a 404. */}
+          <Route path="/squads" element={<Navigate to="/wc26" replace />} />
           <Route path="/board" element={<BoardPage />} />
           <Route path="/stadiums" element={<StadiumsPage />} />
           <Route path="/u/:slug" element={<ProfilePage />} />
@@ -356,17 +359,6 @@ function TodayPage() {
         <DailyMatches />
       </Suspense>
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="today-strip" /></div>
-    </>
-  )
-}
-
-function SquadsPage() {
-  return (
-    <>
-      <Suspense fallback={<PageSkeleton caption="Loading squads…" />}>
-        <Players />
-      </Suspense>
-      <div className="container max-w-6xl mx-auto px-6"><Ad slot="squads-footer" /></div>
     </>
   )
 }

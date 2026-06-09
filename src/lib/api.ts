@@ -1014,6 +1014,24 @@ export function roundContext(ev: EspnEvent): {
   }
   if (lower.includes('group-stage') || lower.includes('group stage')) {
     const md = /match[-\s]?day\s*(\d+)/i.exec(head)
+    // For WC2026 matches specifically we know the group letters from the
+    // live group derivation (see ensureWcGroupMap below). Look up either
+    // competitor's team abbreviation in the cached team→letter map and
+    // promote the label from generic 'Group stage' to e.g. 'Group D'.
+    // ESPN's scoreboard endpoint never ships the group letter directly —
+    // we infer it from the connected-components graph of group-stage
+    // matches (same algo as the WC26 Groups page so the letter assignment
+    // is consistent across the app).
+    const uid = (ev as unknown as { uid?: string }).uid ?? ''
+    if (uid.includes('l:606')) {
+      const competitors = ev.competitions?.[0]?.competitors ?? []
+      const homeAbbr = (competitors[0]?.team?.abbreviation ?? '').toUpperCase()
+      const awayAbbr = (competitors[1]?.team?.abbreviation ?? '').toUpperCase()
+      const letter = WC_GROUP_MAP.get(homeAbbr) ?? WC_GROUP_MAP.get(awayAbbr)
+      if (letter) {
+        return { label: `Group ${letter}`, short: `G${letter}`, knockout: false, decisive: false }
+      }
+    }
     return { label: md ? `Group · MD ${md[1]}` : 'Group stage', short: md ? `MD${md[1]}` : 'GS', knockout: false, decisive: false }
   }
   // League matchday
@@ -1025,6 +1043,88 @@ export function roundContext(ev: EspnEvent): {
     return { label: 'Qualifying round', short: 'Q', knockout: true, decisive: true }
   }
   return null
+}
+
+/**
+ * WC2026 team→group-letter cache. Populated by ensureWcGroupMap() on the
+ * first daily fetch; read synchronously by roundContext() when it spots
+ * a WC group-stage event. We rebuild it the same way the Groups page
+ * does (connected-components on the 72 group-stage matches, clusters of
+ * 4 sorted by first kickoff → letters A..L) so the letter shown next to
+ * Brazil-Morocco on the daily board matches the letter on the WC26 page.
+ *
+ * Same-session cache: ESPN's draw doesn't change mid-tournament, and a
+ * single 200ms fetch on app boot beats hitting the schedule endpoint
+ * once per render. If the fetch fails we leave the map empty — daily
+ * board falls back to plain 'Group stage' for WC matches until the next
+ * try succeeds.
+ */
+const WC_GROUP_MAP = new Map<string, string>()
+let wcGroupMapPromise: Promise<void> | null = null
+
+async function ensureWcGroupMap(): Promise<void> {
+  if (WC_GROUP_MAP.size > 0) return
+  if (wcGroupMapPromise) return wcGroupMapPromise
+  wcGroupMapPromise = (async () => {
+    try {
+      const raw = await jgetDirect<EspnScoreboard>(
+        `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=300`
+      )
+      const sorted = [...(raw.events ?? [])].sort(
+        (a, b) => (a.date ?? '').localeCompare(b.date ?? '')
+      )
+      const groupStage = sorted.slice(0, 72)
+      if (groupStage.length === 0) return
+
+      // adjacency: every team → set of opponents they faced in the group stage
+      const adj = new Map<string, Set<string>>()
+      const firstKickoff = new Map<string, string>()
+      for (const ev of groupStage) {
+        const competitors = ev.competitions?.[0]?.competitors ?? []
+        if (competitors.length < 2) continue
+        const a = (competitors[0]?.team?.abbreviation ?? '').toUpperCase()
+        const b = (competitors[1]?.team?.abbreviation ?? '').toUpperCase()
+        if (!a || !b) continue
+        if (!adj.has(a)) adj.set(a, new Set())
+        if (!adj.has(b)) adj.set(b, new Set())
+        adj.get(a)!.add(b)
+        adj.get(b)!.add(a)
+        const d = ev.date ?? ''
+        for (const code of [a, b]) {
+          const prev = firstKickoff.get(code)
+          if (!prev || d < prev) firstKickoff.set(code, d)
+        }
+      }
+
+      // DFS connected components — each cluster of 4 is one group.
+      const seen = new Set<string>()
+      const clusters: Array<{ teams: string[]; firstKickoff: string }> = []
+      for (const team of adj.keys()) {
+        if (seen.has(team)) continue
+        const cluster: string[] = []
+        const stack = [team]
+        let kickoff = '9999-99-99'
+        while (stack.length) {
+          const t = stack.pop()!
+          if (seen.has(t)) continue
+          seen.add(t)
+          cluster.push(t)
+          const k = firstKickoff.get(t)
+          if (k && k < kickoff) kickoff = k
+          for (const n of adj.get(t) ?? []) if (!seen.has(n)) stack.push(n)
+        }
+        if (cluster.length === 4) clusters.push({ teams: cluster, firstKickoff: kickoff })
+      }
+      clusters.sort((a, b) => a.firstKickoff.localeCompare(b.firstKickoff))
+      const letters = 'ABCDEFGHIJKL'.split('')
+      clusters.slice(0, 12).forEach((c, i) => {
+        const letter = letters[i] ?? '?'
+        for (const team of c.teams) WC_GROUP_MAP.set(team, letter)
+      })
+    } catch { /* leave map empty; next call retries */ }
+    finally { wcGroupMapPromise = null }
+  })()
+  return wcGroupMapPromise
 }
 
 // Returns ' · 1st Leg' / ' · 2nd Leg' when the headline mentions it, else null.
@@ -1057,7 +1157,14 @@ export const api = {
   // shape the UI already consumes.
   today: async (date?: string): Promise<DailyResponse> => {
     const d = date ?? ymdLocal(new Date())
-    const raw = await jgetDirect<EspnScoreboard>(`${ESPN_ALL}?dates=${d}&limit=300`)
+    // Kick the WC group-letter cache off in parallel with the daily fetch
+    // — by the time we group + render, roundContext() can look up team
+    // abbreviations synchronously and label WC matches 'Group D' instead
+    // of just 'Group stage'. Both promises typically finish under 250ms.
+    const [raw] = await Promise.all([
+      jgetDirect<EspnScoreboard>(`${ESPN_ALL}?dates=${d}&limit=300`),
+      ensureWcGroupMap(),
+    ])
     const events = raw.events ?? []
     // Group events by league slug
     const byLeague = new Map<string, { label: string; tier: number; events: EspnEvent[] }>()

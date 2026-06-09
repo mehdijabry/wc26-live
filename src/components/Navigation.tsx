@@ -7,10 +7,13 @@ import { UserMenu } from './UserMenu'
 // anchor-jump that breaks when a section is still inside a lazy Suspense.
 const links: Array<{ label: string; to: string }> = [
   { label: 'Home', to: '/' },
-  { label: 'WC26', to: '/wc26' },
+  // User reorg 2026-06-09: the standalone /squads page (per-player WC26
+  // Live Score grid) was deleted. The /wc26 page (groups + schedule +
+  // bracket) gets renamed 'WC26 Squads' in the nav so the WC tab still
+  // implies team-level information without the noisy player grid.
+  { label: 'WC26 Squads', to: '/wc26' },
   { label: 'WC26 Prediction', to: '/predictions' },
   { label: 'Today', to: '/today' },
-  { label: 'WC26 Squads', to: '/squads' },
   { label: 'Board', to: '/board' },
   { label: "WC26's Stadiums", to: '/stadiums' },
 ]
