@@ -276,11 +276,19 @@ const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }
   // Youth tournaments — verified by event data inspection
   '11109': { label: 'Maurice Revello Tournament', tier: 14, slug: 'maurice.revello' },
 
-  // Regional qualifiers — verified by event/competitor inspection on 2026-06-09.
-  // ESPN ships season.slug = 'league-phase' for the new UEFA WC qualifiers
-  // format, so without an explicit entry here the daily-matches header would
-  // render the slug as 'League Phase' (the round, not the competition).
-  '20649': { label: 'WC 2026 Qualifying · Europe', tier: 0,  slug: 'uefa.worldq' },
+  // ⚠️ L20649 is the WOMEN'S 2027 World Cup qualifiers (UEFA). Easy to
+  // mis-tag as 2026 (men's) because ESPN's scoreboard endpoint strips the
+  // 'W' marker out of team names — only the /summary endpoint exposes
+  // 'FIFA Women's World Cup Qualifying - UEFA'. Verified 2026-06-09 by
+  // calling site.web.api.espn.com/.../summary?event=761277, which returned
+  // header.league.name = "FIFA Women's World Cup Qualifying - UEFA" and
+  // header.season.name = "2027 FIFA Women's World Cup Qualifying - UEFA,
+  // League Phase".
+  //
+  // Tier 50 ranks below every senior men's competition AND every men's
+  // youth tournament — the user wanted women's grouped at the bottom of
+  // the daily board (general football audience preference).
+  '20649': { label: "FIFA Women's WC 27 Qualifying · Europe", tier: 50, slug: 'fifa.wworldq.uefa' },
 
   // USL minor league (USA tier 3). ESPN ships season.slug = 'group-stage' on
   // these, which used to render as 'Group Stage' as the competition header.
@@ -413,12 +421,31 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
     }
   }
 
-  // Apply category suffix + adjust tier so men's stays above women's
-  // and youth (matches FIFA/UEFA fixture display conventions). Slugs
-  // get the category appended so men's UCL and women's UCL group
-  // separately on the day board.
+  // Apply category suffix + adjust tier so the daily board orders matches
+  // by audience priority — the user explicitly asked to demote women's
+  // and youth competitions because the general football audience prefers
+  // senior men's first.
+  //
+  // Tier ranges as a whole:
+  //    0 - 19  : Senior men's competitions (existing LEAGUE_BY_ID + meta)
+  //   20 - 39  : Men's youth (U23, U21, U20, U19, U18, U17, U15)
+  //   40 - 79  : Women's (any category — senior OR youth)
+  //   80+     : 'Other competitions' bucket
+  //
+  // Within each category-bump range, base tier ordering is preserved
+  // (so senior UCL Men's tier 1 + 0 = 1, and youth UCL tier 1 + 20 = 21,
+  // and women's UCL tier 1 + 40 = 41 — all stay in relative order).
   if (cat) {
-    const tierBump = cat.code === 'W' ? 1 : cat.code === 'U23' ? 4 : 6
+    const tierBump =
+      cat.code === 'W'   ? 40 :   // Women's competitions sink to the bottom
+      cat.code === 'U23' ? 20 :   // Youth: U23 first, then descending age
+      cat.code === 'U21' ? 21 :
+      cat.code === 'U20' ? 22 :
+      cat.code === 'U19' ? 23 :
+      cat.code === 'U18' ? 24 :
+      cat.code === 'U17' ? 25 :
+      cat.code === 'U15' ? 26 :
+      30                              // Unknown category — between youth and women
     return {
       label: `${base.label} · ${cat.label}`,
       tier: base.tier + tierBump,
