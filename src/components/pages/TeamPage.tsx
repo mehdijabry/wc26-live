@@ -15,6 +15,7 @@ import {
 import { useTournament, matchesForTeam } from '../../store/tournament'
 import { teamBadgeFallback } from '../../lib/utils'
 import { heritageFor } from '../../data/wcHeritage'
+import { narrativeFor } from '../../data/wcNarratives'
 
 /**
  * /team/:abbr — full standalone preview page per WC2026 nation. This is
@@ -44,11 +45,12 @@ import { heritageFor } from '../../data/wcHeritage'
 const WC26_TEAM_NAMES: Record<string, string> = {
   // Hosts
   USA: 'United States', MEX: 'Mexico', CAN: 'Canada',
-  // UEFA
-  FRA: 'France', ESP: 'Spain', GER: 'Germany', ITA: 'Italy', ENG: 'England',
+  // UEFA — Italy didn't qualify; Türkiye took the European spot in Group B
+  FRA: 'France', ESP: 'Spain', GER: 'Germany', ENG: 'England',
   POR: 'Portugal', NED: 'Netherlands', BEL: 'Belgium', CRO: 'Croatia',
   SUI: 'Switzerland', AUT: 'Austria', SWE: 'Sweden', NOR: 'Norway',
   CZE: 'Czechia', SCO: 'Scotland', BIH: 'Bosnia & Herzegovina',
+  TUR: 'Türkiye',
   // CONMEBOL
   ARG: 'Argentina', BRA: 'Brazil', URU: 'Uruguay', COL: 'Colombia',
   ECU: 'Ecuador', PAR: 'Paraguay',
@@ -148,17 +150,24 @@ export function TeamPage() {
     const title = `${niceName} at FIFA World Cup 2026 · Squad, Schedule & Stats`
     document.title = title
 
-    const descParts: string[] = [
-      `Everything on ${niceName} for the FIFA World Cup 2026:`,
+    // SEO description: first sentence of the editorial narrative if we
+    // have one (richer + reads naturally), otherwise the data digest.
+    const narrativeFirst = narrative
+      ? narrative.split(/[.\n]/)[0].trim() + '.'
+      : ''
+    const dataDigest = [
       summary
-        ? `${summary.won}W ${summary.drawn}D ${summary.lost}L over the last ${summary.played} matches`
-        : 'live squad, recent form, fixtures',
-      heritage
-        ? `${heritage.appearances} World Cup appearances${heritage.titles ? `, ${heritage.titles} title${heritage.titles > 1 ? 's' : ''}` : ''}`
+        ? `${summary.won}W ${summary.drawn}D ${summary.lost}L last ${summary.played} matches`
         : '',
-      nextMatch ? `Next match: ${nextMatch.shortName ?? nextMatch.name}` : '',
-    ].filter(Boolean)
-    setMeta('description', descParts.join(' · '))
+      heritage
+        ? `${heritage.appearances} WC appearances${heritage.titles ? `, ${heritage.titles} title${heritage.titles > 1 ? 's' : ''}` : ''}`
+        : '',
+      nextMatch ? `Next: ${nextMatch.shortName ?? nextMatch.name}` : '',
+    ].filter(Boolean).join(' · ')
+    const desc = narrativeFirst
+      ? `${narrativeFirst} ${dataDigest}`.trim()
+      : `Everything on ${niceName} for the FIFA World Cup 2026: ${dataDigest}`
+    setMeta('description', desc)
 
     setLink('canonical', `https://pressing90.live/team/${abbr.toLowerCase()}`)
     setOg('og:title', title)
@@ -188,7 +197,7 @@ export function TeamPage() {
       const tag = document.querySelector('script[data-ld-key="team-page"]')
       if (tag) tag.remove()
     }
-  }, [abbr, team, summary, heritage, nextMatch, roster, displayNameFallback])
+  }, [abbr, team, summary, heritage, nextMatch, roster, displayNameFallback, narrative])
 
   // Group letter from the WC group derivation (synchronously available
   // once the tournament store has events). Empty string when we're not
@@ -204,6 +213,7 @@ export function TeamPage() {
   }, [abbr, events])
 
   const logo = teamBadgeFallback(team?.logos?.[0]?.href, abbr)
+  const narrative = narrativeFor(abbr)
 
   return (
     <div className="container max-w-4xl mx-auto px-6 py-12">
@@ -240,6 +250,21 @@ export function TeamPage() {
           )}
         </div>
       </header>
+
+      {/* Editorial narrative — 5-8 lines of identity, recent achievements,
+          WC history, and an encouragement note in the team's native
+          football culture. Renders directly after the hero so visitors
+          (and Google) read the story before the data tables. */}
+      {narrative && (
+        <section className="mb-10 rounded-2xl border-l-4 border-accent-gold bg-paper-elev p-5 sm:p-6">
+          <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-3">
+            The story so far
+          </div>
+          <p className="font-display text-base sm:text-lg leading-relaxed text-ink-900 whitespace-pre-line">
+            {narrative}
+          </p>
+        </section>
+      )}
 
       {/* KPI strip — form + summary */}
       <section className="mb-10 grid grid-cols-2 sm:grid-cols-4 gap-3">
