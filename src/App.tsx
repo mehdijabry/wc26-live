@@ -118,9 +118,18 @@ function App() {
         )}
       </AnimatePresence>
 
-      <Navigation />
-      <StickyCountdown />
-      <LiveTicker />
+      {/* The admin panel is a self-contained operator console with its
+          own header, footer, and theme — it should NOT render the main
+          site Navigation / countdown / live-ticker / Footer underneath
+          it. Those are top-level fixed elements with z-index 50, which
+          would otherwise overlap the admin tabs and intercept clicks. */}
+      {!location.pathname.startsWith('/admin-panel-') && (
+        <>
+          <Navigation />
+          <StickyCountdown />
+          <LiveTicker />
+        </>
+      )}
 
       {/* Pushes all page content down by the safe-area top inset when the
           site runs as an installed PWA (iOS adds env(safe-area-inset-top)
@@ -248,8 +257,14 @@ function App() {
         </Routes>
       </main>
 
-      <Footer />
-      <BottomNav />
+      {/* Same gating as the top chrome — keep Footer + BottomNav off
+          the admin panel so it stays a clean standalone console. */}
+      {!location.pathname.startsWith('/admin-panel-') && (
+        <>
+          <Footer />
+          <BottomNav />
+        </>
+      )}
 
       {/* Floating "Add to Home Screen" prompt for iPhone Safari users.
           Self-gates: only shows on iOS Safari, not in standalone mode,
