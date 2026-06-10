@@ -15,6 +15,8 @@ import {
 import { useTournament, recordForTeam, matchesForTeam } from '../store/tournament'
 import { teamBadgeFallback } from '../lib/utils'
 import { heritageFor } from '../data/wcHeritage'
+import { narrativeFor } from '../data/wcNarratives'
+import { Link } from 'react-router-dom'
 import { LottieLoader } from './LottieLoader'
 import { PlayerSheet } from './PlayerSheet'
 
@@ -354,8 +356,39 @@ function InfosTab({
     return my > op ? 'W' : my === op ? 'D' : 'L'
   })
 
+  // Editorial narrative — same content as on the standalone /team/:abbr
+  // page. Surfacing it in the modal closes the gap between the bracket
+  // / Squads click and the deep-dive page, so visitors who only see the
+  // modal still get the editorial framing (heritage, current squad
+  // identity, the new revelation for this WC). The 'Read the full
+  // story' link below ports them to /team/:abbr if they want the
+  // standalone read.
+  const narrative = narrativeFor(teamCode)
+  const teamSlug = teamCode.toLowerCase()
+
   return (
     <div className="space-y-5">
+      {/* Editorial intro — narrative paragraph + CTA to the dedicated
+          /team/:abbr page (same content the prerendered SEO page
+          ships). Renders only when we have a curated entry — defensive
+          against ESPN codes we haven't written a story for yet. */}
+      {narrative && (
+        <section className="rounded-2xl border-l-4 border-accent-gold bg-paper-elev p-4 sm:p-5">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+            The story so far
+          </div>
+          <p className="text-sm sm:text-[15px] leading-relaxed text-ink-900">
+            {narrative}
+          </p>
+          <Link
+            to={`/team/${teamSlug}`}
+            className="mt-3 inline-flex items-center gap-1 text-xs font-mono uppercase tracking-[0.14em] text-accent-gold font-semibold hover:text-yellow-700"
+          >
+            Read the full team page →
+          </Link>
+        </section>
+      )}
+
       {/* KPI grid à la footmercato. Footer label tells the visitor which
           data source the numbers reflect — WC26 in-tournament once games
           are played, else 'recent matches' (qualifiers + friendlies) so
