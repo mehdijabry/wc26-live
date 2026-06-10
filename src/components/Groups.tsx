@@ -7,7 +7,7 @@ import {
   relativeTime,
   useTournament,
 } from '../store/tournament'
-import { TeamSheet } from './TeamSheet'
+import { Link } from 'react-router-dom'
 import { teamBadgeFallback } from '../lib/utils'
 import { LottieLoader } from './LottieLoader'
 import { getCachedTeamForm, prefetchTeamForms, type TeamForm } from '../lib/api'
@@ -24,7 +24,9 @@ const CONTINENTAL_CHAMPIONS: Record<string, { short: string; tone: string }> = {
 }
 
 export function Groups() {
-  const [openTeam, setOpenTeam] = useState<string | null>(null)
+  // openTeam modal state was removed when team rows became real
+  // <Link to="/team/abbr"> navigations — the TeamSheet modal is now
+  // only used from DailyMatches and team chips inside MatchSheet.
   const { events, fetchedAt, loading, error, load } = useTournament()
   const groups = useMemo(() => deriveLiveGroups(events), [events])
 
@@ -133,16 +135,23 @@ export function Groups() {
                       const logo = teamBadgeFallback(t.logo, t.abbr)
                       return (
                         <li key={t.abbr}>
-                          <button
-                            type="button"
-                            onClick={() => setOpenTeam(t.abbr)}
+                          {/* Group rows now navigate to /team/:abbr full
+                              pages instead of opening the modal — gives
+                              Google real crawlable links to each team's
+                              SEO landing (vs an onClick handler it
+                              can't follow). The TeamSheet modal is
+                              still available from DailyMatches and
+                              elsewhere where quick-view is the better
+                              UX. */}
+                          <Link
+                            to={`/team/${t.abbr.toLowerCase()}`}
                             className={
                               'w-full grid grid-cols-[1fr_auto_auto_auto_auto] gap-1.5 items-center px-3 py-2 rounded-lg transition-colors group text-left ' +
                               (champ
                                 ? `bg-gradient-to-r ${champ.tone.split(' ').slice(0, 3).join(' ')} ring-1 ${champ.tone.split(' ').slice(3).join(' ')} hover:bg-slate-100`
                                 : 'bg-slate-50 hover:bg-slate-100')
                             }
-                            title={`View ${t.name} squad`}
+                            title={`View ${t.name} squad, fixtures and history`}
                           >
                             <span className="flex items-center gap-2.5 min-w-0">
                               <FormDot abbr={t.abbr} />
@@ -182,7 +191,7 @@ export function Groups() {
                             <span className="text-slate-600 group-hover:text-accent-gold transition-colors text-xs w-3">
                               →
                             </span>
-                          </button>
+                          </Link>
                         </li>
                       )
                     })}
@@ -195,7 +204,6 @@ export function Groups() {
           </div>
         )}
       </div>
-      <TeamSheet teamCode={openTeam} open={openTeam !== null} onClose={() => setOpenTeam(null)} />
     </section>
   )
 }

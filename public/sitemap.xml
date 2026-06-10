@@ -58,6 +58,59 @@
   <url><loc>https://pressing90.live/watch/united-arab-emirates</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
   <url><loc>https://pressing90.live/watch/united-kingdom</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
   <url><loc>https://pressing90.live/watch/united-states</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <!-- 48 WC2026 team pages — one indexable preview per nation. Daily
+       changefreq through the tournament (squad + form + next-match
+       data refreshes from ESPN), priority 0.75 since they're the
+       second-biggest SEO trap after /watch. -->
+  <url><loc>https://pressing90.live/team/alg</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/arg</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/aus</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/aut</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/bel</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/bih</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/bra</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/can</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/civ</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/cod</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/col</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/cpv</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/cro</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/cuw</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/cze</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/ecu</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/egy</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/eng</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/esp</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/fra</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/ger</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/gha</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/hai</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/irn</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/irq</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/ita</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/jor</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/jpn</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/kor</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/ksa</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/mar</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/mex</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/ned</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/nor</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/nzl</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/pan</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/par</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/por</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/qat</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/rsa</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/sco</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/sen</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/sui</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/swe</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/tun</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/tur</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/uru</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/usa</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/team/uzb</loc><changefreq>daily</changefreq><priority>0.75</priority></url>
   <url>
     <loc>https://pressing90.live/about</loc>
     <changefreq>monthly</changefreq>

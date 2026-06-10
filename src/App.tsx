@@ -34,6 +34,7 @@ const Privacy = lazy(() => import('./components/pages/Privacy').then((m) => ({ d
 const Terms = lazy(() => import('./components/pages/Terms').then((m) => ({ default: m.Terms })))
 const Watch = lazy(() => import('./components/pages/Watch').then((m) => ({ default: m.Watch })))
 const WatchCountry = lazy(() => import('./components/pages/WatchCountry').then((m) => ({ default: m.WatchCountry })))
+const TeamPage = lazy(() => import('./components/pages/TeamPage').then((m) => ({ default: m.TeamPage })))
 
 function App() {
   const authInit = useAuth((s) => s.init)
@@ -159,6 +160,18 @@ function App() {
             element={
               <Suspense fallback={<PageSkeleton caption="Loading broadcasters…" />}>
                 <WatchCountry />
+              </Suspense>
+            }
+          />
+          {/* /team/:abbr — standalone preview page per WC2026 nation.
+              SEO-facing twin of the TeamSheet modal; every section
+              renders inline so Google can index the whole story per
+              team. 48 indexable URLs out of the box. */}
+          <Route
+            path="/team/:abbr"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading team…" />}>
+                <TeamPage />
               </Suspense>
             }
           />
