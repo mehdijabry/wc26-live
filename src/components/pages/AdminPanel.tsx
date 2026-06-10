@@ -153,9 +153,14 @@ export function AdminPanel() {
               className={
                 'shrink-0 px-3 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest transition-colors ' +
                 (tab === t
-                  ? 'bg-ink-900 text-cream'
+                  ? 'bg-ink-900 text-white font-semibold'
                   : 'text-slate-500 hover:bg-slate-100')
               }
+              // Explicit inline style as a belt-and-braces fallback —
+              // Safari sometimes ignores the Tailwind text-white utility
+              // if the parent applies a backdrop-filter (we have one on
+              // the sticky header above).
+              style={tab === t ? { color: '#ffffff' } : undefined}
             >
               {t}
             </button>
@@ -472,13 +477,23 @@ function Database() {
     void adminGet('/admin/users').then((d) => setUsers(asArray(d)))
     void adminGet('/admin/brackets').then((d) => setBrackets(asArray(d)))
   }, [])
+  // Derive columns from the first row instead of hardcoding — that way
+  // we always show what's actually in the schema, even if the columns
+  // change. Cap at 6 to keep the table readable.
+  const columnsFor = (rows: Array<Record<string, unknown>>): string[] => {
+    if (!rows.length) return []
+    const keys = Object.keys(rows[0])
+    // Push 'updated_at' to the right if present — it's metadata, not
+    // the headline column.
+    return keys.filter((k) => k !== 'updated_at').slice(0, 5).concat(keys.includes('updated_at') ? ['updated_at'] : [])
+  }
   return (
     <>
       <Section title="Profiles" eyebrow={`${users.length} rows`}>
-        <DataTable rows={users} columns={['alias', 'share_slug', 'total_score', 'updated_at']} />
+        <DataTable rows={users} columns={columnsFor(users)} />
       </Section>
       <Section title="Brackets" eyebrow={`${brackets.length} rows`}>
-        <DataTable rows={brackets} columns={['final_winner', 'third_place_winner', 'golden_boot', 'updated_at']} />
+        <DataTable rows={brackets} columns={columnsFor(brackets)} />
       </Section>
     </>
   )

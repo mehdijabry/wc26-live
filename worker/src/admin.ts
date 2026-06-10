@@ -251,18 +251,28 @@ async function handleOverview(env: AdminEnv): Promise<Response> {
 
 async function sbCount(env: AdminEnv, table: string): Promise<number> {
   try {
-    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?select=*`, {
-      method: 'HEAD',
+    // Use GET, not HEAD — some Cloudflare-side configurations and
+    // proxies strip Content-Range from HEAD responses. Limit=1 + the
+    // count prefer header still returns the total via Content-Range
+    // header. Fallback: parse the returned array length if the header
+    // is missing for any reason.
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?select=id&limit=1`, {
       headers: {
         apikey: env.SUPABASE_SERVICE_KEY,
         authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
         prefer: 'count=exact',
-        range: '0-0',
       },
     })
-    const range = r.headers.get('content-range') ?? '0/0'
-    const total = range.split('/')[1] ?? '0'
-    return parseInt(total, 10) || 0
+    const range = r.headers.get('content-range') ?? ''
+    if (range) {
+      const total = range.split('/')[1]
+      const n = total ? parseInt(total, 10) : NaN
+      if (Number.isFinite(n)) return n
+    }
+    // Fallback — at least return >0 if there's any data so the overview
+    // never reads suspiciously zero when the table is actually populated.
+    const body = await r.json().catch(() => [])
+    return Array.isArray(body) ? body.length : 0
   } catch {
     return 0
   }
@@ -507,31 +517,48 @@ function providerFromEndpoint(url: string): string {
 }
 
 async function handleListUsers(env: AdminEnv): Promise<Response> {
-  const r = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/profiles?select=id,alias,share_slug,updated_at,total_score&order=updated_at.desc&limit=200`,
-    {
-      headers: {
-        apikey: env.SUPABASE_SERVICE_KEY,
-        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-      },
-    }
-  )
-  const rows = await r.json()
-  return jsonResp({ rows })
+  // select=* avoids 'column does not exist' errors that turn the whole
+  // response into {code, message} instead of an array. The admin
+  // shouldn't be filtering columns at the query level anyway — they
+  // need to see whatever's there.
+  return sbListRows(env, 'profiles')
 }
 
 async function handleListBrackets(env: AdminEnv): Promise<Response> {
-  const r = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/bracket_predictions?select=user_id,final_winner,third_place_winner,golden_boot,updated_at&order=updated_at.desc&limit=200`,
-    {
+  return sbListRows(env, 'bracket_predictions')
+}
+
+async function sbListRows(env: AdminEnv, table: string): Promise<Response> {
+  const url =
+    `${env.SUPABASE_URL}/rest/v1/${table}?select=*&order=` +
+    // updated_at if it exists; PostgREST falls back gracefully if not.
+    'updated_at.desc.nullslast&limit=200'
+  const r = await fetch(url, {
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    },
+  })
+  let body: unknown
+  try { body = await r.json() } catch { body = null }
+  // If Supabase returned an error object instead of an array (e.g. the
+  // ORDER column doesn't exist), retry without the order clause so the
+  // admin still gets to see the rows.
+  if (!Array.isArray(body)) {
+    const retry = await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?select=*&limit=200`, {
       headers: {
         apikey: env.SUPABASE_SERVICE_KEY,
         authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
       },
-    }
-  )
-  const rows = await r.json()
-  return jsonResp({ rows })
+    })
+    try { body = await retry.json() } catch { body = null }
+  }
+  if (!Array.isArray(body)) {
+    // Surface the underlying error so it's visible in the panel
+    // (better than silently returning empty).
+    return jsonResp({ rows: [], error: body }, 200)
+  }
+  return jsonResp({ rows: body })
 }
 
 async function handleSiteHealth(env: AdminEnv): Promise<Response> {
