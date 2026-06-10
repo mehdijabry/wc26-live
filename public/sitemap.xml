@@ -31,6 +31,34 @@
     <priority>0.6</priority>
   </url>
   <url>
+    <loc>https://pressing90.live/watch</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url><loc>https://pressing90.live/watch/argentina</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/algeria</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/belgium</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/brazil</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/canada</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/chile</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/colombia</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/egypt</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/france</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/germany</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/italy</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/japan</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/mexico</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/morocco</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/netherlands</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/portugal</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/qatar</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/saudi-arabia</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/spain</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/tunisia</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/united-arab-emirates</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/united-kingdom</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/watch/united-states</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url>
     <loc>https://pressing90.live/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.5</priority>

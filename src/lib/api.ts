@@ -815,6 +815,114 @@ export function broadcastersFor(slug: string): Array<{ country: string; flag: st
   }))
 }
 
+// ===== /watch/[country] page helpers =====================================
+// The 'Where to watch the WC in <country>' editorial pages need to know
+// (1) which countries we actually have rights data for, (2) per country,
+// which competitions, (3) human-friendly metadata for SEO + URLs.
+
+/** IANA timezone per country — used to convert UTC kickoff to local time. */
+const COUNTRY_TIMEZONES: Record<string, string> = {
+  FR: 'Europe/Paris',       GB: 'Europe/London',     US: 'America/New_York',
+  DE: 'Europe/Berlin',      IT: 'Europe/Rome',       ES: 'Europe/Madrid',
+  NL: 'Europe/Amsterdam',   BE: 'Europe/Brussels',   PT: 'Europe/Lisbon',
+  MA: 'Africa/Casablanca',  DZ: 'Africa/Algiers',    TN: 'Africa/Tunis',
+  EG: 'Africa/Cairo',       SA: 'Asia/Riyadh',       AE: 'Asia/Dubai',
+  QA: 'Asia/Qatar',         MX: 'America/Mexico_City', CA: 'America/Toronto',
+  BR: 'America/Sao_Paulo',  AR: 'America/Argentina/Buenos_Aires',
+  CL: 'America/Santiago',   CO: 'America/Bogota',    JP: 'Asia/Tokyo',
+}
+
+/** URL slug per country — keeps URLs SEO-friendly. */
+const COUNTRY_SLUGS: Record<string, string> = {
+  FR: 'france',          GB: 'united-kingdom',  US: 'united-states',
+  DE: 'germany',         IT: 'italy',           ES: 'spain',
+  NL: 'netherlands',     BE: 'belgium',         PT: 'portugal',
+  MA: 'morocco',         DZ: 'algeria',         TN: 'tunisia',
+  EG: 'egypt',           SA: 'saudi-arabia',    AE: 'united-arab-emirates',
+  QA: 'qatar',           MX: 'mexico',          CA: 'canada',
+  BR: 'brazil',          AR: 'argentina',       CL: 'chile',
+  CO: 'colombia',        JP: 'japan',
+}
+
+const SLUG_TO_COUNTRY = Object.fromEntries(
+  Object.entries(COUNTRY_SLUGS).map(([code, slug]) => [slug, code])
+)
+
+export type WatchCountry = {
+  code: string         // ISO 3166-1 alpha-2 (uppercase)
+  slug: string         // URL slug ('france', 'morocco')
+  name: string         // Display name ('France', 'Morocco')
+  flag: string         // Emoji flag
+  timezone: string     // IANA tz
+}
+
+/** Resolve a slug to a country payload, or null when unknown. */
+export function watchCountryFromSlug(slug: string): WatchCountry | null {
+  const code = SLUG_TO_COUNTRY[slug.toLowerCase()]
+  if (!code) return null
+  return {
+    code,
+    slug,
+    name: COUNTRY_NAMES[code] ?? code,
+    flag: COUNTRY_FLAGS[code] ?? '',
+    timezone: COUNTRY_TIMEZONES[code] ?? 'UTC',
+  }
+}
+
+/** List every country we have rights data for, for the /watch index. */
+export function listWatchCountries(): WatchCountry[] {
+  return Object.keys(COUNTRY_SLUGS)
+    .filter((code) => COUNTRY_NAMES[code])
+    .map((code) => ({
+      code,
+      slug: COUNTRY_SLUGS[code],
+      name: COUNTRY_NAMES[code],
+      flag: COUNTRY_FLAGS[code] ?? '',
+      timezone: COUNTRY_TIMEZONES[code] ?? 'UTC',
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/**
+ * For a given country, returns every competition we know they have
+ * broadcast rights to. Used to build the editorial 'while you're here,
+ * here's everything else' rail on the country page.
+ */
+export function competitionsForCountry(code: string): Array<{
+  slug: string
+  broadcasters: Broadcaster[]
+}> {
+  const out: Array<{ slug: string; broadcasters: Broadcaster[] }> = []
+  for (const [slug, map] of Object.entries(BROADCAST_RIGHTS)) {
+    const list = map[code]
+    if (list && list.length > 0) out.push({ slug, broadcasters: list })
+  }
+  return out
+}
+
+/** Human-readable label for a competition slug — for the country-page rails. */
+export function competitionLabel(slug: string): string {
+  return COMPETITION_LABELS[slug] ?? slug
+}
+
+const COMPETITION_LABELS: Record<string, string> = {
+  'fifa.world':            'FIFA World Cup 2026',
+  'uefa.champions':        'UEFA Champions League',
+  'uefa.europa':           'UEFA Europa League',
+  'uefa.europa.conf':      'UEFA Conference League',
+  'uefa.euro':             'UEFA Euro',
+  'uefa.nations':          'UEFA Nations League',
+  'eng.1':                 'Premier League',
+  'esp.1':                 'LaLiga',
+  'ger.1':                 'Bundesliga',
+  'ita.1':                 'Serie A',
+  'fra.1':                 'Ligue 1',
+  'usa.1':                 'Major League Soccer',
+  'sau.1':                 'Saudi Pro League',
+  'bra.1':                 'Brasileirão',
+  'arg.1':                 'Primera División (Argentina)',
+}
+
 /**
  * Looks up the season slug for an event and resolves to a competition
  * slug we can use for broadcaster lookup. Same logic as tagEvent() but

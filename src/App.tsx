@@ -32,6 +32,8 @@ const About = lazy(() => import('./components/pages/About').then((m) => ({ defau
 const Contact = lazy(() => import('./components/pages/Contact').then((m) => ({ default: m.Contact })))
 const Privacy = lazy(() => import('./components/pages/Privacy').then((m) => ({ default: m.Privacy })))
 const Terms = lazy(() => import('./components/pages/Terms').then((m) => ({ default: m.Terms })))
+const Watch = lazy(() => import('./components/pages/Watch').then((m) => ({ default: m.Watch })))
+const WatchCountry = lazy(() => import('./components/pages/WatchCountry').then((m) => ({ default: m.WatchCountry })))
 
 function App() {
   const authInit = useAuth((s) => s.init)
@@ -140,6 +142,26 @@ function App() {
           <Route path="/board" element={<BoardPage />} />
           <Route path="/stadiums" element={<StadiumsPage />} />
           <Route path="/u/:slug" element={<ProfilePage />} />
+          {/* /watch + /watch/:country — SEO trap for the 'where to watch
+              world cup 2026 in <country>' search wave. Index + 22
+              country-specific pages. Lazy-loaded since they're a side
+              entry point, not part of the core read flow. */}
+          <Route
+            path="/watch"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading countries…" />}>
+                <Watch />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/watch/:country"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading broadcasters…" />}>
+                <WatchCountry />
+              </Suspense>
+            }
+          />
           {/* Static pages — required for AdSense + general trust. */}
           <Route
             path="/about"

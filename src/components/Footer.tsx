@@ -20,6 +20,10 @@ export function Footer() {
         {/* Site map — About / Contact / Privacy / Terms. Required for the
             AdSense application and a general trust signal. */}
         <nav className="my-5 flex items-center justify-center flex-wrap gap-x-5 gap-y-2 font-mono text-[11px] uppercase tracking-[0.15em]">
+          <Link to="/watch" className="text-slate-600 hover:text-accent-gold transition-colors">
+            Where to Watch
+          </Link>
+          <span className="text-slate-300">·</span>
           <Link to="/about" className="text-slate-600 hover:text-accent-gold transition-colors">
             About
           </Link>
