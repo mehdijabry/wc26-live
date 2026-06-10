@@ -32,8 +32,15 @@ export interface AdminEnv {
   CF_API_TOKEN?: string
   CF_ACCOUNT_ID?: string
   CF_ZONE_ID?: string
-  GSC_SERVICE_ACCOUNT?: string  // JSON string of GCP service account key
-  GSC_SITE_URL?: string         // e.g. 'sc-domain:pressing90.live'
+  GSC_SERVICE_ACCOUNT?: string  // JSON string of GCP service account key (legacy)
+  GSC_SITE_URL?: string         // e.g. 'sc-domain:pressing90.live' or 'https://pressing90.live/'
+  // OAuth 3-legged flow — preferred since service accounts can't be
+  // added to Search Console properties without Google Workspace.
+  // Set these via wrangler secret put after running the one-shot
+  // local script (scripts/get-gsc-refresh-token.mjs).
+  GSC_CLIENT_ID?: string
+  GSC_CLIENT_SECRET?: string
+  GSC_REFRESH_TOKEN?: string
   // Resend for transactional email
   RESEND_API_KEY?: string
   RESEND_FROM?: string          // e.g. 'WC26 Live <hello@pressing90.live>'
@@ -383,16 +390,28 @@ function mockCfData() {
 // ─────────────────────────────────────────────────────────────────────
 
 async function handleGsc(env: AdminEnv, _req: Request): Promise<Response> {
-  if (!env.GSC_SERVICE_ACCOUNT || !env.GSC_SITE_URL) {
+  if (!env.GSC_SITE_URL) {
     return jsonResp({
       configured: false,
       message:
-        'Set GSC_SERVICE_ACCOUNT (JSON) + GSC_SITE_URL via wrangler secret put. Add the service account email as a user in Google Search Console (Restricted access). Sample mocked data returned.',
+        'Set GSC_SITE_URL + (GSC_CLIENT_ID + GSC_CLIENT_SECRET + GSC_REFRESH_TOKEN) via wrangler secret put. See scripts/get-gsc-refresh-token.mjs. Sample mocked data returned.',
+      mock: mockGscData(),
+    })
+  }
+  // Prefer OAuth (works without Workspace) over service account.
+  const hasOAuth = env.GSC_CLIENT_ID && env.GSC_CLIENT_SECRET && env.GSC_REFRESH_TOKEN
+  if (!hasOAuth && !env.GSC_SERVICE_ACCOUNT) {
+    return jsonResp({
+      configured: false,
+      message:
+        'Set GSC_CLIENT_ID + GSC_CLIENT_SECRET + GSC_REFRESH_TOKEN (preferred) OR GSC_SERVICE_ACCOUNT via wrangler secret put. Sample mocked data returned.',
       mock: mockGscData(),
     })
   }
   try {
-    const accessToken = await mintGscAccessToken(env.GSC_SERVICE_ACCOUNT)
+    const accessToken = hasOAuth
+      ? await mintGscAccessTokenOAuth(env.GSC_CLIENT_ID!, env.GSC_CLIENT_SECRET!, env.GSC_REFRESH_TOKEN!)
+      : await mintGscAccessToken(env.GSC_SERVICE_ACCOUNT!)
     // Last 7 days top queries + pages
     const today = new Date()
     const startDate = new Date(today.getTime() - 7 * 24 * 3600 * 1000).toISOString().slice(0, 10)
@@ -403,13 +422,46 @@ async function handleGsc(env: AdminEnv, _req: Request): Promise<Response> {
       dimensions: [dim],
       rowLimit: 25,
     })
-    const url = `https://searchconsole.googleapis.com/v1/sites/${encodeURIComponent(env.GSC_SITE_URL)}/searchAnalytics/query`
+    // The Search Analytics endpoint lives under /webmasters/v3/, NOT /v1/.
+    // The /v1/ subtree only exposes URL Inspection and sitemap APIs;
+    // hitting /v1/sites/.../searchAnalytics returns Google's 404 HTML page,
+    // which made worker JSON parsing throw earlier.
+    const url = `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(env.GSC_SITE_URL)}/searchAnalytics/query`
     const [queries, pages, totals] = await Promise.all([
       fetch(url, { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify(body('query')) }).then((r) => r.json()),
       fetch(url, { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify(body('page')) }).then((r) => r.json()),
       fetch(url, { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ startDate, endDate }) }).then((r) => r.json()),
     ])
-    return jsonResp({ configured: true, totals, queries, pages })
+    // Flatten the GSC payload into the same shape the UI's mock path uses
+    // — saves us a second renderer on the frontend. When the site is too
+    // young for Google to have indexed it, .rows is missing/empty and we
+    // surface zeros (the bandeau will say so).
+    type Row = { keys?: string[]; clicks?: number; impressions?: number; ctr?: number; position?: number }
+    const totalsRows: Row[] = (totals as { rows?: Row[] }).rows ?? []
+    const total = totalsRows[0] ?? {}
+    const qRows: Row[] = (queries as { rows?: Row[] }).rows ?? []
+    const pRows: Row[] = (pages as { rows?: Row[] }).rows ?? []
+    const clicks = total.clicks ?? 0
+    const impressions = total.impressions ?? 0
+    return jsonResp({
+      configured: true,
+      mock: {
+        clicks,
+        impressions,
+        ctr: impressions ? `${((clicks / impressions) * 100).toFixed(2)}%` : '0.00%',
+        position: Number((total.position ?? 0).toFixed(1)),
+        topQueries: qRows.slice(0, 8).map((r) => ({
+          query: r.keys?.[0] ?? '—',
+          clicks: r.clicks ?? 0,
+          impressions: r.impressions ?? 0,
+        })),
+        topPages: pRows.slice(0, 8).map((r) => ({
+          url: r.keys?.[0] ?? '—',
+          clicks: r.clicks ?? 0,
+          impressions: r.impressions ?? 0,
+        })),
+      },
+    })
   } catch (e) {
     return jsonResp({ configured: true, error: 'gsc failed', message: String(e) }, 502)
   }
@@ -434,6 +486,35 @@ function mockGscData() {
       { url: '/explained/format', clicks: 22, impressions: 680 },
     ],
   }
+}
+
+/**
+ * OAuth refresh_token → access_token (~1h validity).
+ * This is the recommended path for individual GSC accounts (non-Workspace).
+ * The refresh_token is obtained once via scripts/get-gsc-refresh-token.mjs
+ * and stays valid until the user revokes it from their Google account.
+ */
+async function mintGscAccessTokenOAuth(
+  clientId: string,
+  clientSecret: string,
+  refreshToken: string
+): Promise<string> {
+  const body = new URLSearchParams({
+    grant_type: 'refresh_token',
+    refresh_token: refreshToken,
+    client_id: clientId,
+    client_secret: clientSecret,
+  })
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body,
+  })
+  const data = await r.json() as { access_token?: string; error?: string; error_description?: string }
+  if (!data.access_token) {
+    throw new Error(`OAuth refresh failed: ${data.error_description ?? data.error ?? 'unknown'}`)
+  }
+  return data.access_token
 }
 
 /** Service-account → access token via Google's OAuth2 JWT bearer flow. */
