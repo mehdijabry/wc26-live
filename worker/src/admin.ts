@@ -102,11 +102,22 @@ function getCookie(req: Request, name: string): string | null {
 }
 
 /**
+ * Extract the admin session token from EITHER the Authorization header
+ * (preferred — works cross-origin without Safari's ITP blocking us)
+ * OR the legacy cookie set by older clients.
+ */
+function extractToken(req: Request): string | null {
+  const auth = req.headers.get('authorization') ?? ''
+  if (auth.startsWith('Bearer ')) return auth.slice(7)
+  return getCookie(req, SESSION_COOKIE)
+}
+
+/**
  * Middleware: every admin endpoint EXCEPT /admin/auth/login must run
  * this and return early with 401 if it fails.
  */
 async function requireSession(req: Request, env: AdminEnv): Promise<Response | null> {
-  const token = getCookie(req, SESSION_COOKIE)
+  const token = extractToken(req)
   if (!(await verifySession(env, token))) {
     return jsonResp({ error: 'unauthorised' }, 401)
   }
@@ -147,7 +158,7 @@ export async function handleAdmin(
     })
   }
   if (pathname === '/admin/auth/session' && req.method === 'GET') {
-    const token = getCookie(req, SESSION_COOKIE)
+    const token = extractToken(req)
     const ok = await verifySession(env, token)
     return jsonResp({ ok })
   }
@@ -201,12 +212,17 @@ async function handleLogin(req: Request, env: AdminEnv): Promise<Response> {
     return jsonResp({ error: 'invalid credentials' }, 401)
   }
   const token = await issueSession(env)
-  return new Response(JSON.stringify({ ok: true }), {
+  // Return token in BOTH cookie (legacy / same-origin) AND body
+  // (Authorization header, cross-origin). The frontend will prefer
+  // the body token and stash it in sessionStorage so cross-origin
+  // setups (pressing90.live → wc26-api.workers.dev) work in browsers
+  // with strict 3rd-party-cookie blocking (Safari ITP, Brave, Firefox).
+  return new Response(JSON.stringify({ ok: true, token }), {
     status: 200,
     headers: {
       'content-type': 'application/json',
       'set-cookie':
-        `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; ` +
+        `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=None; ` +
         `Max-Age=${SESSION_TTL_SECONDS}`,
     },
   })

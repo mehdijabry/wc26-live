@@ -558,7 +558,7 @@ function cors(resp: Response, req: Request): Response {
   // Push endpoints are POST — must allow it in CORS.
   h.set('access-control-allow-methods', 'GET, POST, OPTIONS')
   // x-admin-token is the auth header for /push/broadcast.
-  h.set('access-control-allow-headers', 'content-type, x-admin-token')
+  h.set('access-control-allow-headers', 'content-type, x-admin-token, authorization')
   h.set('vary', 'origin')
   const corsResp = new Response(resp.body, { status: resp.status, headers: h })
   // Layer security headers (CSP / nosniff / referrer-policy / etc.)

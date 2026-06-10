@@ -24,6 +24,13 @@ import { API_BASE } from '../../lib/api'
 type Tab =
   | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions'
 
+// Token storage key in sessionStorage. We use sessionStorage (not local)
+// so the token clears when the tab closes — saves us from a stale
+// 8h-old session sitting on a shared machine.
+const TOKEN_KEY = 'wc26.admin.token'
+function getToken(): string | null { try { return sessionStorage.getItem(TOKEN_KEY) } catch { return null } }
+function setToken(t: string | null) { try { t ? sessionStorage.setItem(TOKEN_KEY, t) : sessionStorage.removeItem(TOKEN_KEY) } catch {} }
+
 export function AdminPanel() {
   const [authed, setAuthed] = useState<null | boolean>(null) // null=loading
   const [pw, setPw] = useState('')
@@ -31,14 +38,21 @@ export function AdminPanel() {
   const [loggingIn, setLoggingIn] = useState(false)
   const [tab, setTab] = useState<Tab>('overview')
 
-  // Session probe on mount.
+  // Session probe on mount — sends the Bearer token from sessionStorage
+  // if we have one. If not, immediately render the login screen.
   useEffect(() => {
     document.title = 'Admin · Pressing 90'
-    // Don't index the admin panel under any circumstance.
     setMeta('robots', 'noindex,nofollow,noarchive')
-    void fetch(`${API_BASE}/admin/auth/session`, { credentials: 'include' })
+    const tok = getToken()
+    if (!tok) { setAuthed(false); return }
+    void fetch(`${API_BASE}/admin/auth/session`, {
+      headers: { authorization: `Bearer ${tok}` },
+    })
       .then((r) => r.json())
-      .then((j) => setAuthed(!!j.ok))
+      .then((j) => {
+        if (j.ok) setAuthed(true)
+        else { setToken(null); setAuthed(false) }
+      })
       .catch(() => setAuthed(false))
   }, [])
 
@@ -49,11 +63,15 @@ export function AdminPanel() {
     try {
       const r = await fetch(`${API_BASE}/admin/auth/login`, {
         method: 'POST',
-        credentials: 'include',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ password: pw }),
       })
-      if (r.ok) {
+      const data = await r.json().catch(() => ({}))
+      if (r.ok && data.token) {
+        // Stash the token so subsequent fetches send it via
+        // Authorization: Bearer. Cookies don't work cross-origin in
+        // Safari/Brave/strict-mode Firefox, so we don't rely on them.
+        setToken(data.token)
         setAuthed(true)
         setPw('')
       } else if (r.status === 429) {
@@ -69,7 +87,7 @@ export function AdminPanel() {
   }
 
   async function onLogout() {
-    await fetch(`${API_BASE}/admin/auth/logout`, { method: 'POST', credentials: 'include' })
+    setToken(null)
     setAuthed(false)
   }
 
@@ -596,15 +614,18 @@ function Empty({ children }: { children: React.ReactNode }) { return <div classN
 
 // ─── Helpers ─────────────────────────────────────────────────────────
 
+function authHeader(): Record<string, string> {
+  const t = getToken()
+  return t ? { authorization: `Bearer ${t}` } : {}
+}
 async function adminGet(path: string): Promise<unknown> {
-  const r = await fetch(`${API_BASE}${path}`, { credentials: 'include' })
+  const r = await fetch(`${API_BASE}${path}`, { headers: { ...authHeader() } })
   return r.json()
 }
 async function adminPost(path: string, body: unknown): Promise<unknown> {
   const r = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
-    credentials: 'include',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...authHeader() },
     body: JSON.stringify(body),
   })
   return r.json()
