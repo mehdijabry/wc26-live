@@ -313,8 +313,43 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
   if (!resp.ok) {
     return jsonResp({ configured: true, error: 'cf api error', status: resp.status }, 502)
   }
-  const data = await resp.json()
-  return jsonResp({ configured: true, range, raw: data })
+  const data = await resp.json() as {
+    data?: { viewer?: { zones?: Array<{
+      httpRequests1hGroups?: Array<{ sum?: { requests?: number; pageViews?: number; bytes?: number }; uniq?: { uniques?: number } }>;
+      topNs?: Array<{ sum?: { countryMap?: Array<{ clientCountryName?: string; requests?: number }> } }>
+    }> } }
+  }
+  const zone = data?.data?.viewer?.zones?.[0]
+  const group = zone?.httpRequests1hGroups?.[0]
+  const top = zone?.topNs?.[0]
+  const bytes = group?.sum?.bytes ?? 0
+  // Parse the GraphQL shape into the same flat object the UI's mock
+  // path renders. Saves us a second code path on the frontend.
+  return jsonResp({
+    configured: true,
+    range,
+    mock: {
+      requests: group?.sum?.requests ?? 0,
+      pageViews: group?.sum?.pageViews ?? 0,
+      uniques: group?.uniq?.uniques ?? 0,
+      bandwidth: formatBytes(bytes),
+      topCountries: (top?.sum?.countryMap ?? [])
+        .slice(0, 8)
+        .map((c) => ({
+          code: c.clientCountryName?.slice(0, 2).toUpperCase() ?? '??',
+          name: c.clientCountryName ?? '—',
+          requests: c.requests ?? 0,
+        })),
+    },
+  })
+}
+
+/** Format a raw byte count for display: 1234 → '1.2 KB', etc. */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(1)} MB`
+  return `${(bytes / 1024 ** 3).toFixed(2)} GB`
 }
 
 function mockCfData() {

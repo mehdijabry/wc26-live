@@ -216,8 +216,11 @@ function Analytics() {
   const cfData = cf as { configured?: boolean; message?: string; mock?: CfMock; raw?: unknown } | null
   const gscData = gsc as { configured?: boolean; message?: string; mock?: GscMock } | null
 
-  const cfShow = cfData?.configured ? null : cfData?.mock
-  const gscShow = gscData?.configured ? null : gscData?.mock
+  // The worker now flattens both 'configured' AND 'mock' paths into
+  // the same shape, so we just read .mock either way and the UI
+  // renders identically. The bandeau only appears when configured=false.
+  const cfShow = cfData?.mock
+  const gscShow = gscData?.mock
 
   return (
     <>
@@ -236,38 +239,40 @@ function Analytics() {
             </button>
           ))}
         </div>
-        {!cfData ? <Loading /> : !cfData.configured && cfShow ? (
+        {!cfData ? <Loading /> : cfShow ? (
           <>
-            <ConfigBanner message={cfData.message ?? ''} />
+            {!cfData.configured && <ConfigBanner message={cfData.message ?? ''} />}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <KpiCard label="Requests" value={cfShow.requests} accent="gold" />
               <KpiCard label="Page views" value={cfShow.pageViews} />
               <KpiCard label="Unique visitors" value={cfShow.uniques} />
               <KpiCard label="Bandwidth" value={cfShow.bandwidth} mono />
             </div>
-            <div className="mt-5">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
-                Top countries
+            {cfShow.topCountries.length > 0 && (
+              <div className="mt-5">
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+                  Top countries
+                </div>
+                <ul className="space-y-1.5">
+                  {cfShow.topCountries.map((c, i) => (
+                    <li key={i} className="flex items-center justify-between text-sm">
+                      <span>{c.name}</span>
+                      <span className="font-mono text-slate-500">{c.requests.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
-              <ul className="space-y-1.5">
-                {cfShow.topCountries.map((c) => (
-                  <li key={c.code} className="flex items-center justify-between text-sm">
-                    <span>{c.name}</span>
-                    <span className="font-mono text-slate-500">{c.requests.toLocaleString()}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            )}
           </>
         ) : (
-          <div className="text-sm text-slate-600">Connected — raw payload in console.</div>
+          <div className="text-sm text-slate-600">No data.</div>
         )}
       </Section>
 
       <Section title="Google Search Console" eyebrow="Search · last 7 days">
-        {!gscData ? <Loading /> : !gscData.configured && gscShow ? (
+        {!gscData ? <Loading /> : gscShow ? (
           <>
-            <ConfigBanner message={gscData.message ?? ''} />
+            {!gscData.configured && <ConfigBanner message={gscData.message ?? ''} />}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <KpiCard label="Clicks" value={gscShow.clicks} accent="gold" />
               <KpiCard label="Impressions" value={gscShow.impressions} />
@@ -300,7 +305,7 @@ function Analytics() {
             </div>
           </>
         ) : (
-          <div className="text-sm text-slate-600">Connected.</div>
+          <div className="text-sm text-slate-600">No data yet — GSC needs a few days to index your site.</div>
         )}
       </Section>
     </>
@@ -455,9 +460,17 @@ function EmailPanel() {
 function Database() {
   const [users, setUsers] = useState<Array<Record<string, unknown>>>([])
   const [brackets, setBrackets] = useState<Array<Record<string, unknown>>>([])
+  // Defensive extract: Supabase REST occasionally returns an error
+  // object ({code, message, ...}) instead of an array if the query
+  // fails (RLS, bad column, etc.). Only commit the array shape so
+  // the .length read in the eyebrow doesn't show 'undefined'.
+  const asArray = (d: unknown): Array<Record<string, unknown>> => {
+    const rows = (d as { rows?: unknown }).rows
+    return Array.isArray(rows) ? rows : []
+  }
   useEffect(() => {
-    void adminGet('/admin/users').then((d) => setUsers((d as { rows: typeof users }).rows ?? []))
-    void adminGet('/admin/brackets').then((d) => setBrackets((d as { rows: typeof brackets }).rows ?? []))
+    void adminGet('/admin/users').then((d) => setUsers(asArray(d)))
+    void adminGet('/admin/brackets').then((d) => setBrackets(asArray(d)))
   }, [])
   return (
     <>
