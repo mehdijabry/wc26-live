@@ -47,7 +47,7 @@ export function ExplainedTopic() {
 
   if (!entry) {
     return (
-      <div className="container max-w-3xl mx-auto px-6 py-16 text-center">
+      <div className="container max-w-3xl mx-auto px-6 pt-28 pb-16 text-center">
         <h1 className="font-display text-3xl font-bold text-ink-900">
           Question not found
         </h1>
@@ -66,7 +66,7 @@ export function ExplainedTopic() {
     .filter(Boolean) as typeof WC_FAQ
 
   return (
-    <div className="container max-w-3xl mx-auto px-6 py-16">
+    <div className="container max-w-3xl mx-auto px-6 pt-28 pb-16">
       <nav className="mb-6">
         <Link to="/explained" className="text-xs font-mono uppercase tracking-[0.18em] text-slate-500 hover:text-accent-gold">
           ← All explainers

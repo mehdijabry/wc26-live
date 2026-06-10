@@ -98,7 +98,7 @@ export function Explained() {
   }, [])
 
   return (
-    <div className="container max-w-3xl mx-auto px-6 py-16">
+    <div className="container max-w-3xl mx-auto px-6 pt-28 pb-16">
       <header className="mb-12">
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Explained
