@@ -1,6 +1,62 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { WC_FAQ } from '../../data/wcFaq'
+import { WC_FAQ, type FaqEntry } from '../../data/wcFaq'
+
+/**
+ * Section grouping for the index. We bucket entries by their FIRST tag
+ * so each entry appears in exactly one section — entries with multiple
+ * tags (like new-rules + rules) get classified by their primary tag.
+ */
+const SECTIONS: Array<{
+  key: FaqEntry['tags'][number]
+  title: string
+  eyebrow: string
+  blurb: string
+}> = [
+  {
+    key: 'new-rules',
+    title: 'New rules in effect for WC2026',
+    eyebrow: 'First time at a World Cup',
+    blurb: "The IFAB and FIFA approved a cluster of rule changes between 2024 and 2025. WC26 is the first World Cup where all of them apply at once.",
+  },
+  {
+    key: 'format',
+    title: 'How the tournament is structured',
+    eyebrow: 'Format & schedule',
+    blurb: '48 teams, 12 groups, 32-team knockout. The first 48-team World Cup explained.',
+  },
+  {
+    key: 'rules',
+    title: 'Existing rules — the reminders',
+    eyebrow: 'Laws of the game',
+    blurb: 'Offside, handball, back-pass, cooling breaks — the rules everyone knows but most fans get fuzzy on under pressure.',
+  },
+  {
+    key: 'qualification',
+    title: 'Qualifying teams',
+    eyebrow: 'The 48',
+    blurb: 'Who made it, who missed out, and what to watch for from each.',
+  },
+  {
+    key: 'logistics',
+    title: 'Where + when',
+    eyebrow: 'Host cities & dates',
+    blurb: '16 stadiums across three countries, 39 days, 104 matches.',
+  },
+]
+
+function bucket(entries: FaqEntry[]): Map<string, FaqEntry[]> {
+  const byTag = new Map<string, FaqEntry[]>()
+  for (const e of entries) {
+    // First tag wins — keeps each entry in exactly one section so the
+    // index reads as a clean taxonomy.
+    const primary = e.tags[0]
+    const list = byTag.get(primary) ?? []
+    list.push(e)
+    byTag.set(primary, list)
+  }
+  return byTag
+}
 
 /**
  * /explained — index FAQ page covering format / rules / qualification /
@@ -16,7 +72,7 @@ export function Explained() {
   useEffect(() => {
     document.title = 'How the WC26 World Cup works · FAQ · Pressing 90'
     setMeta('description',
-      'Plain-English answers to every common question about the 2026 FIFA World Cup — format, qualifying teams, host cities, group rules, VAR, penalty shootouts, squad sizes, schedule. Updated for the 48-team expansion.'
+      'Plain-English answers to every WC2026 question — the new rules first in effect this tournament (8-second goalkeeper rule, captain-only refereeing, Adidas Trionda connected ball, VAR PA announcements), plus reminders of the classics (offside, handball, back-pass, cooling breaks). Format, host cities, schedule, qualified teams.'
     )
     setLink('canonical', 'https://pressing90.live/explained')
     setOg('og:title', 'How the WC26 World Cup works · FAQ · Pressing 90')
@@ -58,35 +114,62 @@ export function Explained() {
         </p>
       </header>
 
-      <section className="space-y-6">
-        {WC_FAQ.map((entry) => (
-          <article
-            key={entry.slug}
-            id={entry.slug}
-            className="rounded-2xl border border-slate-200 bg-paper-elev p-5 sm:p-6"
-          >
-            <h2 className="font-display font-bold text-xl sm:text-2xl text-ink-900">
-              <Link
-                to={`/explained/${entry.slug}`}
-                className="hover:text-accent-gold transition-colors"
-              >
-                {entry.question}
-              </Link>
-            </h2>
-            <p className="mt-2 text-slate-700 leading-relaxed">
-              {entry.short}
-            </p>
-            <div className="mt-3">
-              <Link
-                to={`/explained/${entry.slug}`}
-                className="text-xs font-mono uppercase tracking-[0.12em] text-accent-gold font-semibold hover:text-yellow-700"
-              >
-                Read full answer →
-              </Link>
-            </div>
-          </article>
-        ))}
-      </section>
+      {(() => {
+        const buckets = bucket(WC_FAQ)
+        return (
+          <>
+            {SECTIONS.map((section) => {
+              const items = buckets.get(section.key) ?? []
+              if (items.length === 0) return null
+              return (
+                <section key={section.key} className="mb-12">
+                  <header className="mb-5">
+                    <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-accent-gold font-semibold mb-1.5">
+                      {section.eyebrow}
+                    </div>
+                    <h2 className="font-display font-bold text-2xl sm:text-3xl text-ink-900 tracking-tight">
+                      {section.title}
+                    </h2>
+                    <p className="mt-2 text-sm text-slate-600 max-w-2xl leading-relaxed">
+                      {section.blurb}
+                    </p>
+                  </header>
+
+                  <div className="space-y-4">
+                    {items.map((entry) => (
+                      <article
+                        key={entry.slug}
+                        id={entry.slug}
+                        className="rounded-2xl border border-slate-200 bg-paper-elev p-5 sm:p-6"
+                      >
+                        <h3 className="font-display font-bold text-lg sm:text-xl text-ink-900">
+                          <Link
+                            to={`/explained/${entry.slug}`}
+                            className="hover:text-accent-gold transition-colors"
+                          >
+                            {entry.question}
+                          </Link>
+                        </h3>
+                        <p className="mt-2 text-slate-700 leading-relaxed text-[15px]">
+                          {entry.short}
+                        </p>
+                        <div className="mt-3">
+                          <Link
+                            to={`/explained/${entry.slug}`}
+                            className="text-xs font-mono uppercase tracking-[0.12em] text-accent-gold font-semibold hover:text-yellow-700"
+                          >
+                            Read full answer →
+                          </Link>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
+          </>
+        )
+      })()}
 
       <section className="mt-12 rounded-2xl bg-marine-950 text-cream p-6 sm:p-8">
         <h2 className="font-display font-bold text-2xl mb-3">Watch it live</h2>

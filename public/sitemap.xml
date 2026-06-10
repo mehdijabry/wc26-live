@@ -148,4 +148,16 @@
   <url><loc>https://pressing90.live/explained/qualified-teams</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
   <url><loc>https://pressing90.live/explained/discipline</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
   <url><loc>https://pressing90.live/explained/squad-rules</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <!-- New rules first in effect at WC2026 — 8-second GK rule, captain-only protocol, connected ball, VAR PA transparency. -->
+  <url><loc>https://pressing90.live/explained/new-rules</loc><changefreq>weekly</changefreq><priority>0.85</priority></url>
+  <url><loc>https://pressing90.live/explained/gk-8-seconds</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pressing90.live/explained/captain-rule</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pressing90.live/explained/connected-ball</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <url><loc>https://pressing90.live/explained/var-transparency</loc><changefreq>weekly</changefreq><priority>0.8</priority></url>
+  <!-- Existing-rules reminders. -->
+  <url><loc>https://pressing90.live/explained/offside-explained</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/explained/handball-rule</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/explained/concussion-subs</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/explained/backpass-rule</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/explained/cooling-breaks</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
 </urlset>

@@ -20,7 +20,7 @@ export type FaqEntry = {
   short: string
   long: string[]
   related: string[]
-  tags: Array<'format' | 'rules' | 'qualification' | 'logistics' | 'history'>
+  tags: Array<'format' | 'rules' | 'new-rules' | 'qualification' | 'logistics' | 'history'>
 }
 
 export const WC_FAQ: FaqEntry[] = [
@@ -152,6 +152,144 @@ export const WC_FAQ: FaqEntry[] = [
       "On match day each team can name 11 starters plus 12 substitutes on the bench. Five substitutions are allowed during regulation (in up to three substitution windows so the game isn't stop-start) plus one additional substitution during extra time in knockout matches.",
     ],
     related: ['format', 'knockout-rules'],
+    tags: ['rules', 'logistics'],
+  },
+
+  // ────────────────────────────────────────────────────────────────
+  // NEW RULES — first time in effect at a World Cup in 2026
+  // ────────────────────────────────────────────────────────────────
+  {
+    slug: 'new-rules',
+    question: "What new rules are in effect at the 2026 World Cup?",
+    short: "Headline changes: the 8-second goalkeeper rule (corner if breached), captain-only refereeing communication, the Adidas Trionda connected ball with embedded sensor, semi-automated offside at every venue, and louder VAR decision announcements over the PA.",
+    long: [
+      "WC2026 inherits the biggest cluster of rule changes since the introduction of VAR. The IFAB approved several updates between 2024 and 2025 — most of them tested at Euro 2024, Copa America 2024 and the Club World Cup 2025 before becoming permanent. All are now in the Laws of the Game 2025/26 and apply at WC2026.",
+      "The five most-visible changes: (1) Goalkeepers now have 8 seconds to release the ball after picking it up — referee gives a visible 5-second hand countdown, and the penalty for breach is a corner kick (used to be an indirect free kick that was almost never enforced). (2) Only team captains can approach the referee to discuss a decision — other players who do face yellow cards. (3) The Adidas Trionda match ball has an embedded sensor providing 500Hz precision on every kick, feeding directly into VAR offside and handball reviews. (4) Semi-automated offside technology is in use at every venue. (5) Referees announce VAR decisions over the stadium PA so fans in the ground know what was reviewed and why.",
+      "Quieter but important: concussion substitutes remain available without counting against the 5 normal subs. Cooling breaks are mandatory at ≥30°C (relevant for Dallas, Houston, Atlanta in the US summer). The squad cap stays at 26 players — an injured GK can be replaced even after the first match, with FIFA medical approval.",
+      "Not in play at WC2026: 'sin bins' for dissent (still in trial at lower levels), the 'Wenger offside rule' (any part of body forward), and rolling subs. They've been discussed but not approved for the senior international game.",
+    ],
+    related: ['gk-8-seconds', 'captain-rule', 'connected-ball', 'var-transparency', 'var'],
+    tags: ['new-rules', 'rules'],
+  },
+  {
+    slug: 'gk-8-seconds',
+    question: "How does the new 8-second goalkeeper rule work at WC2026?",
+    short: "Goalkeepers must release the ball within 8 seconds of catching or picking it up. The referee shows a visible 5-second hand countdown — if the keeper breaches, the opposition gets a corner kick.",
+    long: [
+      "The old rule said goalkeepers could hold the ball for 6 seconds, with the penalty being an indirect free kick. Referees almost never enforced it — the indirect FK from inside the penalty area was both awkward to police and rare to convert, so they let it slide. The result: keepers routinely held the ball 15-25 seconds to kill momentum.",
+      "From the 2025/26 Laws onward, the limit is 8 seconds — slightly more generous — but the penalty is now a corner kick, which is a real punishment. To make the count visible, the referee raises one hand and shows a 5-second countdown with their fingers (5, 4, 3, 2, 1) when the keeper is at 3 seconds. Players, coaches and crowd all see it.",
+      "Trialled at the 2025 FIFA Club World Cup in the United States — average GK hold time dropped from about 14 seconds to 7-8 seconds within the first round. Coaches adjusted by drilling quicker releases and varying short/long distribution. The rule expects to add 2-4 minutes of effective playing time per match.",
+      "Edge cases: the count restarts after the keeper releases and re-catches the ball (e.g., dropping it to dribble out then picking up — illegal anyway). The 8 seconds also pauses for time-wasting protests or injuries that the ref calls play down for.",
+    ],
+    related: ['new-rules', 'backpass-rule', 'knockout-rules'],
+    tags: ['new-rules', 'rules'],
+  },
+  {
+    slug: 'captain-rule',
+    question: "What is the captain-only refereeing rule at WC2026?",
+    short: "Only the team captain is allowed to approach the referee to question a decision. Other players who do are shown a yellow card. The rule was trialled at Euro 2024 and Copa America 2024 and is permanent at WC2026.",
+    long: [
+      "The IFAB introduced the captain-only protocol to reduce the rugby-style scrums of players surrounding referees after big decisions. Under the rule, only the player wearing the captain's armband can discuss a decision with the referee in those flashpoint moments. Any other player who joins the protest gets a mandatory yellow card.",
+      "The rule was first applied at Euro 2024 in Germany, then Copa America 2024 in the United States, before being adopted into the standard Laws of the Game. By WC2026 the protocol is fully embedded — TV broadcasters have spent two years educating fans on it, and every federation has briefed coaches and captains.",
+      "Practical effects observed in the trial competitions: 38% drop in 'crowding referee' incidents at Euro 2024 vs Euro 2020, and a measurable cleaner restart pace after fouls. Captains who lost their cool also got booked — Cristiano Ronaldo and Romelu Lukaku among the early high-profile yellows during the trial.",
+      "Exception: when the captain is a goalkeeper and the incident is at the other end, an outfield 'on-pitch leader' nominated before kickoff can speak on their behalf. The IFAB publishes the protocol annually in its 'Laws of the Game' app.",
+    ],
+    related: ['new-rules', 'discipline'],
+    tags: ['new-rules', 'rules'],
+  },
+  {
+    slug: 'connected-ball',
+    question: "What is the Adidas Trionda connected ball at WC2026?",
+    short: "The official WC2026 match ball — a tri-coloured Adidas design with a 500Hz inertial measurement unit (IMU) sensor in the centre. The sensor feeds precise kick data to VAR for offside and handball reviews.",
+    long: [
+      "The Adidas Trionda is the official WC2026 match ball. The name is a portmanteau of 'tri' (three host nations: US, Mexico, Canada) and 'onda' (Spanish for 'wave'). Its panels feature the red, green and red-white-blue accents of the host federations. Adidas has been the World Cup ball supplier since 1970 — this is its 15th tournament running.",
+      "Inside the ball: a battery-powered inertial measurement unit (IMU) at the centre, suspended in a foam cocoon so it stays balanced as the ball rolls. The sensor transmits 500 readings per second over wireless to the VAR centre, providing the precise moment a player makes contact with the ball.",
+      "Why that matters: in offside reviews, the system can pin the exact frame the ball was struck rather than estimating from broadcast cameras. The 2022 World Cup quarterfinal against the Netherlands famously saw the Argentina vs Netherlands offside decisions delayed minutes — with Trionda data, the same call is now made in 15-20 seconds. Handball reviews benefit similarly: the sensor confirms whether contact preceded a goal or not.",
+      "Connected Ball Technology (CBT) was introduced at WC2022 with the Al Rihla ball but had a lower sample rate. The Trionda triples that. The ball also passes the standard FIFA Quality Pro testing — weight, circumference, water absorption, bounce, sphericity — at the higher 500Hz spec.",
+    ],
+    related: ['new-rules', 'var', 'semi-automated-offside'],
+    tags: ['new-rules', 'rules'],
+  },
+  {
+    slug: 'var-transparency',
+    question: "Will referees announce VAR decisions out loud at WC26?",
+    short: "Yes — referees explain their final decision over the stadium PA system after every on-field review, so fans in the ground hear exactly what was reviewed and the outcome. Trialled at the 2023 Women's World Cup, now standard at WC2026.",
+    long: [
+      "One of the long-standing complaints about VAR was the 'silent review' — fans in the stadium had no idea why play stopped for 4 minutes, then suddenly a goal was disallowed without explanation. The 2023 Women's World Cup in Australia and New Zealand trialled PA announcements after every formal VAR review. The crowd applauded it.",
+      "At WC26, the protocol is permanent. After every on-field review (where the referee goes to the pitchside monitor), the referee announces three things over the stadium PA in English: the incident reviewed, the decision before the review, and the decision after. Example: 'Following review for a possible offside in the build-up to the goal — the decision is GOAL.'",
+      "Why English: it's the standard FIFA tournament language. Each host country also gets a local-language voiceover from the stadium announcer right after the referee's English version, so Mexican fans at the Estadio Azteca hear it in Spanish moments later.",
+      "What doesn't get announced: 'check complete' reviews (VAR clears the original decision without going to the monitor) are still silent — the referee just signals to restart play. Only formal on-field reviews trigger an announcement. A live counter at the bottom of the broadcast feed also tells TV viewers how long the review is taking.",
+    ],
+    related: ['new-rules', 'var', 'connected-ball'],
+    tags: ['new-rules', 'rules'],
+  },
+
+  // ────────────────────────────────────────────────────────────────
+  // EXISTING RULES — reminders of the basics most fans get fuzzy on
+  // ────────────────────────────────────────────────────────────────
+  {
+    slug: 'offside-explained',
+    question: "How does the offside rule actually work in football?",
+    short: "A player is offside if any part of their body that can score (not arms/hands) is closer to the opponent's goal line than both the ball AND the second-to-last defender at the moment a teammate plays the ball to them.",
+    long: [
+      "The offside rule has three parts that all need to be true at once. (1) Position: the attacker is in the opponent's half AND closer to the goal line than the ball AND closer than the second-to-last defender (usually a defender, plus the goalkeeper). (2) Active involvement: the attacker actually plays the ball, interferes with a defender, or gains an advantage from being in that position. (3) The infraction is judged at the moment the ball is played by the attacker's teammate — not when the attacker receives it.",
+      "Things that are NOT offside: receiving the ball directly from a goal kick, throw-in or corner kick. Receiving the ball from an opponent's deliberate pass or save (not a deflection). Being level with the second-to-last defender at the moment the ball is played — level is onside, by the laws.",
+      "What VAR + semi-automated offside check: not whether the attacker is interfering (that's still subjective and on the on-field referee) but whether the position was offside at the moment the pass was played. The Trionda ball's sensor pins the exact pass moment to the millisecond; the AI limb-tracking from multiple cameras builds a 3D skeleton of every player at that frame. If any part of the attacker's body that can legally score is ahead of the second-to-last defender, it's offside.",
+      "Common myths busted: hand/arm offside doesn't exist (you can't score with your hand, so it doesn't count for offside either). And the 'daylight rule' (gap between attacker and defender) was never a real law — it's just a TV term for clearly offside positions.",
+    ],
+    related: ['var', 'connected-ball'],
+    tags: ['rules'],
+  },
+  {
+    slug: 'handball-rule',
+    question: "When is it a handball at the World Cup?",
+    short: "Deliberate handball is always a foul. Accidental handball is only a foul if (a) it directly leads to a goal by the same player, or (b) the player's arm is in an 'unnaturally large' position making the body bigger. Accidental handball by a teammate that leads to a goal is no longer a foul.",
+    long: [
+      "The handball rule was tightened in 2021 after years of confusion about 'unintentional' touches. The current Law 12 framework distinguishes deliberate handball (always a foul) from accidental contact (judged on context).",
+      "Accidental handball is a foul when the arm/hand is in an 'unnaturally large' position — i.e., away from the body in a way that makes the silhouette bigger and increases the chance of contact. Hands behind the back, arms tucked in, or arms used for balance close to the body are NOT unnaturally large. Arms raised above shoulder level, or extended sideways, generally ARE.",
+      "There's a 'chain of contact' rule: if you accidentally handle the ball and immediately score (or create a chance to score) yourself, it's a foul. But if your teammate handles the ball accidentally and you score off it, the goal stands — the rule was softened in 2021 so accidental teammate handball doesn't punish a whole team.",
+      "Penalty area specifics: a handball in your own penalty area gives the opponent a penalty kick. The 'making the body bigger' test is applied more strictly inside the box because the consequence is severe. VAR can review for clear and obvious errors — but referees on the field have the final call on subjective interpretation. Expect 2-3 contentious handball calls at WC2026.",
+    ],
+    related: ['var', 'knockout-rules'],
+    tags: ['rules'],
+  },
+  {
+    slug: 'concussion-subs',
+    question: "How do concussion substitutions work at WC2026?",
+    short: "Each team gets up to 2 additional 'concussion subs' on top of their 5 regular substitutions, available at any point during a match — including extra time — for any player suspected of concussion or serious head injury.",
+    long: [
+      "The IFAB approved permanent concussion substitutions in 2021 after pressure from medical bodies and the PFA. Under the rule, any player who shows signs of a possible concussion can be permanently substituted, and the substitution does NOT count against the team's 5 normal subs (or 6 with the extra-time slot).",
+      "Each team has up to 2 concussion subs per match. They're available at any stoppage — during regulation, extra time, or even between extra time periods. The opposition team is automatically also granted an equivalent substitution to keep things balanced, even if they don't have a concussed player.",
+      "Decision-making: the team doctor has sole authority. If they decide a player needs to come off for assessment, the player CANNOT return to the field even if later cleared — to avoid the temptation to send a borderline-injured player back on. This is the so-called 'temporary substitute' debate IFAB has been having for years — currently rejected in favour of permanent subs only.",
+      "Coaches at WC2026 keep a designated concussion-replacement player in mind throughout each match. Goalkeeper concussions are particularly disruptive — the regulation that each squad must include 3 GKs in their 26 stems partly from this risk.",
+    ],
+    related: ['squad-rules', 'knockout-rules'],
+    tags: ['rules'],
+  },
+  {
+    slug: 'backpass-rule',
+    question: "Can a goalkeeper pick up a back-pass from a teammate?",
+    short: "No. Since 1992 a goalkeeper cannot use their hands on a deliberate pass kicked back to them by a teammate. Doing so gives the opposition an indirect free kick from the spot.",
+    long: [
+      "The back-pass rule was introduced in 1992 after teams in the 1990 World Cup wasted time by passing back to the keeper, who would catch and hold the ball. Iconically, the 1990 group game between Egypt and the Netherlands saw the Dutch keeper hold the ball for over a minute without releasing.",
+      "Under the modern Law 12: if a teammate deliberately kicks the ball back to the keeper, the keeper must play it with their feet — they cannot pick it up. Headers, chest passes and accidental deflections are exempt — a defender heading back to the keeper is fine. The rule also applies to throw-ins: if you throw the ball back to your own keeper, they can't pick it up.",
+      "Punishment for breach: indirect free kick to the opposition at the spot the keeper handled the ball. In the penalty area, this is dangerous — the wall must be on the goal-line and any defender can block, but the attacking team gets a close-range chance. Goals from these have been scored at major tournaments.",
+      "Combined with the new 8-second rule, the back-pass rule sharply limits how teams can run down the clock. A leading team can no longer pass back, have the keeper hold, and reset — they must play forward or accept the 8-second clock starting on every keeper touch.",
+    ],
+    related: ['gk-8-seconds', 'new-rules'],
+    tags: ['rules'],
+  },
+  {
+    slug: 'cooling-breaks',
+    question: "How do cooling breaks work in hot weather at WC2026?",
+    short: "When the on-field 'wet-bulb' temperature exceeds 32°C, the referee can call a 3-minute cooling break around the 30th minute of each half so players can rehydrate and the team doctors can check on conditions.",
+    long: [
+      "Cooling breaks were introduced after the 2014 World Cup in Brazil, where several matches saw players visibly cramping in 35°C+ heat. The standard threshold is a 'wet-bulb globe temperature' (WBGT) above 32°C — a measure that combines air temperature, humidity, wind and solar radiation, more accurate than thermometer readings.",
+      "How it works: the FIFA medical officer measures WBGT at the pitch before kickoff and 15 minutes into each half. If it crosses 32°C, the referee builds in a 3-minute pause at the next natural stoppage past the 30th minute of each half. Players get water on the sidelines; team doctors check on anyone struggling. The clock keeps running — added time absorbs the pause.",
+      "Relevant venues at WC2026: Dallas (AT&T Stadium — air-conditioned, low risk), Houston (NRG Stadium — air-conditioned), Atlanta (Mercedes-Benz Stadium — air-conditioned), Miami (Hard Rock Stadium — open-air, high humidity), Kansas City (Arrowhead — open-air, hot summer days). Open-air venues in the Sun Belt are the ones to watch. The June 11 – July 19 window covers the hottest stretch of the year in the US South.",
+      "Heat protocol matters for predictions: high-WBGT matches see fewer goals on average (defences press less aggressively when cramping is a risk) and more substitutions used early. Top scorers and over-2.5 goal markets shift accordingly.",
+    ],
+    related: ['squad-rules', 'host-cities'],
     tags: ['rules', 'logistics'],
   },
 ]
