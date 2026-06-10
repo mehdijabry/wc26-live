@@ -18,3 +18,18 @@ SUPABASE_URL = "https://ssvvojhxyotlbcdosiog.supabase.co"
 
 # Secrets — set with `wrangler secret put SUPABASE_SERVICE_KEY`
 # DO NOT commit secrets here.
+
+# Durable Object for precise kickoff push scheduling — see KickoffScheduler
+# class in src/index.ts. Stores a queue of { fireAt, notif } items and uses
+# DO Alarms to fire each one at the exact second instead of waiting for
+# the next 5-minute cron tick.
+[[durable_objects.bindings]]
+name = "SCHEDULER"
+class_name = "KickoffScheduler"
+
+# First-time migration registering the class. New DO class introductions
+# always require this — wrangler 4 chooses SQLite storage by default,
+# which is what we want (the queue is stored in DO storage, not KV).
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["KickoffScheduler"]

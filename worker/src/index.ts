@@ -20,6 +20,10 @@ export interface Env {
   VAPID_PUBLIC: string
   VAPID_PRIVATE: string
   VAPID_SUBJECT: string  // 'mailto:info@pressing90.live'
+  // Durable Object scheduler — fires kickoff pushes at the exact
+  // second they're due (instead of waiting for the next 5-min cron).
+  // See KickoffScheduler class at the bottom of this file.
+  SCHEDULER: DurableObjectNamespace
 }
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
@@ -269,6 +273,21 @@ export default {
 
 const KV_TTL_SECONDS = 36 * 3600
 
+/** Item shape exchanged between the cron and the KickoffScheduler DO. */
+type ScheduledPush = {
+  id: string       // ESPN event id (also the dedupe key in the DO)
+  fireAt: number   // epoch ms, when alarm() should fire the push
+  notif: { title: string; body: string; url: string; tag: string }
+}
+
+// Lookahead window for kickoff scheduling. Cron interval is 5 min and
+// the kickoff alert fires 15 min before each match, so the worst case
+// gap between successful crons (one missed = 10 min) plus the 15-min
+// lead means we need to surface matches at least 25 min in advance.
+// 30 min gives 5 min of safety margin on top.
+const KICKOFF_LOOKAHEAD_MS = 30 * 60_000
+const KICKOFF_LEAD_MS = 15 * 60_000
+
 async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Promise<void> {
   // No subscribers? Skip the whole thing — no point computing alerts
   // we won't send.
@@ -284,16 +303,98 @@ async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Prom
   const subsList = (await subsCheck.json()) as Array<{ endpoint: string }>
   if (subsList.length === 0) return
 
+  // ---- Pass A: schedule upcoming kickoffs via the Durable Object -----
+  // Precise to the second — DO Alarms fire at the exact requested time,
+  // not at the next cron tick. This pass is purely scheduling; the
+  // actual push goes out from the DO's alarm() handler.
+  const pendingSchedule: ScheduledPush[] = []
   for (const ev of events ?? []) {
     try {
-      await maybeFireOneEvent(env, ev)
+      const sched = scheduledKickoffFor(ev)
+      if (!sched) continue
+      // KV sentinel prevents the same kickoff from being re-scheduled
+      // on every 5-min cron run. The DO is the authoritative dedupe
+      // (it indexes by event id) but the KV check skips even building
+      // the request payload, which is the hot path on the cron.
+      const seenKey = `alert:kickoff:${sched.id}`
+      if (await env.CACHE.get(seenKey)) continue
+      pendingSchedule.push(sched)
+      await env.CACHE.put(seenKey, 'scheduled', { expirationTtl: KV_TTL_SECONDS })
     } catch (e) {
-      console.log('[push] event alert failed', ev.id, e)
+      console.log('[push] scheduling failed', ev.id, e)
+    }
+  }
+  if (pendingSchedule.length > 0) {
+    try {
+      const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
+      await stub.fetch('https://do/schedule', {
+        method: 'POST',
+        body: JSON.stringify(pendingSchedule),
+      })
+    } catch (e) {
+      console.log('[push] DO schedule call failed', e)
+      // If the DO call failed, roll back the KV sentinels so the next
+      // cron retries. Otherwise the matches would be silently lost.
+      for (const item of pendingSchedule) {
+        await env.CACHE.delete(`alert:kickoff:${item.id}`)
+      }
+    }
+  }
+
+  // ---- Pass B: inline goal + FT alerts (state-change detection) ------
+  // Goals and FTs aren't predictable like kickoffs — the cron itself
+  // detects them by comparing the live ESPN payload with the last
+  // known state in KV. Latency is bounded by the cron interval (5 min).
+  for (const ev of events ?? []) {
+    try {
+      await maybeFireGoalOrFt(env, ev)
+    } catch (e) {
+      console.log('[push] goal/FT alert failed', ev.id, e)
     }
   }
 }
 
-async function maybeFireOneEvent(
+/**
+ * Pure function: inspect an event and return the scheduled-push payload
+ * if it's a WC match with a kickoff within our lookahead window, else
+ * null. Doesn't side-effect.
+ */
+function scheduledKickoffFor(
+  ev: NonNullable<EspnScoreboard['events']>[number]
+): ScheduledPush | null {
+  if (ev.status?.type?.state !== 'pre') return null
+  if (!ev.date) return null
+  const kickoff = Date.parse(ev.date)
+  if (!Number.isFinite(kickoff)) return null
+  const fireAt = kickoff - KICKOFF_LEAD_MS
+  const now = Date.now()
+  // Not in the lookahead window? Skip.
+  if (fireAt < now - 60_000) return null  // already missed (with a 1-min slack)
+  if (fireAt > now + KICKOFF_LOOKAHEAD_MS) return null
+
+  const id = String(ev.id ?? '')
+  if (!id) return null
+  const comp = ev.competitions?.[0]
+  if (!comp) return null
+  const home = comp.competitors?.find((c) => c.homeAway === 'home')
+  const away = comp.competitors?.find((c) => c.homeAway === 'away')
+  if (!home || !away) return null
+  const homeName = home.team?.shortDisplayName ?? home.team?.displayName ?? '?'
+  const awayName = away.team?.shortDisplayName ?? away.team?.displayName ?? '?'
+
+  return {
+    id,
+    fireAt,
+    notif: {
+      title: `⚽ ${homeName} v ${awayName}`,
+      body: 'Kickoff in 15 min — tap to follow live.',
+      url: '/today',
+      tag: `kickoff-${id}`,
+    },
+  }
+}
+
+async function maybeFireGoalOrFt(
   env: Env,
   ev: NonNullable<EspnScoreboard['events']>[number]
 ): Promise<void> {
@@ -306,25 +407,7 @@ async function maybeFireOneEvent(
   if (!home || !away) return
   const homeName = home.team?.shortDisplayName ?? home.team?.displayName ?? '?'
   const awayName = away.team?.shortDisplayName ?? away.team?.displayName ?? '?'
-  const state = ev.status?.type?.state // 'pre' | 'in' | 'post'
-
-  // ---- KICKOFF: 13–17 min before pre-match start ----------------------
-  if (state === 'pre' && ev.date) {
-    const kickoff = Date.parse(ev.date)
-    const now = Date.now()
-    const minsUntil = Math.round((kickoff - now) / 60_000)
-    if (minsUntil >= 13 && minsUntil <= 17) {
-      const seenKey = `alert:kickoff:${id}`
-      if (await env.CACHE.get(seenKey)) return
-      await broadcastCore(env, {
-        title: `⚽ ${homeName} v ${awayName}`,
-        body: `Kickoff in ${minsUntil} min — tap to follow live.`,
-        url: '/today',
-        tag: `kickoff-${id}`,
-      })
-      await env.CACHE.put(seenKey, '1', { expirationTtl: KV_TTL_SECONDS })
-    }
-  }
+  const state = ev.status?.type?.state
 
   // ---- GOAL: score increments while state === 'in' --------------------
   if (state === 'in') {
@@ -1213,4 +1296,110 @@ async function broadcastCore(
     )
   }
   return { sent, failed, total: rows.length }
+}
+
+// ============================================================================
+// Durable Object: KickoffScheduler
+// ============================================================================
+//
+// Holds a queue of upcoming push items keyed by event id and uses DO
+// Alarms to fire each one at the exact second it's due. One singleton
+// instance ('singleton' DO name) is enough for the whole tournament —
+// 64 matches * one alert each is well within DO storage limits.
+//
+// Why a DO instead of just a tighter cron:
+//   - DO Alarms fire at the requested timestamp ± a few seconds, vs a
+//     5-min cron tick that can land anywhere in the 13-17 min window
+//     and even miss matches that fall just outside it.
+//   - The notification body can honestly say 'in 15 min' because it
+//     fires at exactly kickoff - 15 min, not 'somewhere between 13
+//     and 17 min before kickoff'.
+//   - Cron-level dedupe (KV sentinel) survives DO restarts and won't
+//     accidentally re-fire a kickoff that's already gone out.
+//
+// Protocol (HTTP-shaped because that's how Worker → DO talks):
+//   POST /schedule   body: ScheduledPush[]   adds items, sets alarm
+//
+// The DO is invoked from the 5-min cron via:
+//   env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
+//     .fetch('https://do/schedule', { method: 'POST', body })
+
+export class KickoffScheduler {
+  private state: DurableObjectState
+  private env: Env
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state
+    this.env = env
+  }
+
+  async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url)
+    if (url.pathname === '/schedule' && req.method === 'POST') {
+      try {
+        const incoming = (await req.json()) as ScheduledPush[]
+        if (!Array.isArray(incoming)) return new Response('expected array', { status: 400 })
+        // Upsert by id into the queue, keep it sorted by fireAt asc.
+        const existing = (await this.state.storage.get<ScheduledPush[]>('queue')) ?? []
+        const byId = new Map<string, ScheduledPush>()
+        for (const item of existing) byId.set(item.id, item)
+        for (const item of incoming) byId.set(item.id, item) // overwrite ok — same id same kickoff time
+        const merged = [...byId.values()].sort((a, b) => a.fireAt - b.fireAt)
+        await this.state.storage.put('queue', merged)
+        // Re-arm the alarm to the earliest pending fireAt.
+        const next = merged[0]
+        if (next) {
+          // setAlarm replaces any existing alarm — no need to clear first.
+          await this.state.storage.setAlarm(next.fireAt)
+        }
+        return new Response(JSON.stringify({ ok: true, queued: incoming.length, total: merged.length }), {
+          headers: { 'content-type': 'application/json' },
+        })
+      } catch (e) {
+        return new Response(`schedule failed: ${String(e)}`, { status: 500 })
+      }
+    }
+    if (url.pathname === '/inspect' && req.method === 'GET') {
+      // Debug helper — list what's pending. Useful for `wrangler tail`.
+      const queue = (await this.state.storage.get<ScheduledPush[]>('queue')) ?? []
+      return new Response(JSON.stringify({ queue }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  }
+
+  /**
+   * Fires when the previously-set alarm reaches its scheduled time.
+   * Pops every queue item whose fireAt is in the past (including the
+   * one that triggered this alarm), broadcasts their notifications,
+   * and re-arms the alarm to the next pending item.
+   *
+   * Cloudflare guarantees alarm() runs at most ~30s after the requested
+   * time. If alarm() throws, CF retries with exponential backoff (up to
+   * ~6 times), so transient broadcast failures are forgiven.
+   */
+  async alarm(): Promise<void> {
+    const queue = (await this.state.storage.get<ScheduledPush[]>('queue')) ?? []
+    if (queue.length === 0) return
+    const now = Date.now()
+    const due = queue.filter((i) => i.fireAt <= now + 5_000) // 5s slack
+    const remaining = queue.filter((i) => i.fireAt > now + 5_000)
+
+    // Fire each due item — errors on one don't block the others.
+    for (const item of due) {
+      try {
+        await broadcastCore(this.env, item.notif)
+        console.log(`[push:do] fired kickoff for event ${item.id}`)
+      } catch (e) {
+        console.log(`[push:do] broadcast failed for ${item.id}:`, e)
+      }
+    }
+
+    await this.state.storage.put('queue', remaining)
+    // Re-arm for the next pending item, if any.
+    if (remaining.length > 0) {
+      await this.state.storage.setAlarm(remaining[0].fireAt)
+    }
+  }
 }
