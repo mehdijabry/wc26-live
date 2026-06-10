@@ -272,7 +272,12 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
               )}
 
               {tab === 'stats' && (
-                <StatsTab record={record} teamMatches={teamMatches} />
+                <StatsTab
+                  record={record}
+                  teamMatches={teamMatches}
+                  history={history}
+                  teamCode={teamCode ?? ''}
+                />
               )}
 
               <div className="mt-6 text-[10px] font-mono text-slate-400 text-center">
@@ -340,10 +345,24 @@ function InfosTab({
   // chose above. Compute W/D/L by comparing our team's score to the
   // opponent's. ESPN's /schedule endpoint nests score as { value }, so
   // we read both shapes defensively.
+  // ESPN's /team-history endpoint returns events with status === null at
+  // the top level — the actual status lives inside competitions[0].status.
+  // The /tournament endpoint, by contrast, exposes status both ways. So
+  // we read both paths defensively, otherwise the form bullets stay
+  // empty for any team whose WC games haven't started yet (history is
+  // the only source pre-tournament).
+  // ev.competitions[0] isn't typed with `status` in EspnEvent, but the
+  // /team-history endpoint returns it at runtime — cast to read it.
+  const eventState = (ev: EspnEvent): string | undefined => {
+    const root = ev.status?.type?.state
+    if (root) return root
+    const comp = ev.competitions?.[0] as { status?: { type?: { state?: string } } } | undefined
+    return comp?.status?.type?.state
+  }
   const formSource: EspnEvent[] =
     !usingHistory
-      ? teamMatches.filter((ev) => ev.status?.type?.state === 'post')
-      : (history?.events ?? []).filter((ev) => ev.status?.type?.state === 'post')
+      ? teamMatches.filter((ev) => eventState(ev) === 'post')
+      : (history?.events ?? []).filter((ev) => eventState(ev) === 'post')
 
   const form = formSource.slice(-5).map((ev) => {
     const cs = ev.competitions?.[0]?.competitors ?? []
@@ -646,32 +665,91 @@ function HistoryMatchLine({ ev, teamCode }: { ev: HistoryEvent; teamCode: string
   )
 }
 
-function StatsTab({ record, teamMatches }: { record: ReturnType<typeof recordForTeam>; teamMatches: EspnEvent[] }) {
-  const finished = teamMatches.filter((ev) => ev.status?.type?.state === 'post')
-  const avgGoals = record.played ? (record.goalsFor / record.played).toFixed(2) : '—'
-  const avgConceded = record.played ? (record.goalsAgainst / record.played).toFixed(2) : '—'
+function StatsTab({
+  record,
+  teamMatches,
+  history,
+  teamCode,
+}: {
+  record: ReturnType<typeof recordForTeam>
+  teamMatches: EspnEvent[]
+  history: HistoryResponse | null
+  teamCode: string
+}) {
+  // Same fallback logic as InfosTab: prefer in-tournament WC stats once
+  // the team has played any games, otherwise fall back to /team-history
+  // (qualifiers + friendlies). Without this, every team's STATS tab
+  // shows all zeros for the entire pre-tournament window.
+  const usingHistory = record.played === 0 && history !== null
+  const upper = teamCode.toUpperCase()
+
+  // Source events for clean-sheet computation (finished only).
+  const eventState = (ev: EspnEvent): string | undefined => {
+    const root = ev.status?.type?.state
+    if (root) return root
+    const comp = ev.competitions?.[0] as { status?: { type?: { state?: string } } } | undefined
+    return comp?.status?.type?.state
+  }
+  const finished = usingHistory && history
+    ? history.events.filter((ev) => eventState(ev) === 'post')
+    : teamMatches.filter((ev) => eventState(ev) === 'post')
+
+  const stats = usingHistory && history
+    ? {
+        played: history.summary.played,
+        won: history.summary.won,
+        drawn: history.summary.drawn,
+        lost: history.summary.lost,
+        goalsFor: history.summary.goalsFor,
+        goalsAgainst: history.summary.goalsAgainst,
+        points: history.summary.won * 3 + history.summary.drawn,
+      }
+    : {
+        played: record.played,
+        won: record.won,
+        drawn: record.drawn,
+        lost: record.lost,
+        goalsFor: record.goalsFor,
+        goalsAgainst: record.goalsAgainst,
+        points: record.points,
+      }
+
+  const avgGoals = stats.played ? (stats.goalsFor / stats.played).toFixed(2) : '—'
+  const avgConceded = stats.played ? (stats.goalsAgainst / stats.played).toFixed(2) : '—'
+
+  // Clean sheets — opponent scored 0. Read score defensively (number or
+  // {value}) like elsewhere in the file.
   const cleanSheets = finished.filter((ev) => {
     const cs = ev.competitions?.[0]?.competitors ?? []
-    const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() === finished[0]?.competitions?.[0]?.competitors?.[0]?.team?.abbreviation?.toUpperCase() ? false : true)
-    return parseInt(other?.score ?? '0', 10) === 0
+    const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== upper)
+    if (!other) return false
+    const raw = (other as { score?: unknown }).score
+    const v =
+      typeof raw === 'object' && raw
+        ? Number((raw as { value?: number }).value ?? 0)
+        : Number(raw ?? 0)
+    return Number.isFinite(v) && v === 0
   }).length
+
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Kpi label="Matches" value={String(record.played)} />
-        <Kpi label="Points" value={String(record.points)} highlight />
+        <Kpi label="Matches" value={String(stats.played)} />
+        <Kpi label="Points" value={String(stats.points)} highlight />
         <Kpi label="Goals/match" value={avgGoals} />
         <Kpi label="Conceded/match" value={avgConceded} />
         <Kpi label="Clean sheets" value={String(cleanSheets)} />
-        <Kpi label="Wins" value={String(record.won)} highlight />
-        <Kpi label="Draws" value={String(record.drawn)} />
-        <Kpi label="Losses" value={String(record.lost)} />
+        <Kpi label="Wins" value={String(stats.won)} highlight />
+        <Kpi label="Draws" value={String(stats.drawn)} />
+        <Kpi label="Losses" value={String(stats.lost)} />
       </div>
-      {record.played === 0 && (
-        <div className="text-xs text-slate-500 text-center font-mono">
-          Stats will populate once matches finish.
-        </div>
-      )}
+      <div className="text-[11px] text-slate-500 text-center font-mono">
+        {usingHistory
+          ? `Stats from the last ${stats.played} matches (qualifiers + friendlies). Updates with WC26 results once the tournament starts.`
+          : stats.played === 0
+            ? 'Stats will populate once matches finish.'
+            : 'WC26 in-tournament stats.'}
+      </div>
     </div>
   )
 }

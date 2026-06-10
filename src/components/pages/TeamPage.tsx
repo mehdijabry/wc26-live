@@ -368,7 +368,16 @@ export function TeamPage() {
           <h2 className="font-display font-bold text-xl text-ink-900 mb-3">Recent results</h2>
           <div className="space-y-2">
             {history.events
-              .filter((ev) => (ev.status?.type as { state?: string } | undefined)?.state === 'post')
+              .filter((ev) => {
+                // ESPN /team-history puts status on competitions[0].status,
+                // not on the event root. Reading both keeps the filter
+                // working on either shape. competitions[0] isn't typed
+                // with `status` so we cast.
+                const root = (ev.status?.type as { state?: string } | undefined)?.state
+                const comp = ev.competitions?.[0] as { status?: { type?: { state?: string } } } | undefined
+                const nested = comp?.status?.type?.state
+                return (root ?? nested) === 'post'
+              })
               .slice(-10)
               .reverse()
               .map((ev) => (
