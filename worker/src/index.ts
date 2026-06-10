@@ -1027,7 +1027,7 @@ async function upsertMatchResult(
 // The encryption is a strict implementation of draft-ietf-webpush-encryption
 // (now RFC 8291). HKDF + AES-128-GCM. ~80 lines.
 
-type PushSub = { endpoint: string; keys: { p256dh: string; auth: string } }
+export type PushSub = { endpoint: string; keys: { p256dh: string; auth: string } }
 
 function b64uDecode(b64u: string): Uint8Array {
   const b64 = (b64u + '==='.slice((b64u.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/')
@@ -1194,7 +1194,7 @@ async function encryptPayload(
   return { body, salt, pubKey: ephemeralPubRaw }
 }
 
-async function sendWebPush(env: Env, sub: PushSub, payload: object): Promise<Response> {
+export async function sendWebPush(env: Env, sub: PushSub, payload: object): Promise<Response> {
   const aud = new URL(sub.endpoint).origin
   const jwt = await vapidJwt(env, aud)
   const { body } = await encryptPayload(
@@ -1381,7 +1381,12 @@ function constantTimeEqual(a: string, b: string): boolean {
  * endpoints from Supabase so dead subscriptions don't keep eating
  * subrequests forever.
  */
-async function broadcastCore(
+/**
+ * Exported so admin.ts can call it directly. We can't have admin.ts do an
+ * internal `fetch(self_url + '/push/broadcast')` because Cloudflare Workers
+ * forbid a worker from fetching its own hostname (it would loop).
+ */
+export async function broadcastCore(
   env: Env,
   notif: { title: string; body: string; url: string; tag: string }
 ): Promise<{ sent: number; failed: number; total: number }> {

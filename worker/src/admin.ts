@@ -18,6 +18,11 @@ import {
   readBoundedJson,
   safeString,
 } from './security'
+// We import the broadcast logic directly because Cloudflare Workers don't
+// allow same-worker fetches (would be a self-loop). admin.ts and index.ts
+// share the same Env shape — see broadcastCore() in index.ts for details.
+import { broadcastCore, sendWebPush } from './index'
+import type { Env, PushSub } from './index'
 
 export interface AdminEnv {
   CACHE: KVNamespace
@@ -673,13 +678,8 @@ async function handleSiteHealth(env: AdminEnv): Promise<Response> {
 // ─────────────────────────────────────────────────────────────────────
 
 async function handleAdminBroadcast(req: Request, env: AdminEnv): Promise<Response> {
-  // Delegate to the existing broadcast endpoint internally via a fetch
-  // — keeps the implementation in one place. We mint a temporary admin
-  // token from the existing ADMIN_TOKEN secret… actually simpler: call
-  // broadcastCore directly. We re-fetch the body and call the existing
-  // logic via the public path so we don't duplicate. Easiest: forward
-  // via the existing /push/broadcast handler.
-  // For minimal moving parts we just inline the same fan-out logic.
+  // Validate inputs the same way the public /push/broadcast does so the
+  // semantics stay identical.
   const raw = await readBoundedJson(req, 4 * 1024)
   if (!raw || typeof raw !== 'object') return jsonResp({ error: 'bad json' }, 400)
   const p = raw as { title?: unknown; body?: unknown; url?: unknown; tag?: unknown }
@@ -688,20 +688,11 @@ async function handleAdminBroadcast(req: Request, env: AdminEnv): Promise<Respon
   const targetUrl = safeString(p.url, 200) ?? '/today'
   if (!targetUrl.startsWith('/')) return jsonResp({ error: 'url must be relative' }, 400)
   const tag = safeString(p.tag, 60) ?? 'admin-broadcast'
-  // We can't call functions from index.ts here without circular import;
-  // we forward via the public /push/broadcast endpoint, which already
-  // has all the fan-out + 410-prune logic. The session check above
-  // already authorised this caller; we sign with the static ADMIN_TOKEN
-  // we already have so /push/broadcast accepts the inbound call.
-  const adminToken = (env as AdminEnv & { ADMIN_TOKEN?: string }).ADMIN_TOKEN
-  if (!adminToken) return jsonResp({ error: 'ADMIN_TOKEN not set' }, 503)
-  const inner = await fetch(new URL(req.url).origin + '/push/broadcast', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-admin-token': adminToken },
-    body: JSON.stringify({ title, body, url: targetUrl, tag }),
-  })
-  const data = await inner.json()
-  return jsonResp(data, inner.status)
+  // Direct call instead of internal fetch — Workers refuse same-host
+  // fetches (loop guard). The admin session check above already
+  // authorised the caller; broadcastCore is pure data + push fan-out.
+  const result = await broadcastCore(env as unknown as Env, { title, body, url: targetUrl, tag })
+  return jsonResp({ ok: true, ...result })
 }
 
 async function handleAdminSinglePush(req: Request, env: AdminEnv): Promise<Response> {
@@ -710,13 +701,27 @@ async function handleAdminSinglePush(req: Request, env: AdminEnv): Promise<Respo
   const p = raw as { endpoint?: unknown; title?: unknown; body?: unknown; url?: unknown }
   const endpoint = safeString(p.endpoint, 600)
   if (!endpoint) return jsonResp({ error: 'missing endpoint' }, 400)
-  // Forward through the existing /push/test endpoint.
-  const inner = await fetch(new URL(req.url).origin + '/push/test', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ endpoint, title: p.title, body: p.body, url: p.url }),
-  })
-  return jsonResp(await inner.json(), inner.status)
+  // Resolve the full subscription row (we need p256dh + auth keys for
+  // sendWebPush). Same lookup the public /push/test does, inlined to
+  // avoid the same-worker fetch loop.
+  const lookupResp = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}&select=endpoint,p256dh,auth&limit=1`,
+    {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  const rows = (await lookupResp.json()) as Array<{ endpoint: string; p256dh: string; auth: string }>
+  const row = rows[0]
+  if (!row) return jsonResp({ error: 'subscription not found' }, 404)
+  const sub: PushSub = { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } }
+  const title = safeString(p.title, 100) ?? 'WC26 Live'
+  const body = safeString(p.body, 240) ?? 'Test'
+  const url = safeString(p.url, 200) ?? '/today'
+  const r = await sendWebPush(env as unknown as Env, sub, { title, body, url, tag: 'wc26-admin-test' })
+  return jsonResp({ ok: r.ok, status: r.status }, r.ok ? 200 : 502)
 }
 
 async function handleAdminEmail(req: Request, env: AdminEnv): Promise<Response> {
