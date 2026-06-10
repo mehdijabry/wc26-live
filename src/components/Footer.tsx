@@ -24,6 +24,10 @@ export function Footer() {
             Where to Watch
           </Link>
           <span className="text-slate-300">·</span>
+          <Link to="/explained" className="text-slate-600 hover:text-accent-gold transition-colors">
+            Explained
+          </Link>
+          <span className="text-slate-300">·</span>
           <Link to="/about" className="text-slate-600 hover:text-accent-gold transition-colors">
             About
           </Link>

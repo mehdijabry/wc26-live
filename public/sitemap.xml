@@ -130,4 +130,22 @@
     <changefreq>yearly</changefreq>
     <priority>0.3</priority>
   </url>
+  <!-- Explained / FAQ — index + 10 topic pages. High SEO leverage:
+       FAQPage JSON-LD on every page so Google can surface them as
+       'people also ask' tiles and direct featured snippets. -->
+  <url>
+    <loc>https://pressing90.live/explained</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url><loc>https://pressing90.live/explained/format</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/explained/best-thirds</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/explained/host-cities</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/explained/schedule</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/explained/tiebreakers</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/explained/knockout-rules</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/explained/var</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/explained/qualified-teams</loc><changefreq>weekly</changefreq><priority>0.75</priority></url>
+  <url><loc>https://pressing90.live/explained/discipline</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
+  <url><loc>https://pressing90.live/explained/squad-rules</loc><changefreq>weekly</changefreq><priority>0.7</priority></url>
 </urlset>

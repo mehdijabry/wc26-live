@@ -36,6 +36,8 @@ const Terms = lazy(() => import('./components/pages/Terms').then((m) => ({ defau
 const Watch = lazy(() => import('./components/pages/Watch').then((m) => ({ default: m.Watch })))
 const WatchCountry = lazy(() => import('./components/pages/WatchCountry').then((m) => ({ default: m.WatchCountry })))
 const TeamPage = lazy(() => import('./components/pages/TeamPage').then((m) => ({ default: m.TeamPage })))
+const Explained = lazy(() => import('./components/pages/Explained').then((m) => ({ default: m.Explained })))
+const ExplainedTopic = lazy(() => import('./components/pages/ExplainedTopic').then((m) => ({ default: m.ExplainedTopic })))
 
 function App() {
   const authInit = useAuth((s) => s.init)
@@ -173,6 +175,27 @@ function App() {
             element={
               <Suspense fallback={<PageSkeleton caption="Loading team…" />}>
                 <TeamPage />
+              </Suspense>
+            }
+          />
+          {/* /explained — FAQ knowledge base. Index page lists all
+              questions with one-line answers + FAQPage JSON-LD (covers
+              'people also ask' surfaces). Each /explained/:slug page
+              is its own indexable target for direct Google hits like
+              'how does the best third placed teams rule work'. */}
+          <Route
+            path="/explained"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading explainers…" />}>
+                <Explained />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/explained/:slug"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading explainer…" />}>
+                <ExplainedTopic />
               </Suspense>
             }
           />
