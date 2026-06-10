@@ -16,6 +16,7 @@ import { useTournament, matchesForTeam } from '../../store/tournament'
 import { teamBadgeFallback } from '../../lib/utils'
 import { heritageFor } from '../../data/wcHeritage'
 import { narrativeFor } from '../../data/wcNarratives'
+import { PlayerSheet } from '../PlayerSheet'
 
 /**
  * /team/:abbr — full standalone preview page per WC2026 nation. This is
@@ -95,6 +96,11 @@ export function TeamPage() {
   const [roster, setRoster] = useState<RosterResponse | null>(null)
   const [history, setHistory] = useState<HistoryResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  // PlayerSheet opens with these — one modal-level state for the whole
+  // page so we only mount a single PlayerSheet instance (cheaper than
+  // one per row, and a tap on a new row replaces the open one cleanly).
+  const [playerOpenId, setPlayerOpenId] = useState<string | number | undefined>(undefined)
+  const [playerOpenMeta, setPlayerOpenMeta] = useState<{ name?: string; photo?: string } | undefined>(undefined)
   const events = useTournament((s) => s.events)
   const heritage = heritageFor(abbr)
 
@@ -340,7 +346,11 @@ export function TeamPage() {
         {roster?.athletes && roster.athletes.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {roster.athletes.slice(0, 30).map((a) => (
-              <PlayerRow key={a.id} a={a} />
+              <PlayerRow
+                key={a.id}
+                a={a}
+                onOpen={(id, meta) => { setPlayerOpenId(id); setPlayerOpenMeta(meta) }}
+              />
             ))}
           </div>
         ) : loading ? (
@@ -397,6 +407,18 @@ export function TeamPage() {
         Data sources: ESPN public API · FIFA archives · live history endpoint.
         Refreshed at every page load. Not affiliated with FIFA.
       </footer>
+
+      {/* Player profile sheet — same component the TeamSheet modal uses.
+          Fetches ESPN /athletes/:id stats on open and renders bio, club,
+          season stats and headshot. Closed by default; opens when any
+          PlayerRow above is clicked. */}
+      <PlayerSheet
+        open={!!playerOpenId}
+        onClose={() => setPlayerOpenId(undefined)}
+        athleteId={playerOpenId}
+        fallbackName={playerOpenMeta?.name}
+        fallbackPhoto={playerOpenMeta?.photo}
+      />
     </div>
   )
 }
@@ -443,21 +465,34 @@ function NextMatchCard({ ev }: { ev: EspnEvent }) {
   )
 }
 
-function PlayerRow({ a }: { a: RosterAthlete }) {
+function PlayerRow({
+  a,
+  onOpen,
+}: {
+  a: RosterAthlete
+  onOpen: (id: string | number | undefined, meta: { name?: string; photo?: string }) => void
+}) {
+  const name = a.displayName ?? a.fullName ?? a.shortName ?? '?'
+  const photo = a.headshot?.href
   return (
-    <div className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3">
-      <span className="w-7 h-7 rounded-full bg-slate-100 inline-flex items-center justify-center text-[11px] font-bold text-slate-700">
+    <button
+      type="button"
+      onClick={() => onOpen(a.id, { name, photo })}
+      className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-3 text-left transition-colors hover:bg-slate-50 hover:border-accent-gold focus:outline-none focus:ring-2 focus:ring-accent-gold/40"
+    >
+      <span className="w-7 h-7 rounded-full bg-slate-100 inline-flex items-center justify-center text-[11px] font-bold text-slate-700 shrink-0">
         {a.jersey ?? '–'}
       </span>
       <div className="min-w-0 flex-1">
         <div className="text-sm font-semibold text-ink-900 truncate">
-          {a.displayName ?? a.fullName}
+          {name}
         </div>
         <div className="text-[11px] text-slate-500 truncate">
           {[a.position?.abbreviation, a.age ? `${a.age}y` : null].filter(Boolean).join(' · ')}
         </div>
       </div>
-    </div>
+      <span aria-hidden className="text-slate-400 text-sm shrink-0">→</span>
+    </button>
   )
 }
 
