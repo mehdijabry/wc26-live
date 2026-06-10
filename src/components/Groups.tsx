@@ -7,10 +7,10 @@ import {
   relativeTime,
   useTournament,
 } from '../store/tournament'
-import { Link } from 'react-router-dom'
 import { teamBadgeFallback } from '../lib/utils'
 import { LottieLoader } from './LottieLoader'
 import { getCachedTeamForm, prefetchTeamForms, type TeamForm } from '../lib/api'
+import { TeamSheet } from './TeamSheet'
 
 // Editorial Continental Champions — one team per confederation gets a
 // subtle gradient/ring tone. Uses ESPN abbreviations.
@@ -24,9 +24,14 @@ const CONTINENTAL_CHAMPIONS: Record<string, { short: string; tone: string }> = {
 }
 
 export function Groups() {
-  // openTeam modal state was removed when team rows became real
-  // <Link to="/team/abbr"> navigations — the TeamSheet modal is now
-  // only used from DailyMatches and team chips inside MatchSheet.
+  // TeamSheet modal — re-enabled 2026-06-10 after user feedback that
+  // the standalone /team/:abbr SEO page is too light vs the 5-tab
+  // modal experience (Infos / Squad / WC26 / History / Stats). The
+  // SEO pages remain in the sitemap and are still crawlable directly,
+  // but in-app clicks open the rich modal. The TeamSheet also surfaces
+  // a 'Read the full team page →' link to /team/:abbr in its Infos
+  // tab for visitors who want the standalone read.
+  const [openTeam, setOpenTeam] = useState<string | null>(null)
   const { events, fetchedAt, loading, error, load } = useTournament()
   const groups = useMemo(() => deriveLiveGroups(events), [events])
 
@@ -135,23 +140,23 @@ export function Groups() {
                       const logo = teamBadgeFallback(t.logo, t.abbr)
                       return (
                         <li key={t.abbr}>
-                          {/* Group rows now navigate to /team/:abbr full
-                              pages instead of opening the modal — gives
-                              Google real crawlable links to each team's
-                              SEO landing (vs an onClick handler it
-                              can't follow). The TeamSheet modal is
-                              still available from DailyMatches and
-                              elsewhere where quick-view is the better
-                              UX. */}
-                          <Link
-                            to={`/team/${t.abbr.toLowerCase()}`}
+                          {/* Click opens the rich 5-tab TeamSheet modal
+                              (Infos / Squad / WC26 / History / Stats).
+                              For SEO, the team's standalone page lives
+                              at /team/:abbr and is reachable via the
+                              sitemap + the 'Read the full team page →'
+                              link inside the modal — Google still
+                              crawls it as a first-class URL. */}
+                          <button
+                            type="button"
+                            onClick={() => setOpenTeam(t.abbr)}
+                            aria-label={`View ${t.name} squad, fixtures and history`}
                             className={
                               'w-full grid grid-cols-[1fr_auto_auto_auto_auto] gap-1.5 items-center px-3 py-2 rounded-lg transition-colors group text-left ' +
                               (champ
                                 ? `bg-gradient-to-r ${champ.tone.split(' ').slice(0, 3).join(' ')} ring-1 ${champ.tone.split(' ').slice(3).join(' ')} hover:bg-slate-100`
                                 : 'bg-slate-50 hover:bg-slate-100')
                             }
-                            title={`View ${t.name} squad, fixtures and history`}
                           >
                             <span className="flex items-center gap-2.5 min-w-0">
                               <FormDot abbr={t.abbr} />
@@ -191,7 +196,7 @@ export function Groups() {
                             <span className="text-slate-600 group-hover:text-accent-gold transition-colors text-xs w-3">
                               →
                             </span>
-                          </Link>
+                          </button>
                         </li>
                       )
                     })}
@@ -204,6 +209,15 @@ export function Groups() {
           </div>
         )}
       </div>
+
+      {/* TeamSheet — opens with the 5-tab rich view (Infos / Squad /
+          WC26 / History / Stats). One instance for the whole Groups
+          component, driven by openTeam state above. */}
+      <TeamSheet
+        teamCode={openTeam}
+        open={openTeam !== null}
+        onClose={() => setOpenTeam(null)}
+      />
     </section>
   )
 }
