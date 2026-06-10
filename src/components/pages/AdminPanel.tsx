@@ -386,7 +386,16 @@ function Push() {
           <button onClick={broadcast} disabled={busy} className="px-5 py-2 rounded-full bg-accent-red text-white font-semibold text-sm hover:bg-red-600 disabled:opacity-40">
             Broadcast to everyone
           </button>
-          <button onClick={sendSingle} disabled={busy || !selectedEndpoint} className="px-5 py-2 rounded-full bg-ink-900 text-cream font-semibold text-sm hover:bg-ink-800 disabled:opacity-40">
+          <button
+            onClick={sendSingle}
+            disabled={busy || !selectedEndpoint}
+            className="px-5 py-2 rounded-full bg-ink-900 font-semibold text-sm hover:bg-ink-800 disabled:opacity-40"
+            // Inline color fallback — same Safari + backdrop-filter issue
+            // that bit the active tab pill and the range selector.
+            // text-cream / text-white classes don't always inherit when an
+            // ancestor applies blur, so we set the color explicitly.
+            style={{ color: '#ffffff' }}
+          >
             Send to selected user
           </button>
         </div>
