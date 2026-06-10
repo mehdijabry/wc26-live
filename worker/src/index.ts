@@ -10,6 +10,18 @@
  * scoring triggers and updates the leaderboard.
  */
 
+import {
+  rateLimit,
+  readBoundedJson,
+  safeBase64Url,
+  safeEventId,
+  safePushEndpoint,
+  safeString,
+  safeTeamCode,
+  safeYmd,
+  withSecurityHeaders,
+} from './security'
+
 export interface Env {
   CACHE: KVNamespace
   SUPABASE_URL: string
@@ -137,20 +149,26 @@ export default {
         return cors(await cachedFetch(env, 'standings', `${ESPN_BASE}/standings`, 3600), req)
       }
 
-      // Individual match summary
+      // Individual match summary — id MUST be numeric. Anything else
+      // (path traversal attempts, URL-encoded surprises) is rejected
+      // before the upstream fetch.
       const matchMatch = url.pathname.match(/^\/match\/([^/]+)$/)
       if (matchMatch) {
-        const id = matchMatch[1]
+        const id = safeEventId(matchMatch[1])
+        if (!id) return cors(json({ error: 'invalid event id' }, 400), req)
         return cors(
           await cachedFetch(env, `match:${id}`, `${ESPN_BASE}/summary?event=${id}`, 30),
           req
         )
       }
 
-      // Team roster + meta
+      // Team roster + meta — code MUST match the ESPN abbreviation
+      // alphabet (2-4 uppercase letters). Anything else can't be a
+      // real team code, so we reject before the upstream fetch.
       const teamMatch = url.pathname.match(/^\/teams\/([^/]+)$/)
       if (teamMatch) {
-        const code = teamMatch[1]
+        const code = safeTeamCode(teamMatch[1])
+        if (!code) return cors(json({ error: 'invalid team code' }, 400), req)
         return cors(
           await cachedFetch(env, `team:${code}`, `${ESPN_BASE}/teams/${code}`, 86400),
           req
@@ -163,7 +181,8 @@ export default {
       // fan out through known confederation leagues.
       const rosterMatch = url.pathname.match(/^\/roster\/([^/]+)$/)
       if (rosterMatch) {
-        const code = rosterMatch[1]
+        const code = safeTeamCode(rosterMatch[1])
+        if (!code) return cors(json({ error: 'invalid team code' }, 400), req)
         return cors(await fetchRoster(env, code), req)
       }
 
@@ -171,14 +190,18 @@ export default {
       // friendlies. Aggregates across multiple ESPN league/season paths.
       const historyMatch = url.pathname.match(/^\/team-history\/([^/]+)$/)
       if (historyMatch) {
-        const code = historyMatch[1]
+        const code = safeTeamCode(historyMatch[1])
+        if (!code) return cors(json({ error: 'invalid team code' }, 400), req)
         return cors(await fetchTeamHistory(env, code), req)
       }
 
       // Daily aggregator — all competitions for a given day
-      // /today?date=YYYYMMDD  (default = today UTC)
+      // /today?date=YYYYMMDD  (default = today UTC). Reject any malformed
+      // date so it can't be smuggled into the ESPN URL.
       if (url.pathname === '/today') {
-        const dateParam = url.searchParams.get('date') ?? ymdUtc(new Date())
+        const rawDate = url.searchParams.get('date')
+        const dateParam = rawDate ? safeYmd(rawDate) : ymdUtc(new Date())
+        if (!dateParam) return cors(json({ error: 'invalid date' }, 400), req)
         return cors(await fetchDaily(env, dateParam), req)
       }
 
@@ -188,23 +211,39 @@ export default {
       // /push/test (POST)         fire a test push to the calling endpoint
       // /push/broadcast (POST)    fan-out to every saved subscription
       //                            (auth: x-admin-token header)
+      // ─── Push endpoints — rate-limited per IP ──────────────────────
+      // 'Cheap' actions (subscribe/unsubscribe) get a generous limit;
+      // /push/test is throttled hard because a misuse hits external
+      // push services and can get the VAPID key flagged for abuse.
       if (url.pathname === '/push/subscribe' && req.method === 'POST') {
+        const rl = await rateLimit(env, req, { route: 'push:subscribe', limit: 20 })
+        if (rl.blocked) return cors(rateLimitedResponse(rl.retryAfter), req)
         return cors(await handlePushSubscribe(req, env), req)
       }
       if (url.pathname === '/push/unsubscribe' && req.method === 'POST') {
+        const rl = await rateLimit(env, req, { route: 'push:unsubscribe', limit: 20 })
+        if (rl.blocked) return cors(rateLimitedResponse(rl.retryAfter), req)
         return cors(await handlePushUnsubscribe(req, env), req)
       }
       if (url.pathname === '/push/test' && req.method === 'POST') {
+        const rl = await rateLimit(env, req, { route: 'push:test', limit: 5 })
+        if (rl.blocked) return cors(rateLimitedResponse(rl.retryAfter), req)
         return cors(await handlePushTest(req, env), req)
       }
       if (url.pathname === '/push/broadcast' && req.method === 'POST') {
+        // Admin-token-gated already; rate limit catches credential-stuffing
+        // attempts on the token (5/min/IP).
+        const rl = await rateLimit(env, req, { route: 'push:broadcast', limit: 5 })
+        if (rl.blocked) return cors(rateLimitedResponse(rl.retryAfter), req)
         return cors(await handlePushBroadcast(req, env), req)
       }
 
       return cors(json({ error: 'Not found' }, 404), req)
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : 'Unknown error'
-      return cors(json({ error: msg }, 500), req)
+      // Never leak stack traces / internal messages to clients —
+      // ship a generic 500 and log the real error for wrangler tail.
+      console.log('[wc26-api] unhandled error:', e)
+      return cors(json({ error: 'internal error' }, 500), req)
     }
   },
 
@@ -496,10 +535,23 @@ function cors(resp: Response, req: Request): Response {
   const allowed = ALLOW_ORIGINS.includes(origin) ? origin : ALLOW_ORIGINS[0]
   const h = new Headers(resp.headers)
   h.set('access-control-allow-origin', allowed)
-  h.set('access-control-allow-methods', 'GET, OPTIONS')
-  h.set('access-control-allow-headers', 'content-type')
+  // Push endpoints are POST — must allow it in CORS.
+  h.set('access-control-allow-methods', 'GET, POST, OPTIONS')
+  // x-admin-token is the auth header for /push/broadcast.
+  h.set('access-control-allow-headers', 'content-type, x-admin-token')
   h.set('vary', 'origin')
-  return new Response(resp.body, { status: resp.status, headers: h })
+  const corsResp = new Response(resp.body, { status: resp.status, headers: h })
+  // Layer security headers (CSP / nosniff / referrer-policy / etc.)
+  // on top of the CORS response so they're applied uniformly.
+  return withSecurityHeaders(corsResp)
+}
+
+/** Standard 429 with Retry-After header. */
+function rateLimitedResponse(retryAfterSeconds: number): Response {
+  const resp = json({ error: 'rate limited', retry_after: retryAfterSeconds }, 429)
+  const h = new Headers(resp.headers)
+  h.set('retry-after', String(retryAfterSeconds))
+  return new Response(resp.body, { status: 429, headers: h })
 }
 
 // Map ESPN event ID → our internal match id (M01..M104 + KO labels).
@@ -1147,16 +1199,30 @@ async function sendWebPush(env: Env, sub: PushSub, payload: object): Promise<Res
 // ---------- /push/subscribe + /push/unsubscribe ---------------------------
 
 async function handlePushSubscribe(req: Request, env: Env): Promise<Response> {
-  let payload: { endpoint?: string; keys?: { p256dh?: string; auth?: string }; ua?: string; lang?: string }
-  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
-  const { endpoint, keys, ua, lang } = payload
-  if (!endpoint || !keys?.p256dh || !keys?.auth) {
-    return json({ error: 'missing endpoint or keys' }, 400)
+  // Read at most 4KB — a legit PushSubscription is ~500 bytes; anything
+  // larger is an attempt to inflate the row or smuggle SQL/JS through
+  // free-text fields.
+  const raw = await readBoundedJson(req, 4 * 1024)
+  if (!raw || typeof raw !== 'object') return json({ error: 'bad json' }, 400)
+  const payload = raw as {
+    endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown };
+    ua?: unknown; lang?: unknown
   }
+  // STRICT validation — every field must match its expected shape, or
+  // we drop the request. No partial saves.
+  const endpoint = safePushEndpoint(payload.endpoint)
+  const p256dh = safeBase64Url(payload.keys?.p256dh, 200)
+  const auth = safeBase64Url(payload.keys?.auth, 100)
+  if (!endpoint || !p256dh || !auth) {
+    return json({ error: 'invalid subscription' }, 400)
+  }
+  // ua/lang are free-text metadata; cap + sanitize but treat as optional.
+  const ua = safeString(payload.ua, 300) // standard UA strings stay < 300 chars
+  const lang = safeString(payload.lang, 20)
   await supabaseUpsert(env, 'push_subscriptions', {
     endpoint,
-    p256dh: keys.p256dh,
-    auth: keys.auth,
+    p256dh,
+    auth,
     user_agent: ua ?? null,
     lang: lang ?? null,
   }, 'endpoint')
@@ -1164,11 +1230,16 @@ async function handlePushSubscribe(req: Request, env: Env): Promise<Response> {
 }
 
 async function handlePushUnsubscribe(req: Request, env: Env): Promise<Response> {
-  let payload: { endpoint?: string }
-  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
-  if (!payload.endpoint) return json({ error: 'missing endpoint' }, 400)
+  const raw = await readBoundedJson(req, 2 * 1024)
+  if (!raw || typeof raw !== 'object') return json({ error: 'bad json' }, 400)
+  const endpoint = safePushEndpoint((raw as { endpoint?: unknown }).endpoint)
+  if (!endpoint) return json({ error: 'invalid endpoint' }, 400)
+  // encodeURIComponent is the right defence in depth — even though we
+  // already whitelisted the host above, PostgREST takes the value
+  // verbatim, so a stray '&' in the path would otherwise extend the
+  // query.
   await fetch(
-    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(payload.endpoint)}`,
+    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}`,
     {
       method: 'DELETE',
       headers: {
@@ -1198,12 +1269,23 @@ async function supabaseUpsert(env: Env, table: string, row: object, onConflict: 
 // ---------- /push/test --------------------------------------------------
 
 async function handlePushTest(req: Request, env: Env): Promise<Response> {
-  let payload: { endpoint?: string; title?: string; body?: string; url?: string }
-  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
-  if (!payload.endpoint) return json({ error: 'missing endpoint' }, 400)
+  const raw = await readBoundedJson(req, 4 * 1024)
+  if (!raw || typeof raw !== 'object') return json({ error: 'bad json' }, 400)
+  const p = raw as { endpoint?: unknown; title?: unknown; body?: unknown; url?: unknown }
+  const endpoint = safePushEndpoint(p.endpoint)
+  if (!endpoint) return json({ error: 'invalid endpoint' }, 400)
+  // Defaults for optional fields, validated where supplied.
+  const title = (p.title === undefined ? null : safeString(p.title, 100)) ?? '🔔 WC26 test'
+  const body = (p.body === undefined ? null : safeString(p.body, 240)) ?? 'Push notifications are working — see you at kickoff.'
+  // url must stay a relative path within our site — reject any absolute
+  // URLs so the notification can't deep-link to phishing pages.
+  const rawUrl = p.url === undefined ? '/today' : safeString(p.url, 200)
+  if (!rawUrl || !rawUrl.startsWith('/')) {
+    return json({ error: 'url must be a relative path' }, 400)
+  }
   // Look up the sub in Supabase to grab its keys
   const resp = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(payload.endpoint)}&select=endpoint,p256dh,auth`,
+    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(endpoint)}&select=endpoint,p256dh,auth`,
     {
       headers: {
         apikey: env.SUPABASE_SERVICE_KEY,
@@ -1214,34 +1296,62 @@ async function handlePushTest(req: Request, env: Env): Promise<Response> {
   const rows = (await resp.json()) as Array<{ endpoint: string; p256dh: string; auth: string }>
   if (!rows.length) return json({ error: 'subscription not found' }, 404)
   const sub: PushSub = { endpoint: rows[0].endpoint, keys: { p256dh: rows[0].p256dh, auth: rows[0].auth } }
-  const r = await sendWebPush(env, sub, {
-    title: payload.title ?? '🔔 WC26 test',
-    body: payload.body ?? 'Push notifications are working — see you at kickoff.',
-    url: payload.url ?? '/today',
-    tag: 'wc26-test',
-  })
+  const r = await sendWebPush(env, sub, { title, body, url: rawUrl, tag: 'wc26-test' })
   return json({ ok: r.ok, status: r.status })
 }
 
 // ---------- /push/broadcast ---------------------------------------------
 
 async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
-  // Cheap admin guard — the broadcast endpoint can blast every saved
+  // Admin guard — the broadcast endpoint can blast every saved
   // subscription, so we gate it behind a shared secret in the
   // x-admin-token header. Configure via wrangler secret put ADMIN_TOKEN.
+  // Compare in constant time so a brute-force attacker can't measure
+  // per-character latency to extract the token.
   const adminToken = (env as Env & { ADMIN_TOKEN?: string }).ADMIN_TOKEN
-  if (!adminToken || req.headers.get('x-admin-token') !== adminToken) {
+  const provided = req.headers.get('x-admin-token') ?? ''
+  if (!adminToken || !constantTimeEqual(provided, adminToken)) {
+    // Same 401 for missing AND wrong token to avoid disclosing
+    // whether the header was present.
     return json({ error: 'unauthorised' }, 401)
   }
-  let payload: { title?: string; body?: string; url?: string; tag?: string }
-  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
-  const result = await broadcastCore(env, {
-    title: payload.title ?? 'WC26 Live',
-    body: payload.body ?? 'Match update',
-    url: payload.url ?? '/today',
-    tag: payload.tag ?? 'wc26-broadcast',
-  })
+  const raw = await readBoundedJson(req, 4 * 1024)
+  if (!raw || typeof raw !== 'object') return json({ error: 'bad json' }, 400)
+  const p = raw as { title?: unknown; body?: unknown; url?: unknown; tag?: unknown }
+  const title = (p.title === undefined ? null : safeString(p.title, 100)) ?? 'WC26 Live'
+  const body = (p.body === undefined ? null : safeString(p.body, 240)) ?? 'Match update'
+  const rawUrl = p.url === undefined ? '/today' : safeString(p.url, 200)
+  if (!rawUrl || !rawUrl.startsWith('/')) {
+    return json({ error: 'url must be a relative path' }, 400)
+  }
+  const tag = (p.tag === undefined ? null : safeString(p.tag, 60)) ?? 'wc26-broadcast'
+  const result = await broadcastCore(env, { title, body, url: rawUrl, tag })
   return json({ ok: true, ...result })
+}
+
+/**
+ * Length-padded constant-time string comparison. JS '===' returns as
+ * soon as it finds a mismatching byte; that timing leak is enough to
+ * extract a secret one character at a time given a network you can
+ * watch. This loop compares every byte regardless of where the first
+ * mismatch is found.
+ */
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) {
+    // Still walk a constant number of bytes to mask the length
+    // difference timing — but the final result is false either way.
+    let mismatch = 1
+    const len = Math.max(a.length, b.length)
+    for (let i = 0; i < len; i++) {
+      mismatch |= (a.charCodeAt(i) ?? 0) ^ (b.charCodeAt(i) ?? 0)
+    }
+    return false
+  }
+  let diff = 0
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return diff === 0
 }
 
 /**
