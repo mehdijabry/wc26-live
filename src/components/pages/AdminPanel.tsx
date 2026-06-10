@@ -236,9 +236,12 @@ function Analytics() {
               key={r}
               onClick={() => setRange(r)}
               className={
-                'px-3 py-1 text-xs font-mono rounded-full ' +
-                (range === r ? 'bg-ink-900 text-cream' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                'px-3 py-1 text-xs font-mono rounded-full transition-colors ' +
+                (range === r ? 'bg-ink-900 font-semibold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
               }
+              // Inline color fallback — Safari sometimes ignores Tailwind
+              // text-* utilities when an ancestor applies backdrop-filter.
+              style={range === r ? { color: '#ffffff' } : undefined}
             >
               {r}
             </button>
