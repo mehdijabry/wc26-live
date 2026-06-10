@@ -1168,33 +1168,49 @@ export type TeamForm = {
   /** Raw last-5 points, 0..15 (W=3 · D=1 · L=0). Legacy field. */
   score: number
   /**
-   * Recency-weighted form rating on a 0..10 scale. The most recent
-   * match counts 5×, the oldest counts 1× — so a team that's just
-   * won three on the bounce after a poor start gets a higher rating
-   * than a team that started strong and lost its last three.
+   * Recency-weighted form rating on a 6.3..10 scale.
    *
-   *   weighted = Σ ( result_pts × position_weight ) where
+   * The 6.3 floor is a deliberate calibration choice. Every team in
+   * this dataset qualified for the FIFA World Cup — a non-trivial
+   * baseline of competence (top ~24% of FIFA-ranked nations). A
+   * winless WC team is still a competent national side, so rating
+   * them 0/10 is misleading vs. (say) a Liga MX bottom-half club.
+   * The scale therefore expresses 'how is THIS WC team doing relative
+   * to its peers', not 'how good is this team in absolute terms'.
+   *
+   *   per_match    = result_pts + clamp(gd, -3, +3) × 0.5
    *     result_pts ∈ {W:3, D:1, L:0}
+   *     so per_match ∈ [-1.5, +4.5]
+   *   weighted     = Σ ( per_match × position_weight )
    *     position_weight ∈ {1, 2, 3, 4, 5}  (oldest → newest)
-   *   score10 = weighted / 45 × 10
+   *     so weighted ∈ [-22.5, +67.5]    (range 90)
+   *   normalised   = (weighted - -22.5) / 90       ∈ [0, 1]
+   *   score10      = 6.3 + normalised × 3.7        ∈ [6.3, 10]
    *
-   * Also blends a small goal-difference bonus (capped at ±1.5) so
-   * routine 1-0 wins don't score the same as 4-0 wins, and 1-3
-   * losses don't score the same as scrappy 0-1 defeats.
+   * Recency weighting means a team that's just won three on the
+   * bounce after a poor start scores higher than a team that
+   * started strong and lost its last three.
+   *
+   * The GD term keeps the rating honest — a 4-0 thrashing reads
+   * differently from a 1-0 grind, and a 0-3 hammering hurts more
+   * than a 0-1 scrappy defeat — without letting one freakish 7-0
+   * result swamp the curve (GD capped at ±3 per match).
    */
   score10: number
-  /** '6.8' — pre-formatted for direct render. */
+  /** '8.4' — pre-formatted for direct render. */
   display: string
   lastFive: ('W' | 'D' | 'L')[]
   color: 'green' | 'yellow' | 'orange' | 'red'
   played: number         // how many of the last 5 we actually have data for
 }
 
+// Thresholds calibrated against the 6.3..10 range. Reds are rare —
+// a WC team has to be properly out of form to fall below 6.8.
 function colorForScore10(s10: number): TeamForm['color'] {
-  if (s10 >= 7.5) return 'green'  // excellent form
-  if (s10 >= 5.0) return 'yellow' // decent
-  if (s10 >= 2.5) return 'orange' // poor
-  return 'red'                    // terrible
+  if (s10 >= 8.5) return 'green'  // strong form, in-form contender
+  if (s10 >= 7.5) return 'yellow' // steady
+  if (s10 >= 6.8) return 'orange' // worrying for a WC team
+  return 'red'                    // properly bad
 }
 
 const FORM_CACHE = new Map<string, TeamForm>()
@@ -1230,9 +1246,16 @@ async function fetchTeamFormOnce(abbr: string): Promise<TeamForm | null> {
         const comp = ev.competitions?.[0] as { status?: { type?: { state?: string } } } | undefined
         return (root ?? comp?.status?.type?.state) === 'post'
       })
-      // events come oldest-first from the worker; take the last 5 +
-      // capture goal difference per match for the GD bonus.
-      const lastFiveWithGD = finished.slice(-5).map((ev) => {
+      // ESPN /team-history returns events NEWEST-FIRST (verified
+       // against /team-history/mar — first entry was 2026-06-07, last
+       // entry 1994-06-19). The previous .slice(-5) therefore took the
+       // OLDEST 5 events in the dataset — Morocco's first form rating
+       // was computed from their 1994 & 1998 World Cup matches.
+       //
+       // Take the newest 5, then reverse so the OLDEST of the window
+       // comes first — that way position weight 1 = oldest of the 5
+       // and position weight 5 = newest, matching the docstring above.
+       const lastFiveWithGD = finished.slice(0, 5).reverse().map((ev) => {
         const cs = ev.competitions?.[0]?.competitors ?? []
         const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === code)
         const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== code)
@@ -1255,36 +1278,43 @@ async function fetchTeamFormOnce(abbr: string): Promise<TeamForm | null> {
         (acc, r) => acc + (r === 'W' ? 3 : r === 'D' ? 1 : 0),
         0
       )
-      // ─── Recency-weighted 0..10 rating ───────────────────────────────
-      // Match index 0 = oldest of the last 5 → weight 1
-      // Match index 4 = newest of the last 5 → weight 5
-      // Max weighted = 3*(1+2+3+4+5) = 45 → normalise / 45 * 10.
-      // If fewer than 5 matches are available, max scales down so a
-      // team with only 2 known matches doesn't artificially read lower.
-      let weighted = 0
-      let maxWeighted = 0
-      lastFiveWithGD.forEach(({ result }, i) => {
-        const w = i + 1 // 1..5
+      // ─── Recency-weighted 6.3..10 rating ─────────────────────────────
+      // See TeamForm.score10 docstring for the full formula. Range
+      // here is anchored on the assumption that every team in this
+      // dataset qualified for the WC — a 0/10 would be misleading
+      // versus club-football peers, so the worst case is 6.3.
+      const SUM_WEIGHTS = 15      // 1+2+3+4+5
+      const PER_MATCH_MAX = 4.5   // W (3) + GD cap (+3) × 0.5
+      const PER_MATCH_MIN = -1.5  // L (0) + GD cap (-3) × 0.5
+      const FULL_MAX = PER_MATCH_MAX * SUM_WEIGHTS   //  67.5
+      const FULL_MIN = PER_MATCH_MIN * SUM_WEIGHTS   // -22.5
+      const FULL_RANGE = FULL_MAX - FULL_MIN          //  90
+      let activeMax = 0
+      let activeMin = 0
+      let weightedTotal = 0
+      lastFiveWithGD.forEach(({ result, gd }, i) => {
+        const w = i + 1   // 1..5  (oldest..newest of the window)
         const pts = result === 'W' ? 3 : result === 'D' ? 1 : 0
-        weighted += pts * w
-        maxWeighted += 3 * w
+        const gdCapped = Math.max(-3, Math.min(3, gd))
+        const matchScore = pts + gdCapped * 0.5
+        weightedTotal += matchScore * w
+        activeMax += PER_MATCH_MAX * w
+        activeMin += PER_MATCH_MIN * w
       })
-      const baseS10 = maxWeighted > 0 ? (weighted / maxWeighted) * 10 : 0
-      // Goal-difference bonus: average GD over the window, capped to
-      // ±0.4 per match × match weight, then normalised to a small ±1.5
-      // shift on top of the base score. A team that's been beating
-      // opponents 4-0 lately gets a noticeable lift; one being beaten
-      // 0-4 gets pushed down.
-      let gdWeighted = 0
-      lastFiveWithGD.forEach(({ gd }, i) => {
-        const w = i + 1
-        const clipped = Math.max(-3, Math.min(3, gd)) // a 7-0 thrashing doesn't break the curve
-        gdWeighted += clipped * w
-      })
-      const gdShift = maxWeighted > 0
-        ? Math.max(-1.5, Math.min(1.5, (gdWeighted / maxWeighted) * 5))
-        : 0
-      const score10 = Math.max(0, Math.min(10, baseS10 + gdShift))
+      // If fewer than 5 matches are available, the range scales with
+      // them so a team with only 2 known matches doesn't artificially
+      // read low against a full-window team. We normalise against the
+      // observed window's max/min rather than the full 5-game range.
+      const observedRange =
+        lastFiveWithGD.length === 5 ? FULL_RANGE : activeMax - activeMin
+      const observedMin = lastFiveWithGD.length === 5 ? FULL_MIN : activeMin
+      const normalised =
+        observedRange > 0 ? (weightedTotal - observedMin) / observedRange : 0
+      // No data at all? Default to 7.0 (mid of the 6.3..10 range) so
+      // the cell never reads suspiciously low for a team we just don't
+      // have results for yet.
+      const score10 =
+        lastFiveWithGD.length === 0 ? 7.0 : 6.3 + normalised * 3.7
       const display = score10.toFixed(1)
       const form: TeamForm = {
         score,
