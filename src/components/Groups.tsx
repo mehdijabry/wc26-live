@@ -76,6 +76,32 @@ export function Groups() {
           </span>
         </div>
 
+        {/* Form-rating legend. Sits right under the eyebrow strip, kept
+            deliberately small + monospace so it reads as metadata, not
+            a feature. The four labels follow the football-vernacular
+            convention used by Opta/FotMob ladders — short, sharp, with
+            a hint of fervour:
+
+              🟢 Flying   ≥ 8.5   peak form, in-form contender
+              🟡 Steady   7.5+    solid run, no alarms
+              🟠 Wobble   6.8+    losing the thread, worrying
+              🔴 Crisis   < 6.8   properly out of form
+
+            Computed from the 5 most-recent finished matches with
+            recency weighting + a goal-difference modifier (see
+            fetchTeamFormOnce in lib/api.ts). The 6.3..10 range is
+            anchored on the assumption that every team here qualified
+            for the World Cup. */}
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-mono tracking-wide text-slate-500">
+          <span className="uppercase tracking-[0.18em] text-slate-400">
+            form ·
+          </span>
+          <FormLegendItem dotClass="bg-emerald-500" label="Flying" />
+          <FormLegendItem dotClass="bg-yellow-400"  label="Steady" />
+          <FormLegendItem dotClass="bg-orange-500"  label="Wobble" />
+          <FormLegendItem dotClass="bg-red-500"     label="Crisis" />
+        </div>
+
         {error && (
           <div className="mt-6 glass rounded-xl px-4 py-3 text-xs text-red-400 font-mono">
             {error}
@@ -274,6 +300,20 @@ function GroupsSkeleton() {
  * Tooltip shows the last-5 sequence (e.g. "Form: WWDLW · 10/15") so the
  * visitor sees both the dot colour AND why.
  */
+/**
+ * Single legend swatch + label, used in the form-legend strip near
+ * the top of the page. Same visual vocabulary as the FormDot below
+ * so the cross-reference reads instantly.
+ */
+function FormLegendItem({ dotClass, label }: { dotClass: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={`w-2 h-2 rounded-full ${dotClass}`} aria-hidden />
+      <span>{label}</span>
+    </span>
+  )
+}
+
 function FormDot({ abbr }: { abbr: string }) {
   const form = getCachedTeamForm(abbr)
   if (!form) {
@@ -290,10 +330,17 @@ function FormDot({ abbr }: { abbr: string }) {
     orange: 'bg-orange-500',
     red:    'bg-red-500',
   }
+  // Match the legend labels so hover/tooltip reads the same vocabulary.
+  const labelFor: Record<TeamForm['color'], string> = {
+    green:  'Flying',
+    yellow: 'Steady',
+    orange: 'Wobble',
+    red:    'Crisis',
+  }
   return (
     <span
       className={'w-3 h-3 rounded-full shrink-0 ' + palette[form.color]}
-      title={`Form: ${form.lastFive.join('') || '—'} · ${form.score}/15 (last ${form.played} matches)`}
+      title={`${labelFor[form.color]} · ${form.display}/10 — last ${form.played}: ${form.lastFive.join('') || '—'}`}
     />
   )
 }
