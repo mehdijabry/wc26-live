@@ -426,18 +426,28 @@ function EmailPanel() {
   const [to, setTo] = useState('')
   const [subject, setSubject] = useState('')
   const [text, setText] = useState('')
-  const [status, setStatus] = useState<string | null>(null)
+  const [status, setStatus] = useState<{ kind: 'ok' | 'err' | 'warn'; text: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   async function send() {
-    if (!to || !subject || !text) { setStatus('to + subject + body required'); return }
+    if (!to || !subject || !text) { setStatus({ kind: 'err', text: 'To + subject + body required.' }); return }
     setBusy(true)
     setStatus(null)
     try {
-      const r = await adminPost('/admin/email/send', { to, subject, text })
-      setStatus('Sent. Response: ' + JSON.stringify(r))
+      const r = await adminPost('/admin/email/send', { to, subject, text }) as { configured?: boolean; message?: string; id?: string }
+      // Distinguish three outcomes:
+      //   - configured=false → Resend secrets missing on the worker
+      //   - has id → Resend returned the message id (real send OK)
+      //   - other → surface message for debug
+      if (r.configured === false) {
+        setStatus({ kind: 'warn', text: `Not sent — Resend not configured on worker. ${r.message ?? ''}` })
+      } else if (r.id) {
+        setStatus({ kind: 'ok', text: `Sent ✓ Resend id: ${r.id}` })
+      } else {
+        setStatus({ kind: 'err', text: 'Unexpected response: ' + JSON.stringify(r) })
+      }
     } catch (e) {
-      setStatus(String(e))
+      setStatus({ kind: 'err', text: String(e) })
     } finally {
       setBusy(false)
     }
@@ -458,7 +468,18 @@ function EmailPanel() {
       <button onClick={send} disabled={busy} className="mt-4 px-5 py-2 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 disabled:opacity-40">
         Send
       </button>
-      {status && <div className="mt-3 text-sm font-mono text-slate-600 whitespace-pre-wrap break-all">{status}</div>}
+      {status && (
+        <div className={
+          'mt-3 px-3 py-2 rounded-lg text-sm font-mono whitespace-pre-wrap break-all border ' +
+          (status.kind === 'ok'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : status.kind === 'warn'
+              ? 'bg-amber-50 text-amber-800 border-amber-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200')
+        }>
+          {status.text}
+        </div>
+      )}
     </Section>
   )
 }
