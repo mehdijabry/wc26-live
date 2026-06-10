@@ -14,6 +14,12 @@ export interface Env {
   CACHE: KVNamespace
   SUPABASE_URL: string
   SUPABASE_SERVICE_KEY: string
+  // VAPID for Web Push (base64url-encoded). Public is also baked into
+  // the client bundle as VITE_VAPID_PUBLIC; private + subject stay
+  // server-only.
+  VAPID_PUBLIC: string
+  VAPID_PRIVATE: string
+  VAPID_SUBJECT: string  // 'mailto:info@pressing90.live'
 }
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
@@ -170,6 +176,25 @@ export default {
       if (url.pathname === '/today') {
         const dateParam = url.searchParams.get('date') ?? ymdUtc(new Date())
         return cors(await fetchDaily(env, dateParam), req)
+      }
+
+      // Web Push — opt-in flow + send.
+      // /push/subscribe (POST)    upsert a subscription row in Supabase
+      // /push/unsubscribe (POST)  delete it
+      // /push/test (POST)         fire a test push to the calling endpoint
+      // /push/broadcast (POST)    fan-out to every saved subscription
+      //                            (auth: x-admin-token header)
+      if (url.pathname === '/push/subscribe' && req.method === 'POST') {
+        return cors(await handlePushSubscribe(req, env), req)
+      }
+      if (url.pathname === '/push/unsubscribe' && req.method === 'POST') {
+        return cors(await handlePushUnsubscribe(req, env), req)
+      }
+      if (url.pathname === '/push/test' && req.method === 'POST') {
+        return cors(await handlePushTest(req, env), req)
+      }
+      if (url.pathname === '/push/broadcast' && req.method === 'POST') {
+        return cors(await handlePushBroadcast(req, env), req)
       }
 
       return cors(json({ error: 'Not found' }, 404), req)
@@ -706,4 +731,356 @@ async function upsertMatchResult(
     },
     body: JSON.stringify(row),
   })
+}
+
+// ============================================================================
+// Web Push — opt-in flow + send pipeline
+// ============================================================================
+//
+// We implement the bare minimum of the Voluntary Application Server
+// Identification (VAPID, RFC 8292) protocol so the worker can sign push
+// requests directly against the push services (FCM, autopush, Apple Push).
+// No node libraries — only Web Crypto API + fetch, which run natively on
+// Cloudflare Workers.
+//
+// Flow:
+//   1. Browser registers a PushSubscription with its push service.
+//      Returned shape: { endpoint, keys: { p256dh, auth } }
+//   2. Browser POSTs it to /push/subscribe → we upsert in Supabase.
+//   3. /push/test or /push/broadcast looks up subscription rows and
+//      calls sendWebPush() for each one. sendWebPush() builds the
+//      VAPID JWT, encrypts the payload (aes128gcm content-encoding,
+//      RFC 8291), and POSTs to subscription.endpoint.
+//
+// The encryption is a strict implementation of draft-ietf-webpush-encryption
+// (now RFC 8291). HKDF + AES-128-GCM. ~80 lines.
+
+type PushSub = { endpoint: string; keys: { p256dh: string; auth: string } }
+
+function b64uDecode(b64u: string): Uint8Array {
+  const b64 = (b64u + '==='.slice((b64u.length + 3) % 4)).replace(/-/g, '+').replace(/_/g, '/')
+  const bin = atob(b64)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+function b64uEncode(bytes: Uint8Array | ArrayBuffer): string {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  let s = ''
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i])
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+function utf8(s: string): Uint8Array {
+  return new TextEncoder().encode(s)
+}
+function concat(...parts: Uint8Array[]): Uint8Array {
+  const len = parts.reduce((n, p) => n + p.length, 0)
+  const out = new Uint8Array(len)
+  let off = 0
+  for (const p of parts) { out.set(p, off); off += p.length }
+  return out
+}
+
+async function importVapidPrivate(d: string): Promise<CryptoKey> {
+  // Reconstruct a JWK private key from the raw d. We don't have x/y on
+  // hand for sign-only usage, but Web Crypto requires them. Workaround:
+  // derive the public point from d on a P-256 curve.
+  // Easiest route: keep VAPID_PUBLIC as the raw 65-byte uncompressed
+  // point and decompose it back into x/y.
+  // The worker is invoked with both VAPID_PUBLIC + VAPID_PRIVATE so we
+  // just use them together.
+  throw new Error('use importVapidKeyPair instead')
+}
+
+async function importVapidKeyPair(
+  publicRaw: string,
+  privateD: string
+): Promise<{ key: CryptoKey; publicRawBytes: Uint8Array }> {
+  const pubBytes = b64uDecode(publicRaw)
+  if (pubBytes.length !== 65 || pubBytes[0] !== 0x04) {
+    throw new Error('VAPID_PUBLIC must be raw uncompressed P-256 (65 bytes starting with 0x04)')
+  }
+  const x = pubBytes.slice(1, 33)
+  const y = pubBytes.slice(33, 65)
+  const jwk: JsonWebKey = {
+    kty: 'EC',
+    crv: 'P-256',
+    x: b64uEncode(x),
+    y: b64uEncode(y),
+    d: privateD,
+    ext: true,
+  }
+  const key = await crypto.subtle.importKey(
+    'jwk',
+    jwk,
+    { name: 'ECDSA', namedCurve: 'P-256' },
+    false,
+    ['sign']
+  )
+  return { key, publicRawBytes: pubBytes }
+}
+
+async function vapidJwt(env: Env, audience: string): Promise<string> {
+  const header = { typ: 'JWT', alg: 'ES256' }
+  const payload = {
+    aud: audience,
+    exp: Math.floor(Date.now() / 1000) + 12 * 3600,
+    sub: env.VAPID_SUBJECT,
+  }
+  const enc = (o: object) => b64uEncode(utf8(JSON.stringify(o)))
+  const signingInput = `${enc(header)}.${enc(payload)}`
+  const { key } = await importVapidKeyPair(env.VAPID_PUBLIC, env.VAPID_PRIVATE)
+  const sigBuf = await crypto.subtle.sign(
+    { name: 'ECDSA', hash: 'SHA-256' },
+    key,
+    utf8(signingInput)
+  )
+  return `${signingInput}.${b64uEncode(sigBuf)}`
+}
+
+async function hkdf(
+  ikm: Uint8Array,
+  salt: Uint8Array,
+  info: Uint8Array,
+  length: number
+): Promise<Uint8Array> {
+  const baseKey = await crypto.subtle.importKey('raw', ikm, 'HKDF', false, ['deriveBits'])
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'HKDF', hash: 'SHA-256', salt, info },
+    baseKey,
+    length * 8
+  )
+  return new Uint8Array(bits)
+}
+
+/**
+ * Encrypt a Web Push payload using aes128gcm content-encoding (RFC 8291).
+ * Returns { body, headers } ready to POST.
+ */
+async function encryptPayload(
+  payload: Uint8Array,
+  recipientP256dh: string,
+  recipientAuth: string
+): Promise<{ body: Uint8Array; salt: Uint8Array; pubKey: Uint8Array }> {
+  // 1. Ephemeral keypair on P-256.
+  const ephemeral = await crypto.subtle.generateKey(
+    { name: 'ECDH', namedCurve: 'P-256' },
+    true,
+    ['deriveBits']
+  )
+  const ephemeralPubRaw = new Uint8Array(
+    await crypto.subtle.exportKey('raw', ephemeral.publicKey)
+  )
+
+  // 2. ECDH(ephemeral.priv, recipient.p256dh).
+  const recipientPubKey = await crypto.subtle.importKey(
+    'raw',
+    b64uDecode(recipientP256dh),
+    { name: 'ECDH', namedCurve: 'P-256' },
+    false,
+    []
+  )
+  const sharedSecret = new Uint8Array(
+    await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: recipientPubKey },
+      ephemeral.privateKey,
+      256
+    )
+  )
+
+  // 3. PRK_key = HKDF(auth_secret, sharedSecret, key_info, 32)
+  const authSecret = b64uDecode(recipientAuth)
+  const keyInfo = concat(
+    utf8('WebPush: info\0'),
+    b64uDecode(recipientP256dh),
+    ephemeralPubRaw
+  )
+  const prk = await hkdf(sharedSecret, authSecret, keyInfo, 32)
+
+  // 4. 16-byte salt
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+
+  // 5. content_encryption_key = HKDF(salt, prk, 'Content-Encoding: aes128gcm\0', 16)
+  const cek = await hkdf(prk, salt, utf8('Content-Encoding: aes128gcm\0'), 16)
+  // 6. nonce = HKDF(salt, prk, 'Content-Encoding: nonce\0', 12)
+  const nonce = await hkdf(prk, salt, utf8('Content-Encoding: nonce\0'), 12)
+
+  // 7. encrypt(cek, nonce, payload || 0x02 || padding)
+  // Append the record padding delimiter (0x02 for final record), no extra pad.
+  const plaintext = concat(payload, new Uint8Array([0x02]))
+  const cekKey = await crypto.subtle.importKey('raw', cek, 'AES-GCM', false, ['encrypt'])
+  const ct = new Uint8Array(
+    await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, cekKey, plaintext)
+  )
+
+  // 8. Build the aes128gcm content-encoding body:
+  //    salt (16) || rs (4, BE) || idlen (1) || keyid (idlen) || ciphertext
+  // For Web Push, idlen=65 and keyid=ephemeralPubRaw.
+  const rs = new Uint8Array([0x00, 0x00, 0x10, 0x00]) // 4096
+  const idlen = new Uint8Array([0x41]) // 65
+  const body = concat(salt, rs, idlen, ephemeralPubRaw, ct)
+  return { body, salt, pubKey: ephemeralPubRaw }
+}
+
+async function sendWebPush(env: Env, sub: PushSub, payload: object): Promise<Response> {
+  const aud = new URL(sub.endpoint).origin
+  const jwt = await vapidJwt(env, aud)
+  const { body } = await encryptPayload(
+    utf8(JSON.stringify(payload)),
+    sub.keys.p256dh,
+    sub.keys.auth
+  )
+  return fetch(sub.endpoint, {
+    method: 'POST',
+    headers: {
+      authorization: `vapid t=${jwt}, k=${env.VAPID_PUBLIC}`,
+      'content-encoding': 'aes128gcm',
+      'content-type': 'application/octet-stream',
+      'content-length': String(body.length),
+      ttl: '86400',
+      urgency: 'normal',
+    },
+    body,
+  })
+}
+
+// ---------- /push/subscribe + /push/unsubscribe ---------------------------
+
+async function handlePushSubscribe(req: Request, env: Env): Promise<Response> {
+  let payload: { endpoint?: string; keys?: { p256dh?: string; auth?: string }; ua?: string; lang?: string }
+  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
+  const { endpoint, keys, ua, lang } = payload
+  if (!endpoint || !keys?.p256dh || !keys?.auth) {
+    return json({ error: 'missing endpoint or keys' }, 400)
+  }
+  await supabaseUpsert(env, 'push_subscriptions', {
+    endpoint,
+    p256dh: keys.p256dh,
+    auth: keys.auth,
+    user_agent: ua ?? null,
+    lang: lang ?? null,
+  }, 'endpoint')
+  return json({ ok: true })
+}
+
+async function handlePushUnsubscribe(req: Request, env: Env): Promise<Response> {
+  let payload: { endpoint?: string }
+  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
+  if (!payload.endpoint) return json({ error: 'missing endpoint' }, 400)
+  await fetch(
+    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(payload.endpoint)}`,
+    {
+      method: 'DELETE',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  return json({ ok: true })
+}
+
+// Helper used here + by /push/broadcast. Upserts on the `endpoint`
+// unique column so re-subscribing on the same browser is idempotent.
+async function supabaseUpsert(env: Env, table: string, row: object, onConflict: string): Promise<void> {
+  await fetch(`${env.SUPABASE_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(row),
+  })
+}
+
+// ---------- /push/test --------------------------------------------------
+
+async function handlePushTest(req: Request, env: Env): Promise<Response> {
+  let payload: { endpoint?: string; title?: string; body?: string; url?: string }
+  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
+  if (!payload.endpoint) return json({ error: 'missing endpoint' }, 400)
+  // Look up the sub in Supabase to grab its keys
+  const resp = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(payload.endpoint)}&select=endpoint,p256dh,auth`,
+    {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  const rows = (await resp.json()) as Array<{ endpoint: string; p256dh: string; auth: string }>
+  if (!rows.length) return json({ error: 'subscription not found' }, 404)
+  const sub: PushSub = { endpoint: rows[0].endpoint, keys: { p256dh: rows[0].p256dh, auth: rows[0].auth } }
+  const r = await sendWebPush(env, sub, {
+    title: payload.title ?? '🔔 WC26 test',
+    body: payload.body ?? 'Push notifications are working — see you at kickoff.',
+    url: payload.url ?? '/today',
+    tag: 'wc26-test',
+  })
+  return json({ ok: r.ok, status: r.status })
+}
+
+// ---------- /push/broadcast ---------------------------------------------
+
+async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
+  // Cheap admin guard — the broadcast endpoint can blast every saved
+  // subscription, so we gate it behind a shared secret in the
+  // x-admin-token header. Configure via wrangler secret put ADMIN_TOKEN.
+  const adminToken = (env as Env & { ADMIN_TOKEN?: string }).ADMIN_TOKEN
+  if (!adminToken || req.headers.get('x-admin-token') !== adminToken) {
+    return json({ error: 'unauthorised' }, 401)
+  }
+  let payload: { title?: string; body?: string; url?: string; tag?: string }
+  try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
+  const title = payload.title ?? 'WC26 Live'
+  const body = payload.body ?? 'Match update'
+  const url = payload.url ?? '/today'
+  const tag = payload.tag ?? 'wc26-broadcast'
+
+  const resp = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?select=endpoint,p256dh,auth`,
+    {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  const rows = (await resp.json()) as Array<{ endpoint: string; p256dh: string; auth: string }>
+  let ok = 0
+  let failed = 0
+  // Fan-out in batches of 20 to keep the worker invocation under the
+  // CPU + subrequest limits.
+  for (let i = 0; i < rows.length; i += 20) {
+    const batch = rows.slice(i, i + 20)
+    await Promise.all(
+      batch.map(async (row) => {
+        const r = await sendWebPush(
+          env,
+          { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
+          { title, body, url, tag }
+        )
+        if (r.ok) ok++
+        else failed++
+        // 410 = subscription gone, prune from DB so we don't keep
+        // hitting dead endpoints on every broadcast.
+        if (r.status === 404 || r.status === 410) {
+          await fetch(
+            `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(row.endpoint)}`,
+            {
+              method: 'DELETE',
+              headers: {
+                apikey: env.SUPABASE_SERVICE_KEY,
+                authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+              },
+            }
+          )
+        }
+      })
+    )
+  }
+  return json({ ok: true, sent: ok, failed, total: rows.length })
 }

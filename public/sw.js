@@ -47,3 +47,49 @@ self.addEventListener('fetch', (event) => {
 // Cache name version reference — bump VERSION above on cache-busting
 // changes if we ever start caching assets here.
 void VERSION
+
+// ─── Web Push handlers ───────────────────────────────────────────────
+// Triggered when the push service (FCM / Mozilla / Apple) delivers
+// a notification payload to this user agent. Payload shape from our
+// Cloudflare Worker /push/send endpoint:
+//   { title: string, body: string, url?: string, tag?: string }
+// We keep the renderer minimal — the icon + badge come from
+// /icon-192.png, the tag groups notifications so a follow-up FT
+// alert replaces the earlier kickoff alert instead of stacking.
+self.addEventListener('push', (event) => {
+  let data = { title: 'WC26 Live', body: 'Match update' }
+  try { if (event.data) data = { ...data, ...event.data.json() } } catch { /* keep defaults */ }
+  const options = {
+    body: data.body,
+    icon: '/icon-192.png',
+    badge: '/icon-192.png',
+    tag: data.tag || 'wc26-default',
+    data: { url: data.url || '/today' },
+    requireInteraction: false,
+  }
+  event.waitUntil(self.registration.showNotification(data.title, options))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/'
+  event.waitUntil(
+    (async () => {
+      const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+      // Re-use an existing tab on our origin if one is open — saves
+      // the user a fresh app boot.
+      for (const client of clientList) {
+        try {
+          const u = new URL(client.url)
+          if (u.origin === self.location.origin && 'focus' in client) {
+            await client.focus()
+            try { client.postMessage({ type: 'wc26:notification-click', url: targetUrl }) } catch {}
+            return
+          }
+        } catch { /* skip malformed urls */ }
+      }
+      // No matching tab open → open a new one at the deep link.
+      if (self.clients.openWindow) await self.clients.openWindow(targetUrl)
+    })()
+  )
+})

@@ -14,6 +14,7 @@ import { usePredictions } from './store/predictions'
 import { LottieLoader } from './components/LottieLoader'
 import { Ad, AdPair } from './components/AdSlot'
 import { AmazonShelf } from './components/AmazonShelf'
+import { PushOptIn } from './components/PushOptIn'
 import { IosInstallPrompt } from './components/IosInstallPrompt'
 
 // Each section is its own page now — lazy-loaded per route so a slow
@@ -279,6 +280,10 @@ function HomePage() {
   return (
     <>
       <Hero />
+      {/* Push opt-in card — only renders when the browser supports Web
+          Push AND the user hasn't dismissed it this session. Sits right
+          under the hero so it's the first call to action before scores. */}
+      <PushOptIn />
       {/* Mid-page slot: double 300x250 banner pair instead of a single
           slot. Doubles impressions-per-pageview to compensate for the
           revenue drop we took switching away from Adsterra's native
