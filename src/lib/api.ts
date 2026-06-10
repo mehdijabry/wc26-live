@@ -1165,17 +1165,36 @@ export function roundContext(ev: EspnEvent): {
  *    0-3  → red    (poor: hardly any wins)
  */
 export type TeamForm = {
-  score: number          // 0..15
+  /** Raw last-5 points, 0..15 (W=3 · D=1 · L=0). Legacy field. */
+  score: number
+  /**
+   * Recency-weighted form rating on a 0..10 scale. The most recent
+   * match counts 5×, the oldest counts 1× — so a team that's just
+   * won three on the bounce after a poor start gets a higher rating
+   * than a team that started strong and lost its last three.
+   *
+   *   weighted = Σ ( result_pts × position_weight ) where
+   *     result_pts ∈ {W:3, D:1, L:0}
+   *     position_weight ∈ {1, 2, 3, 4, 5}  (oldest → newest)
+   *   score10 = weighted / 45 × 10
+   *
+   * Also blends a small goal-difference bonus (capped at ±1.5) so
+   * routine 1-0 wins don't score the same as 4-0 wins, and 1-3
+   * losses don't score the same as scrappy 0-1 defeats.
+   */
+  score10: number
+  /** '6.8' — pre-formatted for direct render. */
+  display: string
   lastFive: ('W' | 'D' | 'L')[]
   color: 'green' | 'yellow' | 'orange' | 'red'
   played: number         // how many of the last 5 we actually have data for
 }
 
-function colorForFormScore(score: number): TeamForm['color'] {
-  if (score >= 12) return 'green'
-  if (score >= 8) return 'yellow'
-  if (score >= 4) return 'orange'
-  return 'red'
+function colorForScore10(s10: number): TeamForm['color'] {
+  if (s10 >= 7.5) return 'green'  // excellent form
+  if (s10 >= 5.0) return 'yellow' // decent
+  if (s10 >= 2.5) return 'orange' // poor
+  return 'red'                    // terrible
 }
 
 const FORM_CACHE = new Map<string, TeamForm>()
@@ -1202,11 +1221,18 @@ async function fetchTeamFormOnce(abbr: string): Promise<TeamForm | null> {
   const promise = (async (): Promise<TeamForm | null> => {
     try {
       const h = await jget<HistoryResponse>(`/team-history/${code.toLowerCase()}?v=2`)
-      const finished = (h.events ?? []).filter(
-        (ev) => (ev.status as { type?: { state?: string } } | undefined)?.type?.state === 'post'
-      )
-      // events come oldest-first from the worker; take the last 5
-      const lastFive = finished.slice(-5).map((ev): 'W' | 'D' | 'L' => {
+      // ESPN /team-history puts status on competitions[0].status, not on
+      // the event root (which is null). Reading both keeps the filter
+      // working on either shape. Without this, the finished filter
+      // matched zero events for every team and the form was always 0/red.
+      const finished = (h.events ?? []).filter((ev) => {
+        const root = (ev.status as { type?: { state?: string } } | undefined)?.type?.state
+        const comp = ev.competitions?.[0] as { status?: { type?: { state?: string } } } | undefined
+        return (root ?? comp?.status?.type?.state) === 'post'
+      })
+      // events come oldest-first from the worker; take the last 5 +
+      // capture goal difference per match for the GD bonus.
+      const lastFiveWithGD = finished.slice(-5).map((ev) => {
         const cs = ev.competitions?.[0]?.competitors ?? []
         const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === code)
         const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== code)
@@ -1220,16 +1246,52 @@ async function fetchTeamFormOnce(abbr: string): Promise<TeamForm | null> {
           : Number(opRaw ?? 0)
         const myN = Number.isFinite(my) ? my : 0
         const opN = Number.isFinite(op) ? op : 0
-        return myN > opN ? 'W' : myN === opN ? 'D' : 'L'
+        const result: 'W' | 'D' | 'L' = myN > opN ? 'W' : myN === opN ? 'D' : 'L'
+        return { result, gd: myN - opN }
       })
+      const lastFive = lastFiveWithGD.map((x) => x.result)
+      // Legacy raw points (sum, no weighting) — kept for backwards compat.
       const score = lastFive.reduce(
         (acc, r) => acc + (r === 'W' ? 3 : r === 'D' ? 1 : 0),
         0
       )
+      // ─── Recency-weighted 0..10 rating ───────────────────────────────
+      // Match index 0 = oldest of the last 5 → weight 1
+      // Match index 4 = newest of the last 5 → weight 5
+      // Max weighted = 3*(1+2+3+4+5) = 45 → normalise / 45 * 10.
+      // If fewer than 5 matches are available, max scales down so a
+      // team with only 2 known matches doesn't artificially read lower.
+      let weighted = 0
+      let maxWeighted = 0
+      lastFiveWithGD.forEach(({ result }, i) => {
+        const w = i + 1 // 1..5
+        const pts = result === 'W' ? 3 : result === 'D' ? 1 : 0
+        weighted += pts * w
+        maxWeighted += 3 * w
+      })
+      const baseS10 = maxWeighted > 0 ? (weighted / maxWeighted) * 10 : 0
+      // Goal-difference bonus: average GD over the window, capped to
+      // ±0.4 per match × match weight, then normalised to a small ±1.5
+      // shift on top of the base score. A team that's been beating
+      // opponents 4-0 lately gets a noticeable lift; one being beaten
+      // 0-4 gets pushed down.
+      let gdWeighted = 0
+      lastFiveWithGD.forEach(({ gd }, i) => {
+        const w = i + 1
+        const clipped = Math.max(-3, Math.min(3, gd)) // a 7-0 thrashing doesn't break the curve
+        gdWeighted += clipped * w
+      })
+      const gdShift = maxWeighted > 0
+        ? Math.max(-1.5, Math.min(1.5, (gdWeighted / maxWeighted) * 5))
+        : 0
+      const score10 = Math.max(0, Math.min(10, baseS10 + gdShift))
+      const display = score10.toFixed(1)
       const form: TeamForm = {
         score,
+        score10,
+        display,
         lastFive,
-        color: colorForFormScore(score),
+        color: colorForScore10(score10),
         played: lastFive.length,
       }
       FORM_CACHE.set(code, form)

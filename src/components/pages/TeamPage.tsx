@@ -286,18 +286,35 @@ export function TeamPage() {
       <section className="mb-10 grid grid-cols-2 sm:grid-cols-4 gap-3">
         <Kpi label="Form">
           {formColour ? (
-            <div className="flex gap-1">
-              {formColour.lastFive.map((r, i) => (
-                <span
-                  key={i}
-                  className={
-                    'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ' +
-                    (r === 'W' ? 'bg-emerald-500' : r === 'D' ? 'bg-slate-400' : 'bg-red-500')
-                  }
-                >
-                  {r}
+            <div className="flex flex-col gap-1.5">
+              {/* Headline X.X / 10 rating, recency-weighted (see
+                  fetchTeamFormOnce in lib/api.ts). Color matches the
+                  Groups page dot for the same team. */}
+              <div className="flex items-baseline gap-1">
+                <span className={
+                  'font-display font-bold text-2xl ' +
+                  (formColour.color === 'green' ? 'text-emerald-500'
+                    : formColour.color === 'yellow' ? 'text-amber-500'
+                    : formColour.color === 'orange' ? 'text-orange-500'
+                    : 'text-red-500')
+                }>
+                  {formColour.display}
                 </span>
-              ))}
+                <span className="text-[10px] font-mono text-slate-400">/ 10</span>
+              </div>
+              <div className="flex gap-0.5">
+                {formColour.lastFive.map((r, i) => (
+                  <span
+                    key={i}
+                    className={
+                      'w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white ' +
+                      (r === 'W' ? 'bg-emerald-500' : r === 'D' ? 'bg-slate-400' : 'bg-red-500')
+                    }
+                  >
+                    {r}
+                  </span>
+                ))}
+              </div>
             </div>
           ) : (
             <span className="text-slate-400 text-xs font-mono">…</span>

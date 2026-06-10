@@ -5,6 +5,8 @@ import {
   API_BASE,
   api,
   eventTeams,
+  getCachedTeamForm,
+  prefetchTeamForms,
   statusLabel,
   type EspnEvent,
   type HistoryEvent,
@@ -95,6 +97,24 @@ export function TeamSheet({ teamCode, open, onClose }: { teamCode: string | null
     setHistory(null)
     setHistoryLoading(false)
   }, [teamCode])
+
+  // Force-render bump so the FormCell re-reads the cached TeamForm
+  // once prefetchTeamForms() finishes. Same pattern Groups uses for
+  // its FormDots — synchronous cache reads stay simple.
+  const [, setFormTick] = useState(0)
+
+  useEffect(() => {
+    // Prefetch the 0..10 form rating for this team. The cache is shared
+    // with the Groups page so this is a no-op if Groups has already
+    // hit it. We bump formTick when it resolves so the FormCell
+    // picks up the new value.
+    if (!open || !teamCode) return
+    let cancelled = false
+    void prefetchTeamForms([teamCode]).then(() => {
+      if (!cancelled) setFormTick((n) => n + 1)
+    })
+    return () => { cancelled = true }
+  }, [open, teamCode])
 
   useEffect(() => {
     // History used to only load when the History tab opened. The Infos
@@ -413,23 +433,15 @@ function InfosTab({
           are played, else 'recent matches' (qualifiers + friendlies) so
           the panel never looks empty for a team that hasn't kicked off. */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {/* FORM = recency-weighted 0..10 rating (computed in api.ts).
+            Headline is the number 'X.X / 10' tinted to the rating's
+            color band (green/yellow/orange/red). Tiny W/D/L bullets
+            sit underneath as a literal reading of the last 5 results
+            so the number doesn't feel opaque. Pulls from the cached
+            TeamForm; we prefetch on modal open below so this lookup
+            is synchronous and the cell never flickers. */}
         <Kpi label="Form">
-          {form.length === 0
-            ? (historyLoading
-                ? <span className="text-slate-400 text-xs font-mono">…</span>
-                : <span className="text-slate-400 text-xs font-mono">—</span>)
-            : (
-              <div className="flex gap-1">
-                {form.map((f, i) => (
-                  <span key={i} className={
-                    'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white ' +
-                    (f === 'W' ? 'bg-accent-green' : f === 'D' ? 'bg-slate-400' : 'bg-accent-red')
-                  }>
-                    {f}
-                  </span>
-                ))}
-              </div>
-            )}
+          <FormCell teamCode={teamCode} fallback={form} historyLoading={historyLoading} />
         </Kpi>
         <Kpi label="Goals" value={`${stats.goalsFor > 0 ? '+' : ''}${stats.goalsFor} / -${stats.goalsAgainst}`} />
         <Kpi label="Results" value={
@@ -755,6 +767,73 @@ function StatsTab({
 }
 
 // ---------- Pieces ------------------------------------------------------
+
+/**
+ * Headline X.X / 10 number tinted to the rating's color band, with the
+ * five W/D/L bullets underneath. Pulls from getCachedTeamForm — the
+ * parent useEffect calls prefetchTeamForms on open so the cell becomes
+ * non-empty once that resolves.
+ *
+ * `fallback` is the locally-computed W/D/L list we already compute in
+ * InfosTab. It's used when the global cache hasn't resolved yet so the
+ * cell never renders empty if anything is available at all.
+ */
+function FormCell({
+  teamCode,
+  fallback,
+  historyLoading,
+}: {
+  teamCode: string
+  fallback: Array<'W' | 'D' | 'L'>
+  historyLoading: boolean
+}) {
+  const cached = getCachedTeamForm(teamCode)
+  const lastFive = cached?.lastFive ?? fallback
+  const score10 = cached?.score10
+  const display = cached?.display
+  const colorTextClass =
+    cached?.color === 'green' ? 'text-accent-green'
+    : cached?.color === 'yellow' ? 'text-amber-500'
+    : cached?.color === 'orange' ? 'text-orange-500'
+    : cached?.color === 'red' ? 'text-accent-red'
+    : 'text-slate-400'
+
+  if (score10 === undefined && lastFive.length === 0) {
+    return historyLoading
+      ? <span className="text-slate-400 text-xs font-mono">…</span>
+      : <span className="text-slate-400 text-xs font-mono">—</span>
+  }
+  return (
+    <div className="flex flex-col gap-1.5">
+      {display ? (
+        <div className="flex items-baseline gap-1">
+          <span className={`font-display font-bold text-2xl ${colorTextClass}`}>
+            {display}
+          </span>
+          <span className="text-[10px] font-mono text-slate-400">/ 10</span>
+        </div>
+      ) : (
+        <span className="text-slate-400 text-xs font-mono">—</span>
+      )}
+      {lastFive.length > 0 && (
+        <div className="flex gap-0.5">
+          {lastFive.map((f, i) => (
+            <span
+              key={i}
+              className={
+                'w-3.5 h-3.5 rounded-full flex items-center justify-center text-[8px] font-bold text-white ' +
+                (f === 'W' ? 'bg-accent-green' : f === 'D' ? 'bg-slate-400' : 'bg-accent-red')
+              }
+              title={f === 'W' ? 'Win' : f === 'D' ? 'Draw' : 'Loss'}
+            >
+              {f}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function Kpi({ label, value, children, highlight }: { label: string; value?: React.ReactNode; children?: React.ReactNode; highlight?: boolean }) {
   return (
