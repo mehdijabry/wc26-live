@@ -204,7 +204,10 @@ export default {
     }
   },
 
-  // ----- Cron: every 5 min sync finished matches → Supabase --------------
+  // ----- Cron: every 5 min --------------------------------------------
+  //   1. Sync finished matches → Supabase (predictions scoring)
+  //   2. Fire kickoff / goal / FT push notifications to subscribers
+  // The two passes share one ESPN fetch to keep subrequests low.
   async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     try {
       const sb = await fetch(`${ESPN_BASE}/scoreboard?limit=200`)
@@ -212,13 +215,17 @@ export default {
       const data = await sb.json<EspnScoreboard>()
       const events = data.events ?? []
 
-      const finished = events.filter((e) => {
-        const status = e.status?.type?.state
-        return status === 'post' // 'pre' | 'in' | 'post'
-      })
+      // --- Pass 1: kickoff + live score + FT alerts --------------------
+      // Guarded so a push pipeline failure (eg. broken VAPID) doesn't
+      // stop the predictions scoring pass below from running.
+      try {
+        await fireMatchAlerts(env, events)
+      } catch (e) {
+        console.log('[push] alerts pass failed:', e)
+      }
 
-      if (finished.length === 0) return
-
+      // --- Pass 2: sync finished matches → Supabase --------------------
+      const finished = events.filter((e) => e.status?.type?.state === 'post')
       for (const ev of finished) {
         try {
           const comp = ev.competitions?.[0]
@@ -246,6 +253,116 @@ export default {
       // swallow — cron will retry in 5 min
     }
   },
+}
+
+// ─── Auto-alert pipeline (called from scheduled()) ────────────────────
+//
+// One pass over the scoreboard does three things:
+//   - kickoff:  fire 15 min before any WC match goes live
+//   - goal:     fire whenever a live match score increments
+//   - FT:       fire when state flips pre|in → post (final whistle)
+//
+// Dedupe via Cloudflare KV so the same alert isn't fired twice across
+// overlapping cron runs / retries. Each key has a 36h TTL so a kickoff
+// alert from match-day morning can't accidentally re-fire 35 hours
+// later when the match shows up again in some other endpoint's list.
+
+const KV_TTL_SECONDS = 36 * 3600
+
+async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Promise<void> {
+  // No subscribers? Skip the whole thing — no point computing alerts
+  // we won't send.
+  const subsCheck = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/push_subscriptions?select=endpoint&limit=1`,
+    {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  const subsList = (await subsCheck.json()) as Array<{ endpoint: string }>
+  if (subsList.length === 0) return
+
+  for (const ev of events ?? []) {
+    try {
+      await maybeFireOneEvent(env, ev)
+    } catch (e) {
+      console.log('[push] event alert failed', ev.id, e)
+    }
+  }
+}
+
+async function maybeFireOneEvent(
+  env: Env,
+  ev: NonNullable<EspnScoreboard['events']>[number]
+): Promise<void> {
+  const id = String(ev.id ?? '')
+  if (!id) return
+  const comp = ev.competitions?.[0]
+  if (!comp) return
+  const home = comp.competitors?.find((c) => c.homeAway === 'home')
+  const away = comp.competitors?.find((c) => c.homeAway === 'away')
+  if (!home || !away) return
+  const homeName = home.team?.shortDisplayName ?? home.team?.displayName ?? '?'
+  const awayName = away.team?.shortDisplayName ?? away.team?.displayName ?? '?'
+  const state = ev.status?.type?.state // 'pre' | 'in' | 'post'
+
+  // ---- KICKOFF: 13–17 min before pre-match start ----------------------
+  if (state === 'pre' && ev.date) {
+    const kickoff = Date.parse(ev.date)
+    const now = Date.now()
+    const minsUntil = Math.round((kickoff - now) / 60_000)
+    if (minsUntil >= 13 && minsUntil <= 17) {
+      const seenKey = `alert:kickoff:${id}`
+      if (await env.CACHE.get(seenKey)) return
+      await broadcastCore(env, {
+        title: `⚽ ${homeName} v ${awayName}`,
+        body: `Kickoff in ${minsUntil} min — tap to follow live.`,
+        url: '/today',
+        tag: `kickoff-${id}`,
+      })
+      await env.CACHE.put(seenKey, '1', { expirationTtl: KV_TTL_SECONDS })
+    }
+  }
+
+  // ---- GOAL: score increments while state === 'in' --------------------
+  if (state === 'in') {
+    const hs = parseInt(home.score ?? '0', 10) || 0
+    const as = parseInt(away.score ?? '0', 10) || 0
+    const scoreKey = `alert:score:${id}`
+    const prev = await env.CACHE.get(scoreKey)
+    const cur = `${hs}-${as}`
+    if (prev !== cur) {
+      // Only broadcast on a real change (not the 0-0 baseline) and not
+      // on the very first poll for this match (would fire a 0-0 alert).
+      if (prev !== null && cur !== '0-0') {
+        const minute = ev.status?.displayClock ?? ''
+        await broadcastCore(env, {
+          title: `⚽ ${homeName} ${hs}-${as} ${awayName}`,
+          body: minute ? `Goal at ${minute}'` : 'Goal!',
+          url: '/today',
+          tag: `live-${id}`,
+        })
+      }
+      await env.CACHE.put(scoreKey, cur, { expirationTtl: KV_TTL_SECONDS })
+    }
+  }
+
+  // ---- FT: state flipped to 'post' since last poll --------------------
+  if (state === 'post') {
+    const ftKey = `alert:ft:${id}`
+    if (await env.CACHE.get(ftKey)) return
+    const hs = parseInt(home.score ?? '0', 10) || 0
+    const as = parseInt(away.score ?? '0', 10) || 0
+    await broadcastCore(env, {
+      title: `🏁 FT — ${homeName} ${hs}-${as} ${awayName}`,
+      body: 'Full time. Tap for stats + lineups.',
+      url: '/today',
+      tag: `ft-${id}`,
+    })
+    await env.CACHE.put(ftKey, '1', { expirationTtl: KV_TTL_SECONDS })
+  }
 }
 
 // ----- Helpers -----------------------------------------------------------
@@ -1035,11 +1152,26 @@ async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
   }
   let payload: { title?: string; body?: string; url?: string; tag?: string }
   try { payload = await req.json() } catch { return json({ error: 'bad json' }, 400) }
-  const title = payload.title ?? 'WC26 Live'
-  const body = payload.body ?? 'Match update'
-  const url = payload.url ?? '/today'
-  const tag = payload.tag ?? 'wc26-broadcast'
+  const result = await broadcastCore(env, {
+    title: payload.title ?? 'WC26 Live',
+    body: payload.body ?? 'Match update',
+    url: payload.url ?? '/today',
+    tag: payload.tag ?? 'wc26-broadcast',
+  })
+  return json({ ok: true, ...result })
+}
 
+/**
+ * Pure broadcast helper — fans out a notification to every saved
+ * subscription. Called by the HTTP endpoint AND by the cron-driven
+ * kickoff / goal / FT auto-alerts in scheduled(). Auto-prunes 404/410
+ * endpoints from Supabase so dead subscriptions don't keep eating
+ * subrequests forever.
+ */
+async function broadcastCore(
+  env: Env,
+  notif: { title: string; body: string; url: string; tag: string }
+): Promise<{ sent: number; failed: number; total: number }> {
   const resp = await fetch(
     `${env.SUPABASE_URL}/rest/v1/push_subscriptions?select=endpoint,p256dh,auth`,
     {
@@ -1050,7 +1182,7 @@ async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
     }
   )
   const rows = (await resp.json()) as Array<{ endpoint: string; p256dh: string; auth: string }>
-  let ok = 0
+  let sent = 0
   let failed = 0
   // Fan-out in batches of 20 to keep the worker invocation under the
   // CPU + subrequest limits.
@@ -1061,12 +1193,10 @@ async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
         const r = await sendWebPush(
           env,
           { endpoint: row.endpoint, keys: { p256dh: row.p256dh, auth: row.auth } },
-          { title, body, url, tag }
+          notif
         )
-        if (r.ok) ok++
+        if (r.ok) sent++
         else failed++
-        // 410 = subscription gone, prune from DB so we don't keep
-        // hitting dead endpoints on every broadcast.
         if (r.status === 404 || r.status === 410) {
           await fetch(
             `${env.SUPABASE_URL}/rest/v1/push_subscriptions?endpoint=eq.${encodeURIComponent(row.endpoint)}`,
@@ -1082,5 +1212,5 @@ async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
       })
     )
   }
-  return json({ ok: true, sent: ok, failed, total: rows.length })
+  return { sent, failed, total: rows.length }
 }
