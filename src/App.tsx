@@ -38,6 +38,7 @@ const WatchCountry = lazy(() => import('./components/pages/WatchCountry').then((
 const TeamPage = lazy(() => import('./components/pages/TeamPage').then((m) => ({ default: m.TeamPage })))
 const Explained = lazy(() => import('./components/pages/Explained').then((m) => ({ default: m.Explained })))
 const ExplainedTopic = lazy(() => import('./components/pages/ExplainedTopic').then((m) => ({ default: m.ExplainedTopic })))
+const AdminPanel = lazy(() => import('./components/pages/AdminPanel').then((m) => ({ default: m.AdminPanel })))
 
 function App() {
   const authInit = useAuth((s) => s.init)
@@ -175,6 +176,17 @@ function App() {
             element={
               <Suspense fallback={<PageSkeleton caption="Loading team…" />}>
                 <TeamPage />
+              </Suspense>
+            }
+          />
+          {/* Admin panel — obscured slug, real auth is the password.
+              Pages-level <Suspense> wraps it without the global nav,
+              so the panel renders as its own standalone shell. */}
+          <Route
+            path="/admin-panel-1992"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading admin…" />}>
+                <AdminPanel />
               </Suspense>
             }
           />

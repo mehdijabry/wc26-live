@@ -21,6 +21,7 @@ import {
   safeYmd,
   withSecurityHeaders,
 } from './security'
+import { handleAdmin } from './admin'
 
 export interface Env {
   CACHE: KVNamespace
@@ -32,6 +33,19 @@ export interface Env {
   VAPID_PUBLIC: string
   VAPID_PRIVATE: string
   VAPID_SUBJECT: string  // 'mailto:info@pressing90.live'
+  // Admin panel (set via wrangler secret put). See admin.ts.
+  ADMIN_PASSWORD_HASH?: string   // sha256(salt + ':' + password) hex
+  ADMIN_PASSWORD_SALT?: string
+  ADMIN_SESSION_SECRET?: string  // HMAC key for session tokens; falls back to PASSWORD_HASH
+  ADMIN_TOKEN?: string           // legacy x-admin-token guard for /push/broadcast
+  // Optional integrations (admin endpoints gracefully degrade to mock).
+  CF_API_TOKEN?: string
+  CF_ACCOUNT_ID?: string
+  CF_ZONE_ID?: string
+  GSC_SERVICE_ACCOUNT?: string
+  GSC_SITE_URL?: string
+  RESEND_API_KEY?: string
+  RESEND_FROM?: string
   // Durable Object scheduler — fires kickoff pushes at the exact
   // second they're due (instead of waiting for the next 5-min cron).
   // See KickoffScheduler class at the bottom of this file.
@@ -237,6 +251,12 @@ export default {
         if (rl.blocked) return cors(rateLimitedResponse(rl.retryAfter), req)
         return cors(await handlePushBroadcast(req, env), req)
       }
+
+      // Admin panel backend — auth + analytics + push + email + DB stats.
+      // Routed through the dispatcher in admin.ts so the worker entry
+      // stays clean.
+      const adminResp = await handleAdmin(req, env, url.pathname)
+      if (adminResp) return cors(adminResp, req)
 
       return cors(json({ error: 'Not found' }, 404), req)
     } catch (e: unknown) {
