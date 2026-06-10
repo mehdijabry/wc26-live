@@ -142,6 +142,7 @@ export function TeamPage() {
   // the modal — keeps the two views numerically identical.
   const formColour = getCachedTeamForm(abbr)
   const summary = history?.summary ?? null
+  const narrative = narrativeFor(abbr)
 
   // SEO meta + JSON-LD
   useEffect(() => {
@@ -172,7 +173,7 @@ export function TeamPage() {
     setLink('canonical', `https://pressing90.live/team/${abbr.toLowerCase()}`)
     setOg('og:title', title)
     setOg('og:url', `https://pressing90.live/team/${abbr.toLowerCase()}`)
-    setOg('og:description', descParts.join(' · '))
+    setOg('og:description', desc)
 
     setJsonLd('team-page', {
       '@context': 'https://schema.org',
@@ -213,7 +214,6 @@ export function TeamPage() {
   }, [abbr, events])
 
   const logo = teamBadgeFallback(team?.logos?.[0]?.href, abbr)
-  const narrative = narrativeFor(abbr)
 
   return (
     <div className="container max-w-4xl mx-auto px-6 py-12">
