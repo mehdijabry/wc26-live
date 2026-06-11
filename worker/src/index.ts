@@ -351,6 +351,11 @@ export interface PushSettings {
   yellowCard: { enabled: boolean }
   penalty: { enabled: boolean }
   halfTime: { enabled: boolean }
+  // Manual: fires when an article is APPROVED in the admin panel (i.e.
+  // transitions from 'draft' to 'published'). Not driven by the cron;
+  // gated separately so an editor can suppress the push for a routine
+  // briefing without disabling the publish itself.
+  articlePublished: { enabled: boolean }
 }
 
 export const DEFAULT_PUSH_SETTINGS: PushSettings = {
@@ -362,6 +367,7 @@ export const DEFAULT_PUSH_SETTINGS: PushSettings = {
   yellowCard: { enabled: false },  // off by default — high volume
   penalty: { enabled: true },
   halfTime: { enabled: true },
+  articlePublished: { enabled: true },
 }
 
 const PUSH_SETTINGS_KEY = 'push:settings'
@@ -396,6 +402,7 @@ export async function savePushSettings(env: Env, s: PushSettings): Promise<void>
     yellowCard: { enabled: !!s.yellowCard.enabled },
     penalty: { enabled: !!s.penalty.enabled },
     halfTime: { enabled: !!s.halfTime.enabled },
+    articlePublished: { enabled: !!s.articlePublished?.enabled },
   }
   await env.CACHE.put(PUSH_SETTINGS_KEY, JSON.stringify(sanitized))
 }

@@ -979,7 +979,33 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
   if (!tail || !action) return jsonResp({ error: 'bad_path' }, 400)
   const id = tail
 
-  if (action === 'approve') return updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null })
+  if (action === 'approve') {
+    const result = await updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null })
+    // Side-effect: fire a broadcast push so subscribers get a tap-to-
+    // read link. Gated on the articlePublished setting so it can be
+    // suppressed for low-signal updates. Bullet-proof — push failures
+    // don't roll the publish back.
+    try {
+      const cloned = result.clone()
+      const data = await cloned.json() as { article?: { slug?: string; title?: string; excerpt?: string | null } }
+      const a = data.article
+      if (a?.slug && a?.title) {
+        const { loadPushSettings, broadcastCore } = await import('./index')
+        const settings = await loadPushSettings(env as unknown as Parameters<typeof loadPushSettings>[0])
+        if (settings.enabled && settings.articlePublished.enabled) {
+          await broadcastCore(env as unknown as Parameters<typeof broadcastCore>[0], {
+            title: `📰 ${a.title}`,
+            body: a.excerpt?.slice(0, 140) ?? 'Tap to read on Pressing 90.',
+            url: `/news/${a.slug}`,
+            tag: `article-${a.slug}`,
+          })
+        }
+      }
+    } catch (e) {
+      console.log('[push] article publish broadcast failed:', e)
+    }
+    return result
+  }
   if (action === 'reject')  return updateArticle(env, id, { status: 'archived',  archived_at: nowIso() })
   if (action === 'unpublish') return updateArticle(env, id, { status: 'draft',  published_at: null })
   if (action === 'republish') return updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null })

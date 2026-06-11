@@ -1176,6 +1176,7 @@ interface PushSettingsShape {
   yellowCard: { enabled: boolean }
   penalty: { enabled: boolean }
   halfTime: { enabled: boolean }
+  articlePublished: { enabled: boolean }
 }
 
 interface PushDiagShape {
@@ -1329,6 +1330,16 @@ function AutoPushSettingsSection() {
         sub="Fired when a match transitions to second-half (period 2). One per match with current score."
         checked={settings.halfTime.enabled}
         onChange={(v) => setSettings({ ...settings, halfTime: { enabled: v } })}
+        disabled={!settings.enabled}
+      />
+
+      <div className="border-t border-slate-200 my-4" />
+
+      <ToggleRow
+        label="📰 Article published alerts"
+        sub="Fires once when you Approve a draft in the News tab — tap-to-read deep-links straight to /news/<slug>. Skip this if a briefing is too low-signal to interrupt subscribers."
+        checked={settings.articlePublished.enabled}
+        onChange={(v) => setSettings({ ...settings, articlePublished: { enabled: v } })}
         disabled={!settings.enabled}
       />
 

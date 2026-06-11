@@ -1,6 +1,46 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchNews, type NewsArticle } from '../lib/api'
+import { supabase } from '../lib/supabase'
+
+/**
+ * Pull the 2 most-recent published articles from our Supabase 'articles'
+ * table and convert them to NewsArticle shape so they slot into the
+ * same hero feed alongside ESPN's. User-requested: our briefings always
+ * occupy positions 1 + 2; ESPN fills the rest.
+ */
+async function fetchInternalArticles(): Promise<NewsArticle[]> {
+  if (!supabase) return []
+  try {
+    const { data, error } = await supabase
+      .from('articles')
+      .select('id,slug,title,excerpt,image_url,published_at,created_at')
+      .eq('status', 'published')
+      .order('published_at', { ascending: false })
+      .limit(2)
+    if (error || !data) return []
+    return data.map((row) => ({
+      id: 'internal:' + (row as { id: string }).id,
+      headline: (row as { title: string }).title,
+      description: (row as { excerpt: string | null }).excerpt ?? '',
+      publishedAt: (row as { published_at: string | null; created_at: string }).published_at
+        ?? (row as { created_at: string }).created_at,
+      image: (row as { image_url: string | null }).image_url ?? undefined,
+      // Internal URL — the click handler detects the leading '/' and
+      // routes via react-router instead of opening a new tab.
+      href: `/news/${(row as { slug: string }).slug}`,
+      // Label that surfaces in the source eyebrow so visitors can tell
+      // 'this one's a Pressing 90 briefing' at a glance.
+      source: "Pressing 90'",
+    }))
+  } catch {
+    return []
+  }
+}
+
+function isInternalHref(href: string | undefined): boolean {
+  return !!href && href.startsWith('/')
+}
 
 /* -------------------------------------------------------------------------- */
 /* Return-visitor toast                                                       */
@@ -69,9 +109,18 @@ export function NewsTicker() {
     let timer: number | undefined
     async function load() {
       try {
-        const fresh = await fetchNews(5)
+        // Fetch our own briefings in parallel with ESPN — keeps the
+        // first paint snappy because the slower of the two waits is
+        // capped to the slower endpoint, not summed.
+        const [ours, espn] = await Promise.all([fetchInternalArticles(), fetchNews(5)])
         if (stop) return
-        setArticles(fresh)
+        // Our articles are pinned to positions 1+2; the rest is ESPN.
+        // De-dup against ESPN by id in case an internal slug accidentally
+        // collides (won't happen with the 'internal:' prefix, but
+        // defensive in case the shape changes).
+        const seen = new Set(ours.map((a) => a.id))
+        const combined = [...ours, ...espn.filter((a) => !seen.has(a.id))]
+        setArticles(combined)
         setError(null)
       } catch (e) {
         if (!stop) setError(e instanceof Error ? e.message : 'Failed to load news')
@@ -194,9 +243,10 @@ export function NewsTicker() {
         {/* Featured */}
         <a
           href={featured?.href ?? '#'}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => markEspnClick(featured)}
+          {...(isInternalHref(featured?.href)
+            ? {}
+            : { target: '_blank', rel: 'noopener noreferrer' })}
+          onClick={() => !isInternalHref(featured?.href) && markEspnClick(featured)}
           className="lg:col-span-2 group relative overflow-hidden rounded-2xl bg-marine-950 text-cream block min-h-[22rem]"
         >
           {featured?.image && (
@@ -233,7 +283,7 @@ export function NewsTicker() {
                 </p>
               )}
               <div className="mt-4 inline-flex items-center gap-2 text-xs tracking-widest uppercase text-accent-gold font-semibold">
-                Read on ESPN <span aria-hidden>→</span>
+                {isInternalHref(featured?.href) ? 'Read briefing' : 'Read on ESPN'} <span aria-hidden>→</span>
               </div>
             </motion.div>
           </AnimatePresence>
@@ -245,9 +295,10 @@ export function NewsTicker() {
             <a
               key={a.id}
               href={a.href ?? '#'}
-              target="_blank"
-              rel="noopener noreferrer"
-              onClick={() => markEspnClick(a)}
+              {...(isInternalHref(a.href)
+                ? {}
+                : { target: '_blank', rel: 'noopener noreferrer' })}
+              onClick={() => !isInternalHref(a.href) && markEspnClick(a)}
               className="group bg-paper/70 hover:bg-paper border border-slate-200/70 rounded-xl p-3 transition-colors block"
             >
               <div className="flex gap-3 items-start">
