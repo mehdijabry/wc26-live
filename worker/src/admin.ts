@@ -742,16 +742,18 @@ async function handleAdminBroadcast(req: Request, env: AdminEnv): Promise<Respon
   // semantics stay identical.
   const raw = await readBoundedJson(req, 4 * 1024)
   if (!raw || typeof raw !== 'object') return jsonResp({ error: 'bad json' }, 400)
-  const p = raw as { title?: unknown; body?: unknown; url?: unknown; tag?: unknown }
+  const p = raw as { title?: unknown; body?: unknown; url?: unknown; tag?: unknown; icon?: unknown }
   const title = safeString(p.title, 100) ?? 'WC26 Live'
   const body = safeString(p.body, 240) ?? 'Match update'
   const targetUrl = safeString(p.url, 200) ?? '/today'
   if (!targetUrl.startsWith('/')) return jsonResp({ error: 'url must be relative' }, 400)
   const tag = safeString(p.tag, 60) ?? 'admin-broadcast'
+  const rawIcon = safeString(p.icon, 200)
+  const icon = rawIcon && rawIcon.startsWith('/') ? rawIcon : undefined
   // Direct call instead of internal fetch — Workers refuse same-host
   // fetches (loop guard). The admin session check above already
   // authorised the caller; broadcastCore is pure data + push fan-out.
-  const result = await broadcastCore(env as unknown as Env, { title, body, url: targetUrl, tag })
+  const result = await broadcastCore(env as unknown as Env, { title, body, url: targetUrl, tag, icon })
   return jsonResp({ ok: true, ...result })
 }
 

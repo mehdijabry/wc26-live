@@ -1692,7 +1692,7 @@ async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
   }
   const raw = await readBoundedJson(req, 4 * 1024)
   if (!raw || typeof raw !== 'object') return json({ error: 'bad json' }, 400)
-  const p = raw as { title?: unknown; body?: unknown; url?: unknown; tag?: unknown }
+  const p = raw as { title?: unknown; body?: unknown; url?: unknown; tag?: unknown; icon?: unknown }
   const title = (p.title === undefined ? null : safeString(p.title, 100)) ?? 'WC26 Live'
   const body = (p.body === undefined ? null : safeString(p.body, 240)) ?? 'Match update'
   const rawUrl = p.url === undefined ? '/today' : safeString(p.url, 200)
@@ -1700,7 +1700,12 @@ async function handlePushBroadcast(req: Request, env: Env): Promise<Response> {
     return json({ error: 'url must be a relative path' }, 400)
   }
   const tag = (p.tag === undefined ? null : safeString(p.tag, 60)) ?? 'wc26-broadcast'
-  const result = await broadcastCore(env, { title, body, url: rawUrl, tag })
+  // icon is an optional relative path (same-origin only). Used by the
+  // service worker as the notification's small icon — referee SVGs for
+  // card events, brand emblem otherwise.
+  const rawIcon = p.icon === undefined ? null : safeString(p.icon, 200)
+  const icon = rawIcon && rawIcon.startsWith('/') ? rawIcon : undefined
+  const result = await broadcastCore(env, { title, body, url: rawUrl, tag, icon })
   return json({ ok: true, ...result })
 }
 
