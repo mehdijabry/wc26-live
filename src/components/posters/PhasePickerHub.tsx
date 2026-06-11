@@ -22,13 +22,18 @@ type Phase = {
   accent: 'gold' | 'silver' | 'bronze' | 'green' | 'red' | 'blue' | 'slate'
 }
 
+// Order MATTERS — follows the actual tournament progression
+// (group stage → R32 → ... → final). A tournament never starts with
+// the final, so the picker shouldn't either. The 'Final + 3rd place'
+// shortcut sits at the bottom near the full bracket option, framed as
+// a quick way to share your champion pick without filling everything.
 const PHASES: Phase[] = [
-  { id: 'final', emoji: '🏆', title: 'Final + 3rd place', sub: 'Champion · Runner-up · 3rd', status: 'ready', accent: 'gold' },
-  { id: 'sf', emoji: '⚔️', title: 'Semi-finals', sub: '2 matches · last 4 standing', status: 'soon', accent: 'silver' },
-  { id: 'qf', emoji: '🔥', title: 'Quarter-finals', sub: '4 matches · last 8 standing', status: 'soon', accent: 'red' },
-  { id: 'r16', emoji: '🎯', title: 'Round of 16', sub: '8 matches · the deciding round', status: 'soon', accent: 'blue' },
-  { id: 'r32', emoji: '🏟️', title: 'Round of 32', sub: '16 matches · the big kick-off', status: 'soon', accent: 'green' },
   { id: 'groups', emoji: '🌍', title: 'Groups + best thirds', sub: '12 groups · 36 picks', status: 'soon', accent: 'slate' },
+  { id: 'r32', emoji: '🏟️', title: 'Round of 32', sub: '16 matches · the big kick-off', status: 'soon', accent: 'green' },
+  { id: 'r16', emoji: '🎯', title: 'Round of 16', sub: '8 matches · the deciding round', status: 'soon', accent: 'blue' },
+  { id: 'qf', emoji: '🔥', title: 'Quarter-finals', sub: '4 matches · last 8 standing', status: 'soon', accent: 'red' },
+  { id: 'sf', emoji: '⚔️', title: 'Semi-finals', sub: '2 matches · last 4 standing', status: 'soon', accent: 'silver' },
+  { id: 'final', emoji: '🏆', title: 'Final + 3rd place', sub: 'Just your champion + finalist + 3rd', status: 'ready', accent: 'gold' },
   { id: 'full', emoji: '📋', title: 'Full bracket', sub: 'Whole tournament · complete poster', status: 'ready', accent: 'slate' },
 ]
 
