@@ -1199,7 +1199,24 @@ function AutoPushSettingsSection() {
   const [msg, setMsg] = useState<string | null>(null)
 
   useEffect(() => {
-    void adminGet('/admin/push/settings').then((d) => setSettings((d as { settings: PushSettingsShape }).settings))
+    void adminGet('/admin/push/settings').then((d) => {
+      // Defensive merge: stale KV payloads can ship without newly-added
+      // fields. Filling them in here means React never reads `.enabled`
+      // off undefined and crashes the whole tab.
+      const raw = (d as { settings: Partial<PushSettingsShape> }).settings ?? {}
+      const safe: PushSettingsShape = {
+        enabled: raw.enabled ?? true,
+        kickoff: { enabled: raw.kickoff?.enabled ?? true, leadMinutes: raw.kickoff?.leadMinutes ?? 15 },
+        goal: { enabled: raw.goal?.enabled ?? true },
+        fullTime: { enabled: raw.fullTime?.enabled ?? true },
+        redCard: { enabled: raw.redCard?.enabled ?? true },
+        yellowCard: { enabled: raw.yellowCard?.enabled ?? false },
+        penalty: { enabled: raw.penalty?.enabled ?? true },
+        halfTime: { enabled: raw.halfTime?.enabled ?? true },
+        articlePublished: { enabled: raw.articlePublished?.enabled ?? true },
+      }
+      setSettings(safe)
+    })
     void adminGet('/admin/push/diag').then((d) => setDiag((d as { diag: PushDiagShape | null }).diag))
   }, [])
 

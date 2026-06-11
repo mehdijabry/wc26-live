@@ -377,12 +377,20 @@ export async function loadPushSettings(env: Env): Promise<PushSettings> {
   if (!raw) return DEFAULT_PUSH_SETTINGS
   try {
     const parsed = JSON.parse(raw) as Partial<PushSettings>
+    // Merge KV against defaults so a stored payload missing newly-added
+    // fields (e.g. yellowCard added after KV was first written) still
+    // returns a fully-populated object — otherwise the admin panel would
+    // crash on first render trying to read settings.yellowCard.enabled.
     return {
       enabled: parsed.enabled ?? DEFAULT_PUSH_SETTINGS.enabled,
-      kickoff: { ...DEFAULT_PUSH_SETTINGS.kickoff, ...(parsed.kickoff ?? {}) },
-      goal: { ...DEFAULT_PUSH_SETTINGS.goal, ...(parsed.goal ?? {}) },
-      fullTime: { ...DEFAULT_PUSH_SETTINGS.fullTime, ...(parsed.fullTime ?? {}) },
-      redCard: { ...DEFAULT_PUSH_SETTINGS.redCard, ...(parsed.redCard ?? {}) },
+      kickoff:          { ...DEFAULT_PUSH_SETTINGS.kickoff,          ...(parsed.kickoff ?? {}) },
+      goal:             { ...DEFAULT_PUSH_SETTINGS.goal,             ...(parsed.goal ?? {}) },
+      fullTime:         { ...DEFAULT_PUSH_SETTINGS.fullTime,         ...(parsed.fullTime ?? {}) },
+      redCard:          { ...DEFAULT_PUSH_SETTINGS.redCard,          ...(parsed.redCard ?? {}) },
+      yellowCard:       { ...DEFAULT_PUSH_SETTINGS.yellowCard,       ...(parsed.yellowCard ?? {}) },
+      penalty:          { ...DEFAULT_PUSH_SETTINGS.penalty,          ...(parsed.penalty ?? {}) },
+      halfTime:         { ...DEFAULT_PUSH_SETTINGS.halfTime,         ...(parsed.halfTime ?? {}) },
+      articlePublished: { ...DEFAULT_PUSH_SETTINGS.articlePublished, ...(parsed.articlePublished ?? {}) },
     }
   } catch {
     return DEFAULT_PUSH_SETTINGS
