@@ -40,14 +40,13 @@ export function Navigation() {
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6 }}
-        // sticky (not fixed) → sits in normal document flow at scroll 0, so
-        // it doesn't overlap the first ~80px of page content. When the user
-        // scrolls down it sticks to the viewport top with the blur backdrop.
-        // Horizontal swipes (DailyMatches carousel, etc.) pass through
-        // because sticky doesn't capture pointer events outside its bounds.
-        className={`sticky top-0 inset-x-0 z-50 transition-all duration-300 ${
-          scrolled ? 'backdrop-blur-xl bg-paper/70 border-b border-slate-200/70' : 'bg-paper'
-        }`}
+        // Plain in-flow header — not sticky, not fixed. The user wants the
+        // nav to be anchored at the very top of the page and scroll away
+        // with the content instead of hovering over scrolled content
+        // (which made the matches carousel and other rows visually
+        // collide with the blurred header). Mobile users can still
+        // navigate via the persistent BottomNav at the screen bottom.
+        className="relative inset-x-0 z-10 bg-paper border-b border-slate-200/70"
         // Safe-area-aware padding: in iOS standalone (PWA from home screen)
         // there's no Safari chrome, so without this the WC26 logo + Sign in
         // button slide under the notch / Dynamic Island. env(safe-area-
