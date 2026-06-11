@@ -880,6 +880,28 @@ function News() {
             {busy === 'poll' ? 'Polling…' : '🎣 Poll 6 articles'}
           </button>
           <button
+            onClick={async () => {
+              setBusy('backfill')
+              setMsg(null)
+              try {
+                const r = await fetch(`${API_BASE}/admin/news/backfill-images`, {
+                  method: 'POST',
+                  headers: { authorization: `Bearer ${getToken() ?? ''}` },
+                })
+                const d = await r.json() as { scanned?: number; patched?: number; error?: string }
+                if (d.error) setMsg('Backfill failed: ' + d.error)
+                else setMsg(`✓ Backfill: scanned ${d.scanned}, patched ${d.patched} images`)
+                await load()
+              } catch (e) { setMsg('Backfill error: ' + String(e)) }
+              finally { setBusy(null) }
+            }}
+            disabled={busy === 'backfill'}
+            className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 disabled:opacity-50"
+            title="Fetch og:image for every published article whose image_url is null"
+          >
+            {busy === 'backfill' ? 'Backfilling…' : '🖼 Backfill images'}
+          </button>
+          <button
             onClick={load}
             className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-mono"
           >

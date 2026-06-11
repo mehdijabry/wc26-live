@@ -134,6 +134,14 @@ export async function produceFromCandidate(env: Env, picked: PolledCandidate): P
     return { ok: false, error: 'already_in_db' }
   }
 
+  // Always fetch the source article's og:image. ESPN RSS doesn't
+  // include images reliably in standard <media:*> tags, so the RSS
+  // parser's imageUrl is null on most candidates. The article page
+  // itself ALWAYS has an og:image meta — that's what every Twitter /
+  // Facebook unfurl relies on. Strictly preferred over the RSS hint.
+  const ogImage = await fetchOgImage(c.link)
+  if (ogImage) c.imageUrl = ogImage
+
   // First pass — normal prompt.
   let ai = await rewriteWithAi(env, c)
   if (!ai.rewritten) {
@@ -160,6 +168,61 @@ export async function produceFromCandidate(env: Env, picked: PolledCandidate): P
   }
 
   return { ok: true, draft: { id: inserted.id, slug: inserted.slug, title: inserted.title } }
+}
+
+/**
+ * Fetch the source article's HTML and pull the og:image (or
+ * twitter:image, or first big <img>) so every produced draft has a
+ * real hero photo. ESPN RSS doesn't include images in standard tags
+ * — the article page does, every time, because every social-share
+ * unfurl depends on it.
+ *
+ * Cached at the edge for 1h so re-attempting Produce on the same
+ * candidate doesn't re-fetch.
+ */
+export async function fetchOgImage(url: string): Promise<string | null> {
+  try {
+    const r = await fetch(url, {
+      headers: {
+        'user-agent': 'Mozilla/5.0 (compatible; pressing90.live news bot; +https://pressing90.live)',
+        accept: 'text/html',
+      },
+      cf: { cacheTtl: 3600, cacheEverything: true },
+    })
+    if (!r.ok) return null
+    // We only need the <head>, so cap the body read to avoid wasting CPU
+    // on long article bodies. Most og:image tags sit in the first 8KB.
+    const reader = r.body?.getReader()
+    if (!reader) return null
+    let html = ''
+    const decoder = new TextDecoder()
+    let bytes = 0
+    while (bytes < 32_000) {
+      const { value, done } = await reader.read()
+      if (done) break
+      bytes += value.byteLength
+      html += decoder.decode(value, { stream: true })
+      if (html.includes('</head>')) break
+    }
+    try { await reader.cancel() } catch {}
+    // og:image — both attribute orderings.
+    const og = html.match(/<meta[^>]+(?:property|name)=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)
+      ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image(?::secure_url)?["']/i)
+    if (og) return resolveUrl(og[1], url)
+    const tw = html.match(/<meta[^>]+(?:property|name)=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+      ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']twitter:image["']/i)
+    if (tw) return resolveUrl(tw[1], url)
+    // Fallback: first <img> with non-trivial size.
+    const img = html.match(/<img[^>]+src=["']([^"']+\.(?:jpe?g|png|webp)[^"']*)["']/i)
+    if (img) return resolveUrl(img[1], url)
+    return null
+  } catch {
+    return null
+  }
+}
+
+function resolveUrl(maybeRelative: string, base: string): string {
+  try { return new URL(maybeRelative, base).toString() } catch { return maybeRelative }
 }
 
 async function fetchAllSourceUrls(env: Env): Promise<Set<string>> {
@@ -238,6 +301,12 @@ export async function runNewsPipeline(env: Env): Promise<PipelineReport> {
       r.notes.push('Winner already in DB; skipped.')
       return r
     }
+
+    // Augment with og:image from the source page before AI rewrite.
+    // RSS feeds rarely include images in the standard tags so this is
+    // where every produced article's hero photo actually comes from.
+    const ogImage = await fetchOgImage(winner.link)
+    if (ogImage) winner.imageUrl = ogImage
 
     r.step = 'ai'
     const aiResult = await rewriteWithAi(env, winner)

@@ -138,26 +138,21 @@ function ArticleCard({ article, featured }: { article: Article; featured: boolea
           (featured ? 'md:flex md:gap-0' : 'md:flex md:gap-0')
         }
       >
-        <div className={featured ? 'md:w-2/5 aspect-video md:aspect-auto bg-slate-100 flex-shrink-0' : 'md:w-48 aspect-video md:aspect-auto md:flex-shrink-0 bg-slate-100'}>
-          {article.image_url ? (
+        {/* The hero image only renders if we have a real URL. No
+            placeholder — user wants the actual article photo every
+            time. The worker fetches og:image at produce time so this
+            should be populated for every new article. */}
+        {article.image_url && (
+          <div className={featured ? 'md:w-2/5 aspect-video md:aspect-auto bg-slate-100 flex-shrink-0' : 'md:w-48 aspect-video md:aspect-auto md:flex-shrink-0 bg-slate-100'}>
             <img
               src={article.image_url}
               alt={article.title}
               loading="lazy"
               className="w-full h-full object-cover"
-              onError={(e) => {
-                // Hide broken images gracefully — the gradient placeholder below
-                // takes over so the card layout doesn't reflow.
-                ;(e.target as HTMLImageElement).style.display = 'none'
-                ;((e.target as HTMLImageElement).parentElement as HTMLElement).classList.add('bg-gradient-to-br', 'from-accent-gold/10', 'via-slate-100', 'to-slate-200')
-              }}
+              onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none' }}
             />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-accent-gold/10 via-slate-100 to-slate-200 flex items-center justify-center">
-              <span className="font-display font-bold text-3xl text-slate-300">⚽</span>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
         <div className="flex-1 p-4 sm:p-5 min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] uppercase tracking-widest font-mono text-accent-gold">

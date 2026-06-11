@@ -866,6 +866,37 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
     return jsonResp({ ok: true, triggered: true, report })
   }
 
+  if (tail === 'backfill-images' && !action && req.method === 'POST') {
+    // One-shot: for every article with null image_url, fetch its
+    // source page's og:image and patch the row. Used after the og:image
+    // fetcher landed to retro-fill the first 3 published articles.
+    const list = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/articles?select=id,source_url,image_url&image_url=is.null&limit=100`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+    )
+    if (!list.ok) return jsonResp({ error: 'list_failed', status: list.status }, 500)
+    const rows = await list.json() as Array<{ id: string; source_url: string }>
+    const { fetchOgImage } = await import('./news')
+    const updates: Array<{ id: string; image_url: string | null }> = []
+    for (const row of rows) {
+      const img = await fetchOgImage(row.source_url)
+      if (img) {
+        await fetch(`${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(row.id)}`, {
+          method: 'PATCH',
+          headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            'content-type': 'application/json',
+            prefer: 'return=minimal',
+          },
+          body: JSON.stringify({ image_url: img }),
+        })
+      }
+      updates.push({ id: row.id, image_url: img })
+    }
+    return jsonResp({ ok: true, scanned: rows.length, patched: updates.filter((u) => u.image_url).length, updates })
+  }
+
   if (tail === 'poll' && !action) {
     // Return top 6 candidates skipping anything already in DB. The
     // operator picks which one to produce.
