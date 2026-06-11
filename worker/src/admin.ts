@@ -904,7 +904,7 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
     for (const row of rows) {
       const espnMatch = row.source_url.match(/espn\.com\/[^?]*\/id\/(\d+)/i)
       let espnApiStatus: number | string = 'not-called'
-      let espnHasImages: string = 'not-called'
+      let espnShape: string = 'not-called'
       if (espnMatch) {
         try {
           const r = await fetch(`https://now.core.api.espn.com/v1/sports/news/${espnMatch[1]}`, {
@@ -915,8 +915,15 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
           })
           espnApiStatus = r.status
           if (r.ok) {
-            const j = await r.json() as { images?: unknown[] }
-            espnHasImages = Array.isArray(j.images) ? `len=${j.images.length}` : 'no-array'
+            const j = await r.json() as Record<string, unknown>
+            // Dump top-level keys + whether each common image-bearing
+            // key is an array. Lets us see at a glance which shape ESPN
+            // is serving today: { images: [...] } vs { headlines: [{
+            // images: [...] }] } vs something new.
+            const keys = Object.keys(j).slice(0, 10).join(',')
+            const imgsLen = Array.isArray(j.images) ? `images[${j.images.length}]` : 'no-images'
+            const hLen = Array.isArray(j.headlines) ? `headlines[${j.headlines.length}]` : 'no-headlines'
+            espnShape = `keys={${keys}} ${imgsLen} ${hLen}`
           }
         } catch (e) { espnApiStatus = 'threw:' + String(e) }
       }
@@ -939,7 +946,7 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
         source_url: row.source_url,
         espn_id_matched: espnMatch ? espnMatch[1] : null,
         espn_api_status: espnApiStatus,
-        espn_has_images: espnHasImages,
+        espn_shape: espnShape,
         final_image: img,
         patched: !!img,
       })

@@ -134,11 +134,10 @@
     <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
       data-cf-beacon='{"token": "d6a44cfcf6994e1798c8b6139f3813dd"}'></script>
 
-    <!-- Adsterra Social Bar (site-wide floating CTA, zone 29614730).
-         Adsterra requires loading directly before </body>; the script
-         injects its own DOM and binds scroll/visibility hooks. Loading
-         this from React after mount caused inconsistent fills in
-         earlier Adsterra integrations (see CLAUDE.md). -->
-    <script async src='https://turbulentrefreshments.com/78/9c/e9/789ce97010226d4f2fad259a8f3201cf.js'></script>
+    <!-- Adsterra Social Bar was wired here site-wide (zone 29614730)
+         but the user pivoted to a per-click article interstitial
+         (see News.tsx Interstitial component) and removed the global
+         floating widget. Keeping the zone in ADSTERRA_ZONES as
+         'socialBar' for reference; not loaded automatically anywhere. -->
   </body>
 </html>

@@ -202,14 +202,36 @@ async function fetchEspnImage(url: string): Promise<string | null> {
       cf: { cacheTtl: 3600, cacheEverything: true },
     })
     if (!r.ok) return null
-    const j = await r.json() as { images?: Array<{ url?: string; type?: string }> }
-    // Prefer header images, fall back to first image with a URL.
-    const header = j.images?.find((i) => i.type === 'header' && i.url)
-    const any = j.images?.find((i) => i.url)
-    return header?.url ?? any?.url ?? null
+    // ESPN's content API serves the article object two ways depending
+    // on the entry point: bare {…images:[]} OR wrapped in
+    // {headlines:[{images:[]}]} (a list endpoint shape they sometimes
+    // reuse for single-article reads). Probe both — keeps us robust
+    // when ESPN rotates between shapes.
+    const j = await r.json() as
+      | { images?: unknown[]; headlines?: Array<{ images?: unknown[] }> }
+    const candidates: unknown[] = []
+    if (Array.isArray(j.images)) candidates.push(...j.images)
+    if (Array.isArray(j.headlines)) {
+      for (const h of j.headlines) {
+        if (Array.isArray(h.images)) candidates.push(...h.images)
+      }
+    }
+    return pickImageUrl(candidates)
   } catch {
     return null
   }
+}
+
+function pickImageUrl(arr: unknown[]): string | null {
+  // ESPN image entries:
+  //   { id, type: 'header'|'inline'|'photo', url, width, height, … }
+  // Prefer 'header' (the article hero); fall back to anything with a
+  // valid url.
+  const items = arr.filter((x): x is { type?: string; url?: string } => !!x && typeof x === 'object')
+  const header = items.find((i) => i.type === 'header' && typeof i.url === 'string')
+  if (header?.url) return header.url
+  const any = items.find((i) => typeof i.url === 'string')
+  return any?.url ?? null
 }
 
 export async function fetchOgImage(url: string): Promise<string | null> {

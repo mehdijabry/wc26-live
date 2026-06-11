@@ -196,6 +196,11 @@ export const ADSTERRA_ZONES = {
   banner320:  '5a37f85f2bf02f1a8182aa14573de4f2', // 320x50_1        (id 29585661)
   banner300:  'd2d2698cbac2921e9e5d5ed3d1298c9b', // 300x250_1       (id 29585662)
   banner728:  '5c7b66b802463e8c4062d28399bf54bb', // 728x90_1        (id 29585663)
+  // Social Bar — Adsterra format that injects a floating CTA. Used
+  // INSIDE the article-open interstitial (via an iframe srcdoc so it
+  // can render multiple times in the same modal — the script is
+  // self-contained per iframe context).
+  socialBar:  '789ce97010226d4f2fad259a8f3201cf', // SocialBar_1     (id 29614730)
 } as const
 
 /**
@@ -253,6 +258,69 @@ export function Ad({ slot, className }: { slot: SlotName; className?: string }) 
   const cfg = SLOT_TO_ZONE[slot]
   if (!cfg.key) return null
   return <AdSlot zoneKey={cfg.key} format={cfg.format} className={className} />
+}
+
+/**
+ * AdsterraZone — generic mount of any Adsterra zone by raw key, including
+ * the 'special' formats (NativeBanner, SocialBar) that ship their own
+ * widget DOM. Each instance lives in an iframe srcdoc so the script can
+ * render multiple copies on the same page without deduping.
+ *
+ * Used by the article-open interstitial to stack 6 placements: 2
+ * NativeBanner + 2 standard banners + 2 SocialBar. The standard
+ * formats also work here, falling through to the existing AdSlot path
+ * for predictable sizing.
+ */
+export function AdsterraZone({
+  zoneKey,
+  variant,
+  height,
+  className,
+}: {
+  zoneKey: string
+  variant: 'native' | 'socialBar' | 'banner-300x250' | 'banner-728x90'
+  height?: number
+  className?: string
+}) {
+  // The 'banner-*' variants reuse the existing AdSlot pipeline (better
+  // visibility-gated lazy-load + iframe-srcDoc isolation already proven
+  // out in earlier passes).
+  if (variant === 'banner-300x250' || variant === 'banner-728x90') {
+    return <AdSlot zoneKey={zoneKey} format={variant} className={className} />
+  }
+
+  // NativeBanner + SocialBar both inject DOM at runtime. We embed each
+  // in its own iframe so two instances can co-exist on the same page —
+  // their scripts would otherwise dedupe against a shared global.
+  const minH = height ?? (variant === 'native' ? 280 : 90)
+  // SocialBar's script URL pattern differs from the standard invoke.js
+  // host. Hard-code both forms here.
+  const scriptSrc =
+    variant === 'socialBar'
+      ? `https://turbulentrefreshments.com/78/9c/e9/${zoneKey}.js`
+      : `https://www.profitableratecpm.com/${zoneKey}/invoke.js`
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;color:#0f172a;background:transparent;overflow:hidden}
+  *{box-sizing:border-box}
+</style></head><body>
+  <div id="container-${zoneKey}"></div>
+  <script src="${scriptSrc}" async></script>
+</body></html>`
+  return (
+    <div className={'mx-auto flex flex-col items-center my-3 ' + (className ?? '')}>
+      <span className="text-[8px] uppercase tracking-[0.22em] text-slate-400 mb-1 font-mono">
+        Sponsored
+      </span>
+      <iframe
+        srcDoc={html}
+        title="Sponsored"
+        scrolling="no"
+        style={{ width: '100%', maxWidth: 480, minHeight: minH, border: 0, background: 'transparent' }}
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+      />
+    </div>
+  )
 }
 
 /**

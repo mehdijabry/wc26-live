@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Link, useParams, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
-import { Ad } from '../AdSlot'
+import { Ad, AdsterraZone, ADSTERRA_ZONES } from '../AdSlot'
 
 /**
  * Public news pages — list + detail.
@@ -185,9 +185,13 @@ function ArticleCard({ article, featured }: { article: Article; featured: boolea
 export function NewsArticlePage() {
   const { slug } = useParams<{ slug: string }>()
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
+  // Show the 6-ad interstitial on each article navigation. Resets on
+  // slug change so navigating between articles re-fires the modal.
+  const [showInterstitial, setShowInterstitial] = useState(true)
 
   useEffect(() => {
     if (!slug || !supabase) return
+    setShowInterstitial(true)
     void supabase
       .from('articles')
       .select(SELECT)
@@ -203,15 +207,9 @@ export function NewsArticlePage() {
 
   if (article === null) return <Navigate to="/news" replace />
 
-  // The article page used to render a hand-built 'loading' modal with a
-  // 300x250 banner inside — the user clarified they want a NATIVE
-  // Adsterra Interstitial (full-screen ad rendered by Adsterra
-  // themselves) instead. That requires creating an Interstitial zone in
-  // the Adsterra dashboard and pasting the key here. Until that's done,
-  // we just render the article directly — no fake intermediary screen.
-
   return (
     <article className="container max-w-3xl mx-auto px-6 py-8 sm:py-12">
+      {showInterstitial && <Interstitial onClose={() => setShowInterstitial(false)} />}
 
       <Link to="/news" className="inline-flex items-center gap-1 text-xs font-mono text-slate-500 hover:text-slate-900 mb-6">
         ← Back to news
@@ -294,12 +292,82 @@ export function NewsArticlePage() {
   )
 }
 
-// Interstitial component intentionally removed — user wants Adsterra's
-// native Interstitial format (rendered server-side by Adsterra), not a
-// hand-built modal with an embedded banner. When the new Adsterra
-// Interstitial zone key is provided, drop it into ADSTERRA_ZONES in
-// src/components/AdSlot.tsx and wire it here via a SmartLink-style
-// invoke.js loader on the detail page mount.
+/**
+ * Article-open interstitial — full-screen white modal stacked with six
+ * Adsterra ad placements (2× NativeBanner, 2× banners, 2× SocialBar)
+ * arranged in a scrollable column. Close button (×) sits top-right; it
+ * stays disabled & grey with a visible countdown for 5 seconds, then
+ * unlocks. Closes on click or on Escape after the countdown.
+ *
+ * Body scroll is locked while open so the focus stays on the ads.
+ */
+function Interstitial({ onClose }: { onClose: () => void }) {
+  const [secsLeft, setSecsLeft] = useState(5)
+
+  useEffect(() => {
+    document.body.style.overflow = 'hidden'
+    const t = setInterval(() => setSecsLeft((s) => (s > 0 ? s - 1 : 0)), 1000)
+    return () => {
+      clearInterval(t)
+      document.body.style.overflow = ''
+    }
+  }, [])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && secsLeft === 0) onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [secsLeft, onClose])
+
+  const unlocked = secsLeft === 0
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="fixed inset-0 z-[60] bg-white/98 backdrop-blur-md overflow-y-auto"
+    >
+      {/* Close button — grey until 5s elapsed, then turns dark and
+          becomes clickable. Visible countdown sits to the left. */}
+      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between">
+        <div className="text-[10px] uppercase tracking-widest font-mono text-accent-gold">
+          Pressing 90′ · sponsored break
+        </div>
+        <button
+          onClick={() => unlocked && onClose()}
+          disabled={!unlocked}
+          aria-label={unlocked ? 'Close' : `Close available in ${secsLeft}s`}
+          className={
+            'w-10 h-10 rounded-full flex items-center justify-center font-mono text-sm transition-colors ' +
+            (unlocked
+              ? 'bg-ink-900 text-white hover:bg-slate-700 cursor-pointer'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed')
+          }
+        >
+          {unlocked ? '✕' : secsLeft}
+        </button>
+      </div>
+
+      {/* Six-ad stack. NativeBanner zones + standard banners + SocialBar
+          zones. Each AdsterraZone mount is an isolated iframe so two
+          copies of the same script can co-exist without dedup. */}
+      <div className="max-w-xl mx-auto px-4 py-4 space-y-3">
+        <div className="text-center font-display font-bold text-lg text-slate-900 mb-1">
+          Continuing to your article…
+        </div>
+
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.native}    variant="native" />
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.banner300} variant="banner-300x250" />
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.socialBar} variant="socialBar" />
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.native}    variant="native" />
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.banner728} variant="banner-728x90" />
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.socialBar} variant="socialBar" />
+      </div>
+    </motion.div>
+  )
+}
 
 // ─── helpers ────────────────────────────────────────────────────────
 
