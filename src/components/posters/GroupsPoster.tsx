@@ -36,8 +36,10 @@ export const GroupsPoster = forwardRef<HTMLDivElement, GroupsPosterProps>(
 
 const TicketStyle = forwardRef<HTMLDivElement, GroupsPosterProps>(
   function TicketStyle({ standings, bestThirds, alias, qrUrl }, ref) {
-    const qrSvg = useQrSvg(qrUrl, 240)
-    // Stack groups in 2 columns of 6 to fit the tall format.
+    const qrSvg = useQrSvg(qrUrl, 280)
+    // Single-column layout: 12 thin horizontal strips, one per group,
+    // each showing all 4 teams on one row. Fits the 9:16 narrow format
+    // without overlap from the gold ribbon below.
     return (
       <div
         ref={ref}
@@ -52,75 +54,86 @@ const TicketStyle = forwardRef<HTMLDivElement, GroupsPosterProps>(
       >
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 14, background: 'linear-gradient(135deg, #fde68a, #d4af37, #8b6914)' }} />
         <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 14, background: 'linear-gradient(135deg, #fde68a, #d4af37, #8b6914)' }} />
-        <div style={{ position: 'absolute', left: -20, top: 730, width: 40, height: 40, borderRadius: '50%', background: '#faf8f1' }} />
-        <div style={{ position: 'absolute', right: -20, top: 730, width: 40, height: 40, borderRadius: '50%', background: '#faf8f1' }} />
+        {/* perforation circles between content + qr stub */}
+        <div style={{ position: 'absolute', left: -20, top: 700, width: 40, height: 40, borderRadius: '50%', background: '#faf8f1' }} />
+        <div style={{ position: 'absolute', right: -20, top: 700, width: 40, height: 40, borderRadius: '50%', background: '#faf8f1' }} />
 
         {/* header */}
-        <div style={{ position: 'absolute', top: 32, left: 32, display: 'flex', alignItems: 'center', gap: 12 }}>
-          <img src="/wc26-emblem.svg" alt="" style={{ width: 50, height: 50 }} />
+        <div style={{ position: 'absolute', top: 28, left: 28, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <img src="/wc26-emblem.svg" alt="" style={{ width: 44, height: 44 }} />
           <div>
-            <div style={{ fontSize: 16, fontWeight: 900, color: '#fde68a', letterSpacing: '0.05em' }}>PRESSING 90′</div>
-            <div style={{ fontSize: 10, color: '#94a3b8', letterSpacing: '0.18em', marginTop: 2 }}>WC26 GROUP STAGE</div>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#fde68a', letterSpacing: '0.05em' }}>PRESSING 90′</div>
+            <div style={{ fontSize: 9, color: '#94a3b8', letterSpacing: '0.18em', marginTop: 2 }}>WC26 GROUP STAGE</div>
           </div>
         </div>
 
-        <div style={{ position: 'absolute', top: 102, left: 0, right: 0, textAlign: 'center', fontSize: 32, fontWeight: 900, color: '#fff' }}>
+        <div style={{ position: 'absolute', top: 90, left: 0, right: 0, textAlign: 'center', fontSize: 22, fontWeight: 900, color: '#fff' }}>
           MY GROUPS
         </div>
-        <div style={{ position: 'absolute', top: 142, left: 0, right: 0, textAlign: 'center', fontSize: 11, fontWeight: 700, color: '#d4af37', letterSpacing: '0.18em' }}>
-          12 GROUPS · TOP 2 + 8 BEST THIRDS
+        <div style={{ position: 'absolute', top: 116, left: 0, right: 0, textAlign: 'center', fontSize: 9, fontWeight: 700, color: '#d4af37', letterSpacing: '0.18em' }}>
+          12 GROUPS · TOP 2 ADVANCE
         </div>
 
-        {/* 2 columns of 6 mini-standings */}
-        <div style={{ position: 'absolute', top: 175, left: 28, width: 484, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {/* 12 horizontal strips, one per group */}
+        <div style={{ position: 'absolute', top: 142, left: 24, right: 24, display: 'flex', flexDirection: 'column', gap: 4 }}>
           {GROUP_LETTERS.map((g) => {
             const s = standings[g]
-            if (!s) return <div key={g} />
-            const first = teamByCode(s[0])
-            const second = teamByCode(s[1])
+            if (!s) return <div key={g} style={{ height: 36 }} />
             return (
-              <div key={g} style={{ background: 'rgba(255,255,255,0.06)', borderRadius: 6, padding: 8 }}>
-                <div style={{ fontSize: 10, fontWeight: 900, color: '#fde68a', marginBottom: 4 }}>GROUP {g}</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, marginBottom: 2 }}>
-                  <span style={{ color: '#22c55e', fontWeight: 900, width: 12 }}>1</span>
-                  <span>{first?.flag}</span>
-                  <span style={{ color: '#fff', fontWeight: 700 }}>{first?.code ?? '—'}</span>
+              <div
+                key={g}
+                style={{
+                  height: 36,
+                  background: 'rgba(255,255,255,0.06)',
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '0 10px',
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 900, color: '#fde68a', width: 26 }}>
+                  {g}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11 }}>
-                  <span style={{ color: '#94a3b8', fontWeight: 900, width: 12 }}>2</span>
-                  <span>{second?.flag}</span>
-                  <span style={{ color: '#cbd5e1', fontWeight: 600 }}>{second?.code ?? '—'}</span>
-                </div>
+                {s.map((code, idx) => {
+                  const t = teamByCode(code)
+                  const advancing = idx <= 1
+                  return (
+                    <div key={idx} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 4, opacity: advancing ? 1 : 0.5 }}>
+                      <span style={{ fontSize: 14 }}>{t?.flag}</span>
+                      <span style={{ fontSize: 10, fontWeight: advancing ? 800 : 500, color: advancing ? '#fff' : '#94a3b8' }}>
+                        {t?.code ?? '—'}
+                      </span>
+                    </div>
+                  )
+                })}
               </div>
             )
           })}
         </div>
 
-        {/* best thirds gold ribbon */}
-        <div style={{ position: 'absolute', top: 600, left: 28, right: 28, background: 'linear-gradient(135deg, #fde68a, #d4af37, #8b6914)', borderRadius: 8, padding: 12, color: '#0f172a' }}>
-          <div style={{ fontSize: 11, fontWeight: 900, letterSpacing: '0.18em', textAlign: 'center', marginBottom: 8 }}>⭐ 8 BEST 3RD-PLACED</div>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: 10, fontSize: 22 }}>
+        {/* best thirds gold ribbon — moved BELOW the perforation */}
+        <div style={{ position: 'absolute', top: 614, left: 24, right: 24, background: 'linear-gradient(135deg, #fde68a, #d4af37, #8b6914)', borderRadius: 8, padding: 10, color: '#0f172a' }}>
+          <div style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.15em', textAlign: 'center', marginBottom: 6 }}>⭐ 8 BEST 3RD-PLACED</div>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: 8, fontSize: 18 }}>
             {bestThirds.slice(0, 8).map((c, i) => {
               const t = teamByCode(c)
               return <span key={i}>{t?.flag ?? '?'}</span>
             })}
           </div>
-          <div style={{ fontSize: 9, fontWeight: 800, textAlign: 'center', marginTop: 6 }}>
-            {bestThirds.slice(0, 8).map((c) => teamByCode(c)?.code).join(' · ')}
-          </div>
         </div>
 
-        {/* QR stub */}
-        <div style={{ position: 'absolute', top: 760, left: 28, right: 28, background: 'rgba(255,255,255,0.05)', border: '2px dashed rgba(212,175,55,0.4)', borderRadius: 8, padding: 16, display: 'flex', gap: 14 }}>
+        {/* QR stub at the very bottom (below perforation) */}
+        <div style={{ position: 'absolute', top: 740, left: 24, right: 24, background: 'rgba(255,255,255,0.05)', border: '2px dashed rgba(212,175,55,0.4)', borderRadius: 8, padding: 14, display: 'flex', gap: 14 }}>
           <div
             style={{ width: 140, height: 140, background: '#fff', borderRadius: 6, padding: 6, flexShrink: 0 }}
             dangerouslySetInnerHTML={qrSvg ? { __html: qrSvg } : undefined}
           />
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
-            <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: '0.18em', marginBottom: 6 }}>SCAN TO SEE</div>
-            <div style={{ fontSize: 16, fontWeight: 900, color: '#fde68a', marginBottom: 4 }}>MY PREDICTION</div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: '#d4af37', marginBottom: 4 }}>@{alias}</div>
-            <div style={{ fontSize: 9, color: '#94a3b8', wordBreak: 'break-all' }}>{qrUrl.replace(/^https?:\/\//, '')}</div>
+            <div style={{ fontSize: 10, color: '#94a3b8', letterSpacing: '0.18em', marginBottom: 6 }}>SCAN TO SEE</div>
+            <div style={{ fontSize: 16, fontWeight: 900, color: '#fde68a', marginBottom: 2 }}>MY PREDICTION</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: '#d4af37', marginBottom: 4 }}>@{alias}</div>
+            <div style={{ fontSize: 9, color: '#94a3b8', wordBreak: 'break-all', lineHeight: 1.3 }}>{qrUrl.replace(/^https?:\/\//, '')}</div>
           </div>
         </div>
       </div>

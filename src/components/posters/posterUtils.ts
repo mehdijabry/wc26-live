@@ -52,6 +52,11 @@ export function predictionUrl(opts: {
  * scan. The output is plain SVG markup we can drop into a React
  * dangerouslySetInnerHTML, which keeps the poster fully inlinable for
  * html-to-image to capture without external assets.
+ *
+ * The qrcode library injects fixed width/height attributes on the
+ * generated <svg>. We strip those so the SVG fills whatever container
+ * we drop it into — much easier than threading a size prop through
+ * every poster style.
  */
 export function useQrSvg(url: string, size = 200): string | null {
   const [svg, setSvg] = useState<string | null>(null)
@@ -65,7 +70,14 @@ export function useQrSvg(url: string, size = 200): string | null {
       color: { dark: '#0f172a', light: '#ffffff' },
     })
       .then((s) => {
-        if (!cancelled) setSvg(s)
+        if (cancelled) return
+        // Strip fixed dimensions so the SVG honours its container's
+        // CSS sizing rather than pinning itself to the generation size.
+        const flexible = s
+          .replace(/\swidth="[^"]*"/, '')
+          .replace(/\sheight="[^"]*"/, '')
+          .replace('<svg ', '<svg style="width:100%;height:100%;display:block" ')
+        setSvg(flexible)
       })
       .catch(() => {
         if (!cancelled) setSvg(null)
