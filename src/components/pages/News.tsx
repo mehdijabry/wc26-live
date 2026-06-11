@@ -346,20 +346,27 @@ function Interstitial({ onClose }: { onClose: () => void }) {
     <motion.div
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[60] bg-white/98 backdrop-blur-md overflow-y-auto"
+      className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4"
     >
-      {/* Close button — grey until 5s elapsed, then turns dark and
-          becomes clickable. Visible countdown sits to the left. */}
-      <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md border-b border-slate-200 px-4 py-3 flex items-center justify-between">
-        <div className="text-[10px] uppercase tracking-widest font-mono text-accent-gold">
-          Pressing 90′ · sponsored break
-        </div>
+      {/* Compact centred card — sized to its own content only. The
+          Smartlink ad doesn't render here; it opens in a new tab on
+          click. The empty padding the user saw on the full-screen
+          version was wasted modal space — nothing to do with the ad
+          dimensions. */}
+      <motion.div
+        initial={{ y: 12, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ delay: 0.05 }}
+        onClick={firePopunderOnce}
+        className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-slate-200 p-6"
+      >
+        {/* Close (×) — grey until 5s elapsed, then dark + clickable. */}
         <button
-          onClick={() => unlocked && onClose()}
+          onClick={(e) => { e.stopPropagation(); if (unlocked) onClose() }}
           disabled={!unlocked}
           aria-label={unlocked ? 'Close' : `Close available in ${secsLeft}s`}
           className={
-            'w-10 h-10 rounded-full flex items-center justify-center font-mono text-sm transition-colors ' +
+            'absolute top-2.5 right-2.5 w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs transition-colors ' +
             (unlocked
               ? 'bg-ink-900 text-white hover:bg-slate-700 cursor-pointer'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed')
@@ -367,34 +374,29 @@ function Interstitial({ onClose }: { onClose: () => void }) {
         >
           {unlocked ? '✕' : secsLeft}
         </button>
-      </div>
 
-      {/* Smartlink popunder + branded gate. Adsterra Smartlinks set
-          X-Frame-Options DENY so they can't render inside an iframe;
-          the canonical implementation is a popunder fired on a click
-          inside the gate. User clicks 'Continue' → Smartlink opens in
-          a new tab (impression counted) → modal closes → user reads
-          the article. */}
-      <div
-        onClick={firePopunderOnce}
-        className="max-w-md mx-auto px-6 py-12 text-center"
-      >
-        <div className="font-display font-bold text-2xl text-slate-900 mb-2">
+        <div className="text-[10px] uppercase tracking-widest font-mono text-accent-gold mb-3">
+          Pressing 90′ · sponsored break
+        </div>
+
+        <div className="text-3xl mb-3" aria-hidden>📰</div>
+
+        <div className="font-display font-bold text-lg text-slate-900 mb-1.5">
           Continuing to your article…
         </div>
-        <div className="text-sm text-slate-600 mb-8 leading-relaxed">
-          A sponsor will open in a new tab. Your article keeps reading here —
-          one click and you're back.
+        <div className="text-xs text-slate-600 mb-5 leading-relaxed">
+          A sponsor opens in a new tab. Your article keeps reading here.
         </div>
-        <div className="text-5xl mb-6">📰</div>
+
         <button
-          onClick={() => {
+          onClick={(e) => {
+            e.stopPropagation()
             firePopunderOnce()
             onClose()
           }}
           disabled={!unlocked}
           className={
-            'inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm transition-colors ' +
+            'w-full inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full font-semibold text-sm transition-colors ' +
             (unlocked
               ? 'bg-accent-gold text-ink-900 hover:bg-yellow-300'
               : 'bg-slate-200 text-slate-400 cursor-not-allowed')
@@ -402,10 +404,11 @@ function Interstitial({ onClose }: { onClose: () => void }) {
         >
           {unlocked ? 'Continue to article →' : `Unlocking in ${secsLeft}s…`}
         </button>
-        <div className="mt-4 text-[10px] uppercase tracking-widest font-mono text-slate-400">
+
+        <div className="mt-3 text-center text-[9px] uppercase tracking-[0.22em] font-mono text-slate-400">
           ad · sponsored
         </div>
-      </div>
+      </motion.div>
     </motion.div>
   )
 }
