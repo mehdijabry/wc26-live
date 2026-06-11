@@ -115,7 +115,7 @@ export async function pollTopCandidates(env: Env, n = 6): Promise<{ candidates: 
  * dedup as a safety check (someone might have raced us), then AI
  * rewrites + inserts + emails.
  */
-export async function produceFromCandidate(env: Env, picked: PolledCandidate): Promise<{ ok: boolean; draft?: { id: string; slug: string; title: string }; error?: string }> {
+export async function produceFromCandidate(env: Env, picked: PolledCandidate): Promise<{ ok: boolean; draft?: { id: string; slug: string; title: string }; error?: string; ai_raw_preview?: string }> {
   // Re-hydrate to a full Candidate shape so we can reuse the scoring +
   // AI prompt builder.
   const sourceWeight = RSS_SOURCES.find((s) => s.name === picked.source)?.weight ?? 0.8
@@ -134,9 +134,17 @@ export async function produceFromCandidate(env: Env, picked: PolledCandidate): P
     return { ok: false, error: 'already_in_db' }
   }
 
-  const ai = await rewriteWithAi(env, c)
+  // First pass — normal prompt.
+  let ai = await rewriteWithAi(env, c)
   if (!ai.rewritten) {
-    return { ok: false, error: 'ai_failed', }
+    // Retry with a tighter word budget. Llama 3.1 8B truncates around
+    // the same token count no matter what we ask, so making the
+    // requested body shorter usually buys enough headroom for the
+    // JSON to close cleanly.
+    ai = await rewriteWithAi(env, c, { tight: true })
+  }
+  if (!ai.rewritten) {
+    return { ok: false, error: 'ai_failed', ai_raw_preview: ai.raw.slice(0, 400) }
   }
 
   const inserted = await insertDraft(env, c, ai.rewritten)
@@ -448,31 +456,47 @@ function extractJson<T>(raw: string): T | null {
   return null
 }
 
-async function rewriteWithAi(env: Env, c: Candidate): Promise<{ rewritten: Rewritten | null; raw: string }> {
-  // Build a prompt that asks for paraphrased news + commentary, with
-  // the source kept attributed at the end. Explicitly forbid quoting
-  // more than a single short phrase to stay on the safe side of fair
-  // use.
+async function rewriteWithAi(
+  env: Env,
+  c: Candidate,
+  opts: { tight?: boolean } = {}
+): Promise<{ rewritten: Rewritten | null; raw: string }> {
+  // We ask for a 3-section delimited format instead of JSON. Llama 3.1
+  // 8B hits a ~1500-char effective output cap on Workers AI no matter
+  // what we pass to max_tokens, and JSON has multi-level closure
+  // requirements (close string + close object) that fail when the body
+  // gets truncated mid-string. A flat delimited format parses with
+  // simple regex and survives truncation gracefully — if the body is
+  // cut off we still have a valid title and excerpt.
+  const bodyTarget = opts.tight ? '80 words' : '150 words'
+  const paragraphTarget = opts.tight ? '2 short paragraphs' : '2-3 paragraphs'
   const prompt = `You are a football journalist writing for "Pressing 90'", a World Cup 2026 fan site.
 
 Below is a source news item. Rewrite it as a CONCISE original news brief
-(2-3 paragraphs, ~150 words total) in your own words, in English. Add ONE
+(${paragraphTarget}, ~${bodyTarget} total) in your own words, in English. Add ONE
 short paragraph of original commentary at the end about what this means
 for the World Cup 2026 picture. NEVER copy a full sentence from the
 source. Don't invent facts not in the source. End with a hard credit line:
 "Based on reporting by ${c.source} — see original article for full details."
 
-Output strict JSON with keys: title (string, max 80 chars, catchy but
-factual), excerpt (string, 1 sentence ~140 chars summarising the news),
-body (markdown string, the 3-4 paragraphs + commentary + credit line).
+Output EXACTLY this format. Copy the three marker lines (===TITLE===,
+===EXCERPT===, ===BODY===) VERBATIM — do not change their wording.
+Put your rewritten content under each marker:
+
+===TITLE===
+the rewritten title here (max 80 chars, catchy but factual)
+===EXCERPT===
+1 sentence, ~140 chars, summarising the news
+===BODY===
+the rewritten paragraphs in plain markdown
 
 SOURCE:
 Title: ${c.title}
-${c.description ? 'Summary: ' + stripHtml(c.description).slice(0, 800) : ''}
+${c.description ? 'Summary: ' + stripHtml(c.description).slice(0, 500) : ''}
 Source name: ${c.source}
 Source URL: ${c.link}
 
-JSON OUTPUT:`
+OUTPUT:`
 
   try {
     // Workers AI binding (set in wrangler.toml [ai] block).
@@ -480,22 +504,22 @@ JSON OUTPUT:`
     if (!ai) return { rewritten: null, raw: 'AI_BINDING_MISSING' }
     const out = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [
-        { role: 'system', content: 'You output ONLY valid minified JSON, no markdown code fences, no commentary. Keep the body field SHORT (under 200 words) so the JSON closes cleanly within your token budget.' },
+        { role: 'system', content: 'You output ONLY the requested delimited sections. Never wrap output in JSON, markdown code fences, or commentary.' },
         { role: 'user', content: prompt },
       ],
       max_tokens: 3000,
     })
     const raw = (out.response ?? '').trim()
-    const json = extractJson<Partial<Rewritten>>(raw)
-    if (!json || !json.title || !json.body) {
+    const parsed = parseDelimitedSections(raw)
+    if (!parsed || !parsed.title || !parsed.body) {
       console.log('[news] AI parse failed. Raw preview:', raw.slice(0, 400))
       return { rewritten: null, raw }
     }
     return {
       rewritten: {
-        title: json.title.slice(0, 120),
-        excerpt: (json.excerpt ?? '').slice(0, 240),
-        body: json.body,
+        title: parsed.title.slice(0, 120),
+        excerpt: (parsed.excerpt ?? '').slice(0, 240),
+        body: parsed.body,
       },
       raw,
     }
@@ -503,6 +527,43 @@ JSON OUTPUT:`
     console.log('[news] AI rewrite failed:', err)
     return { rewritten: null, raw: 'EXCEPTION: ' + String(err) }
   }
+}
+
+/**
+ * Parse the ===TITLE===/===EXCERPT===/===BODY=== format. Robust to:
+ *   • partial truncation (body cut off → kept what we got)
+ *   • the model inventing its own marker text (saw it replace
+ *     ===TITLE=== with ===Larger Than Life===, treating TITLE as a
+ *     placeholder)
+ *
+ * Strategy: extract EVERY ===X=== marker + the text below it as a
+ * section. Try named matching (marker text === TITLE / EXCERPT / BODY)
+ * first; fall back to positional + treat the first marker's TEXT as
+ * the title when no marker named TITLE exists.
+ */
+function parseDelimitedSections(raw: string): { title: string; excerpt: string; body: string } | null {
+  const re = /={3,}\s*([^=\n]*?)\s*={3,}\s*\n?([\s\S]*?)(?=\n*={3,}|$)/g
+  const sections: Array<{ marker: string; content: string }> = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(raw)) !== null) {
+    sections.push({ marker: m[1].trim(), content: m[2].trim() })
+  }
+  if (sections.length === 0) return null
+
+  // Named matches.
+  let title   = sections.find((s) => /^title$/i.test(s.marker))?.content
+  let excerpt = sections.find((s) => /^excerpt$/i.test(s.marker))?.content
+  let body    = sections.find((s) => /^body$/i.test(s.marker))?.content
+
+  // Fallbacks. When the model swapped the TITLE marker for its own
+  // text, the first section's MARKER text is the title.
+  if (!title) title = sections[0].marker
+  if (!excerpt) excerpt = sections[1]?.content ?? ''
+  if (!body) body = sections[2]?.content ?? sections[1]?.content ?? ''
+
+  if (!title) return null
+  const finalBody = body || `${excerpt}\n\nBased on reporting by source — see original article for full details.`
+  return { title, excerpt, body: finalBody }
 }
 
 // ─── 5. Persistence + email ────────────────────────────────────────

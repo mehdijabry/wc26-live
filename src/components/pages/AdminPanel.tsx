@@ -831,9 +831,10 @@ function News() {
         },
         body: JSON.stringify({ candidate }),
       })
-      const data = await r.json() as { ok: boolean; draft?: { title: string }; error?: string }
+      const data = await r.json() as { ok: boolean; draft?: { title: string }; error?: string; ai_raw_preview?: string }
       if (!data.ok) {
-        setMsg('Produce failed: ' + (data.error ?? 'unknown'))
+        const preview = data.ai_raw_preview ? ' · AI raw: ' + data.ai_raw_preview.slice(0, 200) : ''
+        setMsg('Produce failed: ' + (data.error ?? 'unknown') + preview)
         return
       }
       setMsg(`✓ Draft produced: "${data.draft?.title}" — check your email`)
