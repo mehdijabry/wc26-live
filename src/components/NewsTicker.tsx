@@ -145,11 +145,31 @@ export function NewsTicker() {
     return () => clearInterval(t)
   }, [articles.length])
 
-  const featured = articles[idx]
+  // Our 2 Pressing-90 briefings ('internal:'-prefixed id) are pinned
+  // to the featured slot + first side card so they're ALWAYS visible.
+  // Without this, the 40s carousel cycle would rotate them out of
+  // view, and clicking what looked like 'our' card would actually
+  // open whatever ESPN article had taken the slot.
+  const pinned = useMemo(() => articles.filter((a) => a.id.startsWith('internal:')).slice(0, 2), [articles])
+  const rotating = useMemo(() => articles.filter((a) => !a.id.startsWith('internal:')), [articles])
+  const featured = pinned[0] ?? rotating[idx % Math.max(1, rotating.length)]
   const upcoming = useMemo(() => {
     if (articles.length === 0) return [] as NewsArticle[]
-    return [1, 2, 3].map((d) => articles[(idx + d) % articles.length]).filter(Boolean)
-  }, [articles, idx])
+    const cards: NewsArticle[] = []
+    // Slot 2: our second briefing (if we have one)
+    if (pinned[1]) cards.push(pinned[1])
+    // Remaining slots (2 cards): rotate through ESPN. Skip the one
+    // currently in the featured slot (relevant only when pinned is
+    // empty, so featured is itself a rotating article).
+    const needFromRotating = 3 - cards.length
+    if (rotating.length > 0) {
+      for (let d = 0; d < needFromRotating; d++) {
+        const a = rotating[(idx + d) % rotating.length]
+        if (a && a !== featured) cards.push(a)
+      }
+    }
+    return cards.slice(0, 3)
+  }, [articles, idx, pinned, rotating, featured])
 
   // Welcome-back toast: when the tab regains focus / becomes visible,
   // check if we recently sent the user to ESPN. If yes, surface 3 other

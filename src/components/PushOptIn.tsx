@@ -7,23 +7,40 @@ import {
 } from '../lib/push'
 
 /**
- * Push-notification opt-in card. Small, dismissible, sits on the home
- * page above the WC26 promo section. Renders nothing when the device
- * can't support Web Push (iOS Safari outside standalone PWA, etc.).
+ * Push-notification opt-in — PWA-only floating bubble.
+ *
+ * Lives as a small fixed-position pill in the bottom-right corner ON
+ * the installed PWA only. On a regular browser tab it stays hidden
+ * (the user explicitly didn't want the prompt on the web). Renders
+ * nothing also when:
+ *   - the device can't support Web Push at all
+ *   - the user is already subscribed
+ *   - the user dismissed the prompt this session
  *
  * State machine:
- *   - idle        → not subscribed, opt-in CTA shown
- *   - working     → spinner while we wait for Notification.requestPermission
- *                   + PushManager.subscribe + Worker persistence
- *   - subscribed  → cha-ching pill, with a small unsubscribe link
- *   - error       → friendly message, retry button
- *   - dismissed   → user clicked the X, we hide for the session
+ *   - idle        → not subscribed, floating CTA shown
+ *   - working     → spinner while permission/subscribe runs
+ *   - subscribed  → bubble hides itself (no longer needed)
+ *   - error       → friendly retry pill
+ *   - hidden      → no DOM
  *
- * Session-dismiss state in sessionStorage so the card doesn't reappear
- * on every navigation within the same visit.
+ * Detection of 'is this a PWA' uses display-mode media query +
+ * navigator.standalone (iOS) — same checks every PWA UX library does.
  */
 
 const SESSION_DISMISS_KEY = 'wc26.pushOptIn.dismissed'
+
+/** True when the page is running as a PWA / standalone app, not a tab. */
+function isStandalonePwa(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    if (window.matchMedia?.('(display-mode: standalone)').matches) return true
+    // iOS Safari home-screen install — exposes a non-standard property.
+    const iosNav = navigator as Navigator & { standalone?: boolean }
+    if (iosNav.standalone === true) return true
+  } catch {}
+  return false
+}
 
 type State =
   | { kind: 'idle' }
@@ -39,14 +56,17 @@ export function PushOptIn() {
     let cancelled = false
     const support = pushSupport()
     if (!support.ok) return // never render
+    // App-only — never show on a regular browser tab.
+    if (!isStandalonePwa()) return
     // Session-dismiss check
     try {
       if (sessionStorage.getItem(SESSION_DISMISS_KEY) === '1') return
     } catch { /* private mode */ }
-    // Initial subscription state
+    // Initial subscription state — already subscribed = no nag.
     void getCurrentSubscription().then((sub) => {
       if (cancelled) return
-      setState(sub ? { kind: 'subscribed' } : { kind: 'idle' })
+      if (sub) return  // hidden — no need to prompt
+      setState({ kind: 'idle' })
     })
     return () => { cancelled = true }
   }, [])
@@ -83,88 +103,58 @@ export function PushOptIn() {
     setState({ kind: 'hidden' })
   }
 
+  // Subscribed state: never render at all (no nag). Keep the function
+  // defined though so the unused-var linter doesn't fire on onDisable.
+  void onDisable
+
   return (
-    <section className="container max-w-6xl mx-auto px-6 my-6">
-      <div className="relative rounded-2xl border border-slate-200 bg-gradient-to-br from-paper-elev to-cream p-5 sm:p-6 flex items-center gap-4 flex-wrap">
-        <button
-          onClick={onDismiss}
-          aria-label="Dismiss"
-          className="absolute top-3 right-3 w-7 h-7 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-200/70 flex items-center justify-center text-lg leading-none"
-        >
-          ×
-        </button>
-
-        <span className="text-3xl shrink-0" aria-hidden>🔔</span>
-
-        <div className="flex-1 min-w-0 pr-8">
+    <div
+      className="fixed bottom-4 right-4 z-50 pointer-events-none"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
+    >
+      <div className="pointer-events-auto max-w-[280px] rounded-2xl border border-slate-200 bg-white/95 backdrop-blur shadow-xl p-3 pr-2 flex items-start gap-2.5">
+        <span className="text-xl leading-none mt-0.5 shrink-0" aria-hidden>🔔</span>
+        <div className="flex-1 min-w-0">
           {state.kind === 'idle' && (
             <>
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
-                Kickoff & goal alerts
+              <div className="font-display font-bold text-sm text-ink-900 leading-tight">
+                Goal & kickoff alerts
               </div>
-              <div className="font-display font-bold text-base sm:text-lg text-ink-900 mt-0.5">
-                Don't miss the start of any match.
+              <div className="text-[11px] text-slate-600 mt-0.5 leading-snug">
+                Get pinged at kickoff, on goals, full-time.
               </div>
-              <div className="text-sm text-slate-600 mt-1">
-                We'll ping you 15 min before kickoff, on every goal, and at full-time. One tap, opt out anytime.
-              </div>
+              <button
+                onClick={onEnable}
+                className="mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-accent-gold text-ink-900 font-semibold text-xs hover:bg-yellow-300 transition-colors"
+              >
+                Enable
+              </button>
             </>
           )}
-
           {state.kind === 'working' && (
-            <>
-              <div className="font-display font-semibold text-ink-900">Setting up notifications…</div>
-              <div className="text-sm text-slate-600 mt-1">
-                Approve the browser prompt to finish.
-              </div>
-            </>
+            <div className="text-xs text-slate-600 py-1">Setting up…</div>
           )}
-
-          {state.kind === 'subscribed' && (
-            <>
-              <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-emerald-700">
-                Subscribed
-              </div>
-              <div className="font-display font-bold text-base sm:text-lg text-ink-900 mt-0.5">
-                You'll get a ping at kickoff, on every goal, and at full-time.
-              </div>
-              <div className="text-sm text-slate-600 mt-1">
-                Need to turn it off?{' '}
-                <button
-                  onClick={onDisable}
-                  className="text-accent-red underline underline-offset-2 hover:text-red-700"
-                >
-                  Unsubscribe
-                </button>
-              </div>
-            </>
-          )}
-
           {state.kind === 'error' && (
             <>
-              <div className="font-display font-semibold text-ink-900">Couldn't enable notifications.</div>
-              <div className="text-sm text-slate-600 mt-1">{state.message}</div>
+              <div className="font-display font-semibold text-xs text-ink-900">Couldn't enable.</div>
+              <div className="text-[11px] text-slate-600 mt-0.5">{state.message.slice(0, 60)}</div>
+              <button
+                onClick={onEnable}
+                className="mt-2 px-3 py-1 rounded-full bg-accent-gold text-ink-900 font-semibold text-xs hover:bg-yellow-300"
+              >
+                Retry
+              </button>
             </>
           )}
         </div>
-
-        {state.kind === 'idle' && (
-          <button
-            onClick={onEnable}
-            className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 transition-colors"
-          >
-            Enable alerts
-          </button>
-        )}
-        {state.kind === 'error' && (
-          <button
-            onClick={onEnable}
-            className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 transition-colors"
-          >
-            Retry
-          </button>
-        )}
+        <button
+          onClick={onDismiss}
+          aria-label="Dismiss"
+          className="shrink-0 w-6 h-6 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 flex items-center justify-center text-base leading-none"
+        >
+          ×
+        </button>
       </div>
-    </section>
+    </div>
   )
 }

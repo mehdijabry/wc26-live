@@ -2,7 +2,7 @@ import { Fragment, useEffect, useState } from 'react'
 import { Link, useParams, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
-import { Ad, AdsterraZone, ADSTERRA_ZONES } from '../AdSlot'
+import { Ad, ADSTERRA_SMARTLINK_URL } from '../AdSlot'
 
 /**
  * Public news pages — list + detail.
@@ -303,36 +303,34 @@ export function NewsArticlePage() {
  */
 function Interstitial({ onClose }: { onClose: () => void }) {
   const [secsLeft, setSecsLeft] = useState(5)
+  const [popunderFired, setPopunderFired] = useState(false)
 
-  // SocialBar injection — Adsterra's script attaches to document.body
-  // (NOT a sandboxed iframe). We mount it here so the floating widget
-  // appears DURING the modal, then remove it on unmount so the rest of
-  // the site stays SocialBar-free. Single instance: Adsterra dedupes
-  // by zone key, so loading the same script twice yields one widget.
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     const t = setInterval(() => setSecsLeft((s) => (s > 0 ? s - 1 : 0)), 1000)
-
-    const sbKey = ADSTERRA_ZONES.socialBar
-    const sbScript = document.createElement('script')
-    sbScript.async = true
-    sbScript.setAttribute('data-cfasync', 'false')
-    sbScript.setAttribute('data-sb-temp', '1')  // marker so we find it on cleanup
-    sbScript.src = `https://turbulentrefreshments.com/${sbKey.slice(0, 2)}/${sbKey.slice(2, 4)}/${sbKey.slice(4, 6)}/${sbKey}.js`
-    document.body.appendChild(sbScript)
-
     return () => {
       clearInterval(t)
       document.body.style.overflow = ''
-      // Remove the injected script + any DOM the SocialBar widget left
-      // behind (Adsterra appends fixed-position containers near body
-      // root with various id/class signatures). Best-effort match:
-      // strip nodes flagged data-sb-temp + nodes Adsterra injects with
-      // ids starting with sb_ or containing the zone key.
-      document.querySelectorAll('script[data-sb-temp="1"]').forEach((n) => n.remove())
-      document.querySelectorAll(`[id^="sb_"], [id*="${sbKey}"]`).forEach((n) => n.remove())
     }
   }, [])
+
+  // Smartlink popunder: opening it in a new tab on first user
+  // interaction inside the modal — Adsterra's Smartlink URL refuses to
+  // load in an iframe (X-Frame-Options) so we can't embed it; the
+  // canonical pattern is a popunder fired on a click. The first click
+  // anywhere on the modal triggers it; subsequent clicks don't re-fire.
+  function firePopunderOnce() {
+    if (popunderFired) return
+    try {
+      const w = window.open(ADSTERRA_SMARTLINK_URL, '_blank', 'noopener')
+      if (w) {
+        // Push the new tab to the back so the user stays on our page.
+        try { w.blur() } catch {}
+        try { window.focus() } catch {}
+      }
+    } catch { /* popup blocked — silent, user sees the modal */ }
+    setPopunderFired(true)
+  }
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -371,20 +369,42 @@ function Interstitial({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      {/* Ad stack — 3 embedded banner slots + 1 SocialBar that's
-          injected directly to document.body (above effect). The
-          SocialBar floats over the modal; the 3 banners use the
-          proven 728x90 / 320x50 formats. Padding-bottom leaves
-          breathing room so the SocialBar widget doesn't sit on top
-          of the bottom banner. */}
-      <div className="max-w-xl mx-auto px-4 py-4 pb-32 space-y-3">
-        <div className="text-center font-display font-bold text-lg text-slate-900 mb-1">
+      {/* Smartlink popunder + branded gate. Adsterra Smartlinks set
+          X-Frame-Options DENY so they can't render inside an iframe;
+          the canonical implementation is a popunder fired on a click
+          inside the gate. User clicks 'Continue' → Smartlink opens in
+          a new tab (impression counted) → modal closes → user reads
+          the article. */}
+      <div
+        onClick={firePopunderOnce}
+        className="max-w-md mx-auto px-6 py-12 text-center"
+      >
+        <div className="font-display font-bold text-2xl text-slate-900 mb-2">
           Continuing to your article…
         </div>
-
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.banner728} variant="banner-728x90" />
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.banner320} variant="banner-728x90" />
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.banner728} variant="banner-728x90" />
+        <div className="text-sm text-slate-600 mb-8 leading-relaxed">
+          A sponsor will open in a new tab. Your article keeps reading here —
+          one click and you're back.
+        </div>
+        <div className="text-5xl mb-6">📰</div>
+        <button
+          onClick={() => {
+            firePopunderOnce()
+            onClose()
+          }}
+          disabled={!unlocked}
+          className={
+            'inline-flex items-center gap-2 px-6 py-3 rounded-full font-semibold text-sm transition-colors ' +
+            (unlocked
+              ? 'bg-accent-gold text-ink-900 hover:bg-yellow-300'
+              : 'bg-slate-200 text-slate-400 cursor-not-allowed')
+          }
+        >
+          {unlocked ? 'Continue to article →' : `Unlocking in ${secsLeft}s…`}
+        </button>
+        <div className="mt-4 text-[10px] uppercase tracking-widest font-mono text-slate-400">
+          ad · sponsored
+        </div>
       </div>
     </motion.div>
   )

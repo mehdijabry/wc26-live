@@ -204,6 +204,16 @@ export const ADSTERRA_ZONES = {
 } as const
 
 /**
+ * Adsterra Smartlink — a direct landing URL Adsterra's algorithm
+ * routes to the highest-bidding offer for the visitor's geo/device.
+ * Unlike the banner zones above it isn't embedded as a script; we
+ * iframe-load the URL itself.
+ * Zone id 29615670 (Smartlink_1) on pressing90.live.
+ */
+export const ADSTERRA_SMARTLINK_URL =
+  'https://turbulentrefreshments.com/rzz087dcc?key=8a8c609bc38ca84c93290a7ddc37692b'
+
+/**
  * Convenience wrapper — pick a slot semantically and we'll pick the best
  * Adsterra zone for that placement. One source of truth so swapping
  * formats/providers later only touches this file.
