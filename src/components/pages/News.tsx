@@ -44,6 +44,34 @@ interface Article {
 const SELECT = 'id,slug,title,excerpt,body,image_url,source_url,source_name,source_attribution,published_at,created_at'
 const SITE = 'https://pressing90.live'
 
+// ─── Interstitial throttle ─────────────────────────────────────────
+//
+// Show the Smartlink gate on the FIRST article open in a 5-minute
+// window, then suppress on subsequent opens until the window expires.
+// Stored in localStorage so the throttle is shared across tabs (a
+// power-reader with 3 articles open doesn't get hammered on every
+// back-and-forth).
+
+const INTERSTITIAL_TS_KEY = 'wc26.interstitial.lastShownAt'
+const INTERSTITIAL_THROTTLE_MS = 5 * 60_000
+
+function shouldShowInterstitial(): boolean {
+  if (typeof window === 'undefined') return false
+  try {
+    const last = parseInt(localStorage.getItem(INTERSTITIAL_TS_KEY) ?? '', 10)
+    if (!Number.isFinite(last)) return true
+    return Date.now() - last >= INTERSTITIAL_THROTTLE_MS
+  } catch {
+    // Private mode / disabled storage — fall back to 'always show'
+    // rather than 'never show' so the impression is still possible.
+    return true
+  }
+}
+
+function markInterstitialShown() {
+  try { localStorage.setItem(INTERSTITIAL_TS_KEY, String(Date.now())) } catch {}
+}
+
 // ─── List page · /news ──────────────────────────────────────────────
 
 export function NewsListPage() {
@@ -179,16 +207,19 @@ function ArticleCard({ article }: { article: Article }) {
 export function NewsArticlePage() {
   const { slug } = useParams<{ slug: string }>()
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
-  // Show the Smartlink gate on each article navigation. Resets on slug
-  // change so navigating between articles re-fires the modal. The
-  // earlier '?ad=ok' marker (paired with a popunder swap) was removed
-  // because Chrome silently dropped the swap's redirect; we now just
-  // open the Smartlink in a new tab so there's nothing to skip.
-  const [showInterstitial, setShowInterstitial] = useState(true)
+  // Throttle the gate to once per 5 minutes per visitor. After the
+  // first article open fires the Smartlink, subsequent article
+  // navigations during the cooldown skip the gate so the user can
+  // hop between briefings freely. The timestamp lives in localStorage
+  // so it's shared across tabs — a power-reader with 3 open articles
+  // doesn't get hammered with a modal on every back-and-forth.
+  const [showInterstitial, setShowInterstitial] = useState(() => shouldShowInterstitial())
 
   useEffect(() => {
     if (!slug || !supabase) return
-    setShowInterstitial(true)
+    const show = shouldShowInterstitial()
+    setShowInterstitial(show)
+    if (show) markInterstitialShown()
     void supabase
       .from('articles')
       .select(SELECT)
