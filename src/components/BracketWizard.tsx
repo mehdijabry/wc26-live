@@ -16,6 +16,7 @@ import {
 import { SectionHeader } from './Groups'
 import { LottieLoader } from './LottieLoader'
 import { BracketPoster } from './BracketPoster'
+import { SharePhaseModal } from './posters/SharePhaseModal'
 import { cn } from '../lib/utils'
 
 // Local alias so the per-step code reads cleanly.
@@ -548,6 +549,9 @@ function StepExport() {
   const [busy, setBusy] = useState<null | 'png' | 'save' | 'pub'>(null)
   const [msg, setMsg] = useState<{ ok?: string; err?: string }>({})
   const ref = useRef<HTMLDivElement>(null)
+  // New "Share my finale" modal — Phase 6 only for the MVP. Opens a
+  // toggle between TICKET / PROGRAMME / STADIUM posters with QR code.
+  const [shareOpen, setShareOpen] = useState(false)
 
   // Auto-load existing bracket on first mount (if logged in)
   useEffect(() => { if (user) void bracket.load() /* eslint-disable-line react-hooks/exhaustive-deps */ }, [user])
@@ -590,7 +594,7 @@ function StepExport() {
 
   return (
     <div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
         <button
           onClick={save}
           disabled={!user || busy !== null}
@@ -602,10 +606,18 @@ function StepExport() {
         <button
           onClick={downloadPng}
           disabled={busy !== null}
+          className="px-4 py-3 rounded-xl glass glass-hover text-sm flex flex-col items-center gap-1 disabled:opacity-40"
+        >
+          <span className="font-display font-bold text-base">⬇️ Full PNG</span>
+          <span className="text-[10px] text-slate-500 font-mono">bracket entier</span>
+        </button>
+        <button
+          onClick={() => setShareOpen(true)}
+          disabled={!bracket.finalWinner}
           className="px-4 py-3 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm flex flex-col items-center gap-1 disabled:opacity-40"
         >
-          <span className="font-display font-bold text-base">⬇️ Download PNG</span>
-          <span className="text-[10px] font-mono">2x retina-ready</span>
+          <span className="font-display font-bold text-base">🏆 Share finale</span>
+          <span className="text-[10px] font-mono">3 styles · QR</span>
         </button>
         <button
           onClick={publish}
@@ -616,6 +628,14 @@ function StepExport() {
           <span className="text-[10px] text-slate-500 font-mono">{user ? 'public profile' : 'sign in first'}</span>
         </button>
       </div>
+      {/* New phase-by-phase share — MVP wired for Phase 6 (Finale) only.
+          Opens a modal with 3-style toggle + QR code + download. The user
+          will iterate from here. */}
+      <SharePhaseModal
+        open={shareOpen}
+        onClose={() => setShareOpen(false)}
+        phase="final"
+      />
       {busy && (
         <div className="flex items-center justify-center py-6">
           <LottieLoader name={busy === 'pub' ? 'trophy' : 'ball-spin'} size={64} />
