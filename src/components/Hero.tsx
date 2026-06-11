@@ -26,7 +26,7 @@ export function Hero() {
   const isLiveNow = liveOrNext?.status?.type?.state === 'in'
 
   return (
-    <section id="hero" className="relative overflow-hidden pt-28 pb-10 sm:pt-32 sm:pb-14 border-b border-slate-200/70">
+    <section id="hero" className="relative overflow-hidden pt-6 pb-10 sm:pt-10 sm:pb-14 border-b border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         {/* Editorial top strip — kicker line à la footmercato */}
         <motion.div

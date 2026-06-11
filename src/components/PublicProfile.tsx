@@ -91,7 +91,7 @@ export function PublicProfile({ slug }: { slug: string }) {
           used to live here too but it duplicated the global Navigation
           and on mobile the two stacked on top of each other (notch +
           PWA standalone made it worse). Brand stays in <Navigation />. */}
-      <section className="pt-24 sm:pt-28 pb-3 border-b border-slate-200/70">
+      <section className="pt-6 sm:pt-6 pb-3 border-b border-slate-200/70">
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between flex-wrap gap-3">
           <div className="text-[10px] tracking-[0.22em] uppercase font-mono text-slate-500">
             Public bracket · <span className="text-accent-gold">{data.alias}</span>

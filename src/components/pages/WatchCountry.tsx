@@ -158,7 +158,7 @@ export function WatchCountry() {
 
   if (!country) {
     return (
-      <div className="container max-w-3xl mx-auto px-6 pt-28 pb-16 text-center">
+      <div className="container max-w-3xl mx-auto px-6 pt-6 pb-16 text-center">
         <h1 className="font-display text-3xl font-bold text-ink-900">
           Country not found
         </h1>
@@ -175,7 +175,7 @@ export function WatchCountry() {
   const localKickoff = formatLocal(OPENING_MATCH_UTC, country.timezone)
 
   return (
-    <div className="container max-w-3xl mx-auto px-6 pt-28 pb-16">
+    <div className="container max-w-3xl mx-auto px-6 pt-6 pb-16">
       <header className="mb-10">
         <Link to="/watch" className="text-xs font-mono text-slate-500 hover:text-accent-gold">
           ← All countries

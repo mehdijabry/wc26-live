@@ -222,12 +222,12 @@ export function TeamPage() {
   const logo = teamBadgeFallback(team?.logos?.[0]?.href, abbr)
 
   return (
-    // pt-28 (112px) clears the fixed Navigation header — the nav is
+    // pt-6 (112px) clears the fixed Navigation header — the nav is
     // ~72px tall in browser mode and grows with env(safe-area-inset-top)
     // in iOS standalone PWA mode. Old value (py-12 = 48px) parked the
     // breadcrumb behind the nav, which intercepted clicks and explained
     // why the 'All WC26 teams' link looked unresponsive.
-    <div className="container max-w-4xl mx-auto px-6 pt-28 pb-12">
+    <div className="container max-w-4xl mx-auto px-6 pt-6 pb-12">
       {/* Breadcrumb back to the squads grid. Pill-button styling makes
           the hit target obvious and large enough for thumb taps on
           mobile (was an underline link easy to miss). */}

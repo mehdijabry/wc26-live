@@ -307,14 +307,26 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
   const sinceHours = range === '7d' ? 24 * 7 : range === '30d' ? 24 * 30 : 24
   const since = new Date(Date.now() - sinceHours * 3600 * 1000).toISOString()
   const until = new Date().toISOString()
+  // Pick the right granularity: 24h → 24 hourly buckets, 7d → 7 daily,
+  // 30d → 30 daily. The previous code used limit:1 hourly across every
+  // range, which on 7d/30d returned a single bucket (basically empty)
+  // and made the panel show zeros for longer ranges.
+  const useDaily = range !== '24h'
+  const groupName = useDaily ? 'httpRequests1dGroups' : 'httpRequests1hGroups'
+  const bucketLimit = useDaily ? (range === '30d' ? 30 : 7) : 24
+  const dateFilter = useDaily
+    ? '{ date_geq: $sinceDate, date_leq: $untilDate }'
+    : '{ datetime_geq: $since, datetime_leq: $until }'
+  const sinceDate = since.slice(0, 10) // YYYY-MM-DD for date_geq
+  const untilDate = until.slice(0, 10)
   const query = {
-    query: `query($zoneTag:String!, $since:Time!, $until:Time!){
+    query: `query($zoneTag:String!, $since:Time!, $until:Time!, $sinceDate:Date!, $untilDate:Date!){
       viewer { zones(filter:{zoneTag:$zoneTag}){
-        httpRequests1hGroups(limit:1, filter:{datetime_geq:$since, datetime_leq:$until}){
+        ${groupName}(limit:${bucketLimit}, filter:${dateFilter}){
           sum { requests pageViews bytes }
           uniq { uniques }
         }
-        topNs: httpRequests1hGroups(limit:1, filter:{datetime_geq:$since, datetime_leq:$until}){
+        topNs: ${groupName}(limit:${bucketLimit}, filter:${dateFilter}){
           sum {
             countryMap{ clientCountryName requests }
             responseStatusMap{ edgeResponseStatus requests }
@@ -322,7 +334,7 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
         }
       }}
     }`,
-    variables: { zoneTag: env.CF_ZONE_ID, since, until },
+    variables: { zoneTag: env.CF_ZONE_ID, since, until, sinceDate, untilDate },
   }
   const resp = await fetch('https://api.cloudflare.com/client/v4/graphql', {
     method: 'POST',
@@ -335,33 +347,52 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
   if (!resp.ok) {
     return jsonResp({ configured: true, error: 'cf api error', status: resp.status }, 502)
   }
+  type Bucket = {
+    sum?: { requests?: number; pageViews?: number; bytes?: number; countryMap?: Array<{ clientCountryName?: string; requests?: number }> }
+    uniq?: { uniques?: number }
+  }
   const data = await resp.json() as {
-    data?: { viewer?: { zones?: Array<{
-      httpRequests1hGroups?: Array<{ sum?: { requests?: number; pageViews?: number; bytes?: number }; uniq?: { uniques?: number } }>;
-      topNs?: Array<{ sum?: { countryMap?: Array<{ clientCountryName?: string; requests?: number }> } }>
-    }> } }
+    data?: { viewer?: { zones?: Array<Record<string, Bucket[]>> } }
   }
   const zone = data?.data?.viewer?.zones?.[0]
-  const group = zone?.httpRequests1hGroups?.[0]
-  const top = zone?.topNs?.[0]
-  const bytes = group?.sum?.bytes ?? 0
-  // Parse the GraphQL shape into the same flat object the UI's mock
-  // path renders. Saves us a second code path on the frontend.
+  const groups: Bucket[] = (zone?.[groupName] as Bucket[]) ?? []
+  const topGroups: Bucket[] = (zone?.topNs as Bucket[]) ?? []
+  // Aggregate across buckets — the previous code only read index [0] which
+  // worked when limit was 1 but breaks now that we ask for 24/7/30 buckets.
+  const totalReq = groups.reduce((s, g) => s + (g.sum?.requests ?? 0), 0)
+  const totalPV = groups.reduce((s, g) => s + (g.sum?.pageViews ?? 0), 0)
+  const totalBytes = groups.reduce((s, g) => s + (g.sum?.bytes ?? 0), 0)
+  // 'uniques' across multiple buckets is NOT additive — Cloudflare counts
+  // distinct visitors per bucket, so summing double-counts repeat visitors.
+  // The conservative answer is max(bucket uniques) which is the closest
+  // proxy to "distinct visitors over the period" without the dedup query.
+  const maxUniques = groups.reduce((m, g) => Math.max(m, g.uniq?.uniques ?? 0), 0)
+  // Merge country counts across buckets so the leaderboard reflects the
+  // full range, not just the most recent slice.
+  const countryTotals = new Map<string, number>()
+  for (const g of topGroups) {
+    for (const c of g.sum?.countryMap ?? []) {
+      const name = c.clientCountryName ?? '??'
+      countryTotals.set(name, (countryTotals.get(name) ?? 0) + (c.requests ?? 0))
+    }
+  }
+  const topCountries = Array.from(countryTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([name, requests]) => ({
+      code: name.slice(0, 2).toUpperCase(),
+      name,
+      requests,
+    }))
   return jsonResp({
     configured: true,
     range,
     mock: {
-      requests: group?.sum?.requests ?? 0,
-      pageViews: group?.sum?.pageViews ?? 0,
-      uniques: group?.uniq?.uniques ?? 0,
-      bandwidth: formatBytes(bytes),
-      topCountries: (top?.sum?.countryMap ?? [])
-        .slice(0, 8)
-        .map((c) => ({
-          code: c.clientCountryName?.slice(0, 2).toUpperCase() ?? '??',
-          name: c.clientCountryName ?? '—',
-          requests: c.requests ?? 0,
-        })),
+      requests: totalReq,
+      pageViews: totalPV,
+      uniques: maxUniques,
+      bandwidth: formatBytes(totalBytes),
+      topCountries,
     },
   })
 }

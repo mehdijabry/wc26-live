@@ -40,8 +40,13 @@ export function Navigation() {
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6 }}
-        className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
-          scrolled ? 'backdrop-blur-xl bg-paper/70 border-b border-slate-200/70' : ''
+        // sticky (not fixed) → sits in normal document flow at scroll 0, so
+        // it doesn't overlap the first ~80px of page content. When the user
+        // scrolls down it sticks to the viewport top with the blur backdrop.
+        // Horizontal swipes (DailyMatches carousel, etc.) pass through
+        // because sticky doesn't capture pointer events outside its bounds.
+        className={`sticky top-0 inset-x-0 z-50 transition-all duration-300 ${
+          scrolled ? 'backdrop-blur-xl bg-paper/70 border-b border-slate-200/70' : 'bg-paper'
         }`}
         // Safe-area-aware padding: in iOS standalone (PWA from home screen)
         // there's no Safari chrome, so without this the WC26 logo + Sign in
