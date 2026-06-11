@@ -188,6 +188,29 @@ export async function handleAdmin(
   if (pathname === '/admin/brackets') return handleListBrackets(env)
   if (pathname === '/admin/site-health') return handleSiteHealth(env)
 
+  // Push auto-alert settings + last-tick diagnostics.
+  if (pathname === '/admin/push/settings' && req.method === 'GET') {
+    const { loadPushSettings } = await import('./index')
+    const settings = await loadPushSettings(env as unknown as Parameters<typeof loadPushSettings>[0])
+    return jsonResp({ settings })
+  }
+  if (pathname === '/admin/push/settings' && req.method === 'POST') {
+    const { savePushSettings, loadPushSettings } = await import('./index')
+    const body = await req.json().catch(() => null) as { settings?: unknown } | null
+    if (!body?.settings) return jsonResp({ error: 'missing_settings' }, 400)
+    await savePushSettings(
+      env as unknown as Parameters<typeof savePushSettings>[0],
+      body.settings as Parameters<typeof savePushSettings>[1]
+    )
+    const saved = await loadPushSettings(env as unknown as Parameters<typeof loadPushSettings>[0])
+    return jsonResp({ ok: true, settings: saved })
+  }
+  if (pathname === '/admin/push/diag' && req.method === 'GET') {
+    const { readPushDiag } = await import('./index')
+    const diag = await readPushDiag(env as unknown as Parameters<typeof readPushDiag>[0])
+    return jsonResp({ diag })
+  }
+
   // News pipeline (auto-published articles, Phase 1 manual approval flow)
   if (pathname === '/admin/news/list') return handleListNews(env, req)
   if (pathname.startsWith('/admin/news/') && req.method === 'POST') {

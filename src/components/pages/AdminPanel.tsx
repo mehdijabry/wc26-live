@@ -368,6 +368,7 @@ function Push() {
 
   return (
     <>
+      <AutoPushSettingsSection />
       <Section title="Compose notification" eyebrow="Push">
         <div className="grid sm:grid-cols-2 gap-3">
           <InputField label="Title" value={title} onChange={setTitle} placeholder="🇲🇦 Maroc 1-0 vs Brésil" />
@@ -1156,6 +1157,224 @@ function CandidateRow({
             ↗ Read source
           </a>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Auto-push settings + diagnostic ───────────────────────────────
+//
+// Operator-facing controls for the worker's scheduled() push pipeline.
+// State is persisted in the worker's KV (key 'push:settings') and read
+// at the top of every 5-min cron tick. The diagnostic below shows what
+// the LAST tick saw — useful when 'pushes aren't arriving' is reported.
+
+interface PushSettingsShape {
+  enabled: boolean
+  kickoff: { enabled: boolean; leadMinutes: number }
+  goal: { enabled: boolean }
+  fullTime: { enabled: boolean }
+  redCard: { enabled: boolean }
+}
+
+interface PushDiagShape {
+  lastCronAt: string
+  lastCronEventsCount: number
+  lastKickoffScheduledIds: string[]
+  lastGoalAlertIds: string[]
+  lastFtAlertIds: string[]
+  lastSubsCount: number
+  settings: PushSettingsShape
+}
+
+function AutoPushSettingsSection() {
+  const [settings, setSettings] = useState<PushSettingsShape | null>(null)
+  const [diag, setDiag] = useState<PushDiagShape | null | 'loading'>('loading')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  useEffect(() => {
+    void adminGet('/admin/push/settings').then((d) => setSettings((d as { settings: PushSettingsShape }).settings))
+    void adminGet('/admin/push/diag').then((d) => setDiag((d as { diag: PushDiagShape | null }).diag))
+  }, [])
+
+  async function save() {
+    if (!settings) return
+    setSaving(true)
+    setMsg(null)
+    try {
+      const r = await adminPost('/admin/push/settings', { settings })
+      const data = r as { settings: PushSettingsShape }
+      setSettings(data.settings)
+      setMsg('✓ Settings saved — applied on next cron tick (within 5 min)')
+    } catch (e) {
+      setMsg('Save failed: ' + String(e))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!settings) return <Section title="Auto alerts" eyebrow="Push"><Loading /></Section>
+
+  return (
+    <Section title="Auto alerts" eyebrow="Push · cron-driven">
+      <div className="text-xs font-mono text-slate-500 mb-4 leading-relaxed">
+        The worker polls ESPN every 5 minutes and broadcasts push notifications for the events you enable below.
+        Manual broadcasts (Compose section) are NOT affected by these toggles — they always fire.
+      </div>
+
+      {/* Master toggle */}
+      <ToggleRow
+        label="Master switch"
+        sub="If off, no automatic push is fired regardless of the toggles below."
+        accent="red"
+        checked={settings.enabled}
+        onChange={(v) => setSettings({ ...settings, enabled: v })}
+      />
+
+      <div className="border-t border-slate-200 my-4" />
+
+      {/* Kickoff */}
+      <ToggleRow
+        label="⚽ Kickoff alerts"
+        sub="Fired before each match starts. Uses a Durable Object alarm so the delivery is precise to the second."
+        checked={settings.kickoff.enabled}
+        onChange={(v) => setSettings({ ...settings, kickoff: { ...settings.kickoff, enabled: v } })}
+        disabled={!settings.enabled}
+      />
+      <div className="mt-3 pl-1">
+        <label className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
+          Lead time before kickoff
+        </label>
+        <div className="flex items-center gap-3 mt-1">
+          <input
+            type="range"
+            min={1}
+            max={60}
+            step={1}
+            value={settings.kickoff.leadMinutes}
+            onChange={(e) => setSettings({ ...settings, kickoff: { ...settings.kickoff, leadMinutes: Number(e.target.value) } })}
+            disabled={!settings.enabled || !settings.kickoff.enabled}
+            className="flex-1 accent-accent-gold"
+          />
+          <div className="font-mono text-sm tabular-nums w-16 text-right">
+            {settings.kickoff.leadMinutes} min
+          </div>
+        </div>
+        <div className="text-[10px] font-mono text-slate-400 mt-1">
+          Cron polls every 5 min; values 1–25 land within the standard 30-min lookahead window. Set to 30+ only if you've raised the worker's lookahead too.
+        </div>
+      </div>
+
+      <div className="border-t border-slate-200 my-4" />
+
+      {/* Goal */}
+      <ToggleRow
+        label="🥅 Goal alerts"
+        sub="Fired whenever the score increments on a live match. Latency bound: cron interval (≤5 min)."
+        checked={settings.goal.enabled}
+        onChange={(v) => setSettings({ ...settings, goal: { enabled: v } })}
+        disabled={!settings.enabled}
+      />
+
+      <div className="border-t border-slate-200 my-4" />
+
+      {/* FT */}
+      <ToggleRow
+        label="🏁 Full-time alerts"
+        sub="Fired when a match transitions to 'post' (final whistle). One per match."
+        checked={settings.fullTime.enabled}
+        onChange={(v) => setSettings({ ...settings, fullTime: { enabled: v } })}
+        disabled={!settings.enabled}
+      />
+
+      <div className="border-t border-slate-200 my-4" />
+
+      {/* Red card — stub, ESPN feed parser doesn't expose card events yet */}
+      <ToggleRow
+        label="🟥 Red card alerts"
+        sub="Not yet wired — ESPN's scoreboard endpoint doesn't expose card events. Will hook into the box-score endpoint in a later pass."
+        checked={settings.redCard.enabled}
+        onChange={(v) => setSettings({ ...settings, redCard: { enabled: v } })}
+        disabled={true}
+      />
+
+      <div className="mt-5 flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-5 py-2 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 disabled:opacity-50"
+        >
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+        {msg && (
+          <div className={'text-xs font-mono ' + (msg.startsWith('✓') ? 'text-emerald-700' : 'text-rose-700')}>
+            {msg}
+          </div>
+        )}
+      </div>
+
+      {/* Diagnostic — last cron tick. Shows why pushes aren't arriving:
+          0 subs, 0 events, kickoff outside lookahead, settings disabled. */}
+      <div className="mt-6 rounded-xl bg-slate-50 border border-slate-200 p-4">
+        <div className="font-display font-bold text-sm text-slate-900 mb-2">Last cron tick · diagnostic</div>
+        {diag === 'loading' && <Loading />}
+        {diag === null && (
+          <div className="text-xs font-mono text-slate-500">
+            No tick yet. The diagnostic is written by the worker on every */5 run. If this stays empty after 5+ minutes, the cron may not be running.
+          </div>
+        )}
+        {diag && diag !== 'loading' && (
+          <div className="text-xs font-mono text-slate-700 space-y-1 leading-relaxed">
+            <div>· Last run: <span className="text-slate-900">{new Date(diag.lastCronAt).toLocaleString()}</span> ({Math.round((Date.now() - new Date(diag.lastCronAt).getTime()) / 60_000)} min ago)</div>
+            <div>· ESPN events seen: <span className="text-slate-900">{diag.lastCronEventsCount}</span></div>
+            <div>· Subscribers: <span className="text-slate-900">{diag.lastSubsCount}</span> {diag.lastSubsCount === 0 && <span className="text-rose-600">← no one to push to</span>}</div>
+            <div>· Kickoffs scheduled this tick: <span className="text-slate-900">{diag.lastKickoffScheduledIds.length}</span> {diag.lastKickoffScheduledIds.length > 0 ? '(' + diag.lastKickoffScheduledIds.slice(0, 3).join(', ') + (diag.lastKickoffScheduledIds.length > 3 ? '…' : '') + ')' : ''}</div>
+            <div>· Goal alerts fired: <span className="text-slate-900">{diag.lastGoalAlertIds.length}</span></div>
+            <div>· FT alerts fired: <span className="text-slate-900">{diag.lastFtAlertIds.length}</span></div>
+            <div>· Settings applied: enabled={String(diag.settings.enabled)}, kickoff={String(diag.settings.kickoff.enabled)} (T-{diag.settings.kickoff.leadMinutes}m), goal={String(diag.settings.goal.enabled)}, ft={String(diag.settings.fullTime.enabled)}</div>
+          </div>
+        )}
+      </div>
+    </Section>
+  )
+}
+
+function ToggleRow({
+  label, sub, checked, onChange, accent, disabled,
+}: {
+  label: string
+  sub?: string
+  checked: boolean
+  onChange: (v: boolean) => void
+  accent?: 'red' | 'gold'
+  disabled?: boolean
+}) {
+  return (
+    <div className={'flex items-start gap-3 ' + (disabled ? 'opacity-50' : '')}>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => !disabled && onChange(!checked)}
+        disabled={disabled}
+        className={
+          'flex-shrink-0 mt-0.5 inline-flex w-11 h-6 rounded-full border transition-colors items-center px-0.5 ' +
+          (checked
+            ? (accent === 'red' ? 'bg-rose-500 border-rose-600' : 'bg-accent-gold border-yellow-500')
+            : 'bg-slate-200 border-slate-300')
+        }
+      >
+        <span
+          className={
+            'inline-block w-5 h-5 bg-white rounded-full shadow transition-transform ' +
+            (checked ? 'translate-x-5' : 'translate-x-0')
+          }
+        />
+      </button>
+      <div className="flex-1 min-w-0">
+        <div className="font-display font-bold text-sm text-slate-900">{label}</div>
+        {sub && <div className="text-[11px] font-mono text-slate-500 mt-0.5 leading-relaxed">{sub}</div>}
       </div>
     </div>
   )

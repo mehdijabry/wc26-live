@@ -340,6 +340,78 @@ export default {
 
 const KV_TTL_SECONDS = 36 * 3600
 
+// ─── Push settings — operator-configurable via /admin/push/settings ──
+
+export interface PushSettings {
+  enabled: boolean                                    // master kill switch
+  kickoff: { enabled: boolean; leadMinutes: number }  // T-15 by default
+  goal: { enabled: boolean }
+  fullTime: { enabled: boolean }
+  redCard: { enabled: boolean }                       // stub for future
+}
+
+export const DEFAULT_PUSH_SETTINGS: PushSettings = {
+  enabled: true,
+  kickoff: { enabled: true, leadMinutes: 15 },
+  goal: { enabled: true },
+  fullTime: { enabled: true },
+  redCard: { enabled: false },
+}
+
+const PUSH_SETTINGS_KEY = 'push:settings'
+
+export async function loadPushSettings(env: Env): Promise<PushSettings> {
+  const raw = await env.CACHE.get(PUSH_SETTINGS_KEY)
+  if (!raw) return DEFAULT_PUSH_SETTINGS
+  try {
+    const parsed = JSON.parse(raw) as Partial<PushSettings>
+    return {
+      enabled: parsed.enabled ?? DEFAULT_PUSH_SETTINGS.enabled,
+      kickoff: { ...DEFAULT_PUSH_SETTINGS.kickoff, ...(parsed.kickoff ?? {}) },
+      goal: { ...DEFAULT_PUSH_SETTINGS.goal, ...(parsed.goal ?? {}) },
+      fullTime: { ...DEFAULT_PUSH_SETTINGS.fullTime, ...(parsed.fullTime ?? {}) },
+      redCard: { ...DEFAULT_PUSH_SETTINGS.redCard, ...(parsed.redCard ?? {}) },
+    }
+  } catch {
+    return DEFAULT_PUSH_SETTINGS
+  }
+}
+
+export async function savePushSettings(env: Env, s: PushSettings): Promise<void> {
+  // Clamp lead minutes to a sane window (1–60). Anything outside that
+  // makes the cron lookahead math break (lookahead is 30min by default).
+  const lead = Math.max(1, Math.min(60, Math.round(s.kickoff.leadMinutes)))
+  const sanitized: PushSettings = {
+    enabled: !!s.enabled,
+    kickoff: { enabled: !!s.kickoff.enabled, leadMinutes: lead },
+    goal: { enabled: !!s.goal.enabled },
+    fullTime: { enabled: !!s.fullTime.enabled },
+    redCard: { enabled: !!s.redCard.enabled },
+  }
+  await env.CACHE.put(PUSH_SETTINGS_KEY, JSON.stringify(sanitized))
+}
+
+// Diagnostic record — surfaces 'why didn't a push arrive' to the panel.
+// One KV write per cron tick; cheap.
+const PUSH_DIAG_KEY = 'push:diag'
+export interface PushDiag {
+  lastCronAt: string                  // ISO
+  lastCronEventsCount: number         // ESPN events seen
+  lastKickoffScheduledIds: string[]   // ids put into the DO this tick
+  lastGoalAlertIds: string[]
+  lastFtAlertIds: string[]
+  lastSubsCount: number
+  settings: PushSettings
+}
+async function writePushDiag(env: Env, d: PushDiag): Promise<void> {
+  await env.CACHE.put(PUSH_DIAG_KEY, JSON.stringify(d), { expirationTtl: 7 * 24 * 3600 })
+}
+export async function readPushDiag(env: Env): Promise<PushDiag | null> {
+  const raw = await env.CACHE.get(PUSH_DIAG_KEY)
+  if (!raw) return null
+  try { return JSON.parse(raw) as PushDiag } catch { return null }
+}
+
 /** Item shape exchanged between the cron and the KickoffScheduler DO. */
 type ScheduledPush = {
   id: string       // ESPN event id (also the dedupe key in the DO)
@@ -356,6 +428,18 @@ const KICKOFF_LOOKAHEAD_MS = 30 * 60_000
 const KICKOFF_LEAD_MS = 15 * 60_000
 
 async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Promise<void> {
+  const settings = await loadPushSettings(env)
+  const diag: PushDiag = {
+    lastCronAt: new Date().toISOString(),
+    lastCronEventsCount: events?.length ?? 0,
+    lastKickoffScheduledIds: [],
+    lastGoalAlertIds: [],
+    lastFtAlertIds: [],
+    lastSubsCount: 0,
+    settings,
+  }
+  if (!settings.enabled) { await writePushDiag(env, diag); return }
+
   // No subscribers? Skip the whole thing — no point computing alerts
   // we won't send.
   const subsCheck = await fetch(
@@ -368,42 +452,47 @@ async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Prom
     }
   )
   const subsList = (await subsCheck.json()) as Array<{ endpoint: string }>
-  if (subsList.length === 0) return
+  diag.lastSubsCount = subsList.length
+  if (subsList.length === 0) { await writePushDiag(env, diag); return }
 
   // ---- Pass A: schedule upcoming kickoffs via the Durable Object -----
   // Precise to the second — DO Alarms fire at the exact requested time,
   // not at the next cron tick. This pass is purely scheduling; the
   // actual push goes out from the DO's alarm() handler.
   const pendingSchedule: ScheduledPush[] = []
-  for (const ev of events ?? []) {
-    try {
-      const sched = scheduledKickoffFor(ev)
-      if (!sched) continue
-      // KV sentinel prevents the same kickoff from being re-scheduled
-      // on every 5-min cron run. The DO is the authoritative dedupe
-      // (it indexes by event id) but the KV check skips even building
-      // the request payload, which is the hot path on the cron.
-      const seenKey = `alert:kickoff:${sched.id}`
-      if (await env.CACHE.get(seenKey)) continue
-      pendingSchedule.push(sched)
-      await env.CACHE.put(seenKey, 'scheduled', { expirationTtl: KV_TTL_SECONDS })
-    } catch (e) {
-      console.log('[push] scheduling failed', ev.id, e)
+  if (settings.kickoff.enabled) {
+    const leadMs = settings.kickoff.leadMinutes * 60_000
+    for (const ev of events ?? []) {
+      try {
+        const sched = scheduledKickoffFor(ev, leadMs)
+        if (!sched) continue
+        // KV sentinel prevents the same kickoff from being re-scheduled
+        // on every 5-min cron run. The DO is the authoritative dedupe
+        // (it indexes by event id) but the KV check skips even building
+        // the request payload, which is the hot path on the cron.
+        const seenKey = `alert:kickoff:${sched.id}`
+        if (await env.CACHE.get(seenKey)) continue
+        pendingSchedule.push(sched)
+        await env.CACHE.put(seenKey, 'scheduled', { expirationTtl: KV_TTL_SECONDS })
+      } catch (e) {
+        console.log('[push] scheduling failed', ev.id, e)
+      }
     }
-  }
-  if (pendingSchedule.length > 0) {
-    try {
-      const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
-      await stub.fetch('https://do/schedule', {
-        method: 'POST',
-        body: JSON.stringify(pendingSchedule),
-      })
-    } catch (e) {
-      console.log('[push] DO schedule call failed', e)
-      // If the DO call failed, roll back the KV sentinels so the next
-      // cron retries. Otherwise the matches would be silently lost.
-      for (const item of pendingSchedule) {
-        await env.CACHE.delete(`alert:kickoff:${item.id}`)
+    if (pendingSchedule.length > 0) {
+      try {
+        const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
+        await stub.fetch('https://do/schedule', {
+          method: 'POST',
+          body: JSON.stringify(pendingSchedule),
+        })
+        diag.lastKickoffScheduledIds = pendingSchedule.map((p) => p.id)
+      } catch (e) {
+        console.log('[push] DO schedule call failed', e)
+        // If the DO call failed, roll back the KV sentinels so the next
+        // cron retries. Otherwise the matches would be silently lost.
+        for (const item of pendingSchedule) {
+          await env.CACHE.delete(`alert:kickoff:${item.id}`)
+        }
       }
     }
   }
@@ -414,11 +503,13 @@ async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Prom
   // known state in KV. Latency is bounded by the cron interval (5 min).
   for (const ev of events ?? []) {
     try {
-      await maybeFireGoalOrFt(env, ev)
+      await maybeFireGoalOrFt(env, ev, settings, diag)
     } catch (e) {
       console.log('[push] goal/FT alert failed', ev.id, e)
     }
   }
+
+  await writePushDiag(env, diag)
 }
 
 /**
@@ -427,13 +518,14 @@ async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Prom
  * null. Doesn't side-effect.
  */
 function scheduledKickoffFor(
-  ev: NonNullable<EspnScoreboard['events']>[number]
+  ev: NonNullable<EspnScoreboard['events']>[number],
+  leadMs: number = KICKOFF_LEAD_MS
 ): ScheduledPush | null {
   if (ev.status?.type?.state !== 'pre') return null
   if (!ev.date) return null
   const kickoff = Date.parse(ev.date)
   if (!Number.isFinite(kickoff)) return null
-  const fireAt = kickoff - KICKOFF_LEAD_MS
+  const fireAt = kickoff - leadMs
   const now = Date.now()
   // Not in the lookahead window? Skip.
   if (fireAt < now - 60_000) return null  // already missed (with a 1-min slack)
@@ -454,7 +546,7 @@ function scheduledKickoffFor(
     fireAt,
     notif: {
       title: `⚽ ${homeName} v ${awayName}`,
-      body: 'Kickoff in 15 min — tap to follow live.',
+      body: `Kickoff in ${Math.round(leadMs / 60_000)} min — tap to follow live.`,
       url: '/today',
       tag: `kickoff-${id}`,
     },
@@ -463,7 +555,9 @@ function scheduledKickoffFor(
 
 async function maybeFireGoalOrFt(
   env: Env,
-  ev: NonNullable<EspnScoreboard['events']>[number]
+  ev: NonNullable<EspnScoreboard['events']>[number],
+  settings: PushSettings,
+  diag: PushDiag
 ): Promise<void> {
   const id = String(ev.id ?? '')
   if (!id) return
@@ -477,7 +571,7 @@ async function maybeFireGoalOrFt(
   const state = ev.status?.type?.state
 
   // ---- GOAL: score increments while state === 'in' --------------------
-  if (state === 'in') {
+  if (state === 'in' && settings.goal.enabled) {
     const hs = parseInt(home.score ?? '0', 10) || 0
     const as = parseInt(away.score ?? '0', 10) || 0
     const scoreKey = `alert:score:${id}`
@@ -494,13 +588,14 @@ async function maybeFireGoalOrFt(
           url: '/today',
           tag: `live-${id}`,
         })
+        diag.lastGoalAlertIds.push(id)
       }
       await env.CACHE.put(scoreKey, cur, { expirationTtl: KV_TTL_SECONDS })
     }
   }
 
   // ---- FT: state flipped to 'post' since last poll --------------------
-  if (state === 'post') {
+  if (state === 'post' && settings.fullTime.enabled) {
     const ftKey = `alert:ft:${id}`
     if (await env.CACHE.get(ftKey)) return
     const hs = parseInt(home.score ?? '0', 10) || 0
@@ -511,6 +606,7 @@ async function maybeFireGoalOrFt(
       url: '/today',
       tag: `ft-${id}`,
     })
+    diag.lastFtAlertIds.push(id)
     await env.CACHE.put(ftKey, '1', { expirationTtl: KV_TTL_SECONDS })
   }
 }
