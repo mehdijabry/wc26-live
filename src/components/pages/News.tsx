@@ -185,13 +185,9 @@ function ArticleCard({ article, featured }: { article: Article; featured: boolea
 export function NewsArticlePage() {
   const { slug } = useParams<{ slug: string }>()
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
-  // Adsterra-backed interstitial shown on every article open. Closes
-  // on user click (after a 3s gate) or auto-dismisses at 6s.
-  const [showAd, setShowAd] = useState(true)
 
   useEffect(() => {
     if (!slug || !supabase) return
-    setShowAd(true)
     void supabase
       .from('articles')
       .select(SELECT)
@@ -207,9 +203,15 @@ export function NewsArticlePage() {
 
   if (article === null) return <Navigate to="/news" replace />
 
+  // The article page used to render a hand-built 'loading' modal with a
+  // 300x250 banner inside — the user clarified they want a NATIVE
+  // Adsterra Interstitial (full-screen ad rendered by Adsterra
+  // themselves) instead. That requires creating an Interstitial zone in
+  // the Adsterra dashboard and pasting the key here. Until that's done,
+  // we just render the article directly — no fake intermediary screen.
+
   return (
     <article className="container max-w-3xl mx-auto px-6 py-8 sm:py-12">
-      {showAd && <Interstitial onClose={() => setShowAd(false)} />}
 
       <Link to="/news" className="inline-flex items-center gap-1 text-xs font-mono text-slate-500 hover:text-slate-900 mb-6">
         ← Back to news
@@ -292,75 +294,12 @@ export function NewsArticlePage() {
   )
 }
 
-/**
- * Full-screen ad interstitial shown on every article open. A 300×250
- * Adsterra banner sits in the centre of a white overlay above a brand
- * lockup + a countdown to a 'Continue to article' button (3s gate, then
- * 6s auto-dismiss). This is the standard 'free article unlocked by an
- * ad' pattern — common on Yahoo News / Forbes / Bloomberg.
- *
- * Behaviour notes:
- *  - 3s minimum so the Adsterra zone has time to fill and render. Below
- *    that, ad creatives are still loading and the user sees an empty
- *    slot.
- *  - The Continue button appears at 3s; the modal auto-closes at 6s
- *    if the user doesn't act, so reading isn't blocked indefinitely.
- *  - body scroll is locked while open (single source of focus on the ad).
- *  - z-[60] so it covers the nav + sticky pill + everything else.
- */
-function Interstitial({ onClose }: { onClose: () => void }) {
-  const [secs, setSecs] = useState(0)
-
-  useEffect(() => {
-    document.body.style.overflow = 'hidden'
-    const i = setInterval(() => setSecs((s) => s + 1), 1000)
-    const auto = setTimeout(onClose, 6000)
-    return () => {
-      document.body.style.overflow = ''
-      clearInterval(i)
-      clearTimeout(auto)
-    }
-  }, [onClose])
-
-  const canSkip = secs >= 3
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      className="fixed inset-0 z-[60] bg-white/95 backdrop-blur-md flex flex-col items-center justify-center px-4 overflow-y-auto"
-    >
-      {/* Brand lockup top */}
-      <div className="absolute top-6 left-1/2 -translate-x-1/2 text-center">
-        <div className="font-display font-bold text-xl text-slate-900 leading-none">Pressing 90′</div>
-        <div className="text-[10px] uppercase tracking-widest font-mono text-accent-gold mt-1">
-          continuing to your article…
-        </div>
-      </div>
-
-      {/* The ad itself */}
-      <Ad slot="news-article-mid" />
-
-      {/* Skip / auto-close affordance */}
-      <div className="mt-4 flex flex-col items-center gap-2">
-        {canSkip ? (
-          <button
-            onClick={onClose}
-            className="px-5 py-2 rounded-full bg-ink-900 text-white font-semibold text-sm hover:bg-slate-700 transition-colors"
-          >
-            Continue to article →
-          </button>
-        ) : (
-          <div className="text-xs font-mono text-slate-400">
-            unlocking in {3 - secs}s…
-          </div>
-        )}
-        <div className="text-[9px] uppercase tracking-[0.22em] font-mono text-slate-400">
-          ad · sponsored
-        </div>
-      </div>
-    </motion.div>
-  )
-}
+// Interstitial component intentionally removed — user wants Adsterra's
+// native Interstitial format (rendered server-side by Adsterra), not a
+// hand-built modal with an embedded banner. When the new Adsterra
+// Interstitial zone key is provided, drop it into ADSTERRA_ZONES in
+// src/components/AdSlot.tsx and wire it here via a SmartLink-style
+// invoke.js loader on the detail page mount.
 
 // ─── helpers ────────────────────────────────────────────────────────
 
