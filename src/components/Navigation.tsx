@@ -14,6 +14,7 @@ const links: Array<{ label: string; to: string }> = [
   { label: 'WC26 Squads', to: '/wc26' },
   { label: 'WC26 Prediction', to: '/predictions' },
   { label: 'Today', to: '/today' },
+  { label: 'News', to: '/news' },
   { label: 'Board', to: '/board' },
   { label: "WC26's Stadiums", to: '/stadiums' },
 ]

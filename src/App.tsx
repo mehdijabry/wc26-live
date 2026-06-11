@@ -30,6 +30,8 @@ const DailyMatches = lazy(() => import('./components/DailyMatches').then((m) => 
 const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) => ({ default: m.BracketWizard })))
 const PhasePickerHub = lazy(() => import('./components/posters/PhasePickerHub').then((m) => ({ default: m.PhasePickerHub })))
 const PublicProfile = lazy(() => import('./components/PublicProfile').then((m) => ({ default: m.PublicProfile })))
+const NewsListPage = lazy(() => import('./components/pages/News').then((m) => ({ default: m.NewsListPage })))
+const NewsArticlePage = lazy(() => import('./components/pages/News').then((m) => ({ default: m.NewsArticlePage })))
 const AtlasLions = lazy(() => import('./components/AtlasLions').then((m) => ({ default: m.AtlasLions })))
 const About = lazy(() => import('./components/pages/About').then((m) => ({ default: m.About })))
 const Contact = lazy(() => import('./components/pages/Contact').then((m) => ({ default: m.Contact })))
@@ -167,6 +169,8 @@ function App() {
               info instead of a 404. */}
           <Route path="/squads" element={<Navigate to="/wc26" replace />} />
           <Route path="/board" element={<BoardPage />} />
+          <Route path="/news" element={<NewsListPage />} />
+          <Route path="/news/:slug" element={<NewsArticlePage />} />
           <Route path="/stadiums" element={<StadiumsPage />} />
           <Route path="/u/:slug" element={<ProfilePage />} />
           {/* /watch + /watch/:country — SEO trap for the 'where to watch
