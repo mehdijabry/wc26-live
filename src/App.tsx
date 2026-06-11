@@ -28,6 +28,7 @@ const Predictions = lazy(() => import('./components/Predictions').then((m) => ({
 const Leaderboard = lazy(() => import('./components/Leaderboard').then((m) => ({ default: m.Leaderboard })))
 const DailyMatches = lazy(() => import('./components/DailyMatches').then((m) => ({ default: m.DailyMatches })))
 const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) => ({ default: m.BracketWizard })))
+const PhasePickerHub = lazy(() => import('./components/posters/PhasePickerHub').then((m) => ({ default: m.PhasePickerHub })))
 const PublicProfile = lazy(() => import('./components/PublicProfile').then((m) => ({ default: m.PublicProfile })))
 const AtlasLions = lazy(() => import('./components/AtlasLions').then((m) => ({ default: m.AtlasLions })))
 const About = lazy(() => import('./components/pages/About').then((m) => ({ default: m.About })))
@@ -439,8 +440,20 @@ function WC26PromoSection() {
  * match predictions live below for fans who want to score every game.
  */
 function PredictionsPage() {
+  // 'Bracket complet' on the hub scrolls down to the full BracketWizard
+  // rather than navigating elsewhere — keeps the existing flow intact
+  // while letting the user pick a focused phase via the hub above.
+  function scrollToFullBracket() {
+    const el = document.getElementById('full-bracket')
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
   return (
     <>
+      {/* New phase picker hub — landing screen before the full wizard.
+          Lower-friction entry: user can predict just the finale (or any
+          single phase later) without filling all 12 groups first. */}
+      <PhasePickerHub onFullBracket={scrollToFullBracket} />
+      <div id="full-bracket" />
       <Suspense fallback={<PageSkeleton caption="Loading the bracket predictor…" />}>
         <BracketWizard />
       </Suspense>
