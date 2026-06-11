@@ -9,6 +9,7 @@ import { Schedule } from './components/Schedule'
 import { Footer } from './components/Footer'
 import { BottomNav } from './components/BottomNav'
 import { LiveTicker } from './components/LiveTicker'
+import { PullToRefresh } from './components/PullToRefresh'
 import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
 import { LottieLoader } from './components/LottieLoader'
@@ -127,6 +128,11 @@ function App() {
         <>
           <Navigation />
           <StickyCountdown />
+          {/* Pull-to-refresh — only outside the admin panel because the
+              admin already has its own refresh affordances (Quick Actions
+              cache buttons) and we don't want a downward swipe inside a
+              data table to dump the page state. */}
+          <PullToRefresh />
         </>
       )}
 
