@@ -867,18 +867,36 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
   }
 
   if (tail === 'backfill-images' && !action && req.method === 'POST') {
-    // One-shot: for every article with null image_url, fetch its
-    // source page's og:image and patch the row. Used after the og:image
-    // fetcher landed to retro-fill the first 3 published articles.
+    // Verbose backfill: returns per-article diagnostics so we can see
+    // which step fails — regex match, ESPN API status, image array
+    // length — without re-deploying for every debug round.
     const list = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/articles?select=id,source_url,image_url&image_url=is.null&limit=100`,
+      `${env.SUPABASE_URL}/rest/v1/articles?select=id,source_url,image_url,title&image_url=is.null&limit=100`,
       { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
     )
     if (!list.ok) return jsonResp({ error: 'list_failed', status: list.status }, 500)
-    const rows = await list.json() as Array<{ id: string; source_url: string }>
+    const rows = await list.json() as Array<{ id: string; source_url: string; title: string }>
     const { fetchOgImage } = await import('./news')
-    const updates: Array<{ id: string; image_url: string | null }> = []
+    const details: Array<Record<string, unknown>> = []
     for (const row of rows) {
+      const espnMatch = row.source_url.match(/espn\.com\/[^?]*\/id\/(\d+)/i)
+      let espnApiStatus: number | string = 'not-called'
+      let espnHasImages: string = 'not-called'
+      if (espnMatch) {
+        try {
+          const r = await fetch(`https://now.core.api.espn.com/v1/sports/news/${espnMatch[1]}`, {
+            headers: {
+              'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+              accept: 'application/json',
+            },
+          })
+          espnApiStatus = r.status
+          if (r.ok) {
+            const j = await r.json() as { images?: unknown[] }
+            espnHasImages = Array.isArray(j.images) ? `len=${j.images.length}` : 'no-array'
+          }
+        } catch (e) { espnApiStatus = 'threw:' + String(e) }
+      }
       const img = await fetchOgImage(row.source_url)
       if (img) {
         await fetch(`${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(row.id)}`, {
@@ -892,9 +910,18 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
           body: JSON.stringify({ image_url: img }),
         })
       }
-      updates.push({ id: row.id, image_url: img })
+      details.push({
+        id: row.id,
+        title: row.title.slice(0, 50),
+        source_url: row.source_url,
+        espn_id_matched: espnMatch ? espnMatch[1] : null,
+        espn_api_status: espnApiStatus,
+        espn_has_images: espnHasImages,
+        final_image: img,
+        patched: !!img,
+      })
     }
-    return jsonResp({ ok: true, scanned: rows.length, patched: updates.filter((u) => u.image_url).length, updates })
+    return jsonResp({ ok: true, scanned: rows.length, patched: details.filter((d) => d.patched).length, details })
   }
 
   if (tail === 'poll' && !action) {

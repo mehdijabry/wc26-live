@@ -888,9 +888,37 @@ function News() {
                   method: 'POST',
                   headers: { authorization: `Bearer ${getToken() ?? ''}` },
                 })
-                const d = await r.json() as { scanned?: number; patched?: number; error?: string }
-                if (d.error) setMsg('Backfill failed: ' + d.error)
-                else setMsg(`✓ Backfill: scanned ${d.scanned}, patched ${d.patched} images`)
+                const d = await r.json() as {
+                  scanned?: number
+                  patched?: number
+                  details?: Array<{
+                    title?: string
+                    source_url?: string
+                    espn_id_matched?: string | null
+                    espn_api_status?: number | string
+                    espn_has_images?: string
+                    final_image?: string | null
+                  }>
+                  error?: string
+                }
+                if (d.error) {
+                  setMsg('Backfill failed: ' + d.error)
+                } else {
+                  const fails = (d.details ?? []).filter((x) => !x.final_image)
+                  if (fails.length && d.patched === 0) {
+                    // Surface the first failure's diagnostic line so we
+                    // can see why every fetch dropped the image.
+                    const f = fails[0]
+                    setMsg(
+                      `✗ Backfill: scanned ${d.scanned}, patched 0. First fail — ${f.title} ` +
+                      `· espn_id=${f.espn_id_matched ?? 'no-match'} ` +
+                      `· api_status=${f.espn_api_status} ` +
+                      `· has_images=${f.espn_has_images}`
+                    )
+                  } else {
+                    setMsg(`✓ Backfill: scanned ${d.scanned}, patched ${d.patched} images`)
+                  }
+                }
                 await load()
               } catch (e) { setMsg('Backfill error: ' + String(e)) }
               finally { setBusy(null) }
