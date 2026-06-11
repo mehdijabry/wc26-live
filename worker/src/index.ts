@@ -344,7 +344,10 @@ const KV_TTL_SECONDS = 36 * 3600
 
 export interface PushSettings {
   enabled: boolean                                    // master kill switch
-  kickoff: { enabled: boolean; leadMinutes: number }  // T-15 by default
+  // Multiple lead times so the user gets a 'heads-up' AND a 'final
+  // reminder' (e.g. T-60 + T-15). Each value is a minutes-before-
+  // kickoff number; we fire one push per value per match, deduped.
+  kickoff: { enabled: boolean; leadMinutes: number[] }
   goal: { enabled: boolean }
   fullTime: { enabled: boolean }
   redCard: { enabled: boolean }
@@ -360,7 +363,7 @@ export interface PushSettings {
 
 export const DEFAULT_PUSH_SETTINGS: PushSettings = {
   enabled: true,
-  kickoff: { enabled: true, leadMinutes: 15 },
+  kickoff: { enabled: true, leadMinutes: [60, 15] },
   goal: { enabled: true },
   fullTime: { enabled: true },
   redCard: { enabled: true },
@@ -383,7 +386,18 @@ export async function loadPushSettings(env: Env): Promise<PushSettings> {
     // crash on first render trying to read settings.yellowCard.enabled.
     return {
       enabled: parsed.enabled ?? DEFAULT_PUSH_SETTINGS.enabled,
-      kickoff:          { ...DEFAULT_PUSH_SETTINGS.kickoff,          ...(parsed.kickoff ?? {}) },
+      // Migrate the old single-number leadMinutes shape to the new
+      // array shape transparently — pre-Jun-12-2026 KV entries had
+      // leadMinutes as a number.
+      kickoff: {
+        ...DEFAULT_PUSH_SETTINGS.kickoff,
+        ...(parsed.kickoff ?? {}),
+        leadMinutes: Array.isArray(parsed.kickoff?.leadMinutes)
+          ? parsed.kickoff.leadMinutes
+          : typeof parsed.kickoff?.leadMinutes === 'number'
+            ? [parsed.kickoff.leadMinutes as number]
+            : DEFAULT_PUSH_SETTINGS.kickoff.leadMinutes,
+      },
       goal:             { ...DEFAULT_PUSH_SETTINGS.goal,             ...(parsed.goal ?? {}) },
       fullTime:         { ...DEFAULT_PUSH_SETTINGS.fullTime,         ...(parsed.fullTime ?? {}) },
       redCard:          { ...DEFAULT_PUSH_SETTINGS.redCard,          ...(parsed.redCard ?? {}) },
@@ -398,9 +412,17 @@ export async function loadPushSettings(env: Env): Promise<PushSettings> {
 }
 
 export async function savePushSettings(env: Env, s: PushSettings): Promise<void> {
-  // Clamp lead minutes to a sane window (1–60). Anything outside that
-  // makes the cron lookahead math break (lookahead is 30min by default).
-  const lead = Math.max(1, Math.min(60, Math.round(s.kickoff.leadMinutes)))
+  // Sanitize the lead-time array: clamp each to 1–240 min, drop NaN /
+  // duplicates, sort desc (so 'early' reminders schedule before 'late'
+  // ones in the queue inspector). Cap to 4 entries so a runaway UI
+  // can't queue dozens of pushes per match.
+  const rawLeads = Array.isArray(s.kickoff.leadMinutes) ? s.kickoff.leadMinutes : [s.kickoff.leadMinutes as unknown as number]
+  const cleaned = Array.from(new Set(
+    rawLeads
+      .map((n) => Math.round(Number(n)))
+      .filter((n) => Number.isFinite(n) && n >= 1 && n <= 240)
+  )).sort((a, b) => b - a).slice(0, 4)
+  const lead = cleaned.length > 0 ? cleaned : [15]
   const sanitized: PushSettings = {
     enabled: !!s.enabled,
     kickoff: { enabled: !!s.kickoff.enabled, leadMinutes: lead },
@@ -451,7 +473,12 @@ type ScheduledPush = {
 // gap between successful crons (one missed = 10 min) plus the 15-min
 // lead means we need to surface matches at least 25 min in advance.
 // 30 min gives 5 min of safety margin on top.
-const KICKOFF_LOOKAHEAD_MS = 30 * 60_000
+// KICKOFF_LOOKAHEAD_MS was a 30-min upper bound on how far ahead the
+// cron would schedule a kickoff alert; removed because it could cause
+// missed matches if the worker had a multi-tick outage during the
+// scheduling window. Every upcoming kickoff is now queued as soon as
+// ESPN exposes it. KICKOFF_LEAD_MS remains as the fallback when no
+// settings are loaded yet (e.g. very first cron tick).
 const KICKOFF_LEAD_MS = 15 * 60_000
 
 async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Promise<void> {
@@ -489,21 +516,27 @@ async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Prom
   // Precise to the second — DO Alarms fire at the exact requested time,
   // not at the next cron tick. This pass is purely scheduling; the
   // actual push goes out from the DO's alarm() handler.
+  //
+  // We schedule ONE push per (match × leadMinutes) pair — so a single
+  // upcoming match with leadMinutes=[60, 15] gets two queued alerts.
+  // The lookahead window from earlier code was removed: we now schedule
+  // every future kickoff as soon as ESPN exposes it, so a worker outage
+  // can't cause a missed match (the alarm survives in DO storage).
   const pendingSchedule: ScheduledPush[] = []
   if (settings.kickoff.enabled) {
-    const leadMs = settings.kickoff.leadMinutes * 60_000
     for (const ev of events ?? []) {
       try {
-        const sched = scheduledKickoffFor(ev, leadMs)
-        if (!sched) continue
-        // KV sentinel prevents the same kickoff from being re-scheduled
-        // on every 5-min cron run. The DO is the authoritative dedupe
-        // (it indexes by event id) but the KV check skips even building
-        // the request payload, which is the hot path on the cron.
-        const seenKey = `alert:kickoff:${sched.id}`
-        if (await env.CACHE.get(seenKey)) continue
-        pendingSchedule.push(sched)
-        await env.CACHE.put(seenKey, 'scheduled', { expirationTtl: KV_TTL_SECONDS })
+        for (const leadMin of settings.kickoff.leadMinutes) {
+          const sched = scheduledKickoffFor(ev, leadMin * 60_000)
+          if (!sched) continue
+          // Per-lead KV sentinel so the cron doesn't re-queue the same
+          // (match, lead) pair on every 5-min tick. The DO is the
+          // authoritative dedupe — KV is a fast skip.
+          const seenKey = `alert:kickoff:${sched.id}:${leadMin}`
+          if (await env.CACHE.get(seenKey)) continue
+          pendingSchedule.push(sched)
+          await env.CACHE.put(seenKey, 'scheduled', { expirationTtl: KV_TTL_SECONDS })
+        }
       } catch (e) {
         console.log('[push] scheduling failed', ev.id, e)
       }
@@ -683,12 +716,17 @@ function scheduledKickoffFor(
   if (!Number.isFinite(kickoff)) return null
   const fireAt = kickoff - leadMs
   const now = Date.now()
-  // Not in the lookahead window? Skip.
-  if (fireAt < now - 60_000) return null  // already missed (with a 1-min slack)
-  if (fireAt > now + KICKOFF_LOOKAHEAD_MS) return null
+  // Only skip if the fire time is already in the past — no upper bound
+  // anymore. The Durable Object alarm can hold far-future schedules
+  // (Cloudflare supports up to 30-day-out alarms) so even matches
+  // weeks away get queued the moment ESPN exposes them. This is the
+  // 'never miss a match' invariant the user asked for.
+  if (fireAt < now - 60_000) return null  // 1-min slack so a tick that
+                                          // just missed kickoff doesn't
+                                          // bounce-back an instant push
 
-  const id = String(ev.id ?? '')
-  if (!id) return null
+  const matchId = String(ev.id ?? '')
+  if (!matchId) return null
   const comp = ev.competitions?.[0]
   if (!comp) return null
   const home = comp.competitors?.find((c) => c.homeAway === 'home')
@@ -696,15 +734,20 @@ function scheduledKickoffFor(
   if (!home || !away) return null
   const homeName = home.team?.shortDisplayName ?? home.team?.displayName ?? '?'
   const awayName = away.team?.shortDisplayName ?? away.team?.displayName ?? '?'
+  const leadMin = Math.round(leadMs / 60_000)
 
   return {
-    id,
+    // Composite id so the DO queue can hold N alerts per match
+    // simultaneously (one per lead time). Previously the DO deduped on
+    // matchId alone, which would have collapsed the 60-min + 15-min
+    // pair down to a single alarm.
+    id: `${matchId}-${leadMin}`,
     fireAt,
     notif: {
       title: `⚽ ${homeName} v ${awayName}`,
-      body: `Kickoff in ${Math.round(leadMs / 60_000)} min — tap to follow live.`,
+      body: `Kickoff in ${leadMin} min — tap to follow live.`,
       url: '/today',
-      tag: `kickoff-${id}`,
+      tag: `kickoff-${matchId}-${leadMin}`,
     },
   }
 }

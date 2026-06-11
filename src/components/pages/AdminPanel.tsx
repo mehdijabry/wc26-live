@@ -1169,7 +1169,7 @@ function CandidateRow({
 
 interface PushSettingsShape {
   enabled: boolean
-  kickoff: { enabled: boolean; leadMinutes: number }
+  kickoff: { enabled: boolean; leadMinutes: number[] }
   goal: { enabled: boolean }
   fullTime: { enabled: boolean }
   redCard: { enabled: boolean }
@@ -1206,7 +1206,14 @@ function AutoPushSettingsSection() {
       const raw = (d as { settings: Partial<PushSettingsShape> }).settings ?? {}
       const safe: PushSettingsShape = {
         enabled: raw.enabled ?? true,
-        kickoff: { enabled: raw.kickoff?.enabled ?? true, leadMinutes: raw.kickoff?.leadMinutes ?? 15 },
+        kickoff: {
+          enabled: raw.kickoff?.enabled ?? true,
+          leadMinutes: Array.isArray(raw.kickoff?.leadMinutes)
+            ? (raw.kickoff!.leadMinutes as number[])
+            : typeof raw.kickoff?.leadMinutes === 'number'
+              ? [raw.kickoff!.leadMinutes as unknown as number]
+              : [60, 15],
+        },
         goal: { enabled: raw.goal?.enabled ?? true },
         fullTime: { enabled: raw.fullTime?.enabled ?? true },
         redCard: { enabled: raw.redCard?.enabled ?? true },
@@ -1266,25 +1273,15 @@ function AutoPushSettingsSection() {
       />
       <div className="mt-3 pl-1">
         <label className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
-          Lead time before kickoff
+          Lead times before kickoff
         </label>
-        <div className="flex items-center gap-3 mt-1">
-          <input
-            type="range"
-            min={1}
-            max={60}
-            step={1}
-            value={settings.kickoff.leadMinutes}
-            onChange={(e) => setSettings({ ...settings, kickoff: { ...settings.kickoff, leadMinutes: Number(e.target.value) } })}
-            disabled={!settings.enabled || !settings.kickoff.enabled}
-            className="flex-1 accent-accent-gold"
-          />
-          <div className="font-mono text-sm tabular-nums w-16 text-right">
-            {settings.kickoff.leadMinutes} min
-          </div>
-        </div>
+        <KickoffLeadEditor
+          values={settings.kickoff.leadMinutes}
+          disabled={!settings.enabled || !settings.kickoff.enabled}
+          onChange={(arr) => setSettings({ ...settings, kickoff: { ...settings.kickoff, leadMinutes: arr } })}
+        />
         <div className="text-[10px] font-mono text-slate-400 mt-1">
-          Cron polls every 5 min; values 1–25 land within the standard 30-min lookahead window. Set to 30+ only if you've raised the worker's lookahead too.
+          Each value fires a separate push (e.g. 60 + 15 = a heads-up an hour before kickoff and a final reminder 15 min before). Cron schedules every upcoming match the moment ESPN exposes it, so no fixture is missed even after a worker outage.
         </div>
       </div>
 
@@ -1394,7 +1391,7 @@ function AutoPushSettingsSection() {
             <div>· Goal alerts fired: <span className="text-slate-900">{diag.lastGoalAlertIds.length}</span></div>
             <div>· FT alerts fired: <span className="text-slate-900">{diag.lastFtAlertIds.length}</span></div>
             <div>· Card alerts fired: <span className="text-slate-900">{diag.lastCardAlertIds.length}</span> · Penalty: <span className="text-slate-900">{diag.lastPenaltyAlertIds.length}</span> · HT: <span className="text-slate-900">{diag.lastHalfTimeAlertIds.length}</span></div>
-            <div>· Settings: enabled={String(diag.settings.enabled)}, ko={String(diag.settings.kickoff.enabled)}@T-{diag.settings.kickoff.leadMinutes}m, goal={String(diag.settings.goal.enabled)}, ft={String(diag.settings.fullTime.enabled)}, rc={String(diag.settings.redCard.enabled)}, yc={String(diag.settings.yellowCard.enabled)}, pen={String(diag.settings.penalty.enabled)}, ht={String(diag.settings.halfTime.enabled)}</div>
+            <div>· Settings: enabled={String(diag.settings.enabled)}, ko={String(diag.settings.kickoff.enabled)}@{(Array.isArray(diag.settings.kickoff.leadMinutes) ? diag.settings.kickoff.leadMinutes : [diag.settings.kickoff.leadMinutes as unknown as number]).map((m) => 'T-' + m).join('/')}, goal={String(diag.settings.goal.enabled)}, ft={String(diag.settings.fullTime.enabled)}, rc={String(diag.settings.redCard.enabled)}, yc={String(diag.settings.yellowCard.enabled)}, pen={String(diag.settings.penalty.enabled)}, ht={String(diag.settings.halfTime.enabled)}</div>
           </div>
         )}
       </div>
@@ -1438,6 +1435,120 @@ function ToggleRow({
         <div className="font-display font-bold text-sm text-slate-900">{label}</div>
         {sub && <div className="text-[11px] font-mono text-slate-500 mt-0.5 leading-relaxed">{sub}</div>}
       </div>
+    </div>
+  )
+}
+
+/**
+ * Multi-lead-time editor — chips with a remove (×) per existing value
+ * + numeric input + 'Add' button. Built so the worker can fire 1-N
+ * kickoff push notifications per match.
+ *
+ * Caps at 4 chips, values clamped 1–240 min on save. Suggested presets
+ * ([60, 30, 15, 5]) are surfaced as quick-add buttons for the common
+ * cases — heads-up an hour out, 30 min for warm-up, 15 min final
+ * reminder, 5 min last-call.
+ */
+function KickoffLeadEditor({
+  values,
+  disabled,
+  onChange,
+}: {
+  values: number[]
+  disabled: boolean
+  onChange: (next: number[]) => void
+}) {
+  const [draft, setDraft] = useState<string>('')
+
+  function add(n: number) {
+    if (!Number.isFinite(n) || n < 1 || n > 240) return
+    if (values.length >= 4) return
+    if (values.includes(n)) return
+    const next = [...values, n].sort((a, b) => b - a)
+    onChange(next)
+  }
+
+  function remove(n: number) {
+    const next = values.filter((v) => v !== n)
+    onChange(next)
+  }
+
+  function commit() {
+    const n = Math.round(Number(draft))
+    if (Number.isFinite(n)) add(n)
+    setDraft('')
+  }
+
+  const presets = [120, 60, 30, 15, 5].filter((p) => !values.includes(p))
+
+  return (
+    <div className="mt-1 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        {values.length === 0 && (
+          <div className="text-xs font-mono text-slate-400">
+            No reminders set — at least one is needed for kickoff alerts to fire.
+          </div>
+        )}
+        {values.map((v) => (
+          <span
+            key={v}
+            className={
+              'inline-flex items-center gap-1.5 pl-3 pr-1 py-1 rounded-full text-xs font-mono tabular-nums ' +
+              (disabled ? 'bg-slate-100 text-slate-400' : 'bg-accent-gold/15 text-ink-900 border border-accent-gold/40')
+            }
+          >
+            T-{v} min
+            <button
+              type="button"
+              onClick={() => !disabled && remove(v)}
+              disabled={disabled}
+              aria-label={`Remove T-${v}`}
+              className={
+                'w-5 h-5 rounded-full flex items-center justify-center text-[10px] transition-colors ' +
+                (disabled ? 'opacity-40' : 'hover:bg-slate-900/10')
+              }
+            >
+              ✕
+            </button>
+          </span>
+        ))}
+        <input
+          type="number"
+          min={1}
+          max={240}
+          step={1}
+          inputMode="numeric"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); commit() } }}
+          disabled={disabled || values.length >= 4}
+          placeholder="min"
+          className="w-20 px-2 py-1 rounded-full border border-slate-300 text-xs font-mono text-center focus:outline-none focus:ring-2 focus:ring-accent-gold/40 disabled:opacity-40"
+        />
+        <button
+          type="button"
+          onClick={commit}
+          disabled={disabled || !draft || values.length >= 4}
+          className="px-3 py-1 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-mono disabled:opacity-40"
+        >
+          + Add
+        </button>
+      </div>
+      {presets.length > 0 && !disabled && values.length < 4 && (
+        <div className="flex flex-wrap gap-1.5 items-center">
+          <span className="text-[10px] uppercase tracking-widest font-mono text-slate-400">Presets:</span>
+          {presets.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => add(p)}
+              className="px-2 py-0.5 rounded-full bg-slate-50 hover:bg-slate-100 text-[10px] font-mono text-slate-600 border border-slate-200"
+            >
+              + T-{p}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
