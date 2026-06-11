@@ -726,6 +726,17 @@ interface Article {
   archived_at: string | null
 }
 
+interface PolledCandidate {
+  link: string
+  title: string
+  description: string
+  source: string
+  score: number
+  pubDate: number
+  imageUrl?: string
+  redditScore?: number
+}
+
 function News() {
   const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('draft')
   const [items, setItems] = useState<Article[]>([])
@@ -733,6 +744,9 @@ function News() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
+  // 6 candidate articles returned by /poll. The operator picks one
+  // and we call /produce to AI-rewrite + save as draft.
+  const [candidates, setCandidates] = useState<PolledCandidate[] | null>(null)
 
   async function load() {
     setLoading(true)
@@ -771,19 +785,62 @@ function News() {
     }
   }
 
-  async function trigger() {
-    setBusy('trigger')
+  /**
+   * Poll = ask the worker for the top 6 candidates (filtered by dedup
+   * against everything already in DB). Replaces the previous instant
+   * 'trigger' flow with an explicit pick step.
+   */
+  async function poll() {
+    setBusy('poll')
     setMsg(null)
     try {
-      const r = await fetch(`${API_BASE}/admin/news/trigger`, {
+      const r = await fetch(`${API_BASE}/admin/news/poll`, {
         method: 'POST',
         headers: { authorization: `Bearer ${getToken() ?? ''}` },
       })
       if (!r.ok) throw new Error(await r.text())
-      setMsg('✓ Pipeline triggered — check back in ~30s for the new draft')
-      setTimeout(() => void load(), 8000)
+      const data = await r.json() as { candidates: PolledCandidate[]; diagnostics: Record<string, unknown> }
+      setCandidates(data.candidates)
+      if (data.candidates.length === 0) {
+        setMsg('No fresh candidates — RSS feeds may be slow or all top items are already in DB. Try again later.')
+      } else {
+        setMsg(`✓ ${data.candidates.length} candidates ready — pick one to produce`)
+      }
     } catch (e) {
-      setMsg('Trigger failed: ' + String(e))
+      setMsg('Poll failed: ' + String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /**
+   * Produce = the operator chose candidate `i` from the polled list.
+   * Worker AI-rewrites + inserts a draft + emails. Then we refresh
+   * the drafts list and remove this candidate from the picker (so the
+   * other 5 stay visible if the operator wants to produce more).
+   */
+  async function produce(candidate: PolledCandidate) {
+    setBusy('produce:' + candidate.link)
+    setMsg(null)
+    try {
+      const r = await fetch(`${API_BASE}/admin/news/produce`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${getToken() ?? ''}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ candidate }),
+      })
+      const data = await r.json() as { ok: boolean; draft?: { title: string }; error?: string }
+      if (!data.ok) {
+        setMsg('Produce failed: ' + (data.error ?? 'unknown'))
+        return
+      }
+      setMsg(`✓ Draft produced: "${data.draft?.title}" — check your email`)
+      setCandidates((prev) => prev?.filter((c) => c.link !== candidate.link) ?? null)
+      await load()
+    } catch (e) {
+      setMsg('Produce failed: ' + String(e))
     } finally {
       setBusy(null)
     }
@@ -815,11 +872,11 @@ function News() {
             ))}
           </div>
           <button
-            onClick={trigger}
-            disabled={busy === 'trigger'}
+            onClick={poll}
+            disabled={busy === 'poll'}
             className="px-3 py-1.5 rounded-full bg-accent-gold text-ink-900 text-xs font-bold hover:bg-yellow-300 disabled:opacity-50"
           >
-            {busy === 'trigger' ? 'Triggering…' : '⚡ Trigger now'}
+            {busy === 'poll' ? 'Polling…' : '🎣 Poll 6 articles'}
           </button>
           <button
             onClick={load}
@@ -838,12 +895,46 @@ function News() {
 
       {loading && <div className="text-slate-500 text-sm">Loading…</div>}
 
-      {!loading && items.length === 0 && (
+      {candidates && candidates.length > 0 && (
+        <div className="rounded-xl border-2 border-accent-gold/30 bg-amber-50/30 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <div className="font-display font-bold text-slate-900">
+                🎯 Pick an article to produce
+              </div>
+              <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                Top {candidates.length} from RSS + Reddit, already-processed ones excluded ·
+                AI rewrite triggers when you click Produce
+              </div>
+            </div>
+            <button
+              onClick={() => setCandidates(null)}
+              className="text-xs font-mono text-slate-500 hover:text-slate-900"
+            >
+              ✕ Clear
+            </button>
+          </div>
+          <div className="space-y-2">
+            {candidates.map((c, i) => (
+              <CandidateRow
+                key={c.link}
+                candidate={c}
+                rank={i + 1}
+                busy={busy === 'produce:' + c.link}
+                anyBusy={busy?.startsWith('produce:') ?? false}
+                onProduce={() => produce(c)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!loading && items.length === 0 && !candidates && (
         <div className="text-center py-12 text-slate-500">
           <div className="text-4xl mb-2">📭</div>
           <div className="font-display font-bold">No {status} articles yet</div>
           <div className="text-xs font-mono mt-1">
-            {status === 'draft' && "The pipeline runs every 3 hours. Click 'Trigger now' to fire it manually."}
+            {status === 'draft' && "Click 'Poll 6 articles' to see fresh candidates from the news feeds."}
           </div>
         </div>
       )}
@@ -946,6 +1037,75 @@ function ArticleRow({
           <pre className="text-xs text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">{article.body}</pre>
         </div>
       )}
+    </div>
+  )
+}
+
+function CandidateRow({
+  candidate,
+  rank,
+  busy,
+  anyBusy,
+  onProduce,
+}: {
+  candidate: PolledCandidate
+  rank: number
+  busy: boolean
+  anyBusy: boolean
+  onProduce: () => void
+}) {
+  const ageH = Math.round((Date.now() - candidate.pubDate) / 3600_000 * 10) / 10
+  return (
+    <div className="bg-white rounded-lg p-3 border border-amber-200/60 flex items-start gap-3">
+      <div className="flex flex-col items-center flex-shrink-0 w-10">
+        <div className="text-lg font-bold text-accent-gold font-mono">#{rank}</div>
+        <div className="text-[9px] text-slate-400 font-mono">{candidate.score.toFixed(0)}</div>
+      </div>
+      {candidate.imageUrl && (
+        // eslint-disable-next-line jsx-a11y/img-redundant-alt
+        <img
+          src={candidate.imageUrl}
+          alt=""
+          className="w-14 h-14 rounded-md object-cover flex-shrink-0"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-[10px] uppercase tracking-widest font-mono text-slate-500">
+            {candidate.source}
+          </span>
+          <span className="text-[10px] text-slate-400 font-mono">· {ageH}h ago</span>
+          {candidate.redditScore != null && candidate.redditScore > 0 && (
+            <span className="text-[10px] text-orange-600 font-mono">
+              · 🔥 {candidate.redditScore} on Reddit
+            </span>
+          )}
+        </div>
+        <div className="font-display font-bold text-slate-900 text-sm leading-tight mb-1">
+          {candidate.title}
+        </div>
+        <div className="text-xs text-slate-600 line-clamp-2 mb-2">
+          {candidate.description}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={onProduce}
+            disabled={anyBusy}
+            className="px-3 py-1.5 text-[11px] font-bold rounded-full bg-accent-gold text-ink-900 hover:bg-yellow-300 disabled:opacity-40"
+          >
+            {busy ? '✍️ Rewriting…' : '✍️ Produce this'}
+          </button>
+          <a
+            href={candidate.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-3 py-1.5 text-[11px] font-mono rounded-full bg-slate-50 text-slate-500 hover:bg-slate-100"
+          >
+            ↗ Read source
+          </a>
+        </div>
+      </div>
     </div>
   )
 }

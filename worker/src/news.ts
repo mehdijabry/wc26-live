@@ -45,6 +45,132 @@ interface Candidate {
   redditComments?: number
 }
 
+// ─── Public-facing types ─────────────────────────────────────────────
+
+/**
+ * A scored candidate without AI rewriting yet. This is what the manual
+ * 'poll' endpoint returns — the operator picks one and the worker only
+ * runs the (expensive) AI step on the chosen item.
+ */
+export interface PolledCandidate {
+  link: string
+  title: string
+  description: string
+  source: string
+  score: number
+  pubDate: number
+  imageUrl?: string
+  redditScore?: number
+}
+
+/**
+ * Manual flow: poll top-N candidates skipping anything already in DB
+ * (regardless of status). The frontend then renders these as a list
+ * for the operator to pick from.
+ */
+export async function pollTopCandidates(env: Env, n = 6): Promise<{ candidates: PolledCandidate[]; diagnostics: Record<string, number | string> }> {
+  const diag: Record<string, number | string> = { step: 'rss' }
+  const { all, perSource } = await fetchCandidatesWithStats()
+  Object.assign(diag, { rssTotal: all.length, ...perSource })
+
+  // Recency window — 24h to give the operator a wider menu than the
+  // automated cron (which uses 6h).
+  let candidates = all.filter((c) => Date.now() - c.pubDate < 24 * 3600 * 1000)
+  diag.afterRecency = candidates.length
+  if (candidates.length === 0) return { candidates: [], diagnostics: diag }
+
+  // Reddit signal.
+  const reddit = await fetchRedditHot()
+  diag.redditHot = reddit.length
+  crossReferenceReddit(candidates, reddit)
+
+  // Drop anything already processed (any status).
+  const seen = await fetchAllSourceUrls(env)
+  diag.alreadyInDb = seen.size
+  candidates = candidates.filter((c) => !seen.has(c.link))
+  diag.afterDedup = candidates.length
+
+  // Score, sort, take top N.
+  const top = candidates
+    .map((c) => ({ ...c, score: scoreCandidate(c) }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, n)
+    .map((c) => ({
+      link: c.link,
+      title: c.title,
+      description: stripHtml(c.description).slice(0, 280),
+      source: c.source,
+      score: Number(c.score.toFixed(1)),
+      pubDate: c.pubDate,
+      imageUrl: c.imageUrl,
+      redditScore: c.redditScore,
+    }))
+  diag.returned = top.length
+  diag.step = 'done'
+  return { candidates: top, diagnostics: diag }
+}
+
+/**
+ * Produce a draft from a single candidate the operator picked. Re-runs
+ * dedup as a safety check (someone might have raced us), then AI
+ * rewrites + inserts + emails.
+ */
+export async function produceFromCandidate(env: Env, picked: PolledCandidate): Promise<{ ok: boolean; draft?: { id: string; slug: string; title: string }; error?: string }> {
+  // Re-hydrate to a full Candidate shape so we can reuse the scoring +
+  // AI prompt builder.
+  const sourceWeight = RSS_SOURCES.find((s) => s.name === picked.source)?.weight ?? 0.8
+  const c: Candidate = {
+    title: picked.title,
+    link: picked.link,
+    description: picked.description,
+    pubDate: picked.pubDate,
+    source: picked.source,
+    sourceWeight,
+    imageUrl: picked.imageUrl,
+    redditScore: picked.redditScore,
+  }
+
+  if (await alreadyHave(env, c.link)) {
+    return { ok: false, error: 'already_in_db' }
+  }
+
+  const ai = await rewriteWithAi(env, c)
+  if (!ai.rewritten) {
+    return { ok: false, error: 'ai_failed', }
+  }
+
+  const inserted = await insertDraft(env, c, ai.rewritten)
+  if (!inserted) {
+    return { ok: false, error: 'insert_failed' }
+  }
+
+  try {
+    await sendEditorEmail(env, inserted, c.title)
+  } catch (e) {
+    // Email failure shouldn't block the draft.
+    console.log('[news] email failed:', e)
+  }
+
+  return { ok: true, draft: { id: inserted.id, slug: inserted.slug, title: inserted.title } }
+}
+
+async function fetchAllSourceUrls(env: Env): Promise<Set<string>> {
+  // Single round-trip to grab every source_url we've ever processed,
+  // any status. Cheap because we only project the one column.
+  const r = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/articles?select=source_url&limit=2000`,
+    {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  if (!r.ok) return new Set()
+  const rows = await r.json() as Array<{ source_url: string }>
+  return new Set(rows.map((x) => x.source_url))
+}
+
 // ─── Entry point ─────────────────────────────────────────────────────
 
 export interface PipelineReport {

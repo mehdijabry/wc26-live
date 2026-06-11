@@ -860,11 +860,32 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
   const action = parts[3]
 
   if (tail === 'trigger' && !action) {
-    // Manually fire the pipeline once for testing — return the full
-    // diagnostic report so we can see at which step it stopped.
+    // Auto-pick #1 + insert immediately (kept for cron-style debug).
     const { runNewsPipeline } = await import('./news')
     const report = await runNewsPipeline(env as unknown as Parameters<typeof runNewsPipeline>[0])
     return jsonResp({ ok: true, triggered: true, report })
+  }
+
+  if (tail === 'poll' && !action) {
+    // Return top 6 candidates skipping anything already in DB. The
+    // operator picks which one to produce.
+    const { pollTopCandidates } = await import('./news')
+    const result = await pollTopCandidates(env as unknown as Parameters<typeof pollTopCandidates>[0], 6)
+    return jsonResp({ ok: true, ...result })
+  }
+
+  if (tail === 'produce' && !action && req.method === 'POST') {
+    // Run AI rewrite + insert on a single candidate the operator
+    // already saw in /poll. The candidate payload is echoed back so
+    // we don't refetch RSS.
+    const body = await req.json().catch(() => null) as { candidate?: unknown } | null
+    if (!body?.candidate) return jsonResp({ error: 'missing_candidate' }, 400)
+    const { produceFromCandidate } = await import('./news')
+    const result = await produceFromCandidate(
+      env as unknown as Parameters<typeof produceFromCandidate>[0],
+      body.candidate as Parameters<typeof produceFromCandidate>[1]
+    )
+    return jsonResp(result)
   }
 
   if (!tail || !action) return jsonResp({ error: 'bad_path' }, 400)
