@@ -8,6 +8,17 @@ type AuthState = {
   profile: Profile | null
   loading: boolean
   /**
+   * True once init() has finished its first pass — we've checked
+   * localStorage and either confirmed a session or confirmed there's
+   * no session. After this flips true it should never go false again.
+   *
+   * UserMenu uses this (rather than `loading`) to decide whether to
+   * show the loading skeleton, so that any subsequent loading=true
+   * transitions (e.g. refresh-profile during navigation) don't replace
+   * the user's signed-in pill with a white skeleton.
+   */
+  initialized: boolean
+  /**
    * True when the URL contains an OAuth/magic-link callback token (`?code=`
    * or `#access_token=`) and we're still waiting for Supabase to exchange
    * it for a session. UI uses this to show a "completing sign-in" state
@@ -62,6 +73,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   session: null,
   profile: null,
   loading: true,
+  initialized: false,
   completingSignIn: hasAuthCallback(),
   authError: readAuthErrorFromUrl(),
   dismissAuthError: () => {
@@ -77,7 +89,7 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   async init() {
     if (!supabase) {
-      set({ loading: false, completingSignIn: false })
+      set({ loading: false, completingSignIn: false, initialized: true })
       return
     }
 
@@ -90,7 +102,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     // no point spinning on "completing sign-in" — short-circuit straight
     // to the error state so the user actually sees what went wrong.
     if (providerError) {
-      set({ loading: false, completingSignIn: false, authError: providerError })
+      set({ loading: false, completingSignIn: false, initialized: true, authError: providerError })
       return
     }
 
@@ -132,6 +144,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       session: data.session,
       user: data.session?.user ?? null,
       loading: false,
+      initialized: true,
       completingSignIn: callback && !data.session,
     })
     if (data.session) await get().refreshProfile()

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useBracket } from '../store/bracket'
 import { AuthModal } from './AuthModal'
@@ -13,12 +13,22 @@ const TIER_COLORS: Record<string, string> = {
 }
 
 export function UserMenu() {
-  const { user, profile, signOut, loading, updateAlias } = useAuth()
+  const { user, profile, signOut, initialized, updateAlias } = useAuth()
   const isPublished = useBracket((s) => s.isPublished)
   const shareSlug = useBracket((s) => s.shareSlug)
   const loadBracket = useBracket((s) => s.load)
+  const location = useLocation()
   const [modalOpen, setModalOpen] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // Force the dropdown closed whenever the URL changes. Without this,
+  // taps on the BottomNav (or any other Link) navigate the page but
+  // the dropdown overlay (fixed inset-0 z-30) stays mounted on top of
+  // the new page — making the whole screen feel un-tappable until the
+  // user finds where the invisible overlay is to dismiss it.
+  useEffect(() => {
+    setMenuOpen(false)
+  }, [location.pathname])
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -43,7 +53,12 @@ export function UserMenu() {
     setEditing(false)
   }
 
-  if (loading) {
+  // Show the skeleton ONLY during the initial auth check — once init() has
+  // completed even once, we render either the Sign in button or the
+  // username pill. Without this gate, any later loading=true transition
+  // (e.g. profile refresh on route change) would replace the user's
+  // signed-in pill with a white skeleton that doesn't respond to taps.
+  if (!initialized) {
     return <div className="w-24 h-8 rounded-full bg-slate-100 animate-pulse" />
   }
 
