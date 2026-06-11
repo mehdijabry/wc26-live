@@ -179,13 +179,34 @@ function ArticleCard({ article }: { article: Article }) {
 export function NewsArticlePage() {
   const { slug } = useParams<{ slug: string }>()
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
-  // Show the 6-ad interstitial on each article navigation. Resets on
-  // slug change so navigating between articles re-fires the modal.
-  const [showInterstitial, setShowInterstitial] = useState(true)
+  // Show the Smartlink interstitial on each article navigation. Resets
+  // on slug change so navigating between articles re-fires the modal.
+  // EXCEPT when the URL carries the '?ad=ok' marker — that means this
+  // tab is the foreground of a popunder swap (see firePopunderOnce in
+  // Interstitial). The original tab is busy loading the ad; re-firing
+  // the gate here would chain into an infinite loop.
+  const [showInterstitial, setShowInterstitial] = useState(() => {
+    if (typeof window === 'undefined') return true
+    const params = new URLSearchParams(window.location.search)
+    return params.get('ad') !== 'ok'
+  })
 
   useEffect(() => {
     if (!slug || !supabase) return
-    setShowInterstitial(true)
+    // Re-check on every slug change. If the new URL carries the
+    // marker (e.g., the user arrived via popunder swap), keep the
+    // interstitial hidden AND scrub the param so reloading later
+    // gives them the normal gate experience.
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('ad') === 'ok') {
+      setShowInterstitial(false)
+      params.delete('ad')
+      const qs = params.toString()
+      const clean = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash
+      window.history.replaceState({}, '', clean)
+    } else {
+      setShowInterstitial(true)
+    }
     void supabase
       .from('articles')
       .select(SELECT)
@@ -308,37 +329,38 @@ function Interstitial({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
-  // Classic popunder swap so the user feels like they're still on our
-  // page when the ad fires. Modern browsers block 'open URL behind' —
-  // every window.open call moves focus to the new tab. The workaround
-  // every news site uses (FootMercato, 01net, etc.):
-  //   1. window.open OUR current URL in a new tab (gets focus)
-  //   2. Redirect THIS tab (now in the background) to the Smartlink
-  //   3. From the visitor's perspective: a new tab with the article
-  //      pops up, the original tab silently becomes the ad
-  //   4. When they close the ad tab later, they're back where they
-  //      started (no flicker on our article)
+  // Classic popunder swap with a 'skip-interstitial' marker so the
+  // foreground tab doesn't re-fire the gate (which previously caused
+  // an infinite loop: click → swap → new tab opens article → modal
+  // shows → click → swap → …).
+  // Flow:
+  //   1. window.open OUR article URL + '?ad=ok' marker in a new tab.
+  //      The new tab takes focus.
+  //   2. The NewsArticlePage mount in that new tab reads the marker
+  //      from URLSearchParams, skips the interstitial, and scrubs the
+  //      query param via history.replaceState so the URL stays clean.
+  //   3. The ORIGINAL tab (now backgrounded) navigates to the
+  //      Smartlink. Visitor only sees the foreground tab with their
+  //      article — the ad sits in the tab they no longer look at.
   function firePopunderOnce() {
     if (popunderFired) return
     setPopunderFired(true)
     try {
-      const articleUrl = window.location.href
-      // 'noopener' so the new tab can't reach back into the original
-      // window (which is about to navigate to a third-party URL).
-      const newTab = window.open(articleUrl, '_blank', 'noopener')
+      const u = new URL(window.location.href)
+      u.searchParams.set('ad', 'ok')
+      const articleUrlWithMarker = u.toString()
+      const newTab = window.open(articleUrlWithMarker, '_blank', 'noopener')
       if (newTab) {
-        // Redirect the original tab to the Smartlink. By the time the
-        // browser processes this, the new tab is already foregrounded.
         window.location.replace(ADSTERRA_SMARTLINK_URL)
         return
       }
-      // Popup blocked — fall back to the simple new-tab open so the
-      // impression still fires and our article stays on screen.
+      // Popup blocked — open Smartlink in a new tab as a fallback so
+      // the impression still fires. Our article stays on screen.
       const fallback = window.open(ADSTERRA_SMARTLINK_URL, '_blank', 'noopener')
       try { fallback?.blur(); window.focus() } catch {}
     } catch {
-      // Defensive: never throw — silently fall through to close the
-      // modal even if popunder logic blew up.
+      // Defensive: never throw — silently fall through so the modal
+      // still closes cleanly.
     }
   }
 
