@@ -51,17 +51,16 @@ void VERSION
 // ─── Web Push handlers ───────────────────────────────────────────────
 // Triggered when the push service (FCM / Mozilla / Apple) delivers
 // a notification payload to this user agent. Payload shape from our
-// Cloudflare Worker /push/send endpoint:
-//   { title: string, body: string, url?: string, tag?: string }
-// We keep the renderer minimal — the icon + badge come from
-// /icon-192.png, the tag groups notifications so a follow-up FT
-// alert replaces the earlier kickoff alert instead of stacking.
+// Cloudflare Worker:
+//   { title, body, url?, tag?, icon? }
+// icon is per-event when present (e.g. referee SVGs for card events);
+// falls back to the brand emblem when the worker doesn't set one.
 self.addEventListener('push', (event) => {
   let data = { title: 'WC26 Live', body: 'Match update' }
   try { if (event.data) data = { ...data, ...event.data.json() } } catch { /* keep defaults */ }
   const options = {
     body: data.body,
-    icon: '/icon-192.png',
+    icon: data.icon || '/icon-192.png',
     badge: '/icon-192.png',
     tag: data.tag || 'wc26-default',
     data: { url: data.url || '/today' },

@@ -665,7 +665,7 @@ async function maybeFireMatchEvents(
     const minute = det.clock?.displayValue ?? ''
     const player = det.athletesInvolved?.[0]?.displayName ?? ''
 
-    let notif: { title: string; body: string; url: string; tag: string } | null = null
+    let notif: { title: string; body: string; url: string; tag: string; icon?: string } | null = null
     let dedupeKind = ''
 
     if (typeId === '93' && settings.redCard.enabled) {
@@ -675,6 +675,7 @@ async function maybeFireMatchEvents(
         body: player ? `${player} sent off${minute ? ' at ' + minute : ''}.` : `Red card${minute ? ' at ' + minute : ''}.`,
         url: '/today',
         tag: `event-${id}-rc`,
+        icon: '/notif-icons/referee-red-card.svg',
       }
     } else if (typeId === '94' && settings.yellowCard.enabled) {
       dedupeKind = 'yc'
@@ -683,6 +684,7 @@ async function maybeFireMatchEvents(
         body: player ? `${player} booked${minute ? ' at ' + minute : ''}.` : `Yellow card${minute ? ' at ' + minute : ''}.`,
         url: '/today',
         tag: `event-${id}-yc`,
+        icon: '/notif-icons/referee-yellow-card.svg',
       }
     } else if (typeId === '95' && settings.penalty.enabled) {
       dedupeKind = 'pen'
@@ -1741,7 +1743,7 @@ function constantTimeEqual(a: string, b: string): boolean {
  */
 export async function broadcastCore(
   env: Env,
-  notif: { title: string; body: string; url: string; tag: string }
+  notif: { title: string; body: string; url: string; tag: string; icon?: string }
 ): Promise<{ sent: number; failed: number; total: number }> {
   const resp = await fetch(
     `${env.SUPABASE_URL}/rest/v1/push_subscriptions?select=endpoint,p256dh,auth`,
