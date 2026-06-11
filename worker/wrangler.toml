@@ -40,9 +40,20 @@ SUPABASE_URL = "https://ssvvojhxyotlbcdosiog.supabase.co"
 name = "SCHEDULER"
 class_name = "KickoffScheduler"
 
+# Live-match poller — DO Alarm chain that re-arms every 5 seconds while
+# any match is in 'in' state. Triggered by cron's 1-min tick when it
+# detects a live match. See LivePoller class in src/index.ts.
+[[durable_objects.bindings]]
+name = "LIVE_POLLER"
+class_name = "LivePoller"
+
 # First-time migration registering the class. New DO class introductions
 # always require this — wrangler 4 chooses SQLite storage by default,
 # which is what we want (the queue is stored in DO storage, not KV).
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["KickoffScheduler"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["LivePoller"]

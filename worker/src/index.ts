@@ -50,6 +50,10 @@ export interface Env {
   // second they're due (instead of waiting for the next 5-min cron).
   // See KickoffScheduler class at the bottom of this file.
   SCHEDULER: DurableObjectNamespace
+  // Live-match poller: a singleton DO that fires fireMatchAlerts every
+  // 5 seconds as long as ANY match is in 'in' state. Cron 'kicks' it
+  // when it sees a live match; the DO self-stops once nothing's live.
+  LIVE_POLLER: DurableObjectNamespace
 }
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
@@ -320,8 +324,24 @@ export default {
           // continue with next event on individual failure
         }
       }
+
+      // --- Pass 3: kick the LivePoller for sub-cron-cadence updates ---
+      // Cloudflare cron's minimum cadence is 1 min, but goals can be
+      // missed by 30-50s. Spin up the LivePoller DO when there's a
+      // match in 'in' state — it self-schedules at 5s via DO Alarms so
+      // alerts ship within seconds of the on-pitch event. The DO stops
+      // re-arming once no matches are live.
+      const anyLive = events.some((e) => e.status?.type?.state === 'in')
+      if (anyLive) {
+        try {
+          const stub = env.LIVE_POLLER.get(env.LIVE_POLLER.idFromName('singleton'))
+          ctx.waitUntil(stub.fetch('https://do/kick'))
+        } catch (e) {
+          console.log('[push] LivePoller kick failed:', e)
+        }
+      }
     } catch {
-      // swallow — cron will retry in 5 min
+      // swallow — cron will retry on the next tick
     }
   },
 }
@@ -1791,6 +1811,96 @@ export async function broadcastCore(
 // The DO is invoked from the 5-min cron via:
 //   env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
 //     .fetch('https://do/schedule', { method: 'POST', body })
+
+// ─── Durable Object: LivePoller ───────────────────────────────────────
+//
+// Cron min cadence on Cloudflare is 1 minute, but goals/cards in a
+// live match should ship within seconds. This DO runs a 5-second
+// alarm loop whenever ANY match is in 'in' state — re-arms itself
+// after each tick until ESPN reports nothing live, then stops.
+//
+// State machine:
+//   - cron sees a live match → fetch /kick → DO sets alarm in 1s
+//   - alarm() fetches ESPN, runs fireMatchAlerts(), re-arms in 5s if
+//     still live, else stops
+//   - cron's 1-min tick keeps re-kicking while matches are live so a
+//     transient DO failure can't permanently break the chain
+//
+// fireMatchAlerts is shared with the cron path — KV-deduped alerts
+// make the 5s cadence harmless (already-fired notifs are skipped on
+// the next tick).
+
+const LIVE_POLL_INTERVAL_MS = 5_000
+const LIVE_POLL_RETRY_MS = 15_000   // wait 15s on transient ESPN errors
+
+export class LivePoller {
+  private state: DurableObjectState
+  private env: Env
+
+  constructor(state: DurableObjectState, env: Env) {
+    this.state = state
+    this.env = env
+  }
+
+  async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url)
+    if (url.pathname === '/kick' && req.method === 'POST') {
+      // Idempotent: only arm if no alarm is already pending. This is
+      // important — the cron kicks us every minute while matches are
+      // live, but we don't want each kick to reset our 5s cadence.
+      const current = await this.state.storage.getAlarm()
+      if (current === null) {
+        await this.state.storage.setAlarm(Date.now() + 1_000)
+        return new Response('armed', { headers: { 'content-type': 'text/plain' } })
+      }
+      return new Response('already-armed', { headers: { 'content-type': 'text/plain' } })
+    }
+    if (url.pathname === '/inspect' && req.method === 'GET') {
+      const next = await this.state.storage.getAlarm()
+      return new Response(JSON.stringify({ nextAlarmAt: next }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    return new Response('not found', { status: 404 })
+  }
+
+  async alarm(): Promise<void> {
+    let stillLive = false
+    try {
+      const sb = await fetch(`${ESPN_BASE}/scoreboard?limit=200`)
+      if (!sb.ok) {
+        // ESPN flaked — back off briefly. Cron will re-kick at the
+        // next 1-min boundary if matches are still live.
+        await this.state.storage.setAlarm(Date.now() + LIVE_POLL_RETRY_MS)
+        return
+      }
+      const data = await sb.json<EspnScoreboard>()
+      const events = data.events ?? []
+      stillLive = events.some((e) => e.status?.type?.state === 'in')
+
+      // Reuse the cron's alert detection. KV dedupe keys (alert:score,
+      // alert:event:*) skip already-fired notifs, so the faster cadence
+      // is harmless — at worst we make one extra Supabase subs check
+      // per 5s vs per minute.
+      try {
+        await fireMatchAlerts(this.env, events)
+      } catch (e) {
+        console.log('[live-poller] fireMatchAlerts failed:', e)
+      }
+    } catch (e) {
+      console.log('[live-poller] alarm fetch failed:', e)
+      // Retry-backoff so a transient ESPN outage doesn't kill the loop.
+      await this.state.storage.setAlarm(Date.now() + LIVE_POLL_RETRY_MS)
+      return
+    }
+
+    if (stillLive) {
+      await this.state.storage.setAlarm(Date.now() + LIVE_POLL_INTERVAL_MS)
+    }
+    // else: no re-arm. The next cron tick (within 1 min) will kick us
+    // again if a new match goes live.
+  }
+}
 
 export class KickoffScheduler {
   private state: DurableObjectState
