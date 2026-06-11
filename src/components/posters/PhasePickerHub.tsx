@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { QuickFinalePicker } from './QuickFinalePicker'
+import { QuickGroupsPicker } from './QuickGroupsPicker'
 
 /**
  * Phase picker hub — landing screen for /predictions.
@@ -28,7 +29,7 @@ type Phase = {
 // shortcut sits at the bottom near the full bracket option, framed as
 // a quick way to share your champion pick without filling everything.
 const PHASES: Phase[] = [
-  { id: 'groups', emoji: '🌍', title: 'Groups + best thirds', sub: '12 groups · 36 picks', status: 'soon', accent: 'slate' },
+  { id: 'groups', emoji: '🌍', title: 'Groups + best thirds', sub: '12 groups · 36 picks', status: 'ready', accent: 'slate' },
   { id: 'r32', emoji: '🏟️', title: 'Round of 32', sub: '16 matches · the big kick-off', status: 'soon', accent: 'green' },
   { id: 'r16', emoji: '🎯', title: 'Round of 16', sub: '8 matches · the deciding round', status: 'soon', accent: 'blue' },
   { id: 'qf', emoji: '🔥', title: 'Quarter-finals', sub: '4 matches · last 8 standing', status: 'soon', accent: 'red' },
@@ -73,6 +74,10 @@ export function PhasePickerHub({ onFullBracket }: { onFullBracket: () => void })
       {/* Modal pickers — one per ready phase. */}
       <QuickFinalePicker
         open={openModal === 'final'}
+        onClose={() => setOpenModal(null)}
+      />
+      <QuickGroupsPicker
+        open={openModal === 'groups'}
         onClose={() => setOpenModal(null)}
       />
     </section>
