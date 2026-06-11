@@ -47,61 +47,115 @@ interface Candidate {
 
 // ─── Entry point ─────────────────────────────────────────────────────
 
-export async function runNewsPipeline(env: Env): Promise<void> {
-  try {
-    console.log('[news] pipeline start')
-    const candidates = await fetchCandidates()
-    console.log(`[news] ${candidates.length} candidates fetched`)
-    if (candidates.length === 0) return
+export interface PipelineReport {
+  step: string
+  ok: boolean
+  rssBySource: Record<string, number>  // -1 = fetch failed, otherwise items returned
+  rssTotal: number
+  candidatesAfterRecency: number
+  redditHot: number
+  winner: { title: string; source: string; score: number; link: string } | null
+  aiOk: boolean
+  inserted: { id: string; slug: string } | null
+  emailSent: boolean
+  notes: string[]
+  error?: string
+}
 
-    // Boost any candidate that also appears in Reddit hot.
+export async function runNewsPipeline(env: Env): Promise<PipelineReport> {
+  const r: PipelineReport = {
+    step: 'init', ok: false, rssBySource: {}, rssTotal: 0,
+    candidatesAfterRecency: 0, redditHot: 0, winner: null,
+    aiOk: false, inserted: null, emailSent: false, notes: [],
+  }
+  try {
+    r.step = 'rss'
+    const { all, perSource } = await fetchCandidatesWithStats()
+    r.rssBySource = perSource
+    r.rssTotal = all.length
+    // 6h window — extended to 24h if first pass empty, to keep things
+    // moving when feeds publish less frequently overnight.
+    let candidates = all.filter((c) => Date.now() - c.pubDate < 6 * 3600 * 1000)
+    if (candidates.length === 0 && all.length > 0) {
+      candidates = all.filter((c) => Date.now() - c.pubDate < 24 * 3600 * 1000)
+      r.notes.push(`Recency window widened to 24h (kept ${candidates.length}/${all.length})`)
+    }
+    r.candidatesAfterRecency = candidates.length
+    if (candidates.length === 0) {
+      r.notes.push('No candidates passed recency. All RSS feeds may have failed or returned ancient items.')
+      return r
+    }
+
+    r.step = 'reddit'
     const reddit = await fetchRedditHot()
+    r.redditHot = reddit.length
     crossReferenceReddit(candidates, reddit)
 
-    // Score and pick the best one.
+    r.step = 'score'
     const scored = candidates
       .map((c) => ({ ...c, score: scoreCandidate(c) }))
       .sort((a, b) => b.score - a.score)
     const winner = scored[0]
-    if (!winner) return
-    console.log(`[news] winner: "${winner.title}" — score ${winner.score.toFixed(1)} (${winner.source})`)
+    if (!winner) { r.notes.push('No winner after scoring'); return r }
+    r.winner = { title: winner.title, source: winner.source, score: Number(winner.score.toFixed(1)), link: winner.link }
 
-    // Skip if we already have an article with the same source_url
-    // (de-dupe across cron ticks).
+    r.step = 'dedup'
     if (await alreadyHave(env, winner.link)) {
-      console.log('[news] already in DB, skipping')
-      return
+      r.notes.push('Winner already in DB; skipped.')
+      return r
     }
 
-    // AI rewrite.
-    const rewritten = await rewriteWithAi(env, winner)
-    if (!rewritten) {
-      console.log('[news] AI returned nothing — abort')
-      return
+    r.step = 'ai'
+    const aiResult = await rewriteWithAi(env, winner)
+    if (!aiResult.rewritten) {
+      const len = aiResult.raw.length
+      r.notes.push(`AI parse failed. Raw length=${len}. Head: ${aiResult.raw.slice(0, 200)}`)
+      r.notes.push(`Tail: ${aiResult.raw.slice(-300)}`)
+      return r
+    }
+    r.aiOk = true
+
+    r.step = 'insert'
+    const inserted = await insertDraft(env, winner, aiResult.rewritten)
+    if (!inserted) { r.notes.push('Supabase insert failed — check worker logs'); return r }
+    r.inserted = { id: inserted.id, slug: inserted.slug }
+
+    r.step = 'email'
+    try {
+      await sendEditorEmail(env, inserted, winner.title)
+      r.emailSent = true
+    } catch (e) {
+      r.notes.push('Email failed: ' + String(e))
     }
 
-    // Persist as draft.
-    const inserted = await insertDraft(env, winner, rewritten)
-    if (!inserted) return
-    console.log(`[news] draft inserted: ${inserted.slug}`)
-
-    // Notify editor.
-    await sendEditorEmail(env, inserted, winner.title)
+    r.step = 'done'
+    r.ok = true
+    return r
   } catch (err) {
+    r.error = String(err)
     console.log('[news] pipeline error:', err)
+    return r
   }
 }
 
 // ─── 1. Candidate fetching ──────────────────────────────────────────
 
-async function fetchCandidates(): Promise<Candidate[]> {
+async function fetchCandidatesWithStats(): Promise<{ all: Candidate[]; perSource: Record<string, number> }> {
   const results = await Promise.allSettled(
     RSS_SOURCES.map((s) => fetchRss(s.name, s.url, s.weight))
   )
-  return results
-    .flatMap((r) => (r.status === 'fulfilled' ? r.value : []))
-    // Last 6 hours only — we run every 3, this keeps a safe overlap.
-    .filter((c) => Date.now() - c.pubDate < 6 * 3600 * 1000)
+  const perSource: Record<string, number> = {}
+  const all: Candidate[] = []
+  results.forEach((res, i) => {
+    const name = RSS_SOURCES[i].name
+    if (res.status === 'fulfilled') {
+      perSource[name] = res.value.length
+      all.push(...res.value)
+    } else {
+      perSource[name] = -1
+    }
+  })
+  return { all, perSource }
 }
 
 /**
@@ -122,7 +176,8 @@ async function fetchRss(name: string, url: string, weight: number): Promise<Cand
     for (const m of xml.matchAll(blockRe)) {
       const block = m[0]
       const title = stripCdata(pickTag(block, 'title')) ?? ''
-      const link = pickAttr(block, 'link', 'href') ?? pickTag(block, 'link') ?? ''
+      const linkRaw = pickAttr(block, 'link', 'href') ?? pickTag(block, 'link') ?? ''
+      const link = (stripCdata(linkRaw) ?? linkRaw).trim()
       const description = stripCdata(pickTag(block, 'description') ?? pickTag(block, 'summary') ?? '') ?? ''
       const pubRaw = pickTag(block, 'pubDate') ?? pickTag(block, 'published') ?? pickTag(block, 'updated') ?? ''
       const pubDate = pubRaw ? new Date(pubRaw).getTime() : Date.now()
@@ -217,20 +272,69 @@ interface Rewritten {
   body: string  // markdown
 }
 
-async function rewriteWithAi(env: Env, c: Candidate): Promise<Rewritten | null> {
+/**
+ * Best-effort JSON extraction from a chatty LLM response. Tries:
+ *   1. Raw parse of the trimmed string
+ *   2. Strip ```json ... ``` code fences
+ *   3. Find a balanced {...} block and parse that
+ *   4. JSON repair — append missing closing chars when the response was
+ *      truncated by the model's max_tokens (very common on Llama 3.1).
+ *
+ * Returns the parsed object or null if every strategy fails.
+ */
+function extractJson<T>(raw: string): T | null {
+  const trimmed = raw.trim()
+  try { return JSON.parse(trimmed) as T } catch {}
+  const noFence = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
+  try { return JSON.parse(noFence) as T } catch {}
+
+  // Balanced-brace finder.
+  let depth = 0, start = -1
+  for (let i = 0; i < noFence.length; i++) {
+    const ch = noFence[i]
+    if (ch === '{') { if (depth === 0) start = i; depth++ }
+    else if (ch === '}') {
+      depth--
+      if (depth === 0 && start >= 0) {
+        const slice = noFence.slice(start, i + 1)
+        try { return JSON.parse(slice) as T } catch { start = -1 }
+      }
+    }
+  }
+
+  // Repair pass: if depth is still > 0, the response was truncated.
+  // Count unmatched quotes in the open block to decide whether to close
+  // a dangling string first, then append the missing closing braces.
+  if (start >= 0 && depth > 0) {
+    let candidate = noFence.slice(start)
+    // Strip a trailing comma + whitespace which is a very common
+    // truncation artifact.
+    candidate = candidate.replace(/,\s*$/, '')
+    // Count unescaped quotes — odd = string unterminated.
+    let quotes = 0
+    for (let i = 0; i < candidate.length; i++) {
+      if (candidate[i] === '"' && candidate[i - 1] !== '\\') quotes++
+    }
+    if (quotes % 2 === 1) candidate += '"'
+    candidate += '}'.repeat(depth)
+    try { return JSON.parse(candidate) as T } catch {}
+  }
+  return null
+}
+
+async function rewriteWithAi(env: Env, c: Candidate): Promise<{ rewritten: Rewritten | null; raw: string }> {
   // Build a prompt that asks for paraphrased news + commentary, with
   // the source kept attributed at the end. Explicitly forbid quoting
   // more than a single short phrase to stay on the safe side of fair
   // use.
   const prompt = `You are a football journalist writing for "Pressing 90'", a World Cup 2026 fan site.
 
-Below is a source news item. Rewrite it as a SHORT original news brief
-(3-4 paragraphs, ~250 words) in your own words, in English. Add one
-paragraph of original commentary at the end about what this means for
-the World Cup 2026 picture. NEVER copy a full sentence from the source.
-Don't invent facts not in the source. End with a hard credit line:
-"Based on reporting by ${c.source} — see original article for full
-details."
+Below is a source news item. Rewrite it as a CONCISE original news brief
+(2-3 paragraphs, ~150 words total) in your own words, in English. Add ONE
+short paragraph of original commentary at the end about what this means
+for the World Cup 2026 picture. NEVER copy a full sentence from the
+source. Don't invent facts not in the source. End with a hard credit line:
+"Based on reporting by ${c.source} — see original article for full details."
 
 Output strict JSON with keys: title (string, max 80 chars, catchy but
 factual), excerpt (string, 1 sentence ~140 chars summarising the news),
@@ -247,27 +351,31 @@ JSON OUTPUT:`
   try {
     // Workers AI binding (set in wrangler.toml [ai] block).
     const ai = (env as Env & { AI?: { run: (model: string, input: unknown) => Promise<{ response?: string }> } }).AI
-    if (!ai) return null
+    if (!ai) return { rewritten: null, raw: 'AI_BINDING_MISSING' }
     const out = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
       messages: [
-        { role: 'system', content: 'You output ONLY valid minified JSON, no markdown code fences, no commentary.' },
+        { role: 'system', content: 'You output ONLY valid minified JSON, no markdown code fences, no commentary. Keep the body field SHORT (under 200 words) so the JSON closes cleanly within your token budget.' },
         { role: 'user', content: prompt },
       ],
-      max_tokens: 1500,
+      max_tokens: 3000,
     })
     const raw = (out.response ?? '').trim()
-    // Defensive: some models wrap JSON in ```json ... ```.
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
-    const json = JSON.parse(cleaned) as Partial<Rewritten>
-    if (!json.title || !json.body) return null
+    const json = extractJson<Partial<Rewritten>>(raw)
+    if (!json || !json.title || !json.body) {
+      console.log('[news] AI parse failed. Raw preview:', raw.slice(0, 400))
+      return { rewritten: null, raw }
+    }
     return {
-      title: json.title.slice(0, 120),
-      excerpt: (json.excerpt ?? '').slice(0, 240),
-      body: json.body,
+      rewritten: {
+        title: json.title.slice(0, 120),
+        excerpt: (json.excerpt ?? '').slice(0, 240),
+        body: json.body,
+      },
+      raw,
     }
   } catch (err) {
     console.log('[news] AI rewrite failed:', err)
-    return null
+    return { rewritten: null, raw: 'EXCEPTION: ' + String(err) }
   }
 }
 

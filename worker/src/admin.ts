@@ -822,18 +822,35 @@ async function handleListNews(env: AdminEnv, req: Request): Promise<Response> {
   const url = new URL(req.url)
   const status = url.searchParams.get('status') ?? 'draft'
   const limit = Math.min(100, parseInt(url.searchParams.get('limit') ?? '50'))
-  const r = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/articles?status=eq.${encodeURIComponent(status)}&select=id,slug,title,excerpt,body,image_url,source_url,source_name,score,status,created_at,published_at,archived_at&order=created_at.desc&limit=${limit}`,
-    {
-      headers: {
-        apikey: env.SUPABASE_SERVICE_KEY,
-        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
-      },
+  try {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/articles?status=eq.${encodeURIComponent(status)}&select=id,slug,title,excerpt,body,image_url,source_url,source_name,score,status,created_at,published_at,archived_at&order=created_at.desc&limit=${limit}`,
+      {
+        headers: {
+          apikey: env.SUPABASE_SERVICE_KEY,
+          authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        },
+      }
+    )
+    if (!r.ok) {
+      // Bubble Supabase's own error text up so the panel surfaces
+      // "relation 'articles' does not exist" instead of a bare 500.
+      const detail = await r.text()
+      const tableMissing = /relation .* does not exist|undefined_table|articles/i.test(detail)
+      return jsonResp({
+        error: tableMissing ? 'table_missing' : 'supabase_list_failed',
+        hint: tableMissing
+          ? 'Run worker/sql/articles.sql in the Supabase SQL editor first.'
+          : 'Supabase returned a non-2xx response.',
+        supabase_status: r.status,
+        supabase_body: detail.slice(0, 500),
+      }, 500)
     }
-  )
-  if (!r.ok) return jsonResp({ error: 'supabase_list_failed', status: r.status }, 500)
-  const rows = await r.json()
-  return jsonResp({ articles: rows })
+    const rows = await r.json()
+    return jsonResp({ articles: rows })
+  } catch (e) {
+    return jsonResp({ error: 'list_threw', message: String(e) }, 500)
+  }
 }
 
 async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): Promise<Response> {
@@ -843,10 +860,11 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
   const action = parts[3]
 
   if (tail === 'trigger' && !action) {
-    // Manually fire the pipeline once for testing.
+    // Manually fire the pipeline once for testing — return the full
+    // diagnostic report so we can see at which step it stopped.
     const { runNewsPipeline } = await import('./news')
-    await runNewsPipeline(env as unknown as Parameters<typeof runNewsPipeline>[0])
-    return jsonResp({ ok: true, triggered: true })
+    const report = await runNewsPipeline(env as unknown as Parameters<typeof runNewsPipeline>[0])
+    return jsonResp({ ok: true, triggered: true, report })
   }
 
   if (!tail || !action) return jsonResp({ error: 'bad_path' }, 400)
