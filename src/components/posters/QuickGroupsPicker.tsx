@@ -42,15 +42,27 @@ export function QuickGroupsPicker({ open, onClose }: Props) {
   const posterRef = useRef<HTMLDivElement>(null)
 
   // Seed the state on open. Source priority:
-  //   1. user's existing bracket store
-  //   2. FIFA-rank default
+  //   1. user's existing bracket store — but ONLY if it's the same 4
+  //      team codes as the canonical group from teams.ts. We're guarding
+  //      against stale local state with wrong codes (e.g. BIH/QAT/CUW)
+  //      that don't exist in the current data file — those used to leave
+  //      '—' placeholders in the rendered poster.
+  //   2. FIFA-rank default (canonical teams.ts grouping).
   useEffect(() => {
     if (!open) return
     const def = defaultGroupStandings()
     const merged: Record<string, [string, string, string, string]> = { ...def }
     for (const g of GROUP_LETTERS) {
       const fromStore = bracket.groupStandings[g]
-      if (fromStore && fromStore.length === 4) {
+      if (!fromStore || fromStore.length !== 4) continue
+      // Sanity check: every code must (a) be a real team and (b) belong
+      // to this exact group letter. If any fail, fall back to defaults
+      // so the poster never shows '—'.
+      const valid = fromStore.every((code) => {
+        const t = teams.find((x) => x.code === code)
+        return t && t.group === g
+      })
+      if (valid) {
         merged[g] = [fromStore[0], fromStore[1], fromStore[2], fromStore[3]] as [string, string, string, string]
       }
     }
