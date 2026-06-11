@@ -73,12 +73,12 @@ export function LiveTicker() {
 
   return (
     <div
-      className="fixed inset-x-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-200 md:hidden"
-      // Adapts to PWA standalone (safe-area-inset-top ~47-59px on notched
-      // iPhones). In browser the inset is 0 so we keep the original 60px
-      // offset that clears the nav header. Without this the ticker would
-      // sit on top of (or under) the Sign in button.
-      style={{ top: 'calc(env(safe-area-inset-top, 0px) + 60px)' }}
+      // In normal document flow — scrolls with the page. The user wants the
+      // matches carousel to disappear when scrolling past it, leaving only
+      // the fixed top Navigation header visible. No top: offset or fixed
+      // positioning here; the parent layout puts this directly under the
+      // Navigation, so it appears in the same visual slot at scroll = 0.
+      className="bg-white border-b border-slate-200 md:hidden"
     >
       <div className="overflow-x-auto no-scrollbar">
         <div className="flex gap-2 px-3 py-2 min-w-max">

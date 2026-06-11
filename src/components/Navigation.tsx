@@ -40,13 +40,14 @@ export function Navigation() {
         initial={{ y: -20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ duration: 0.6 }}
-        // Plain in-flow header — not sticky, not fixed. The user wants the
-        // nav to be anchored at the very top of the page and scroll away
-        // with the content instead of hovering over scrolled content
-        // (which made the matches carousel and other rows visually
-        // collide with the blurred header). Mobile users can still
-        // navigate via the persistent BottomNav at the screen bottom.
-        className="relative inset-x-0 z-10 bg-paper border-b border-slate-200/70"
+        // Fixed top header — logo + Sign in + hamburger always visible
+        // no matter where the user scrolls. The LiveTicker matches row
+        // beneath this nav is in normal document flow (NOT fixed) so it
+        // scrolls away naturally with the rest of the page — only this
+        // nav stays pinned.
+        className={`fixed top-0 inset-x-0 z-50 transition-all duration-300 ${
+          scrolled ? 'backdrop-blur-xl bg-paper/85 border-b border-slate-200/70' : 'bg-paper'
+        }`}
         // Safe-area-aware padding: in iOS standalone (PWA from home screen)
         // there's no Safari chrome, so without this the WC26 logo + Sign in
         // button slide under the notch / Dynamic Island. env(safe-area-

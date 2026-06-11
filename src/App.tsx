@@ -127,17 +127,23 @@ function App() {
         <>
           <Navigation />
           <StickyCountdown />
-          <LiveTicker />
         </>
       )}
 
-      {/* Pushes all page content down by the safe-area top inset when the
-          site runs as an installed PWA (iOS adds env(safe-area-inset-top)
-          ~47-59px once launched from the Home Screen icon). In a normal
-          browser the inset is 0 so nothing changes. Without this the Sign
-          in button + WC26 logo slide under the iPhone notch / Dynamic
-          Island. */}
-      <main style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      {/* Two top-padding contributions:
+          1. env(safe-area-inset-top, 0px) — clears the iOS notch / Dynamic
+             Island when the site runs as an installed PWA (~47-59px).
+          2. 4.5rem (72px) — clears the fixed Navigation header so page
+             content (including the LiveTicker matches row immediately
+             below) starts BELOW the nav instead of being covered by it.
+          Combined, mobile PWAs get ~120-130px of clearance which matches
+          the nav's standalone-mode height.
+          The LiveTicker lives inside main so this single padding rule
+          positions it correctly below the nav — no manual offsets. */}
+      <main
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4.5rem)' }}
+      >
+        {!location.pathname.startsWith('/admin-panel-') && <LiveTicker />}
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/wc26" element={<WC26Page />} />
