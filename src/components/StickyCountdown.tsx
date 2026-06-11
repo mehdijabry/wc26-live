@@ -29,9 +29,9 @@ export function StickyCountdown() {
       initial={{ y: -20, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5, delay: 0.4 }}
-      className="hidden md:block fixed top-[84px] inset-x-0 z-40 pointer-events-none"
+      className="hidden md:flex w-full justify-center my-2 pointer-events-none"
     >
-      <div className="container max-w-6xl mx-auto px-6 flex justify-center">
+      <div className="flex justify-center">
         <div
           className={
             'pointer-events-auto inline-flex items-center gap-3 px-4 py-1.5 rounded-full text-[10px] font-mono backdrop-blur-xl border tabular-nums ' +

@@ -212,6 +212,11 @@ export type SlotName =
   | 'squads-footer'
   | 'board-mid'
   | 'profile-footer'
+  | 'news-list-top'
+  | 'news-list-mid'
+  | 'news-article-top'
+  | 'news-article-mid'
+  | 'news-article-footer'
 
 /*
  * IMPORTANT: do NOT route slots to ADSTERRA_ZONES.native.
@@ -237,6 +242,11 @@ const SLOT_TO_ZONE: Record<SlotName, { key: string; format: AdFormat }> = {
   'squads-footer':  { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
   'board-mid':      { key: ADSTERRA_ZONES.banner300, format: 'banner-300x250' },
   'profile-footer': { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
+  'news-list-top':       { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
+  'news-list-mid':       { key: ADSTERRA_ZONES.banner300, format: 'banner-300x250' },
+  'news-article-top':    { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
+  'news-article-mid':    { key: ADSTERRA_ZONES.banner300, format: 'banner-300x250' },
+  'news-article-footer': { key: ADSTERRA_ZONES.banner728, format: 'banner-728x90' },
 }
 
 export function Ad({ slot, className }: { slot: SlotName; className?: string }) {

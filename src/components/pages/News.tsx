@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { Link, useParams, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
+import { Ad } from '../AdSlot'
 
 /**
  * Public news pages — list + detail.
@@ -10,6 +11,20 @@ import { supabase } from '../../lib/supabase'
  * worker/src/news.ts, then approved via the admin panel. RLS allows
  * the anon key to SELECT status='published' rows only, so we hit
  * Supabase directly from the browser — no worker round-trip needed.
+ *
+ * SEO surface per article:
+ *   - <title>                  the article title + brand suffix
+ *   - <meta description>       the AI-written excerpt
+ *   - og:title / og:image / og:description / og:type=article
+ *   - twitter:card=summary_large_image + twitter:image
+ *   - JSON-LD NewsArticle schema (Google Discover / News-eligible)
+ *
+ * Cloudflare Pages serves the SPA shell statically; Google's renderer
+ * runs JS so these dynamically-set tags ARE indexed (verified on the
+ * existing /u/<slug> public profile pages). For pre-render at edge
+ * (faster bot crawl, social card previews from Twitter/Facebook bots
+ * that don't run JS), a worker route /news/<slug> with HTMLRewriter
+ * could be added later — see SEO_TODO note at bottom of file.
  */
 
 interface Article {
@@ -27,6 +42,7 @@ interface Article {
 }
 
 const SELECT = 'id,slug,title,excerpt,body,image_url,source_url,source_name,source_attribution,published_at,created_at'
+const SITE = 'https://pressing90.live'
 
 // ─── List page · /news ──────────────────────────────────────────────
 
@@ -35,7 +51,13 @@ export function NewsListPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    document.title = 'News · WC26 Live · Pressing 90'
+    document.title = 'WC26 News · Daily World Cup 2026 briefing · Pressing 90'
+    setMeta('description', 'Daily World Cup 2026 news briefing — original takes on the stories that matter, drawn from ESPN, BBC, Sky Sports and more.')
+    setMeta('og:title', 'WC26 News · Pressing 90′', true)
+    setMeta('og:description', 'Daily World Cup 2026 briefing from the Pressing 90′ desk.', true)
+    setMeta('og:type', 'website', true)
+    setMeta('og:url', `${SITE}/news`, true)
+
     if (!supabase) { setError('Database not configured'); return }
     void supabase
       .from('articles')
@@ -64,6 +86,8 @@ export function NewsListPage() {
         </p>
       </div>
 
+      <Ad slot="news-list-top" className="mb-6" />
+
       {error && (
         <div className="px-4 py-3 rounded-lg bg-rose-50 text-rose-800 text-sm font-mono">
           Failed to load: {error}
@@ -86,8 +110,15 @@ export function NewsListPage() {
         </div>
       )}
 
-      <div className="space-y-4">
-        {items?.map((a, i) => <ArticleCard key={a.id} article={a} featured={i === 0} />)}
+      <div className="space-y-5">
+        {items?.map((a, i) => (
+          <Fragment key={a.id}>
+            <ArticleCard article={a} featured={i === 0} />
+            {/* Mid-list ad after the 3rd card — one impression per 50
+                articles, doesn't drown the feed. */}
+            {i === 2 && items.length > 4 && <Ad slot="news-list-mid" className="my-2" />}
+          </Fragment>
+        ))}
       </div>
     </section>
   )
@@ -107,16 +138,26 @@ function ArticleCard({ article, featured }: { article: Article; featured: boolea
           (featured ? 'md:flex md:gap-0' : 'md:flex md:gap-0')
         }
       >
-        {article.image_url && (
-          <div className={featured ? 'md:w-2/5 aspect-video md:aspect-auto' : 'md:w-48 aspect-video md:aspect-auto md:flex-shrink-0'}>
+        <div className={featured ? 'md:w-2/5 aspect-video md:aspect-auto bg-slate-100 flex-shrink-0' : 'md:w-48 aspect-video md:aspect-auto md:flex-shrink-0 bg-slate-100'}>
+          {article.image_url ? (
             <img
               src={article.image_url}
-              alt=""
+              alt={article.title}
+              loading="lazy"
               className="w-full h-full object-cover"
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+              onError={(e) => {
+                // Hide broken images gracefully — the gradient placeholder below
+                // takes over so the card layout doesn't reflow.
+                ;(e.target as HTMLImageElement).style.display = 'none'
+                ;((e.target as HTMLImageElement).parentElement as HTMLElement).classList.add('bg-gradient-to-br', 'from-accent-gold/10', 'via-slate-100', 'to-slate-200')
+              }}
             />
-          </div>
-        )}
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-accent-gold/10 via-slate-100 to-slate-200 flex items-center justify-center">
+              <span className="font-display font-bold text-3xl text-slate-300">⚽</span>
+            </div>
+          )}
+        </div>
         <div className="flex-1 p-4 sm:p-5 min-w-0">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[10px] uppercase tracking-widest font-mono text-accent-gold">
@@ -149,6 +190,9 @@ function ArticleCard({ article, featured }: { article: Article; featured: boolea
 export function NewsArticlePage() {
   const { slug } = useParams<{ slug: string }>()
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
+  // Brief paywall-style 'Loading the briefing' splash that buys ~1.2s
+  // for the Adsterra popunder script to fire on first article click.
+  const [splash, setSplash] = useState(true)
 
   useEffect(() => {
     if (!slug || !supabase) return
@@ -159,17 +203,20 @@ export function NewsArticlePage() {
       .eq('status', 'published')
       .maybeSingle()
       .then(({ data }) => {
-        setArticle((data as Article | null) ?? null)
-        if (data) {
-          document.title = (data as Article).title + ' · Pressing 90'
-        }
+        const art = (data as Article | null) ?? null
+        setArticle(art)
+        if (art) hydrateMetaTags(art)
       })
+    const id = setTimeout(() => setSplash(false), 1200)
+    return () => clearTimeout(id)
   }, [slug])
 
   if (article === null) return <Navigate to="/news" replace />
 
   return (
     <article className="container max-w-3xl mx-auto px-6 py-8 sm:py-12">
+      {splash && <Interstitial />}
+
       <Link to="/news" className="inline-flex items-center gap-1 text-xs font-mono text-slate-500 hover:text-slate-900 mb-6">
         ← Back to news
       </Link>
@@ -189,6 +236,13 @@ export function NewsArticlePage() {
 
       {article && (
         <>
+          {/* JSON-LD NewsArticle — Google News + Discover eligibility.
+              Embedded inline so the bot picks it up on the same paint. */}
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(buildJsonLd(article)) }}
+          />
+
           <div className="flex items-center gap-2 mb-3">
             <span className="text-xs uppercase tracking-widest font-mono text-accent-gold">
               {article.source_name}
@@ -203,19 +257,26 @@ export function NewsArticlePage() {
           {article.excerpt && (
             <p className="text-lg text-slate-600 mb-6 italic">{article.excerpt}</p>
           )}
+
+          <Ad slot="news-article-top" className="my-4" />
+
           {article.image_url && (
-            <div className="aspect-video rounded-2xl overflow-hidden mb-6">
+            <figure className="aspect-video rounded-2xl overflow-hidden mb-6 bg-slate-100">
               <img
                 src={article.image_url}
-                alt=""
+                alt={article.title}
                 className="w-full h-full object-cover"
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
-            </div>
+            </figure>
           )}
+
           <div className="prose prose-slate prose-sm sm:prose-base max-w-none text-slate-800 whitespace-pre-wrap leading-relaxed">
             {article.body}
           </div>
+
+          <Ad slot="news-article-mid" className="my-6" />
+
           <div className="mt-8 pt-6 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs font-mono text-slate-500">
             <div>
               {article.source_attribution ?? `Based on reporting by ${article.source_name}`}
@@ -229,9 +290,38 @@ export function NewsArticlePage() {
               ↗ Read original
             </a>
           </div>
+
+          <Ad slot="news-article-footer" className="mt-8" />
         </>
       )}
     </article>
+  )
+}
+
+/**
+ * 1.2-second branded loading scrim shown on first paint of a detail
+ * page. Doubles as a soft 'interstitial' — anything Adsterra fires
+ * (popunder, prestitial) lands during this window so the user sees a
+ * coherent brand screen rather than the article flashing then being
+ * interrupted.
+ */
+function Interstitial() {
+  return (
+    <motion.div
+      initial={{ opacity: 1 }}
+      animate={{ opacity: 0 }}
+      transition={{ duration: 0.4, delay: 0.9 }}
+      className="fixed inset-0 z-[60] bg-white pointer-events-none flex items-center justify-center"
+    >
+      <div className="text-center">
+        <div className="font-display font-bold text-2xl text-slate-900 mb-1">
+          Pressing 90′
+        </div>
+        <div className="text-xs uppercase tracking-widest font-mono text-accent-gold">
+          loading the briefing…
+        </div>
+      </div>
+    </motion.div>
   )
 }
 
@@ -247,3 +337,76 @@ function formatDate(iso: string): string {
   if (hours < 24) return hours + 'h ago'
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
+
+function setMeta(name: string, content: string, property = false) {
+  const attr = property ? 'property' : 'name'
+  let tag = document.querySelector(`meta[${attr}="${name}"]`) as HTMLMetaElement | null
+  if (!tag) {
+    tag = document.createElement('meta')
+    tag.setAttribute(attr, name)
+    document.head.appendChild(tag)
+  }
+  tag.content = content
+}
+
+function hydrateMetaTags(a: Article) {
+  document.title = `${a.title} · WC26 News · Pressing 90′`
+  const desc = a.excerpt ?? a.body.slice(0, 200)
+  const url = `${SITE}/news/${a.slug}`
+  const img = a.image_url ?? `${SITE}/wc26-emblem.svg`
+  setMeta('description', desc)
+  setMeta('og:title', a.title, true)
+  setMeta('og:description', desc, true)
+  setMeta('og:type', 'article', true)
+  setMeta('og:url', url, true)
+  setMeta('og:image', img, true)
+  setMeta('og:site_name', 'Pressing 90′', true)
+  setMeta('twitter:card', 'summary_large_image')
+  setMeta('twitter:title', a.title)
+  setMeta('twitter:description', desc)
+  setMeta('twitter:image', img)
+  // Canonical so Google doesn't index the source ESPN dupe alongside ours.
+  let link = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null
+  if (!link) {
+    link = document.createElement('link')
+    link.rel = 'canonical'
+    document.head.appendChild(link)
+  }
+  link.href = url
+}
+
+function buildJsonLd(a: Article) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'NewsArticle',
+    headline: a.title,
+    description: a.excerpt ?? a.body.slice(0, 200),
+    image: a.image_url ? [a.image_url] : undefined,
+    datePublished: a.published_at ?? a.created_at,
+    dateModified: a.published_at ?? a.created_at,
+    author: { '@type': 'Organization', name: 'Pressing 90′' },
+    publisher: {
+      '@type': 'Organization',
+      name: 'Pressing 90′',
+      logo: { '@type': 'ImageObject', url: `${SITE}/wc26-emblem.svg` },
+    },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}/news/${a.slug}` },
+    isBasedOn: a.source_url,
+  }
+}
+
+/* SEO_TODO — second-pass enhancements once the pipeline is steady:
+ *
+ * 1. Edge prerender: a worker route serving /news/<slug> reads the row
+ *    from Supabase and emits the SPA shell with title/description/og
+ *    tags already in the HTML. Google's mobile crawler executes JS so
+ *    we don't strictly NEED this, but Twitter/Facebook unfurlers don't —
+ *    so prerendering lifts share-card quality.
+ *
+ * 2. Sitemap inclusion: extend the existing public/sitemap.xml builder
+ *    (or generate dynamically at edge) to emit a <url><loc>/news/<slug>
+ *    entry per published article so GSC picks them up without waiting
+ *    for crawl discovery via /news.
+ *
+ * 3. RSS feed: serve /news/feed.xml so other aggregators can pull our
+ *    rewritten briefings — small but high-conversion SEO loop. */

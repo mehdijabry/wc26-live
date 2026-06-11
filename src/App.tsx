@@ -2,7 +2,6 @@ import { useEffect, useState, lazy, Suspense } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
-import { StickyCountdown } from './components/StickyCountdown'
 import { Hero } from './components/Hero'
 import { Groups } from './components/Groups'
 import { Schedule } from './components/Schedule'
@@ -130,7 +129,10 @@ function App() {
       {!location.pathname.startsWith('/admin-panel-') && (
         <>
           <Navigation />
-          <StickyCountdown />
+          {/* StickyCountdown was here as a fixed pill — moved inline into
+              Hero.tsx (between the FIFA info row and the NewsTicker) so
+              it sits in the visible whitespace the user marked, instead
+              of floating over the nav. */}
           {/* Pull-to-refresh — only outside the admin panel because the
               admin already has its own refresh affordances (Quick Actions
               cache buttons) and we don't want a downward swipe inside a

@@ -479,6 +479,15 @@ for the World Cup 2026 picture. NEVER copy a full sentence from the
 source. Don't invent facts not in the source. End with a hard credit line:
 "Based on reporting by ${c.source} — see original article for full details."
 
+SEO REQUIREMENTS (important — this article will be indexed by Google News):
+- The TITLE must be search-friendly: front-load the most important keyword
+  (e.g. team name, player, event), keep it under 70 chars, no clickbait.
+  Include "World Cup 2026" or "WC26" only if it adds clarity, not as filler.
+- The EXCERPT is the meta description. Aim 140-160 chars. State the WHAT
+  and WHY in one factual sentence. No "click to find out", no teasing.
+- The BODY's first paragraph (the lede) must answer who/what/when/where in
+  the first 25 words so Google's snippet picker has clean ground truth.
+
 Output EXACTLY this format. Copy the three marker lines (===TITLE===,
 ===EXCERPT===, ===BODY===) VERBATIM — do not change their wording.
 Put your rewritten content under each marker:

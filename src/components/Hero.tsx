@@ -7,6 +7,7 @@ import { DotLottieReact } from '@lottiefiles/dotlottie-react'
 import { nextLiveOrUpcoming, useTournament } from '../store/tournament'
 import { eventTeams } from '../lib/api'
 import { NewsTicker } from './NewsTicker'
+import { StickyCountdown } from './StickyCountdown'
 
 export function Hero() {
   const [tick, setTick] = useState(0)
@@ -47,6 +48,12 @@ export function Hero() {
             June 11 → July 19, 2026
           </span>
         </motion.div>
+
+        {/* Sticky-style countdown pill — was previously a fixed overlay
+            floating below the nav (visually decalé). Moved here to sit
+            in the visible whitespace between the tournament info row and
+            the newsfeed, exactly where the user marked the placement. */}
+        <StickyCountdown />
 
         {/* Newsfeed — replaces the static "World Cup 2026 Live" title.
             Auto-rotates a featured ESPN article every 15s, full refresh
