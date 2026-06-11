@@ -308,22 +308,38 @@ function Interstitial({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
-  // Smartlink popunder: opening it in a new tab on first user
-  // interaction inside the modal — Adsterra's Smartlink URL refuses to
-  // load in an iframe (X-Frame-Options) so we can't embed it; the
-  // canonical pattern is a popunder fired on a click. The first click
-  // anywhere on the modal triggers it; subsequent clicks don't re-fire.
+  // Classic popunder swap so the user feels like they're still on our
+  // page when the ad fires. Modern browsers block 'open URL behind' —
+  // every window.open call moves focus to the new tab. The workaround
+  // every news site uses (FootMercato, 01net, etc.):
+  //   1. window.open OUR current URL in a new tab (gets focus)
+  //   2. Redirect THIS tab (now in the background) to the Smartlink
+  //   3. From the visitor's perspective: a new tab with the article
+  //      pops up, the original tab silently becomes the ad
+  //   4. When they close the ad tab later, they're back where they
+  //      started (no flicker on our article)
   function firePopunderOnce() {
     if (popunderFired) return
-    try {
-      const w = window.open(ADSTERRA_SMARTLINK_URL, '_blank', 'noopener')
-      if (w) {
-        // Push the new tab to the back so the user stays on our page.
-        try { w.blur() } catch {}
-        try { window.focus() } catch {}
-      }
-    } catch { /* popup blocked — silent, user sees the modal */ }
     setPopunderFired(true)
+    try {
+      const articleUrl = window.location.href
+      // 'noopener' so the new tab can't reach back into the original
+      // window (which is about to navigate to a third-party URL).
+      const newTab = window.open(articleUrl, '_blank', 'noopener')
+      if (newTab) {
+        // Redirect the original tab to the Smartlink. By the time the
+        // browser processes this, the new tab is already foregrounded.
+        window.location.replace(ADSTERRA_SMARTLINK_URL)
+        return
+      }
+      // Popup blocked — fall back to the simple new-tab open so the
+      // impression still fires and our article stays on screen.
+      const fallback = window.open(ADSTERRA_SMARTLINK_URL, '_blank', 'noopener')
+      try { fallback?.blur(); window.focus() } catch {}
+    } catch {
+      // Defensive: never throw — silently fall through to close the
+      // modal even if popunder logic blew up.
+    }
   }
 
   useEffect(() => {
