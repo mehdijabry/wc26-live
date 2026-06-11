@@ -616,7 +616,7 @@ function StepExport() {
           disabled={!bracket.finalWinner}
           className="px-4 py-3 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm flex flex-col items-center gap-1 disabled:opacity-40"
         >
-          <span className="font-display font-bold text-base">🏆 Share finale</span>
+          <span className="font-display font-bold text-base">🏆 Share final</span>
           <span className="text-[10px] font-mono">3 styles · QR</span>
         </button>
         <button

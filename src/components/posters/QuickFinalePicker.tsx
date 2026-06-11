@@ -14,10 +14,6 @@ import { useRef } from 'react'
  * Pre-loads from the existing bracket store if the user has already
  * predicted a champion in the full wizard. Otherwise everything starts
  * empty — picking from a flat list of all 48 teams.
- *
- * On 'Generate poster' we briefly populate the bracket store's final
- * fields so the FinalePoster reads them, then show the style toggle
- * + download flow inline (no second modal hop).
  */
 
 interface Props {
@@ -41,13 +37,10 @@ export function QuickFinalePicker({ open, onClose }: Props) {
   const [msg, setMsg] = useState<string | null>(null)
   const posterRef = useRef<HTMLDivElement>(null)
 
-  // Hydrate from existing bracket on open (if the user already
-  // committed picks via the full wizard).
   useEffect(() => {
     if (!open) return
     if (bracketState.finalWinner) setChampion(bracketState.finalWinner)
     if (bracketState.thirdPlaceWinner) setThird(bracketState.thirdPlaceWinner)
-    // Runner-up: the SF winner that ISN'T the champion
     const finalCode = bracketState.koWinners['FINAL'] ?? bracketState.finalWinner
     if (finalCode) {
       const sf1 = bracketState.koWinners['SF-1']
@@ -57,7 +50,6 @@ export function QuickFinalePicker({ open, onClose }: Props) {
     }
   }, [open, bracketState])
 
-  // Reset on close
   useEffect(() => {
     if (!open) {
       setPhase('pick')
@@ -83,11 +75,11 @@ export function QuickFinalePicker({ open, onClose }: Props) {
       const png = await toPng(posterRef.current, { cacheBust: true, pixelRatio: 2 })
       const a = document.createElement('a')
       a.href = png
-      a.download = `wc26-finale-${style}-${alias}.png`
+      a.download = `wc26-final-${style}-${alias}.png`
       a.click()
-      setMsg('PNG téléchargé ✓')
+      setMsg('PNG downloaded ✓')
     } catch (e) {
-      setMsg('Erreur: ' + String(e))
+      setMsg('Error: ' + String(e))
     } finally {
       setBusy(false)
     }
@@ -119,10 +111,10 @@ export function QuickFinalePicker({ open, onClose }: Props) {
             <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl border-b border-slate-200 px-5 py-3 flex items-center justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500">
-                  Pronostique la
+                  Predict the
                 </div>
                 <div className="text-lg font-display font-bold text-slate-900">
-                  🏆 Finale + 3ᵉ place
+                  🏆 Final + 3rd place
                 </div>
               </div>
               <button
@@ -143,13 +135,13 @@ export function QuickFinalePicker({ open, onClose }: Props) {
                   exclude={[runnerUp, third]}
                 />
                 <TeamPicker
-                  label="🥈 Finaliste"
+                  label="🥈 Runner-up"
                   value={runnerUp}
                   onChange={setRunnerUp}
                   exclude={[champion, third]}
                 />
                 <TeamPicker
-                  label="🥉 3ᵉ place"
+                  label="🥉 3rd place"
                   value={third}
                   onChange={setThird}
                   exclude={[champion, runnerUp]}
@@ -157,14 +149,14 @@ export function QuickFinalePicker({ open, onClose }: Props) {
 
                 <div className="sticky bottom-0 -mx-5 -mb-5 mt-6 px-5 py-3 bg-white/95 backdrop-blur-xl border-t border-slate-200 flex items-center justify-between gap-3">
                   <div className="text-xs text-slate-600 font-mono">
-                    {canGenerate ? '✓ Tu peux générer le poster' : 'Pick les 3 équipes pour continuer'}
+                    {canGenerate ? '✓ Ready to generate' : 'Pick all 3 teams to continue'}
                   </div>
                   <button
                     onClick={() => setPhase('poster')}
                     disabled={!canGenerate}
                     className="px-5 py-2.5 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 disabled:opacity-40 transition-colors"
                   >
-                    Générer mon poster →
+                    Generate poster →
                   </button>
                 </div>
               </div>
@@ -192,7 +184,7 @@ export function QuickFinalePicker({ open, onClose }: Props) {
                       >
                         {s === 'ticket' && '🎟️ Ticket'}
                         {s === 'programme' && '📋 Programme'}
-                        {s === 'stadium' && '⚽ Pelouse'}
+                        {s === 'stadium' && '⚽ Pitch'}
                       </button>
                     )
                   })}
@@ -219,21 +211,21 @@ export function QuickFinalePicker({ open, onClose }: Props) {
                     onClick={() => setPhase('pick')}
                     className="text-sm font-mono text-slate-500 hover:text-slate-900"
                   >
-                    ← Modifier les picks
+                    ← Edit picks
                   </button>
                   <button
                     onClick={download}
                     disabled={busy}
                     className="px-5 py-2.5 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 disabled:opacity-50 transition-colors"
                   >
-                    {busy ? 'Génération…' : '⬇︎ Télécharger PNG'}
+                    {busy ? 'Generating…' : '⬇︎ Download PNG'}
                   </button>
                 </div>
                 {msg && (
                   <div
                     className={
                       'mt-3 px-3 py-2 rounded text-xs font-mono ' +
-                      (msg.startsWith('Erreur')
+                      (msg.startsWith('Error')
                         ? 'bg-rose-50 text-rose-800'
                         : 'bg-emerald-50 text-emerald-800')
                     }
@@ -272,7 +264,7 @@ function TeamPicker({
         onChange={(e) => onChange(e.target.value)}
         className="w-full px-3 py-2.5 rounded-lg border border-slate-300 bg-white text-sm font-display font-bold focus:outline-none focus:ring-2 focus:ring-accent-gold/40"
       >
-        <option value="">— Choisis une équipe —</option>
+        <option value="">— Pick a team —</option>
         {filtered.map((t) => (
           <option key={t.code} value={t.code}>
             {t.flag} {t.name} ({t.code})

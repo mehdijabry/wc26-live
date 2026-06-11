@@ -73,15 +73,15 @@ export function SharePhaseModal({ open, onClose, phase }: SharePhaseModalProps) 
       a.href = png
       a.download = `wc26-${phase}-${style}-${alias}.png`
       a.click()
-      setMsg('PNG téléchargé ✓')
+      setMsg('PNG downloaded ✓')
     } catch (e) {
-      setMsg('Échec du téléchargement: ' + String(e))
+      setMsg('Download failed: ' + String(e))
     } finally {
       setBusy(false)
     }
   }
 
-  // For the MVP only the Finale phase is wired. If the user opens the
+  // For the MVP only the Final phase is wired. If the user opens the
   // modal on another phase we surface a friendly "coming soon" notice
   // so the button never appears broken.
   const isWired = phase === 'final'
@@ -112,7 +112,7 @@ export function SharePhaseModal({ open, onClose, phase }: SharePhaseModalProps) 
             <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-xl border-b border-slate-200 px-5 py-3 flex items-center justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500">
-                  Partager ma prédiction
+                  Share my prediction
                 </div>
                 <div className="text-lg font-display font-bold text-slate-900">
                   Phase · {phaseLabel(phase)}
@@ -175,7 +175,7 @@ export function SharePhaseModal({ open, onClose, phase }: SharePhaseModalProps) 
             {/* preview area */}
             <div className="p-5">
               <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2">
-                Aperçu
+                Preview
               </div>
               {isWired ? (
                 <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 overflow-hidden flex items-center justify-center">
@@ -203,10 +203,10 @@ export function SharePhaseModal({ open, onClose, phase }: SharePhaseModalProps) 
                 <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 text-center">
                   <div className="text-3xl mb-2">🚧</div>
                   <div className="font-semibold text-amber-900">
-                    Cette phase arrive bientôt
+                    This phase is coming soon
                   </div>
                   <div className="text-sm text-amber-700 mt-1">
-                    Pour l'instant on a câblé la <strong>Finale</strong>. Les autres phases
+                    We've only wired the <strong>Final</strong>. Les autres phases
                     suivent dès que t'as validé ce design.
                   </div>
                 </div>
@@ -224,7 +224,7 @@ export function SharePhaseModal({ open, onClose, phase }: SharePhaseModalProps) 
                   disabled={busy}
                   className="px-5 py-2.5 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 disabled:opacity-50 transition-colors"
                 >
-                  {busy ? 'Génération…' : '⬇︎ Télécharger PNG'}
+                  {busy ? 'Generating…' : '⬇︎ Download PNG'}
                 </button>
               </div>
             )}
@@ -232,7 +232,7 @@ export function SharePhaseModal({ open, onClose, phase }: SharePhaseModalProps) 
               <div
                 className={
                   'px-5 py-2 text-xs font-mono ' +
-                  (msg.startsWith('Échec')
+                  (msg.startsWith('Error')
                     ? 'bg-rose-50 text-rose-800'
                     : 'bg-emerald-50 text-emerald-800')
                 }
@@ -251,12 +251,12 @@ export function SharePhaseModal({ open, onClose, phase }: SharePhaseModalProps) 
 
 function phaseLabel(p: SharePhaseModalProps['phase']): string {
   return {
-    groups: 'Groupes + meilleurs 3ᵉ',
-    r32: '1/16 de finale',
-    r16: '1/8 de finale',
-    qf: 'Quarts de finale',
-    sf: 'Demi-finales',
-    final: 'Finale + petite finale',
+    groups: 'Groups + best thirds',
+    r32: 'Round of 32',
+    r16: 'Round of 16',
+    qf: 'Quarter-finals',
+    sf: 'Semi-finals',
+    final: 'Final + petite finale',
   }[p]
 }
 

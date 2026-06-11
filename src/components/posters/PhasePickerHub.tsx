@@ -2,17 +2,15 @@ import { useState } from 'react'
 import { QuickFinalePicker } from './QuickFinalePicker'
 
 /**
- * Phase picker hub — the new landing screen for /predictions.
+ * Phase picker hub — landing screen for /predictions.
  *
  * Instead of dropping the user straight into the 8-step bracket wizard,
  * we surface 7 cards: one per phase + 'Full bracket'. The user can
  * pick the phase they care about and just predict that phase, then
  * generate a shareable poster. Lower friction = more posters shared.
  *
- * MVP scope: only 'Finale + 3rd place' and 'Full bracket' are wired.
- * The other 5 phases (Groups, R32, R16, QF, SF) are gated behind a
- * 'Bientôt' badge and a soft tooltip. They'll land in a follow-up
- * once we've validated the modal design with the Finale flow.
+ * MVP scope: only 'Final + 3rd place' and 'Full bracket' are wired.
+ * The other 5 phases are gated behind a 'Coming soon' badge.
  */
 
 type Phase = {
@@ -25,13 +23,13 @@ type Phase = {
 }
 
 const PHASES: Phase[] = [
-  { id: 'final', emoji: '🏆', title: 'Finale + 3ᵉ place', sub: 'Champion · Finaliste · 3ᵉ', status: 'ready', accent: 'gold' },
-  { id: 'sf', emoji: '⚔️', title: 'Demi-finales', sub: '2 matchs · les 4 dernières', status: 'soon', accent: 'silver' },
-  { id: 'qf', emoji: '🔥', title: '1/4 de finale', sub: '4 matchs · les 8 dernières', status: 'soon', accent: 'red' },
-  { id: 'r16', emoji: '🎯', title: '1/8 de finale', sub: '8 matchs · le tour clé', status: 'soon', accent: 'blue' },
-  { id: 'r32', emoji: '🏟️', title: '1/16 de finale', sub: '16 matchs · le grand début', status: 'soon', accent: 'green' },
-  { id: 'groups', emoji: '🌍', title: 'Groupes + meilleurs 3ᵉ', sub: '12 groupes · 36 picks', status: 'soon', accent: 'slate' },
-  { id: 'full', emoji: '📋', title: 'Bracket complet', sub: 'Tout le tournoi · poster intégral', status: 'ready', accent: 'slate' },
+  { id: 'final', emoji: '🏆', title: 'Final + 3rd place', sub: 'Champion · Runner-up · 3rd', status: 'ready', accent: 'gold' },
+  { id: 'sf', emoji: '⚔️', title: 'Semi-finals', sub: '2 matches · last 4 standing', status: 'soon', accent: 'silver' },
+  { id: 'qf', emoji: '🔥', title: 'Quarter-finals', sub: '4 matches · last 8 standing', status: 'soon', accent: 'red' },
+  { id: 'r16', emoji: '🎯', title: 'Round of 16', sub: '8 matches · the deciding round', status: 'soon', accent: 'blue' },
+  { id: 'r32', emoji: '🏟️', title: 'Round of 32', sub: '16 matches · the big kick-off', status: 'soon', accent: 'green' },
+  { id: 'groups', emoji: '🌍', title: 'Groups + best thirds', sub: '12 groups · 36 picks', status: 'soon', accent: 'slate' },
+  { id: 'full', emoji: '📋', title: 'Full bracket', sub: 'Whole tournament · complete poster', status: 'ready', accent: 'slate' },
 ]
 
 export function PhasePickerHub({ onFullBracket }: { onFullBracket: () => void }) {
@@ -50,14 +48,14 @@ export function PhasePickerHub({ onFullBracket }: { onFullBracket: () => void })
     <section className="container max-w-6xl mx-auto px-6 py-8 sm:py-10">
       <div className="mb-6 sm:mb-8">
         <div className="text-xs uppercase tracking-widest font-mono text-accent-gold mb-2">
-          Mes prédictions WC26
+          My WC26 predictions
         </div>
         <h1 className="font-display font-bold text-3xl sm:text-4xl text-slate-900">
-          Quelle phase tu veux pronostiquer ?
+          Which phase do you want to predict?
         </h1>
         <p className="text-slate-600 mt-2 max-w-2xl">
-          Choisis une phase, fais tes picks, génère ton poster — et partage-le aux potes.
-          Tu peux aussi remplir tout le bracket en une fois et avoir un poster intégral.
+          Pick a phase, lock in your picks, generate your poster — and share it with friends.
+          Or fill the whole bracket in one go for a complete tournament poster.
         </p>
       </div>
 
@@ -102,7 +100,7 @@ function PhaseCard({ phase, onClick }: { phase: Phase; onClick: () => void }) {
     >
       {!ready && (
         <span className="absolute top-2.5 right-2.5 text-[9px] uppercase tracking-widest font-mono text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
-          Bientôt
+          Soon
         </span>
       )}
       <div className="text-3xl sm:text-4xl leading-none">{phase.emoji}</div>
@@ -114,7 +112,7 @@ function PhaseCard({ phase, onClick }: { phase: Phase; onClick: () => void }) {
       </div>
       {ready && (
         <div className="text-[10px] font-semibold text-accent-gold uppercase tracking-widest mt-1">
-          Pronostiquer →
+          Predict →
         </div>
       )}
     </button>

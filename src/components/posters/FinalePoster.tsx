@@ -75,7 +75,7 @@ const TicketStyle = forwardRef<HTMLDivElement, FinalePosterProps>(
         {/* trophy + spotlight */}
         <div style={{ position: 'absolute', top: 180, left: 0, right: 0, textAlign: 'center', fontSize: 110, lineHeight: 1 }}>🏆</div>
         <div style={{ position: 'absolute', top: 320, left: 0, right: 0, textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#d4af37', letterSpacing: '0.2em' }}>
-          CHAMPION DU MONDE
+          WORLD CHAMPION
         </div>
 
         {/* big gold plate with champion flag */}
@@ -145,7 +145,7 @@ const TicketStyle = forwardRef<HTMLDivElement, FinalePosterProps>(
             fontWeight: 800,
           }}
         >
-          🥉 3ᵉ PLACE · {third?.flag} {third?.name?.toUpperCase() ?? 'TBD'}
+          🥉 3RD PLACE · {third?.flag} {third?.name?.toUpperCase() ?? 'TBD'}
         </div>
 
         {/* QR stub */}
@@ -170,10 +170,10 @@ const TicketStyle = forwardRef<HTMLDivElement, FinalePosterProps>(
           />
           <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }}>
             <div style={{ fontSize: 12, color: '#94a3b8', letterSpacing: '0.2em', marginBottom: 8 }}>
-              SCANNER POUR VOIR
+              SCAN TO SEE
             </div>
             <div style={{ fontSize: 18, fontWeight: 900, color: '#fde68a', marginBottom: 4 }}>
-              MA PRÉDICTION
+              MY PREDICTION
             </div>
             <div style={{ fontSize: 16, fontWeight: 800, color: '#d4af37', marginBottom: 6 }}>
               @{alias}
@@ -244,10 +244,10 @@ const ProgrammeStyle = forwardRef<HTMLDivElement, FinalePosterProps>(
         {/* title */}
         <div style={{ position: 'absolute', top: 130, left: 0, right: 0, textAlign: 'center' }}>
           <div style={{ fontSize: 18, fontWeight: 900, color: '#8b6914', letterSpacing: '0.25em' }}>
-            MES PRÉDICTIONS WC26
+            MY WC26 PREDICTIONS
           </div>
           <div style={{ fontSize: 44, fontWeight: 900, color: '#0f172a', marginTop: 8 }}>
-            CHAMPION DU MONDE
+            WORLD CHAMPION
           </div>
         </div>
 
@@ -320,7 +320,7 @@ const ProgrammeStyle = forwardRef<HTMLDivElement, FinalePosterProps>(
               color: '#22c55e',
             }}
           >
-            <div style={{ fontSize: 13, letterSpacing: '0.25em' }}>SCORE FINAL</div>
+            <div style={{ fontSize: 13, letterSpacing: '0.25em' }}>FINAL SCORE</div>
             <div style={{ fontSize: 34, fontWeight: 900, marginTop: 16 }}>
               {champion?.flag} 2 - 1 {runnerUp?.flag}
             </div>
@@ -342,7 +342,7 @@ const ProgrammeStyle = forwardRef<HTMLDivElement, FinalePosterProps>(
               justifyContent: 'center',
             }}
           >
-            <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.2em' }}>🥉 3ᵉ PLACE</div>
+            <div style={{ fontSize: 14, fontWeight: 900, letterSpacing: '0.2em' }}>🥉 3RD PLACE</div>
             <div style={{ fontSize: 56, lineHeight: 1, marginTop: 6 }}>{third?.flag}</div>
             <div style={{ fontSize: 18, fontWeight: 900, marginTop: 6 }}>
               {(third?.name ?? 'TBD').toUpperCase()}
@@ -392,13 +392,13 @@ const ProgrammeStyle = forwardRef<HTMLDivElement, FinalePosterProps>(
           />
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 800, color: '#8b6914', letterSpacing: '0.2em' }}>
-              SCAN MA PRÉDICTION COMPLÈTE
+              SCAN MY PREDICTION COMPLÈTE
             </div>
             <div style={{ fontSize: 22, fontWeight: 900, color: '#0f172a', marginTop: 4 }}>
               @{alias}
             </div>
             <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginTop: 2 }}>
-              Voir tout mon parcours WC26
+              See my full WC26 journey
             </div>
             <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 2, wordBreak: 'break-all' }}>
               {qrUrl.replace(/^https?:\/\//, '')}
