@@ -188,6 +188,12 @@ export async function handleAdmin(
   if (pathname === '/admin/brackets') return handleListBrackets(env)
   if (pathname === '/admin/site-health') return handleSiteHealth(env)
 
+  // News pipeline (auto-published articles, Phase 1 manual approval flow)
+  if (pathname === '/admin/news/list') return handleListNews(env, req)
+  if (pathname.startsWith('/admin/news/') && req.method === 'POST') {
+    return handleNewsAction(env, req, pathname)
+  }
+
   // Write-side actions
   if (pathname === '/admin/push/broadcast' && req.method === 'POST') {
     return handleAdminBroadcast(req, env)
@@ -801,4 +807,96 @@ async function handleCacheClear(req: Request, env: AdminEnv): Promise<Response> 
     deleted++
   }
   return jsonResp({ deleted, prefix })
+}
+
+// ─── News pipeline endpoints ────────────────────────────────────────
+//
+// GET  /admin/news/list?status=draft  → list articles (default: draft)
+// POST /admin/news/<id>/approve       → status='published', published_at=now()
+// POST /admin/news/<id>/reject        → status='archived', archived_at=now()
+// POST /admin/news/<id>/delete        → hard delete
+// POST /admin/news/<id>/edit          → update title/body/excerpt
+// POST /admin/news/trigger            → kick the cron pipeline once (debug)
+
+async function handleListNews(env: AdminEnv, req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  const status = url.searchParams.get('status') ?? 'draft'
+  const limit = Math.min(100, parseInt(url.searchParams.get('limit') ?? '50'))
+  const r = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/articles?status=eq.${encodeURIComponent(status)}&select=id,slug,title,excerpt,body,image_url,source_url,source_name,score,status,created_at,published_at,archived_at&order=created_at.desc&limit=${limit}`,
+    {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  if (!r.ok) return jsonResp({ error: 'supabase_list_failed', status: r.status }, 500)
+  const rows = await r.json()
+  return jsonResp({ articles: rows })
+}
+
+async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): Promise<Response> {
+  // /admin/news/<id>/<action>  OR  /admin/news/trigger
+  const parts = pathname.split('/').filter(Boolean) // ['admin','news', id, action]
+  const tail = parts[2]
+  const action = parts[3]
+
+  if (tail === 'trigger' && !action) {
+    // Manually fire the pipeline once for testing.
+    const { runNewsPipeline } = await import('./news')
+    await runNewsPipeline(env as unknown as Parameters<typeof runNewsPipeline>[0])
+    return jsonResp({ ok: true, triggered: true })
+  }
+
+  if (!tail || !action) return jsonResp({ error: 'bad_path' }, 400)
+  const id = tail
+
+  if (action === 'approve') return updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null })
+  if (action === 'reject')  return updateArticle(env, id, { status: 'archived',  archived_at: nowIso() })
+  if (action === 'unpublish') return updateArticle(env, id, { status: 'draft',  published_at: null })
+  if (action === 'republish') return updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null })
+  if (action === 'delete') {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        prefer: 'return=minimal',
+      },
+    })
+    if (!r.ok) return jsonResp({ error: 'delete_failed', status: r.status }, 500)
+    return jsonResp({ ok: true, deleted: id })
+  }
+  if (action === 'edit') {
+    const body = await req.json().catch(() => null) as Partial<{ title: string; excerpt: string; body: string; image_url: string }> | null
+    if (!body) return jsonResp({ error: 'bad_body' }, 400)
+    const allowed: Record<string, unknown> = {}
+    if (typeof body.title === 'string') allowed.title = body.title
+    if (typeof body.excerpt === 'string') allowed.excerpt = body.excerpt
+    if (typeof body.body === 'string') allowed.body = body.body
+    if (typeof body.image_url === 'string') allowed.image_url = body.image_url
+    return updateArticle(env, id, allowed)
+  }
+  return jsonResp({ error: 'unknown_action' }, 400)
+}
+
+async function updateArticle(env: AdminEnv, id: string, patch: Record<string, unknown>): Promise<Response> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      prefer: 'return=representation',
+    },
+    body: JSON.stringify(patch),
+  })
+  if (!r.ok) return jsonResp({ error: 'update_failed', status: r.status, detail: await r.text() }, 500)
+  const rows = await r.json() as unknown[]
+  return jsonResp({ ok: true, article: rows[0] })
+}
+
+function nowIso(): string {
+  return new Date().toISOString()
 }

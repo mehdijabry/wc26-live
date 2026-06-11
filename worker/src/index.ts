@@ -271,7 +271,15 @@ export default {
   //   1. Sync finished matches → Supabase (predictions scoring)
   //   2. Fire kickoff / goal / FT push notifications to subscribers
   // The two passes share one ESPN fetch to keep subrequests low.
-  async scheduled(_event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // Dispatch by cron pattern — see wrangler.toml [triggers].
+    //   '0 */3 * * *' = news pipeline (8 × / day)
+    //   anything else (default '*/5 * * * *') = match alerts pass below.
+    if (event.cron === '0 */3 * * *') {
+      const { runNewsPipeline } = await import('./news')
+      ctx.waitUntil(runNewsPipeline(env))
+      return
+    }
     try {
       const sb = await fetch(`${ESPN_BASE}/scoreboard?limit=200`)
       if (!sb.ok) return

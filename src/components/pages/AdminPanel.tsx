@@ -22,7 +22,7 @@ import { API_BASE } from '../../lib/api'
  */
 
 type Tab =
-  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions'
+  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news'
 
 // Token storage key in sessionStorage. We use sessionStorage (not local)
 // so the token clears when the tab closes — saves us from a stale
@@ -146,7 +146,7 @@ export function AdminPanel() {
           </button>
         </div>
         <nav className="max-w-6xl mx-auto px-5 pb-2 flex gap-1 overflow-x-auto">
-          {(['overview', 'analytics', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
+          {(['overview', 'analytics', 'news', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -176,6 +176,7 @@ export function AdminPanel() {
         {tab === 'database' && <Database />}
         {tab === 'health' && <SiteHealth />}
         {tab === 'actions' && <QuickActions />}
+        {tab === 'news' && <News />}
       </main>
     </div>
   )
@@ -696,4 +697,255 @@ function setMeta(name: string, content: string) {
   let tag = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null
   if (!tag) { tag = document.createElement('meta'); tag.name = name; document.head.appendChild(tag) }
   tag.content = content
+}
+
+// ─── News tab — manage AI-drafted articles ─────────────────────────
+//
+// Lists the 50 most recent drafts (default) and lets the editor:
+//   • Approve  → status=published
+//   • Reject   → status=archived
+//   • Delete   → hard delete
+//   • Preview body in an expand-on-click panel
+//
+// Has a status filter (draft / published / archived) and a "Trigger now"
+// button to manually fire the cron pipeline for testing.
+
+interface Article {
+  id: string
+  slug: string
+  title: string
+  excerpt: string | null
+  body: string
+  image_url: string | null
+  source_url: string
+  source_name: string
+  score: number | null
+  status: 'draft' | 'published' | 'archived'
+  created_at: string
+  published_at: string | null
+  archived_at: string | null
+}
+
+function News() {
+  const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('draft')
+  const [items, setItems] = useState<Article[]>([])
+  const [loading, setLoading] = useState(false)
+  const [expanded, setExpanded] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function load() {
+    setLoading(true)
+    try {
+      const r = await fetch(`${API_BASE}/admin/news/list?status=${status}`, {
+        headers: { authorization: `Bearer ${getToken() ?? ''}` },
+      })
+      if (!r.ok) throw new Error(String(r.status))
+      const data = await r.json() as { articles: Article[] }
+      setItems(data.articles ?? [])
+    } catch (e) {
+      setMsg('Load failed: ' + String(e))
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => { void load() }, [status])
+
+  async function act(id: string, action: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish') {
+    if (action === 'delete' && !confirm('Delete this article permanently?')) return
+    setBusy(id + ':' + action)
+    setMsg(null)
+    try {
+      const r = await fetch(`${API_BASE}/admin/news/${id}/${action}`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${getToken() ?? ''}` },
+      })
+      if (!r.ok) throw new Error(await r.text())
+      setMsg(`✓ ${action}`)
+      await load()
+    } catch (e) {
+      setMsg('Error: ' + String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function trigger() {
+    setBusy('trigger')
+    setMsg(null)
+    try {
+      const r = await fetch(`${API_BASE}/admin/news/trigger`, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${getToken() ?? ''}` },
+      })
+      if (!r.ok) throw new Error(await r.text())
+      setMsg('✓ Pipeline triggered — check back in ~30s for the new draft')
+      setTimeout(() => void load(), 8000)
+    } catch (e) {
+      setMsg('Trigger failed: ' + String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display font-bold text-2xl text-slate-900">📰 News pipeline</h2>
+          <div className="text-xs text-slate-500 font-mono">
+            Auto-drafted every 3 hours from RSS + Reddit · {items.length} {status} articles
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-slate-100 rounded-full p-1">
+            {(['draft', 'published', 'archived'] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setStatus(s)}
+                className={
+                  'px-3 py-1 rounded-full text-xs font-mono uppercase tracking-widest transition-colors ' +
+                  (status === s ? 'bg-ink-900 text-white' : 'text-slate-500')
+                }
+                style={status === s ? { color: '#fff' } : undefined}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={trigger}
+            disabled={busy === 'trigger'}
+            className="px-3 py-1.5 rounded-full bg-accent-gold text-ink-900 text-xs font-bold hover:bg-yellow-300 disabled:opacity-50"
+          >
+            {busy === 'trigger' ? 'Triggering…' : '⚡ Trigger now'}
+          </button>
+          <button
+            onClick={load}
+            className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-mono"
+          >
+            ↻
+          </button>
+        </div>
+      </div>
+
+      {msg && (
+        <div className={'px-3 py-2 rounded text-xs font-mono ' + (msg.startsWith('Error') || msg.startsWith('Load') || msg.startsWith('Trigger failed') ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800')}>
+          {msg}
+        </div>
+      )}
+
+      {loading && <div className="text-slate-500 text-sm">Loading…</div>}
+
+      {!loading && items.length === 0 && (
+        <div className="text-center py-12 text-slate-500">
+          <div className="text-4xl mb-2">📭</div>
+          <div className="font-display font-bold">No {status} articles yet</div>
+          <div className="text-xs font-mono mt-1">
+            {status === 'draft' && "The pipeline runs every 3 hours. Click 'Trigger now' to fire it manually."}
+          </div>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {items.map((a) => (
+          <ArticleRow
+            key={a.id}
+            article={a}
+            expanded={expanded === a.id}
+            onExpand={() => setExpanded(expanded === a.id ? null : a.id)}
+            busy={busy}
+            onAct={(action) => act(a.id, action)}
+          />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ArticleRow({
+  article,
+  expanded,
+  onExpand,
+  busy,
+  onAct,
+}: {
+  article: Article
+  expanded: boolean
+  onExpand: () => void
+  busy: string | null
+  onAct: (a: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish') => void
+}) {
+  const isBusy = busy?.startsWith(article.id + ':')
+  return (
+    <div className="border border-slate-200 rounded-xl bg-white overflow-hidden">
+      <div className="flex items-center gap-3 p-3">
+        {article.image_url && (
+          // eslint-disable-next-line jsx-a11y/img-redundant-alt
+          <img src={article.image_url} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+        )}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-1">
+            <span className={
+              'text-[9px] uppercase tracking-widest font-mono px-2 py-0.5 rounded-full ' +
+              (article.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
+               article.status === 'archived' ? 'bg-slate-100 text-slate-500' :
+               'bg-amber-100 text-amber-700')
+            }>{article.status}</span>
+            <span className="text-[10px] text-slate-400 font-mono">{article.source_name}</span>
+            {article.score != null && (
+              <span className="text-[10px] text-slate-400 font-mono">· score {article.score.toFixed(0)}</span>
+            )}
+            <span className="text-[10px] text-slate-400 font-mono ml-auto">
+              {new Date(article.created_at).toLocaleString()}
+            </span>
+          </div>
+          <button onClick={onExpand} className="text-left w-full">
+            <div className="font-display font-bold text-slate-900 leading-tight">{article.title}</div>
+            {article.excerpt && (
+              <div className="text-xs text-slate-600 mt-1 line-clamp-2">{article.excerpt}</div>
+            )}
+          </button>
+          <div className="flex flex-wrap gap-1.5 mt-2">
+            {article.status === 'draft' && (
+              <>
+                <button disabled={isBusy} onClick={() => onAct('approve')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-50">
+                  ✓ Approve
+                </button>
+                <button disabled={isBusy} onClick={() => onAct('reject')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-rose-100 text-rose-700 hover:bg-rose-200 disabled:opacity-50">
+                  ✗ Reject
+                </button>
+              </>
+            )}
+            {article.status === 'published' && (
+              <button disabled={isBusy} onClick={() => onAct('unpublish')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50">
+                Unpublish
+              </button>
+            )}
+            {article.status === 'archived' && (
+              <button disabled={isBusy} onClick={() => onAct('republish')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50">
+                Republish
+              </button>
+            )}
+            <button disabled={isBusy} onClick={() => onAct('delete')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-slate-100 text-slate-700 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50">
+              🗑 Delete
+            </button>
+            <a href={article.source_url} target="_blank" rel="noopener noreferrer" className="px-2.5 py-1 text-[11px] font-mono rounded-full bg-slate-50 text-slate-500 hover:bg-slate-100">
+              ↗ Source
+            </a>
+            <button onClick={onExpand} className="px-2.5 py-1 text-[11px] font-mono rounded-full bg-slate-50 text-slate-500 hover:bg-slate-100 ml-auto">
+              {expanded ? 'Collapse' : 'Preview'}
+            </button>
+          </div>
+        </div>
+      </div>
+      {expanded && (
+        <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-slate-50">
+          <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2">Rewritten body</div>
+          <pre className="text-xs text-slate-800 whitespace-pre-wrap font-sans leading-relaxed">{article.body}</pre>
+        </div>
+      )}
+    </div>
+  )
 }
