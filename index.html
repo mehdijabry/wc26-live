@@ -134,10 +134,9 @@
     <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
       data-cf-beacon='{"token": "d6a44cfcf6994e1798c8b6139f3813dd"}'></script>
 
-    <!-- Adsterra Social Bar was wired here site-wide (zone 29614730)
-         but the user pivoted to a per-click article interstitial
-         (see News.tsx Interstitial component) and removed the global
-         floating widget. Keeping the zone in ADSTERRA_ZONES as
-         'socialBar' for reference; not loaded automatically anywhere. -->
+    <!-- SocialBar is NOT loaded site-wide — user wants it scoped to
+         the article-open interstitial only. The modal mount in
+         News.tsx injects the script into document.body on open and
+         removes it (+ rendered widget) on close. -->
   </body>
 </html>

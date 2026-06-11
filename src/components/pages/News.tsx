@@ -304,12 +304,33 @@ export function NewsArticlePage() {
 function Interstitial({ onClose }: { onClose: () => void }) {
   const [secsLeft, setSecsLeft] = useState(5)
 
+  // SocialBar injection — Adsterra's script attaches to document.body
+  // (NOT a sandboxed iframe). We mount it here so the floating widget
+  // appears DURING the modal, then remove it on unmount so the rest of
+  // the site stays SocialBar-free. Single instance: Adsterra dedupes
+  // by zone key, so loading the same script twice yields one widget.
   useEffect(() => {
     document.body.style.overflow = 'hidden'
     const t = setInterval(() => setSecsLeft((s) => (s > 0 ? s - 1 : 0)), 1000)
+
+    const sbKey = ADSTERRA_ZONES.socialBar
+    const sbScript = document.createElement('script')
+    sbScript.async = true
+    sbScript.setAttribute('data-cfasync', 'false')
+    sbScript.setAttribute('data-sb-temp', '1')  // marker so we find it on cleanup
+    sbScript.src = `https://turbulentrefreshments.com/${sbKey.slice(0, 2)}/${sbKey.slice(2, 4)}/${sbKey.slice(4, 6)}/${sbKey}.js`
+    document.body.appendChild(sbScript)
+
     return () => {
       clearInterval(t)
       document.body.style.overflow = ''
+      // Remove the injected script + any DOM the SocialBar widget left
+      // behind (Adsterra appends fixed-position containers near body
+      // root with various id/class signatures). Best-effort match:
+      // strip nodes flagged data-sb-temp + nodes Adsterra injects with
+      // ids starting with sb_ or containing the zone key.
+      document.querySelectorAll('script[data-sb-temp="1"]').forEach((n) => n.remove())
+      document.querySelectorAll(`[id^="sb_"], [id*="${sbKey}"]`).forEach((n) => n.remove())
     }
   }, [])
 
@@ -350,19 +371,19 @@ function Interstitial({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      {/* Ad stack — 4 slots, both proven formats only.
-          NativeBanner + 300x250 dropped from the modal: user observed
-          they each fill ~1/10 calls on this account, not worth the
-          slot. Replaced with two SocialBar embeds which fill more
-          reliably even sandboxed in an iframe. */}
-      <div className="max-w-xl mx-auto px-4 py-4 space-y-3">
+      {/* Ad stack — 3 embedded banner slots + 1 SocialBar that's
+          injected directly to document.body (above effect). The
+          SocialBar floats over the modal; the 3 banners use the
+          proven 728x90 / 320x50 formats. Padding-bottom leaves
+          breathing room so the SocialBar widget doesn't sit on top
+          of the bottom banner. */}
+      <div className="max-w-xl mx-auto px-4 py-4 pb-32 space-y-3">
         <div className="text-center font-display font-bold text-lg text-slate-900 mb-1">
           Continuing to your article…
         </div>
 
         <AdsterraZone zoneKey={ADSTERRA_ZONES.banner728} variant="banner-728x90" />
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.socialBar} variant="socialBar" />
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.socialBar} variant="socialBar" />
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.banner320} variant="banner-728x90" />
         <AdsterraZone zoneKey={ADSTERRA_ZONES.banner728} variant="banner-728x90" />
       </div>
     </motion.div>
