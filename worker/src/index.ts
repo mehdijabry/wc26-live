@@ -780,10 +780,30 @@ async function maybeFireGoalOrFt(
       // Only broadcast on a real change (not the 0-0 baseline) and not
       // on the very first poll for this match (would fire a 0-0 alert).
       if (prev !== null && cur !== '0-0') {
-        const minute = ev.status?.displayClock ?? ''
+        // Reach into competitions[0].details for the actual goal
+        // event so we can ship the scorer's name + EXACT minute, not
+        // the current clock (which lies — by the time the 5-min cron
+        // catches the goal, the match clock has moved on by up to 5
+        // minutes). type.id === '70' is ESPN's stable code for 'Goal'.
+        const details = (comp as { details?: Array<{
+          type?: { id?: string; text?: string }
+          clock?: { displayValue?: string }
+          athletesInvolved?: Array<{ displayName?: string }>
+        }> }).details ?? []
+        const goalDetails = details.filter((d) => d.type?.id === '70')
+        // The last goal in the array is the most recent one (ESPN
+        // appends as they happen); fall back to current clock only if
+        // the details surface hasn't populated yet.
+        const lastGoal = goalDetails[goalDetails.length - 1]
+        const minute = lastGoal?.clock?.displayValue ?? ev.status?.displayClock ?? ''
+        const scorer = lastGoal?.athletesInvolved?.[0]?.displayName ?? ''
+        const minuteStr = minute ? `${minute}'` : ''
+        const body = scorer
+          ? `⚽ ${scorer}${minuteStr ? ' at ' + minuteStr : ''}.`
+          : (minuteStr ? `Goal at ${minuteStr}` : 'Goal!')
         await broadcastCore(env, {
           title: `⚽ ${homeName} ${hs}-${as} ${awayName}`,
-          body: minute ? `Goal at ${minute}'` : 'Goal!',
+          body,
           url: '/today',
           tag: `live-${id}`,
         })

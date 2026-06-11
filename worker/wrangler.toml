@@ -4,12 +4,15 @@ compatibility_date = "2024-12-01"
 account_id = "a3e85bed1717f5e4eca6988586bfc06e"
 
 # Cron triggers:
-#   */5 * * * *  → kickoff alerts + finished-match sync (every 5 min)
-#   0   */3 * * * → news pipeline (every 3 hours = 8 × / day)
+#   * * * * *    → live-event poll (every 1 min) — goals/cards/penalty
+#                  alerts fire within 60s of the on-pitch event instead
+#                  of the previous 5-min worst case. KV-deduped so the
+#                  faster cadence is harmless.
+#   0 */3 * * *  → news pipeline (every 3 hours = 8 × / day)
 # The scheduled() handler in src/index.ts dispatches by inspecting the
 # event.cron field.
 [triggers]
-crons = ["*/5 * * * *", "0 */3 * * *"]
+crons = ["* * * * *", "0 */3 * * *"]
 
 # Workers AI binding for the news rewriter (Llama 3.1 8B Instruct, free
 # tier ~10k req/day). Used by src/news.ts to paraphrase + add original
