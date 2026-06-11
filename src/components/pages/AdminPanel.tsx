@@ -1173,6 +1173,9 @@ interface PushSettingsShape {
   goal: { enabled: boolean }
   fullTime: { enabled: boolean }
   redCard: { enabled: boolean }
+  yellowCard: { enabled: boolean }
+  penalty: { enabled: boolean }
+  halfTime: { enabled: boolean }
 }
 
 interface PushDiagShape {
@@ -1181,6 +1184,9 @@ interface PushDiagShape {
   lastKickoffScheduledIds: string[]
   lastGoalAlertIds: string[]
   lastFtAlertIds: string[]
+  lastCardAlertIds: string[]
+  lastPenaltyAlertIds: string[]
+  lastHalfTimeAlertIds: string[]
   lastSubsCount: number
   settings: PushSettingsShape
 }
@@ -1288,13 +1294,42 @@ function AutoPushSettingsSection() {
 
       <div className="border-t border-slate-200 my-4" />
 
-      {/* Red card — stub, ESPN feed parser doesn't expose card events yet */}
       <ToggleRow
         label="🟥 Red card alerts"
-        sub="Not yet wired — ESPN's scoreboard endpoint doesn't expose card events. Will hook into the box-score endpoint in a later pass."
+        sub="Fired when ESPN reports type id 93 in the match details. Player name + minute included."
         checked={settings.redCard.enabled}
         onChange={(v) => setSettings({ ...settings, redCard: { enabled: v } })}
-        disabled={true}
+        disabled={!settings.enabled}
+      />
+
+      <div className="border-t border-slate-200 my-4" />
+
+      <ToggleRow
+        label="🟨 Yellow card alerts"
+        sub="High-volume — typical match has 4-8 bookings. Off by default; enable for full FootMercato-style coverage."
+        checked={settings.yellowCard.enabled}
+        onChange={(v) => setSettings({ ...settings, yellowCard: { enabled: v } })}
+        disabled={!settings.enabled}
+      />
+
+      <div className="border-t border-slate-200 my-4" />
+
+      <ToggleRow
+        label="🎯 Penalty alerts"
+        sub="Fires when a penalty is awarded (ESPN type id 95 or text 'penalty'). VAR overturns + offside/disallowed are skipped."
+        checked={settings.penalty.enabled}
+        onChange={(v) => setSettings({ ...settings, penalty: { enabled: v } })}
+        disabled={!settings.enabled}
+      />
+
+      <div className="border-t border-slate-200 my-4" />
+
+      <ToggleRow
+        label="⏱ Half-time alerts"
+        sub="Fired when a match transitions to second-half (period 2). One per match with current score."
+        checked={settings.halfTime.enabled}
+        onChange={(v) => setSettings({ ...settings, halfTime: { enabled: v } })}
+        disabled={!settings.enabled}
       />
 
       <div className="mt-5 flex items-center gap-3">
@@ -1330,7 +1365,8 @@ function AutoPushSettingsSection() {
             <div>· Kickoffs scheduled this tick: <span className="text-slate-900">{diag.lastKickoffScheduledIds.length}</span> {diag.lastKickoffScheduledIds.length > 0 ? '(' + diag.lastKickoffScheduledIds.slice(0, 3).join(', ') + (diag.lastKickoffScheduledIds.length > 3 ? '…' : '') + ')' : ''}</div>
             <div>· Goal alerts fired: <span className="text-slate-900">{diag.lastGoalAlertIds.length}</span></div>
             <div>· FT alerts fired: <span className="text-slate-900">{diag.lastFtAlertIds.length}</span></div>
-            <div>· Settings applied: enabled={String(diag.settings.enabled)}, kickoff={String(diag.settings.kickoff.enabled)} (T-{diag.settings.kickoff.leadMinutes}m), goal={String(diag.settings.goal.enabled)}, ft={String(diag.settings.fullTime.enabled)}</div>
+            <div>· Card alerts fired: <span className="text-slate-900">{diag.lastCardAlertIds.length}</span> · Penalty: <span className="text-slate-900">{diag.lastPenaltyAlertIds.length}</span> · HT: <span className="text-slate-900">{diag.lastHalfTimeAlertIds.length}</span></div>
+            <div>· Settings: enabled={String(diag.settings.enabled)}, ko={String(diag.settings.kickoff.enabled)}@T-{diag.settings.kickoff.leadMinutes}m, goal={String(diag.settings.goal.enabled)}, ft={String(diag.settings.fullTime.enabled)}, rc={String(diag.settings.redCard.enabled)}, yc={String(diag.settings.yellowCard.enabled)}, pen={String(diag.settings.penalty.enabled)}, ht={String(diag.settings.halfTime.enabled)}</div>
           </div>
         )}
       </div>

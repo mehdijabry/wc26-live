@@ -350,20 +350,21 @@ function Interstitial({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      {/* Six-ad stack. NativeBanner zones + standard banners + SocialBar
-          zones. Each AdsterraZone mount is an isolated iframe so two
-          copies of the same script can co-exist without dedup. */}
+      {/* Ad stack — 2× the most reliable format (728x90 banners,
+          highest fill on this account based on the inventory test) +
+          one each of 300x250, NativeBanner. Total: 4 slots.
+          SocialBar was dropped from the modal because the zone script
+          is designed to attach floating to the host window, not render
+          inside an iframe — every embedded copy reported empty fill. */}
       <div className="max-w-xl mx-auto px-4 py-4 space-y-3">
         <div className="text-center font-display font-bold text-lg text-slate-900 mb-1">
           Continuing to your article…
         </div>
 
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.native}    variant="native" />
+        <AdsterraZone zoneKey={ADSTERRA_ZONES.banner728} variant="banner-728x90" />
         <AdsterraZone zoneKey={ADSTERRA_ZONES.banner300} variant="banner-300x250" />
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.socialBar} variant="socialBar" />
         <AdsterraZone zoneKey={ADSTERRA_ZONES.native}    variant="native" />
         <AdsterraZone zoneKey={ADSTERRA_ZONES.banner728} variant="banner-728x90" />
-        <AdsterraZone zoneKey={ADSTERRA_ZONES.socialBar} variant="socialBar" />
       </div>
     </motion.div>
   )

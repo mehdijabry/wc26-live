@@ -347,7 +347,10 @@ export interface PushSettings {
   kickoff: { enabled: boolean; leadMinutes: number }  // T-15 by default
   goal: { enabled: boolean }
   fullTime: { enabled: boolean }
-  redCard: { enabled: boolean }                       // stub for future
+  redCard: { enabled: boolean }
+  yellowCard: { enabled: boolean }
+  penalty: { enabled: boolean }
+  halfTime: { enabled: boolean }
 }
 
 export const DEFAULT_PUSH_SETTINGS: PushSettings = {
@@ -355,7 +358,10 @@ export const DEFAULT_PUSH_SETTINGS: PushSettings = {
   kickoff: { enabled: true, leadMinutes: 15 },
   goal: { enabled: true },
   fullTime: { enabled: true },
-  redCard: { enabled: false },
+  redCard: { enabled: true },
+  yellowCard: { enabled: false },  // off by default — high volume
+  penalty: { enabled: true },
+  halfTime: { enabled: true },
 }
 
 const PUSH_SETTINGS_KEY = 'push:settings'
@@ -387,6 +393,9 @@ export async function savePushSettings(env: Env, s: PushSettings): Promise<void>
     goal: { enabled: !!s.goal.enabled },
     fullTime: { enabled: !!s.fullTime.enabled },
     redCard: { enabled: !!s.redCard.enabled },
+    yellowCard: { enabled: !!s.yellowCard.enabled },
+    penalty: { enabled: !!s.penalty.enabled },
+    halfTime: { enabled: !!s.halfTime.enabled },
   }
   await env.CACHE.put(PUSH_SETTINGS_KEY, JSON.stringify(sanitized))
 }
@@ -400,6 +409,9 @@ export interface PushDiag {
   lastKickoffScheduledIds: string[]   // ids put into the DO this tick
   lastGoalAlertIds: string[]
   lastFtAlertIds: string[]
+  lastCardAlertIds: string[]
+  lastPenaltyAlertIds: string[]
+  lastHalfTimeAlertIds: string[]
   lastSubsCount: number
   settings: PushSettings
 }
@@ -435,6 +447,9 @@ async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Prom
     lastKickoffScheduledIds: [],
     lastGoalAlertIds: [],
     lastFtAlertIds: [],
+    lastCardAlertIds: [],
+    lastPenaltyAlertIds: [],
+    lastHalfTimeAlertIds: [],
     lastSubsCount: 0,
     settings,
   }
@@ -504,12 +519,138 @@ async function fireMatchAlerts(env: Env, events: EspnScoreboard['events']): Prom
   for (const ev of events ?? []) {
     try {
       await maybeFireGoalOrFt(env, ev, settings, diag)
+      await maybeFireMatchEvents(env, ev, settings, diag)
     } catch (e) {
-      console.log('[push] goal/FT alert failed', ev.id, e)
+      console.log('[push] event alert failed', ev.id, e)
     }
   }
 
   await writePushDiag(env, diag)
+}
+
+/**
+ * Inspect competitions[0].details for card / penalty / halftime events
+ * and broadcast each new one once. Inspired by FootMercato's push UX —
+ * notify on the moments that change a match's narrative (a red card, a
+ * penalty awarded, halftime whistle). KV-deduped so the same event
+ * isn't re-broadcast on every cron tick.
+ *
+ * ESPN type ids (verified from /all/scoreboard finished matches):
+ *   - 70  Goal             — already handled via score increment
+ *   - 91  Substitution     — skipped (too noisy for push)
+ *   - 93  Red Card
+ *   - 94  Yellow Card
+ *   - 95  Penalty awarded
+ *   - 156 VAR              — skipped (most are no-ops)
+ *
+ * The detail clock.displayValue + the player's displayName + the type
+ * text combine into a stable dedupe key so even if a detail's array
+ * position shifts, we don't re-fire.
+ */
+async function maybeFireMatchEvents(
+  env: Env,
+  ev: NonNullable<EspnScoreboard['events']>[number],
+  settings: PushSettings,
+  diag: PushDiag,
+): Promise<void> {
+  const id = String(ev.id ?? '')
+  if (!id) return
+  const comp = ev.competitions?.[0]
+  if (!comp) return
+  const home = comp.competitors?.find((c) => c.homeAway === 'home')
+  const away = comp.competitors?.find((c) => c.homeAway === 'away')
+  if (!home || !away) return
+  const homeName = home.team?.shortDisplayName ?? home.team?.displayName ?? '?'
+  const awayName = away.team?.shortDisplayName ?? away.team?.displayName ?? '?'
+  const matchLabel = `${homeName} v ${awayName}`
+
+  const details = (comp as { details?: Array<{
+    type?: { id?: string; text?: string }
+    clock?: { displayValue?: string }
+    athletesInvolved?: Array<{ displayName?: string }>
+    team?: { id?: string }
+  }> }).details ?? []
+
+  // Halftime fires on state transitions reported by ESPN — track via
+  // the period number flipping to 2.
+  const period = ev.status?.period
+  const state = ev.status?.type?.state
+  if (settings.halfTime.enabled && state === 'in' && period === 2) {
+    const htKey = `alert:ht:${id}`
+    if (!(await env.CACHE.get(htKey))) {
+      const hs = parseInt(home.score ?? '0', 10) || 0
+      const as = parseInt(away.score ?? '0', 10) || 0
+      await broadcastCore(env, {
+        title: `⏱ HT — ${homeName} ${hs}-${as} ${awayName}`,
+        body: `Half-time. Second half coming up.`,
+        url: '/today',
+        tag: `ht-${id}`,
+      })
+      diag.lastHalfTimeAlertIds.push(id)
+      await env.CACHE.put(htKey, '1', { expirationTtl: KV_TTL_SECONDS })
+    }
+  }
+
+  for (const det of details) {
+    const typeId = det.type?.id
+    const typeText = det.type?.text ?? ''
+    const minute = det.clock?.displayValue ?? ''
+    const player = det.athletesInvolved?.[0]?.displayName ?? ''
+
+    let notif: { title: string; body: string; url: string; tag: string } | null = null
+    let dedupeKind = ''
+
+    if (typeId === '93' && settings.redCard.enabled) {
+      dedupeKind = 'rc'
+      notif = {
+        title: `🟥 ${matchLabel} · Red card`,
+        body: player ? `${player} sent off${minute ? ' at ' + minute : ''}.` : `Red card${minute ? ' at ' + minute : ''}.`,
+        url: '/today',
+        tag: `event-${id}-rc`,
+      }
+    } else if (typeId === '94' && settings.yellowCard.enabled) {
+      dedupeKind = 'yc'
+      notif = {
+        title: `🟨 ${matchLabel} · Yellow card`,
+        body: player ? `${player} booked${minute ? ' at ' + minute : ''}.` : `Yellow card${minute ? ' at ' + minute : ''}.`,
+        url: '/today',
+        tag: `event-${id}-yc`,
+      }
+    } else if (typeId === '95' && settings.penalty.enabled) {
+      dedupeKind = 'pen'
+      notif = {
+        title: `🎯 ${matchLabel} · Penalty`,
+        body: player ? `${player} — penalty${minute ? ' at ' + minute : ''}.` : `Penalty awarded${minute ? ' at ' + minute : ''}.`,
+        url: '/today',
+        tag: `event-${id}-pen`,
+      }
+    } else if (typeId && typeText.toLowerCase().includes('var') === false &&
+               /(disallowed|chance|offside)/i.test(typeText) === false &&
+               settings.penalty.enabled && /penalty/i.test(typeText)) {
+      // Catch text-only 'penalty' events ESPN emits without a clean
+      // type id (rare but happens around VAR overturns).
+      dedupeKind = 'pen-text'
+      notif = {
+        title: `🎯 ${matchLabel} · ${typeText}`,
+        body: player ? `${player}${minute ? ' at ' + minute : ''}.` : `Penalty event${minute ? ' at ' + minute : ''}.`,
+        url: '/today',
+        tag: `event-${id}-pen`,
+      }
+    }
+
+    if (!notif || !dedupeKind) continue
+    // Dedupe key per event detail — stable across cron ticks even if
+    // the details array order changes between polls.
+    const dedupeKey = `alert:event:${id}:${dedupeKind}:${minute}:${player}`
+    if (await env.CACHE.get(dedupeKey)) continue
+    await broadcastCore(env, notif)
+    await env.CACHE.put(dedupeKey, '1', { expirationTtl: KV_TTL_SECONDS })
+    if (dedupeKind === 'pen' || dedupeKind === 'pen-text') {
+      diag.lastPenaltyAlertIds.push(id)
+    } else {
+      diag.lastCardAlertIds.push(id)
+    }
+  }
 }
 
 /**
@@ -617,12 +758,22 @@ interface EspnScoreboard {
   events?: Array<{
     id: string
     date?: string
-    status?: { type?: { state?: 'pre' | 'in' | 'post' } }
+    status?: {
+      type?: { state?: 'pre' | 'in' | 'post' }
+      period?: number               // 1 = first half, 2 = second half
+      displayClock?: string         // "45'", "67:23", etc.
+    }
     competitions?: Array<{
       competitors?: Array<{
         homeAway: 'home' | 'away'
         score?: string
         team?: { abbreviation?: string }
+      }>
+      details?: Array<{
+        type?: { id?: string; text?: string }
+        clock?: { displayValue?: string }
+        athletesInvolved?: Array<{ displayName?: string }>
+        team?: { id?: string }
       }>
     }>
   }>

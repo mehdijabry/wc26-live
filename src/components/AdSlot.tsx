@@ -289,23 +289,25 @@ export function AdsterraZone({
     return <AdSlot zoneKey={zoneKey} format={variant} className={className} />
   }
 
-  // NativeBanner + SocialBar both inject DOM at runtime. We embed each
-  // in its own iframe so two instances can co-exist on the same page —
-  // their scripts would otherwise dedupe against a shared global.
+  // NativeBanner uses the same INVOKE_DOMAIN as the standard banners
+  // (turbulentrefreshments.com) — the earlier 'profitableratecpm' host
+  // was wrong and caused empty slots. SocialBar's script URL uses a
+  // hash-prefixed path (first 6 hex of the key as 3 groups of 2),
+  // hosted on the same domain. Building it from the zoneKey makes the
+  // function reusable when more SocialBar zones are provisioned.
   const minH = height ?? (variant === 'native' ? 280 : 90)
-  // SocialBar's script URL pattern differs from the standard invoke.js
-  // host. Hard-code both forms here.
+  const prefix = `${zoneKey.slice(0, 2)}/${zoneKey.slice(2, 4)}/${zoneKey.slice(4, 6)}`
   const scriptSrc =
     variant === 'socialBar'
-      ? `https://turbulentrefreshments.com/78/9c/e9/${zoneKey}.js`
-      : `https://www.profitableratecpm.com/${zoneKey}/invoke.js`
+      ? `${INVOKE_DOMAIN}/${prefix}/${zoneKey}.js`
+      : `${INVOKE_DOMAIN}/${zoneKey}/invoke.js`
   const html = `<!doctype html><html><head><meta charset="utf-8">
 <style>
   body{margin:0;font-family:system-ui,-apple-system,sans-serif;color:#0f172a;background:transparent;overflow:hidden}
   *{box-sizing:border-box}
 </style></head><body>
   <div id="container-${zoneKey}"></div>
-  <script src="${scriptSrc}" async></script>
+  <script async data-cfasync="false" src="${scriptSrc}"></script>
 </body></html>`
   return (
     <div className={'mx-auto flex flex-col items-center my-3 ' + (className ?? '')}>
@@ -317,7 +319,7 @@ export function AdsterraZone({
         title="Sponsored"
         scrolling="no"
         style={{ width: '100%', maxWidth: 480, minHeight: minH, border: 0, background: 'transparent' }}
-        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+        sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-forms"
       />
     </div>
   )
