@@ -113,7 +113,7 @@ export function NewsListPage() {
       <div className="space-y-5">
         {items?.map((a, i) => (
           <Fragment key={a.id}>
-            <ArticleCard article={a} featured={i === 0} />
+            <ArticleCard article={a} />
             {/* Mid-list ad after the 3rd card — one impression per 50
                 articles, doesn't drown the feed. */}
             {i === 2 && items.length > 4 && <Ad slot="news-list-mid" className="my-2" />}
@@ -124,7 +124,7 @@ export function NewsListPage() {
   )
 }
 
-function ArticleCard({ article, featured }: { article: Article; featured: boolean }) {
+function ArticleCard({ article }: { article: Article }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
@@ -133,17 +133,14 @@ function ArticleCard({ article, featured }: { article: Article; featured: boolea
     >
       <Link
         to={`/news/${article.slug}`}
-        className={
-          'block group rounded-2xl overflow-hidden border border-slate-200 bg-white hover:shadow-lg hover:border-accent-gold/40 transition-all ' +
-          (featured ? 'md:flex md:gap-0' : 'md:flex md:gap-0')
-        }
+        className="block group rounded-2xl overflow-hidden border border-slate-200 bg-white hover:shadow-lg hover:border-accent-gold/40 transition-all md:flex md:gap-0"
       >
         {/* The hero image only renders if we have a real URL. No
             placeholder — user wants the actual article photo every
             time. The worker fetches og:image at produce time so this
             should be populated for every new article. */}
         {article.image_url && (
-          <div className={featured ? 'md:w-2/5 aspect-video md:aspect-auto bg-slate-100 flex-shrink-0' : 'md:w-48 aspect-video md:aspect-auto md:flex-shrink-0 bg-slate-100'}>
+          <div className="md:w-48 aspect-video md:aspect-auto md:flex-shrink-0 bg-slate-100">
             <img
               src={article.image_url}
               alt={article.title}
@@ -162,10 +159,7 @@ function ArticleCard({ article, featured }: { article: Article; featured: boolea
               · {formatDate(article.published_at ?? article.created_at)}
             </span>
           </div>
-          <h2 className={
-            'font-display font-bold text-slate-900 leading-tight mb-2 group-hover:text-accent-gold transition-colors ' +
-            (featured ? 'text-xl sm:text-2xl' : 'text-base sm:text-lg')
-          }>
+          <h2 className="font-display font-bold text-slate-900 leading-tight mb-2 group-hover:text-accent-gold transition-colors text-base sm:text-lg">
             {article.title}
           </h2>
           {article.excerpt && (
@@ -360,20 +354,10 @@ function Interstitial({ onClose }: { onClose: () => void }) {
         onClick={firePopunderOnce}
         className="relative w-full max-w-sm rounded-2xl bg-white shadow-2xl border border-slate-200 p-6"
       >
-        {/* Close (×) — grey until 5s elapsed, then dark + clickable. */}
-        <button
-          onClick={(e) => { e.stopPropagation(); if (unlocked) onClose() }}
-          disabled={!unlocked}
-          aria-label={unlocked ? 'Close' : `Close available in ${secsLeft}s`}
-          className={
-            'absolute top-2.5 right-2.5 w-8 h-8 rounded-full flex items-center justify-center font-mono text-xs transition-colors ' +
-            (unlocked
-              ? 'bg-ink-900 text-white hover:bg-slate-700 cursor-pointer'
-              : 'bg-slate-200 text-slate-400 cursor-not-allowed')
-          }
-        >
-          {unlocked ? '✕' : secsLeft}
-        </button>
+        {/* No close (×) button — the only exit is the Continue CTA so
+            the Smartlink popunder is guaranteed to fire. The 5s gate
+            still keeps the CTA disabled at first so an accidental
+            tap doesn't bypass the impression. */}
 
         <div className="text-[10px] uppercase tracking-widest font-mono text-accent-gold mb-3">
           Pressing 90′ · sponsored break
