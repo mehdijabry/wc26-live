@@ -207,19 +207,34 @@ function ArticleCard({ article }: { article: Article }) {
 export function NewsArticlePage() {
   const { slug } = useParams<{ slug: string }>()
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
-  // Throttle the gate to once per 5 minutes per visitor. After the
-  // first article open fires the Smartlink, subsequent article
-  // navigations during the cooldown skip the gate so the user can
-  // hop between briefings freely. The timestamp lives in localStorage
-  // so it's shared across tabs — a power-reader with 3 open articles
-  // doesn't get hammered with a modal on every back-and-forth.
-  const [showInterstitial, setShowInterstitial] = useState(() => shouldShowInterstitial())
+  // Throttle the gate to once per 5 minutes per visitor (localStorage,
+  // cross-tab). EXCEPT when '?ad=ok' is on the URL — that means this
+  // tab is the foreground of a popunder swap (firePopunderOnce opened
+  // us in a new tab + redirected the original tab to the Smartlink).
+  // Re-firing the gate here would re-pop another tab and chain into
+  // an infinite loop. Marker is consumed once + scrubbed below.
+  const [showInterstitial, setShowInterstitial] = useState(() => {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('ad') === 'ok') return false  // popunder-swap target — skip
+    return shouldShowInterstitial()
+  })
 
   useEffect(() => {
     if (!slug || !supabase) return
-    const show = shouldShowInterstitial()
-    setShowInterstitial(show)
-    if (show) markInterstitialShown()
+    // Marker-skip takes priority over the 5-min throttle.
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('ad') === 'ok') {
+      setShowInterstitial(false)
+      params.delete('ad')
+      const qs = params.toString()
+      const clean = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash
+      window.history.replaceState({}, '', clean)
+    } else {
+      const show = shouldShowInterstitial()
+      setShowInterstitial(show)
+      if (show) markInterstitialShown()
+    }
     void supabase
       .from('articles')
       .select(SELECT)
@@ -342,27 +357,41 @@ function Interstitial({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
-  // Open the Smartlink in a new tab. The earlier 'classic popunder
-  // swap' attempt (open article in new tab, redirect current tab to
-  // Smartlink) failed in Chrome — the background location.replace was
-  // silently dropped, leaving BOTH tabs on the article and no
-  // impression fired. That's Chrome's anti-popunder heuristic;
-  // there's no way around it without an Adsterra-provided popunder
-  // script.
-  //
-  // Net result of the simple approach: focus briefly shifts to the
-  // new Smartlink tab (Adsterra picks an offer + redirects), but the
-  // user's original tab keeps the article exactly as it was. They can
-  // hop back at any time. Impression counts.
+  // Classic popunder swap (take 2). Earlier attempt failed because
+  // window.location.replace fired synchronously inside the same click
+  // tick as window.open — Chrome's anti-popunder heuristic dropped
+  // the background navigation. This version:
+  //   1. window.open OUR article URL + '?ad=ok' marker in a new tab.
+  //      Marker tells the new tab's NewsArticlePage mount to skip the
+  //      gate (set further down in this file).
+  //   2. Defer the navigation away from THIS tab via Promise resolve
+  //      so it lands on a fresh microtask AFTER the new tab is fully
+  //      created. Using location.href = URL (not .replace) — same
+  //      browser path as a user link click, less likely to be flagged
+  //      as a popunder heuristic match.
+  //   3. Visitor's foreground = article (no gate, clean URL).
+  //      Background tab = Smartlink (impression fires).
   function firePopunderOnce() {
     if (popunderFired) return
     setPopunderFired(true)
     try {
-      const ad = window.open(ADSTERRA_SMARTLINK_URL, '_blank', 'noopener')
-      // Best-effort 'send focus back' — most browsers ignore but it
-      // costs us nothing.
-      try { ad?.blur() } catch {}
-      try { window.focus() } catch {}
+      const u = new URL(window.location.href)
+      u.searchParams.set('ad', 'ok')
+      const articleUrlWithMarker = u.toString()
+      const newTab = window.open(articleUrlWithMarker, '_blank')
+      if (newTab) {
+        // Defer the navigation to the next microtask. The new tab is
+        // already opened and focused by then; the browser sees this
+        // as a deferred navigation initiated by the same user gesture
+        // rather than an instant background swap.
+        Promise.resolve().then(() => {
+          try { window.location.href = ADSTERRA_SMARTLINK_URL } catch {}
+        })
+        return
+      }
+      // Popup blocked — open Smartlink directly so the impression
+      // still fires. Our article stays visible.
+      window.open(ADSTERRA_SMARTLINK_URL, '_blank', 'noopener')
     } catch {
       // Defensive: never throw — silently fall through so the modal
       // still closes cleanly.
