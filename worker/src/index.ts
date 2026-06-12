@@ -675,7 +675,7 @@ async function maybeFireMatchEvents(
         body: player ? `${player} sent off${minute ? ' at ' + minute : ''}.` : `Red card${minute ? ' at ' + minute : ''}.`,
         url: '/today',
         tag: `event-${id}-rc`,
-        icon: '/notif-icons/referee-red-card.svg',
+        icon: '/notif-icons/referee-red-card.png',
       }
     } else if (typeId === '94' && settings.yellowCard.enabled) {
       dedupeKind = 'yc'
@@ -684,7 +684,7 @@ async function maybeFireMatchEvents(
         body: player ? `${player} booked${minute ? ' at ' + minute : ''}.` : `Yellow card${minute ? ' at ' + minute : ''}.`,
         url: '/today',
         tag: `event-${id}-yc`,
-        icon: '/notif-icons/referee-yellow-card.svg',
+        icon: '/notif-icons/referee-yellow-card.png',
       }
     } else if (typeId === '95' && settings.penalty.enabled) {
       dedupeKind = 'pen'
