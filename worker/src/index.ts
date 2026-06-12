@@ -1955,6 +1955,46 @@ export class KickoffScheduler {
         headers: { 'content-type': 'application/json' },
       })
     }
+    if (url.pathname === '/cancel' && req.method === 'POST') {
+      // Remove a single queued alert by id. Re-arms the alarm to the
+      // earliest remaining fireAt, or clears it entirely if empty.
+      const body = (await req.json().catch(() => ({}))) as { id?: string }
+      if (!body.id) return new Response('id required', { status: 400 })
+      const queue = (await this.state.storage.get<ScheduledPush[]>('queue')) ?? []
+      const filtered = queue.filter((i) => i.id !== body.id)
+      const removed = queue.length - filtered.length
+      await this.state.storage.put('queue', filtered)
+      if (filtered.length > 0) await this.state.storage.setAlarm(filtered[0].fireAt)
+      else await this.state.storage.deleteAlarm()
+      return new Response(JSON.stringify({ ok: true, removed, total: filtered.length }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
+    if (url.pathname === '/reschedule' && req.method === 'POST') {
+      // Shift a queued alert by ±N minutes. Useful when ESPN moves a
+      // kickoff time and the original sentinel-protected schedule is
+      // now stale (kickoff delayed for weather, etc.).
+      const body = (await req.json().catch(() => ({}))) as { id?: string; newFireAt?: number; deltaMinutes?: number }
+      if (!body.id) return new Response('id required', { status: 400 })
+      const queue = (await this.state.storage.get<ScheduledPush[]>('queue')) ?? []
+      const idx = queue.findIndex((i) => i.id === body.id)
+      if (idx < 0) return new Response(JSON.stringify({ ok: false, error: 'not found' }), { status: 404, headers: { 'content-type': 'application/json' } })
+      const item = queue[idx]
+      const next: ScheduledPush = {
+        ...item,
+        fireAt:
+          typeof body.newFireAt === 'number'
+            ? body.newFireAt
+            : item.fireAt + (body.deltaMinutes ?? 0) * 60_000,
+      }
+      queue[idx] = next
+      queue.sort((a, b) => a.fireAt - b.fireAt)
+      await this.state.storage.put('queue', queue)
+      await this.state.storage.setAlarm(queue[0].fireAt)
+      return new Response(JSON.stringify({ ok: true, id: next.id, fireAt: next.fireAt }), {
+        headers: { 'content-type': 'application/json' },
+      })
+    }
     return new Response('not found', { status: 404 })
   }
 

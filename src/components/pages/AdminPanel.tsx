@@ -461,19 +461,107 @@ function Analytics() {
 
 // ─── Section: Push ─────────────────────────────────────────────────
 
+// All notifications share the same shape so they look uniform to the
+// reader: a single emoji prefix, a short headline, one-sentence body,
+// and an in-app deep-link URL. The presets fill these fields for the
+// operator instead of typing free-form text every time.
+type PresetKind = 'custom' | 'match' | 'article' | 'section' | 'test'
+
+type PresetArticle = { id: string; slug: string; title: string; excerpt: string | null; published_at: string | null }
+type PresetMatch = { id: string; date: string; home: string; away: string; homeAbbr: string | null; awayAbbr: string | null; venue: string | null }
+type PresetSection = { path: string; label: string; emoji: string }
+
+const SECTIONS: PresetSection[] = [
+  { path: '/today',       label: 'Today',                emoji: '⚽' },
+  { path: '/wc26',        label: 'WC26 hub',             emoji: '🏆' },
+  { path: '/predictions', label: 'Predictions / bracket', emoji: '🔮' },
+  { path: '/board',       label: 'Leaderboard',          emoji: '📊' },
+  { path: '/news',        label: 'News',                 emoji: '📰' },
+  { path: '/stadiums',    label: 'Stadiums',             emoji: '🏟' },
+]
+
+// Format a kickoff time as 'Sat 14 Jun, 18:00' in the operator's locale,
+// short enough to fit in a push body line.
+function formatKickoff(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }) +
+    ', ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false })
+}
+
 function Push() {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
   const [url, setUrl] = useState('/today')
   const [tag, setTag] = useState('')
+  const [preset, setPreset] = useState<PresetKind>('custom')
   const [subs, setSubs] = useState<Array<{ provider: string; tail: string; fullEndpoint: string; ua?: string | null; lang?: string | null; created_at?: string | null }>>([])
   const [selectedEndpoint, setSelectedEndpoint] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Preset data, lazily loaded the first time the operator picks a preset.
+  const [matches, setMatches] = useState<PresetMatch[] | null>(null)
+  const [articles, setArticles] = useState<PresetArticle[] | null>(null)
 
   useEffect(() => {
     void adminGet('/admin/subscriptions').then((d) => setSubs((d as { rows: typeof subs }).rows ?? []))
   }, [])
+
+  function clearForm() {
+    setTitle('')
+    setBody('')
+    setUrl('/today')
+    setTag('')
+  }
+
+  async function onPickPreset(kind: PresetKind) {
+    setPreset(kind)
+    setStatus(null)
+    if (kind === 'custom') {
+      clearForm()
+      return
+    }
+    if (kind === 'test') {
+      setTitle('🧪 Push test')
+      setBody('If you see this notification, delivery is working as expected.')
+      setUrl('/')
+      setTag('test')
+      return
+    }
+    if (kind === 'match' && !matches) {
+      try { setMatches(((await adminGet('/admin/push/preset/matches')) as { matches?: PresetMatch[] }).matches ?? []) } catch { setMatches([]) }
+    }
+    if (kind === 'article' && !articles) {
+      try { setArticles(((await adminGet('/admin/push/preset/articles')) as { articles?: PresetArticle[] }).articles ?? []) } catch { setArticles([]) }
+    }
+    if (kind === 'section') {
+      // Pre-fill with the Today section by default — most common deep link.
+      applySectionPreset(SECTIONS[0])
+    }
+  }
+
+  function applyMatchPreset(m: PresetMatch) {
+    setTitle(`⚽ ${m.home} vs ${m.away}`)
+    setBody(`Kick-off ${formatKickoff(m.date)} · Tap to follow live.`)
+    setUrl('/today')
+    setTag(`match-upcoming-${m.id}`)
+  }
+
+  function applyArticlePreset(a: PresetArticle) {
+    const t = (a.title || '').slice(0, 90)
+    const ex = (a.excerpt || '').slice(0, 140) || 'New article on Pressing 90.'
+    setTitle(`📰 ${t}`)
+    setBody(ex)
+    setUrl(`/news/${a.slug}`)
+    setTag(`article-${a.slug}`)
+  }
+
+  function applySectionPreset(s: PresetSection) {
+    setTitle(`${s.emoji} Pressing 90' · ${s.label}`)
+    setBody(`Open ${s.label.toLowerCase()} in the app.`)
+    setUrl(s.path)
+    setTag(`section-${s.path.replace(/\//g, '')}`)
+  }
 
   async function broadcast() {
     if (!title || !body) { setStatus('title + body required'); return }
@@ -504,12 +592,102 @@ function Push() {
     }
   }
 
+  // Live preview matches the actual SW notification rendering — emoji
+  // prefix in title, body wrapped to two lines max, deep-link URL
+  // shown as a footer pill. Lets the operator catch overflow before
+  // hitting Broadcast.
+  const previewActive = !!(title || body)
+
   return (
     <>
       <AutoPushSettingsSection />
-      <Section title="Compose notification" eyebrow="Push">
+
+      <ScheduledAlertsSection />
+
+      <Section title="Compose notification" eyebrow="Broadcast">
+        {/* Preset picker — pick a recipe first, then fine-tune. */}
+        <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">Preset</div>
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {(['custom','match','article','section','test'] as PresetKind[]).map((k) => (
+            <button
+              key={k}
+              onClick={() => onPickPreset(k)}
+              className={
+                'px-3 py-1.5 rounded-full text-[11px] font-mono uppercase tracking-widest transition-colors ' +
+                (preset === k
+                  ? 'bg-ink-900 text-white font-semibold'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+              }
+              style={preset === k ? { color: '#ffffff' } : undefined}
+            >
+              {k === 'custom' ? '✎ custom'
+                : k === 'match' ? '⚽ match'
+                : k === 'article' ? '📰 article'
+                : k === 'section' ? '🔗 section'
+                : '🧪 test'}
+            </button>
+          ))}
+        </div>
+
+        {/* Preset-specific picker */}
+        {preset === 'match' && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+              Upcoming match {matches ? `· ${matches.length} options` : '· loading…'}
+            </div>
+            <select
+              onChange={(e) => { const m = matches?.find((x) => x.id === e.target.value); if (m) applyMatchPreset(m) }}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-sm"
+              defaultValue=""
+            >
+              <option value="" disabled>— pick a match —</option>
+              {(matches ?? []).map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.home} v {m.away} · {formatKickoff(m.date)}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {preset === 'article' && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+              Published article {articles ? `· ${articles.length} options` : '· loading…'}
+            </div>
+            <select
+              onChange={(e) => { const a = articles?.find((x) => x.id === e.target.value); if (a) applyArticlePreset(a) }}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white font-mono text-sm"
+              defaultValue=""
+            >
+              <option value="" disabled>— pick an article —</option>
+              {(articles ?? []).map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.title.slice(0, 60)}{a.title.length > 60 ? '…' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+        {preset === 'section' && (
+          <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">App section</div>
+            <div className="flex flex-wrap gap-1.5">
+              {SECTIONS.map((s) => (
+                <button
+                  key={s.path}
+                  onClick={() => applySectionPreset(s)}
+                  className="px-3 py-1.5 rounded-full text-xs font-mono bg-white border border-slate-200 hover:bg-slate-100"
+                >
+                  {s.emoji} {s.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Editable fields — same for every preset, pre-filled by the picker above. */}
         <div className="grid sm:grid-cols-2 gap-3">
-          <InputField label="Title" value={title} onChange={setTitle} placeholder="🇲🇦 Maroc 1-0 vs Brésil" />
+          <InputField label="Title" value={title} onChange={setTitle} placeholder="⚽ Morocco vs Spain" />
           <InputField label="URL (relative)" value={url} onChange={setUrl} placeholder="/today" />
         </div>
         <div className="mt-3">
@@ -517,23 +695,40 @@ function Push() {
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="Coup d'envoi dans 15 min — sam. 13 juin, 18:00"
+            placeholder="Kick-off in 15 min — tap to follow live."
             className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-accent-gold/40 font-mono text-sm h-20"
           />
         </div>
-        <InputField label="Tag (optional, groups notifications)" value={tag} onChange={setTag} placeholder="kickoff" />
+        <InputField label="Tag (groups notifications)" value={tag} onChange={setTag} placeholder="kickoff" />
+
+        {/* Live preview — matches the SW notification shape. */}
+        {previewActive && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-1.5">Preview</div>
+            <div className="flex items-start gap-3">
+              <img src="/icon-192.png" alt="" className="w-9 h-9 rounded-lg shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="font-display font-bold text-sm text-ink-900 truncate">{title || 'Title…'}</div>
+                <div className="text-xs text-slate-700 mt-0.5 line-clamp-2">{body || 'Body…'}</div>
+                <div className="text-[10px] text-slate-400 font-mono mt-1.5">→ {url}{tag ? ` · #${tag}` : ''}</div>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 flex gap-3 flex-wrap">
-          <button onClick={broadcast} disabled={busy} className="px-5 py-2 rounded-full bg-accent-red text-white font-semibold text-sm hover:bg-red-600 disabled:opacity-40">
+          <button
+            onClick={broadcast}
+            disabled={busy}
+            className="px-5 py-2.5 rounded-full bg-accent-red font-semibold text-sm hover:bg-red-600 disabled:opacity-40"
+            style={{ color: '#ffffff' }}
+          >
             Broadcast to everyone
           </button>
           <button
             onClick={sendSingle}
             disabled={busy || !selectedEndpoint}
-            className="px-5 py-2 rounded-full bg-ink-900 font-semibold text-sm hover:bg-ink-800 disabled:opacity-40"
-            // Inline color fallback — same Safari + backdrop-filter issue
-            // that bit the active tab pill and the range selector.
-            // text-cream / text-white classes don't always inherit when an
-            // ancestor applies blur, so we set the color explicitly.
+            className="px-5 py-2.5 rounded-full bg-ink-900 font-semibold text-sm hover:bg-ink-800 disabled:opacity-40"
             style={{ color: '#ffffff' }}
           >
             Send to selected user
@@ -566,6 +761,138 @@ function Push() {
         )}
       </Section>
     </>
+  )
+}
+
+// ─── Scheduled alerts widget ───────────────────────────────────────
+//
+// Lists every push currently queued in the KickoffScheduler DO (T-60,
+// T-15, T-0 per upcoming match). Per-row actions:
+//   · Cancel    — removes it from the queue + sets a KV sentinel so
+//                 the cron doesn't re-queue it.
+//   · +15 / +30 — postpone by N minutes (useful when ESPN's kickoff
+//                 time is stale).
+
+type ScheduledAlert = {
+  id: string
+  matchId: string
+  leadMinutes: number | null
+  fireAt: number
+  fireAtIso: string
+  title: string
+  body: string
+  url: string
+  tag: string | null
+}
+
+function ScheduledAlertsSection() {
+  const [items, setItems] = useState<ScheduledAlert[] | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
+
+  async function refresh() {
+    try {
+      const r = (await adminGet('/admin/push/scheduled')) as { queue?: ScheduledAlert[] }
+      setItems((r.queue ?? []).sort((a, b) => a.fireAt - b.fireAt))
+    } catch (e) {
+      setStatus(String(e))
+    }
+  }
+
+  useEffect(() => { void refresh() }, [])
+
+  async function cancel(id: string) {
+    if (!confirm(`Cancel scheduled alert ${id}?`)) return
+    setBusy(id)
+    setStatus(null)
+    try {
+      await adminPost('/admin/push/scheduled/cancel', { id })
+      await refresh()
+    } catch (e) {
+      setStatus(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  async function postpone(id: string, deltaMinutes: number) {
+    setBusy(id)
+    setStatus(null)
+    try {
+      await adminPost('/admin/push/scheduled/reschedule', { id, deltaMinutes })
+      await refresh()
+    } catch (e) {
+      setStatus(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  return (
+    <Section title="Scheduled alerts" eyebrow={items === null ? 'loading…' : `${items.length} pending`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-xs text-slate-600">
+          Auto-fired by the cron at T-60 / T-15 / kickoff for every upcoming match.
+        </div>
+        <button
+          onClick={() => void refresh()}
+          className="text-[10px] uppercase tracking-widest font-mono text-slate-500 hover:text-ink-900 px-2 py-1"
+        >
+          ↻ refresh
+        </button>
+      </div>
+      {items === null ? <Loading /> : items.length === 0 ? (
+        <Empty>Nothing queued. Either no upcoming matches in ESPN yet, or kickoff alerts are disabled in Settings.</Empty>
+      ) : (
+        <ul className="divide-y divide-slate-200">
+          {items.map((it) => {
+            const minutesAway = Math.round((it.fireAt - Date.now()) / 60_000)
+            const stale = minutesAway < 0
+            return (
+              <li key={it.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-2.5">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-display font-semibold text-sm text-ink-900 truncate">{it.title}</span>
+                    {it.leadMinutes !== null && (
+                      <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-widest bg-slate-100 text-slate-600">
+                        T-{it.leadMinutes}m
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500 font-mono mt-0.5">
+                    Fires {new Date(it.fireAt).toLocaleString()} · {stale ? `${-minutesAway}m ago` : `in ${minutesAway}m`}
+                  </div>
+                </div>
+                <div className="flex gap-1.5 shrink-0 flex-wrap">
+                  <button
+                    onClick={() => postpone(it.id, 15)}
+                    disabled={busy === it.id}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-slate-100 hover:bg-slate-200 disabled:opacity-40"
+                  >
+                    +15m
+                  </button>
+                  <button
+                    onClick={() => postpone(it.id, 30)}
+                    disabled={busy === it.id}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-mono bg-slate-100 hover:bg-slate-200 disabled:opacity-40"
+                  >
+                    +30m
+                  </button>
+                  <button
+                    onClick={() => cancel(it.id)}
+                    disabled={busy === it.id}
+                    className="px-2.5 py-1 rounded-full text-[11px] font-mono border border-accent-red text-accent-red hover:bg-accent-red/10 disabled:opacity-40"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+      {status && <div className="mt-3 text-sm font-mono text-accent-red">{status}</div>}
+    </Section>
   )
 }
 

@@ -28,6 +28,10 @@ export interface AdminEnv {
   CACHE: KVNamespace
   SUPABASE_URL: string
   SUPABASE_SERVICE_KEY: string
+  // Push scheduler DO — same binding declared in wrangler.toml. Used
+  // by /admin/push/scheduled to list / cancel / reschedule queued
+  // kickoff alerts.
+  SCHEDULER?: DurableObjectNamespace
   // Set via wrangler secret put — see deploy notes.
   ADMIN_PASSWORD_HASH?: string
   ADMIN_PASSWORD_SALT?: string
@@ -215,6 +219,26 @@ export async function handleAdmin(
   if (pathname === '/admin/news/list') return handleListNews(env, req)
   if (pathname.startsWith('/admin/news/') && req.method === 'POST') {
     return handleNewsAction(env, req, pathname)
+  }
+
+  // Scheduled-alerts management — list / cancel / postpone the
+  // queued kickoff (T-60, T-15, T-0) pushes living in the DO.
+  if (pathname === '/admin/push/scheduled' && req.method === 'GET') {
+    return handleListScheduledPushes(env)
+  }
+  if (pathname === '/admin/push/scheduled/cancel' && req.method === 'POST') {
+    return handleCancelScheduledPush(req, env)
+  }
+  if (pathname === '/admin/push/scheduled/reschedule' && req.method === 'POST') {
+    return handleReschedulePush(req, env)
+  }
+  // Compose-form presets — give the operator a dropdown of the next
+  // matches / recent articles so notification text is consistent.
+  if (pathname === '/admin/push/preset/matches' && req.method === 'GET') {
+    return handlePresetMatches(env)
+  }
+  if (pathname === '/admin/push/preset/articles' && req.method === 'GET') {
+    return handlePresetArticles(env)
   }
 
   // Write-side actions
@@ -818,6 +842,163 @@ async function handleSiteHealth(env: AdminEnv): Promise<Response> {
 // ─────────────────────────────────────────────────────────────────────
 // Write actions
 // ─────────────────────────────────────────────────────────────────────
+
+// ─── Scheduled-push management ─────────────────────────────────────
+//
+// The KickoffScheduler Durable Object holds the queue of pre-kickoff
+// alerts (T-60 / T-15 / T-0 per match). These three handlers expose
+// LIST / CANCEL / RESCHEDULE so the operator can intervene from the
+// admin panel: e.g. cancel a planned alert for a friendly the user
+// doesn't care about, or postpone an alert if ESPN's kickoff time
+// turns out to be wrong.
+
+async function handleListScheduledPushes(env: AdminEnv): Promise<Response> {
+  if (!env.SCHEDULER) return jsonResp({ queue: [], note: 'scheduler DO not bound' })
+  try {
+    const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
+    const r = await stub.fetch('https://do/inspect')
+    const data = (await r.json()) as { queue?: Array<{ id: string; fireAt: number; notif: { title: string; body: string; url?: string; tag?: string } }> }
+    const queue = (data.queue ?? []).map((it) => {
+      // id shape: '<matchId>-<leadMinutes>' (see scheduledKickoffFor).
+      const dashIdx = it.id.lastIndexOf('-')
+      const matchId = dashIdx >= 0 ? it.id.slice(0, dashIdx) : it.id
+      const leadMinutes = dashIdx >= 0 ? Number(it.id.slice(dashIdx + 1)) : null
+      return {
+        id: it.id,
+        matchId,
+        leadMinutes: Number.isFinite(leadMinutes ?? NaN) ? leadMinutes : null,
+        fireAt: it.fireAt,
+        fireAtIso: new Date(it.fireAt).toISOString(),
+        title: it.notif.title,
+        body: it.notif.body,
+        url: it.notif.url ?? '/today',
+        tag: it.notif.tag ?? null,
+      }
+    })
+    return jsonResp({ queue })
+  } catch (e) {
+    return jsonResp({ error: 'inspect failed', detail: String(e) }, 500)
+  }
+}
+
+async function handleCancelScheduledPush(req: Request, env: AdminEnv): Promise<Response> {
+  if (!env.SCHEDULER) return jsonResp({ error: 'scheduler DO not bound' }, 503)
+  const body = (await req.json().catch(() => null)) as { id?: string } | null
+  if (!body?.id) return jsonResp({ error: 'id required' }, 400)
+  // Also clear the cron's per-(match, lead) sentinel so the next 5-min
+  // tick doesn't immediately re-queue the alert we just cancelled. The
+  // operator's intent is "no, don't send this one" — the cron will
+  // respect that until the sentinel TTL expires.
+  try { await env.CACHE.put(`alert:kickoff:${body.id}`, 'cancelled') } catch { /* KV quota — proceed */ }
+  const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
+  const r = await stub.fetch('https://do/cancel', {
+    method: 'POST',
+    body: JSON.stringify({ id: body.id }),
+  })
+  return new Response(await r.text(), {
+    status: r.status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+async function handleReschedulePush(req: Request, env: AdminEnv): Promise<Response> {
+  if (!env.SCHEDULER) return jsonResp({ error: 'scheduler DO not bound' }, 503)
+  const body = (await req.json().catch(() => null)) as { id?: string; deltaMinutes?: number; newFireAt?: number } | null
+  if (!body?.id) return jsonResp({ error: 'id required' }, 400)
+  if (typeof body.deltaMinutes !== 'number' && typeof body.newFireAt !== 'number') {
+    return jsonResp({ error: 'deltaMinutes or newFireAt required' }, 400)
+  }
+  const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
+  const r = await stub.fetch('https://do/reschedule', {
+    method: 'POST',
+    body: JSON.stringify(body),
+  })
+  return new Response(await r.text(), {
+    status: r.status,
+    headers: { 'content-type': 'application/json' },
+  })
+}
+
+// ─── Compose-form presets ──────────────────────────────────────────
+//
+// The operator no longer types kickoff times or team names from
+// memory. /preset/matches feeds the dropdown with the next N upcoming
+// WC events; /preset/articles surfaces recent published articles for
+// the "New article" notification preset. Both keep notification text
+// consistent across broadcasts.
+
+const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
+
+async function handlePresetMatches(env: AdminEnv): Promise<Response> {
+  // Use cached scoreboard so we don't hammer ESPN every time the
+  // compose form opens. 5-min staleness is fine — kickoffs don't move
+  // minute-by-minute.
+  const cacheKey = 'admin:preset:matches'
+  try {
+    const cached = await env.CACHE.get(cacheKey)
+    if (cached) return new Response(cached, { headers: { 'content-type': 'application/json' } })
+  } catch { /* read-fail — fall through to ESPN */ }
+  try {
+    const r = await fetch(`${ESPN_BASE}/scoreboard?limit=200`, {
+      cf: { cacheTtl: 300, cacheEverything: true },
+    } as RequestInit)
+    const data = (await r.json()) as {
+      events?: Array<{
+        id?: string
+        date?: string
+        status?: { type?: { state?: string } }
+        competitions?: Array<{
+          competitors?: Array<{
+            homeAway?: string
+            team?: { shortDisplayName?: string; displayName?: string; abbreviation?: string; flag?: { href?: string } }
+          }>
+          venue?: { fullName?: string }
+        }>
+      }>
+    }
+    const now = Date.now()
+    const upcoming = (data.events ?? [])
+      .filter((ev) => ev.status?.type?.state === 'pre' && ev.date && Date.parse(ev.date) > now)
+      .sort((a, b) => Date.parse(a.date!) - Date.parse(b.date!))
+      .slice(0, 10)
+      .map((ev) => {
+        const comp = ev.competitions?.[0]
+        const home = comp?.competitors?.find((c) => c.homeAway === 'home')
+        const away = comp?.competitors?.find((c) => c.homeAway === 'away')
+        return {
+          id: ev.id,
+          date: ev.date,
+          home: home?.team?.shortDisplayName ?? home?.team?.displayName ?? '?',
+          away: away?.team?.shortDisplayName ?? away?.team?.displayName ?? '?',
+          homeAbbr: home?.team?.abbreviation ?? null,
+          awayAbbr: away?.team?.abbreviation ?? null,
+          venue: comp?.venue?.fullName ?? null,
+        }
+      })
+    const payload = JSON.stringify({ matches: upcoming })
+    try { await env.CACHE.put(cacheKey, payload, { expirationTtl: 300 }) } catch { /* KV quota — return without caching */ }
+    return new Response(payload, { headers: { 'content-type': 'application/json' } })
+  } catch (e) {
+    return jsonResp({ error: 'espn fetch failed', detail: String(e), matches: [] }, 502)
+  }
+}
+
+async function handlePresetArticles(env: AdminEnv): Promise<Response> {
+  // Recent published articles — last 10, newest first. Used by the
+  // 'New article' preset to pre-fill title/url consistently.
+  const r = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/articles?status=eq.published&select=id,slug,title,excerpt,published_at&order=published_at.desc.nullslast&limit=10`,
+    {
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      },
+    }
+  )
+  if (!r.ok) return jsonResp({ error: 'supabase fetch failed', status: r.status, articles: [] }, 502)
+  const rows = (await r.json()) as Array<{ id: string; slug: string; title: string; excerpt: string | null; published_at: string | null }>
+  return jsonResp({ articles: rows })
+}
 
 async function handleAdminBroadcast(req: Request, env: AdminEnv): Promise<Response> {
   // Validate inputs the same way the public /push/broadcast does so the
