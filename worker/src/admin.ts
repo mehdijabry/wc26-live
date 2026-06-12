@@ -825,16 +825,44 @@ async function handleSiteHealth(env: AdminEnv): Promise<Response> {
     espnOk = r.ok
     espnMs = Date.now() - espnStart
   } catch { /* swallow */ }
-  // KV liveness — write + read a sentinel key.
-  let kvOk = false
+  // KV liveness — split into read + write checks so the panel can
+  // distinguish 'KV unreachable' (catastrophic) from 'KV writes
+  // quota-exhausted for the day' (degraded but the cron's reads still
+  // work). On the free tier, writes cap at 1000/day; reads are
+  // effectively unlimited.
+  let kvReadOk = false
+  let kvWriteOk = false
+  let kvDetail = ''
   try {
-    await env.CACHE.put('admin:health-probe', '1', { expirationTtl: 60 })
-    kvOk = (await env.CACHE.get('admin:health-probe')) === '1'
-  } catch { /* swallow */ }
+    // Read a guaranteed-existing key written by the cron. Falls back
+    // to ANY get — even a miss returning null counts as 'reachable',
+    // since the failure mode for KV being down is a thrown error.
+    await env.CACHE.get('admin:health-probe')
+    kvReadOk = true
+  } catch (e) {
+    kvDetail = 'read: ' + String(e).slice(0, 80)
+  }
+  if (kvReadOk) {
+    try {
+      await env.CACHE.put('admin:health-probe', '1', { expirationTtl: 60 })
+      kvWriteOk = true
+    } catch (e) {
+      // 'KV put() limit exceeded for the day.' lands here on free tier
+      // once we burn through 1000 puts. Surface the reason so the
+      // operator knows what's degraded.
+      kvDetail = 'write: ' + String(e).slice(0, 120)
+    }
+  }
   return jsonResp({
     espnOk,
     espnMs,
-    kvOk,
+    // kvOk stays in the response for older clients but represents
+    // the consolidated 'is KV usable' verdict — reads alone are
+    // enough for most worker paths to keep functioning.
+    kvOk: kvReadOk,
+    kvReadOk,
+    kvWriteOk,
+    kvDetail: kvDetail || undefined,
     serverTime: new Date().toISOString(),
   })
 }

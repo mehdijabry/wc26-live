@@ -1011,17 +1011,50 @@ function Database() {
 // ─── Section: Site health ───────────────────────────────────────────
 
 function SiteHealth() {
-  const [data, setData] = useState<{ espnOk?: boolean; espnMs?: number; kvOk?: boolean; serverTime?: string } | null>(null)
+  const [data, setData] = useState<{ espnOk?: boolean; espnMs?: number; kvOk?: boolean; kvReadOk?: boolean; kvWriteOk?: boolean; kvDetail?: string; serverTime?: string } | null>(null)
   useEffect(() => { void adminGet("/admin/site-health").then((d) => setData(d as any)) }, [])
   if (!data) return <Loading />
+  // KV three-state derived from the read+write probes:
+  //   reads + writes  → OK
+  //   reads only      → READ-ONLY (free-tier daily put quota exhausted,
+  //                     resets at midnight UTC — site keeps working
+  //                     since the cron mostly reads)
+  //   neither         → DOWN (KV unreachable, much rarer)
+  const kvValue =
+    data.kvReadOk && data.kvWriteOk ? 'OK'
+    : data.kvReadOk ? 'READ-ONLY'
+    : 'DOWN'
+  const kvAccent: 'green' | 'gold' | 'red' =
+    data.kvReadOk && data.kvWriteOk ? 'green'
+    : data.kvReadOk ? 'gold'
+    : 'red'
   return (
     <Section title="Site health" eyebrow="Live probes">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KpiCard label="ESPN API" value={data.espnOk ? `OK · ${data.espnMs}ms` : 'DOWN'} accent={data.espnOk ? 'green' : 'red'} />
-        <KpiCard label="Cloudflare KV" value={data.kvOk ? 'OK' : 'DOWN'} accent={data.kvOk ? 'green' : 'red'} />
+        <KpiCard label="Cloudflare KV" value={kvValue} accent={kvAccent} />
         <KpiCard label="Server time UTC" value={data.serverTime?.slice(0, 19).replace('T', ' ') ?? '—'} mono />
         <KpiCard label="Worker" value="wc26-api" mono />
       </div>
+      {kvValue === 'READ-ONLY' && (
+        <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 leading-relaxed">
+          <strong className="font-semibold">KV writes paused for the day.</strong>{' '}
+          The Cloudflare free tier caps puts at 1000/day. Reads still work,
+          so the cron + most worker paths keep running — only new
+          rate-limiter buckets, push-sentinels and other writes are
+          skipped until midnight UTC. To remove the cap permanently,
+          upgrade to Workers Paid ($5/mo, 100k+ puts/day).
+          {data.kvDetail && (
+            <div className="mt-1.5 font-mono text-[10px] text-amber-800 truncate">{data.kvDetail}</div>
+          )}
+        </div>
+      )}
+      {kvValue === 'DOWN' && data.kvDetail && (
+        <div className="mt-4 rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-900 leading-relaxed">
+          <strong className="font-semibold">KV unreachable.</strong>{' '}
+          <span className="font-mono text-[10px]">{data.kvDetail}</span>
+        </div>
+      )}
     </Section>
   )
 }
