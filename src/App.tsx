@@ -94,6 +94,26 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'instant' })
   }, [location.pathname])
 
+  // ── Admin subdomain short-circuit ──────────────────────────────────
+  // When the app is served from admin.pressing90.live, render ONLY the
+  // operator console — no intro splash, no public-site Navigation /
+  // LiveTicker / Footer / PullToRefresh. The whole origin becomes the
+  // admin app, which is exactly what iOS PWAs need to install cleanly
+  // (scope = entire origin, no risk of opening the public homepage).
+  //
+  // The path-based /admin-panel-1992 route below STAYS functional on
+  // pressing90.live as a fallback, so anyone with that bookmark keeps
+  // working through the migration.
+  if (typeof window !== 'undefined' && window.location.hostname === 'admin.pressing90.live') {
+    return (
+      <div className="min-h-svh">
+        <Suspense fallback={<PageSkeleton caption="Loading admin…" />}>
+          <AdminPanel />
+        </Suspense>
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-svh pb-20 md:pb-0">
       {/* Intro splash — original cream-themed reveal. */}

@@ -19,16 +19,27 @@
     <link rel="apple-touch-icon" href="/wc26-emblem.svg" id="pwa-apple-icon" />
     <link rel="apple-touch-icon" sizes="180x180" href="/wc26-emblem.svg" id="pwa-apple-icon-180" />
 
-    <!-- Admin PWA swap. iOS Safari often reads the manifest + apple-* tags
+    <!-- Admin PWA swap. iOS Safari reads the manifest + apple-* tags
          EAGERLY at page-parse time, before the React bundle finishes
          downloading. A useEffect inside AdminPanel.tsx swaps too late —
-         tapping Share → Add to Home Screen on /admin-panel-* would still
-         capture the public manifest. So we swap synchronously, in the
-         head, before any other script runs. -->
+         tapping Share → Add to Home Screen would still capture the
+         public manifest. So we swap synchronously, in the head, before
+         any other script runs.
+         Trigger on either the admin subdomain (admin.pressing90.live —
+         the canonical install URL) OR the legacy /admin-panel-* path
+         (kept for fallback bookmarks). -->
     <script>
       (function () {
-        if (location.pathname.indexOf('/admin-panel-') !== 0) return
-        var m = document.getElementById('pwa-manifest');         if (m) m.href = '/admin-manifest.json'
+        var host = location.hostname || ''
+        var path = location.pathname || ''
+        var isSubdomain = host.indexOf('admin.') === 0
+        var isLegacyPath = path.indexOf('/admin-panel-') === 0
+        if (!isSubdomain && !isLegacyPath) return
+        // Subdomain install → start_url '/' (whole origin is admin).
+        // Legacy path install → start_url '/admin-panel-1992' so old
+        // bookmarks keep behaving the way they always did.
+        var manifestHref = isSubdomain ? '/admin-manifest.json' : '/admin-manifest-path.json'
+        var m = document.getElementById('pwa-manifest');         if (m) m.href = manifestHref
         var t = document.getElementById('pwa-apple-title');      if (t) t.content = 'P90 Admin'
         var i = document.getElementById('pwa-apple-icon');       if (i) i.href = '/admin-emblem.svg'
         var i2 = document.getElementById('pwa-apple-icon-180');  if (i2) i2.href = '/admin-emblem.svg'

@@ -63,6 +63,10 @@ const ALLOW_ORIGINS = [
   'http://localhost:5174',
   'https://pressing90.live',
   'https://www.pressing90.live',
+  // Admin PWA runs on its own subdomain so iOS Add-to-Home-Screen
+  // installs cleanly as an isolated app. Same Pages project, same
+  // worker — just a different origin for the manifest/scope.
+  'https://admin.pressing90.live',
   // Legacy origin — kept during migration window so existing PWA
   // installs on the wc26.mehdijabry.dev subdomain keep working until
   // the user re-opens them and lands on the 301-redirected page.

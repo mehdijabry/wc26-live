@@ -826,7 +826,12 @@ function swapPWAMetaForAdmin(): () => void {
   const origTheme = themeTag?.getAttribute('content') ?? null
   const origTitle = appleTitle?.getAttribute('content') ?? null
   const origIcons = Array.from(appleIcons).map((el) => el.getAttribute('href'))
-  link?.setAttribute('href', '/admin-manifest.json')
+  // Pick the manifest that matches the install context.
+  //  · admin.* subdomain → admin-manifest.json (start_url '/')
+  //  · legacy /admin-panel-* path → admin-manifest-path.json
+  //    (start_url '/admin-panel-1992', preserves old bookmarks)
+  const isSubdomain = window.location.hostname.indexOf('admin.') === 0
+  link?.setAttribute('href', isSubdomain ? '/admin-manifest.json' : '/admin-manifest-path.json')
   themeTag?.setAttribute('content', '#0a1a2e')
   appleTitle?.setAttribute('content', 'P90 Admin')
   appleIcons.forEach((el) => el.setAttribute('href', '/admin-emblem.svg'))
