@@ -821,16 +821,23 @@ function swapPWAMetaForAdmin(): () => void {
   const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null
   const themeTag = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null
   const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]') as HTMLMetaElement | null
+  const appleIcons = document.querySelectorAll('link[rel="apple-touch-icon"]')
   const origManifest = link?.getAttribute('href') ?? null
   const origTheme = themeTag?.getAttribute('content') ?? null
   const origTitle = appleTitle?.getAttribute('content') ?? null
+  const origIcons = Array.from(appleIcons).map((el) => el.getAttribute('href'))
   link?.setAttribute('href', '/admin-manifest.json')
   themeTag?.setAttribute('content', '#0a1a2e')
   appleTitle?.setAttribute('content', 'P90 Admin')
+  appleIcons.forEach((el) => el.setAttribute('href', '/admin-emblem.svg'))
   return () => {
     if (origManifest !== null) link?.setAttribute('href', origManifest)
     if (origTheme !== null) themeTag?.setAttribute('content', origTheme)
     if (origTitle !== null) appleTitle?.setAttribute('content', origTitle)
+    appleIcons.forEach((el, i) => {
+      const o = origIcons[i]
+      if (o !== null && o !== undefined) el.setAttribute('href', o)
+    })
   }
 }
 

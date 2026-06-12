@@ -31,6 +31,12 @@
 # 30 days strikes a balance between cache hit ratio and update speed.
 /wc26-emblem.svg
   Cache-Control: public, max-age=2592000
+/admin-emblem.svg
+  Cache-Control: public, max-age=2592000
+/admin-icon-192.png
+  Cache-Control: public, max-age=2592000
+/admin-icon-512.png
+  Cache-Control: public, max-age=2592000
 /og.png
   Cache-Control: public, max-age=2592000
 /manifest.json

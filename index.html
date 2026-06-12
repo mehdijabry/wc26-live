@@ -11,13 +11,30 @@
          iOS doesn't honor manifest.json fully, so we duplicate the
          critical metadata via apple-* tags so the saved icon + standalone
          launch behave like a native app. -->
-    <link rel="manifest" href="/manifest.json" />
+    <link rel="manifest" href="/manifest.json" id="pwa-manifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="WC26 Live" />
+    <meta name="apple-mobile-web-app-title" content="WC26 Live" id="pwa-apple-title" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="apple-touch-icon" href="/wc26-emblem.svg" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/wc26-emblem.svg" />
+    <link rel="apple-touch-icon" href="/wc26-emblem.svg" id="pwa-apple-icon" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/wc26-emblem.svg" id="pwa-apple-icon-180" />
+
+    <!-- Admin PWA swap. iOS Safari often reads the manifest + apple-* tags
+         EAGERLY at page-parse time, before the React bundle finishes
+         downloading. A useEffect inside AdminPanel.tsx swaps too late —
+         tapping Share → Add to Home Screen on /admin-panel-* would still
+         capture the public manifest. So we swap synchronously, in the
+         head, before any other script runs. -->
+    <script>
+      (function () {
+        if (location.pathname.indexOf('/admin-panel-') !== 0) return
+        var m = document.getElementById('pwa-manifest');         if (m) m.href = '/admin-manifest.json'
+        var t = document.getElementById('pwa-apple-title');      if (t) t.content = 'P90 Admin'
+        var i = document.getElementById('pwa-apple-icon');       if (i) i.href = '/admin-emblem.svg'
+        var i2 = document.getElementById('pwa-apple-icon-180');  if (i2) i2.href = '/admin-emblem.svg'
+        var th = document.querySelector('meta[name="theme-color"]'); if (th) th.content = '#0a1a2e'
+      })()
+    </script>
 
     <!-- Google Search Console verification -->
     <meta name="google-site-verification" content="ooSl9AUG8WbW5zaA8Ezq6-JSe4jtxn_L4Ch4z2vhskY" />
