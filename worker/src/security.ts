@@ -154,9 +154,16 @@ export async function rateLimit(
   if (current >= opts.limit) {
     return { blocked: true, retryAfter: win - (Math.floor(Date.now() / 1000) % win) }
   }
-  // Write back +1. We don't await with ctx.waitUntil() because that's a
-  // separate concern; KV writes are cheap enough to inline.
-  await env.CACHE.put(key, String(current + 1), { expirationTtl: win + 5 })
+  // Write back +1. KV free tier caps puts at 1000/day; when we blow
+  // through that, swallow the error and let the request proceed —
+  // rate limiting becomes a no-op for the rest of the day instead of
+  // 500ing every single API call (including admin auth). Better degraded
+  // than dead.
+  try {
+    await env.CACHE.put(key, String(current + 1), { expirationTtl: win + 5 })
+  } catch (e) {
+    console.log('[rate-limit] KV.put failed, skipping:', String(e))
+  }
   return { blocked: false, remaining: opts.limit - current - 1 }
 }
 
