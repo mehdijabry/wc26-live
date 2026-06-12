@@ -657,7 +657,11 @@ OUTPUT:`
     // Workers AI binding (set in wrangler.toml [ai] block).
     const ai = (env as Env & { AI?: { run: (model: string, input: unknown) => Promise<{ response?: string }> } }).AI
     if (!ai) return { rewritten: null, raw: 'AI_BINDING_MISSING' }
-    const out = await ai.run('@cf/meta/llama-3.1-8b-instruct', {
+    // llama-3.1-8b-instruct (no suffix) was deprecated on 2026-05-30 with
+    // AiError 5028. -fast is the official drop-in replacement: same
+    // architecture, same 8B size, same instruction-following quality,
+    // just lower latency. No prompt changes needed.
+    const out = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
       messages: [
         { role: 'system', content: 'You output ONLY the requested delimited sections. Never wrap output in JSON, markdown code fences, or commentary.' },
         { role: 'user', content: prompt },
