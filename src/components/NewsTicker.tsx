@@ -17,7 +17,7 @@ async function fetchInternalArticles(): Promise<NewsArticle[]> {
       .select('id,slug,title,excerpt,image_url,published_at,created_at')
       .eq('status', 'published')
       .order('published_at', { ascending: false })
-      .limit(2)
+      .limit(6)
     if (error || !data) return []
     return data.map((row) => ({
       id: 'internal:' + (row as { id: string }).id,
@@ -133,43 +133,57 @@ export function NewsTicker() {
     return () => { stop = true; if (timer) clearTimeout(timer) }
   }, [])
 
+  // Pages 0 and 1 of the carousel showcase our latest 6 internal
+  // briefings (3 per page); pages 2+ rotate through ESPN as before.
+  // Built as a 'virtual' article list so the existing featured/upcoming
+  // computation (idx + 1..3 offsets) keeps working as-is:
+  //
+  //   slot 0..2  →  internal[0..2]   (page 0: 3 ours)
+  //   slot 3     →  rotating[0]      (page 0: 1 ESPN filler in the 4th tile)
+  //   slot 4..6  →  internal[3..5]   (page 1: 3 ours)
+  //   slot 7     →  rotating[1]      (page 1: 1 ESPN filler)
+  //   slot 8+    →  rotating[2..]    (pages 2+: pure ESPN rotation)
+  //
+  // If we don't have 6 internal articles yet, the gap is silently
+  // filled with extra ESPN entries — the layout never breaks.
+  const orderedArticles = useMemo(() => {
+    const internal = articles.filter((a) => a.id.startsWith('internal:')).slice(0, 6)
+    const rotating = articles.filter((a) => !a.id.startsWith('internal:'))
+    if (internal.length === 0) return rotating
+    const out: NewsArticle[] = []
+    let rotIdx = 0
+    // Page 0
+    for (let i = 0; i < Math.min(3, internal.length); i++) out.push(internal[i])
+    while (out.length < 4 && rotIdx < rotating.length) out.push(rotating[rotIdx++])
+    // Page 1
+    for (let i = 3; i < Math.min(6, internal.length); i++) out.push(internal[i])
+    while (out.length < 8 && rotIdx < rotating.length) out.push(rotating[rotIdx++])
+    // Pages 2+
+    while (rotIdx < rotating.length) out.push(rotating[rotIdx++])
+    return out
+  }, [articles])
+
+  const featured = orderedArticles[idx % Math.max(1, orderedArticles.length)]
+  const upcoming = useMemo(() => {
+    if (orderedArticles.length === 0) return [] as NewsArticle[]
+    return [1, 2, 3]
+      .map((d) => orderedArticles[(idx + d) % orderedArticles.length])
+      .filter((a): a is NewsArticle => !!a && a !== featured)
+      .slice(0, 3)
+  }, [orderedArticles, idx, featured])
+
   // Auto-advance every 40s. Step by PAGE_SIZE (4) so the featured AND
-  // all three side cards all rotate to new articles at the same time —
-  // a +1 step (the old behaviour) only refreshed 1 of 4 visible cards
-  // per tick, which read as 'same articles, different order' to the user.
+  // all three side cards all rotate to new articles at the same time.
+  // Cap from orderedArticles (not articles) — internal is capped at 6
+  // so articles.length can exceed orderedArticles.length.
   useEffect(() => {
-    if (articles.length <= PAGE_SIZE) return
+    const len = orderedArticles.length
+    if (len <= PAGE_SIZE) return
     const t = window.setInterval(() => {
-      setIdx((i) => (i + PAGE_SIZE) % articles.length)
+      setIdx((i) => (i + PAGE_SIZE) % len)
     }, 40_000)
     return () => clearInterval(t)
-  }, [articles.length])
-
-  // Our 2 Pressing-90 briefings ('internal:'-prefixed id) are pinned
-  // to the featured slot + first side card so they're ALWAYS visible.
-  // Without this, the 40s carousel cycle would rotate them out of
-  // view, and clicking what looked like 'our' card would actually
-  // open whatever ESPN article had taken the slot.
-  const pinned = useMemo(() => articles.filter((a) => a.id.startsWith('internal:')).slice(0, 2), [articles])
-  const rotating = useMemo(() => articles.filter((a) => !a.id.startsWith('internal:')), [articles])
-  const featured = pinned[0] ?? rotating[idx % Math.max(1, rotating.length)]
-  const upcoming = useMemo(() => {
-    if (articles.length === 0) return [] as NewsArticle[]
-    const cards: NewsArticle[] = []
-    // Slot 2: our second briefing (if we have one)
-    if (pinned[1]) cards.push(pinned[1])
-    // Remaining slots (2 cards): rotate through ESPN. Skip the one
-    // currently in the featured slot (relevant only when pinned is
-    // empty, so featured is itself a rotating article).
-    const needFromRotating = 3 - cards.length
-    if (rotating.length > 0) {
-      for (let d = 0; d < needFromRotating; d++) {
-        const a = rotating[(idx + d) % rotating.length]
-        if (a && a !== featured) cards.push(a)
-      }
-    }
-    return cards.slice(0, 3)
-  }, [articles, idx, pinned, rotating, featured])
+  }, [orderedArticles.length])
 
   // Welcome-back toast: when the tab regains focus / becomes visible,
   // check if we recently sent the user to ESPN. If yes, surface 3 other
@@ -221,9 +235,10 @@ export function NewsTicker() {
     if (touchStartX.current == null) return
     const dx = (e.changedTouches[0]?.clientX ?? touchStartX.current) - touchStartX.current
     touchStartX.current = null
-    if (Math.abs(dx) < 50 || articles.length <= PAGE_SIZE) return
-    if (dx < 0) setIdx((i) => (i + PAGE_SIZE) % articles.length)
-    else        setIdx((i) => (i - PAGE_SIZE + articles.length) % articles.length)
+    const len = orderedArticles.length
+    if (Math.abs(dx) < 50 || len <= PAGE_SIZE) return
+    if (dx < 0) setIdx((i) => (i + PAGE_SIZE) % len)
+    else        setIdx((i) => (i - PAGE_SIZE + len) % len)
   }
 
   if (loading) {
@@ -351,7 +366,7 @@ export function NewsTicker() {
           which both filled the row with 12 dots AND meant clicking a
           dot only shuffled the order, not the contents. */}
       <div className="mt-4 flex items-center gap-1">
-        {Array.from({ length: Math.min(12, Math.ceil(articles.length / PAGE_SIZE)) }).map((_, page) => {
+        {Array.from({ length: Math.min(12, Math.ceil(orderedArticles.length / PAGE_SIZE)) }).map((_, page) => {
           const currentPage = Math.floor(idx / PAGE_SIZE)
           return (
             <button
