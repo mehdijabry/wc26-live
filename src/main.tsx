@@ -31,6 +31,23 @@ if ('serviceWorker' in navigator) {
   })
 }
 
+// Stale-chunk recovery. When we redeploy, the main bundle the user
+// already has cached references lazy chunks (e.g. AdminPanel-OLD.js)
+// that no longer exist on the CDN. The lazy import 404s, React
+// Suspense surfaces a ChunkLoadError, and the user sees a blank page.
+//
+// Vite 5+ emits a 'vite:preloadError' event on the window for exactly
+// this case. We reload once — sessionStorage gates it so we don't
+// pingpong if the new bundle is also broken.
+window.addEventListener('vite:preloadError', (e) => {
+  try {
+    if (sessionStorage.getItem('wc26.chunkReloaded') === '1') return
+    sessionStorage.setItem('wc26.chunkReloaded', '1')
+  } catch { /* private mode — still try reload */ }
+  console.warn('[wc26] stale chunk detected, reloading:', (e as Event & { payload?: unknown }).payload)
+  window.location.reload()
+})
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
