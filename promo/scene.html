@@ -3,6 +3,10 @@
 <head>
 <meta charset="utf-8">
 <title>Pressing 90' — Promo render</title>
+<!-- lottie-web for football-themed animations downloaded from lottiefiles.com
+     into ./lottie/. lottie.min.js is shipped locally (no external CDN at render
+     time). Each anim plays via goToAndStop(F) so output is deterministic. -->
+<script src="lottie/lottie.min.js"></script>
 <style>
   /* ─── Brand tokens (mirrors src/index.css Tailwind config) ────── */
   :root {
@@ -442,17 +446,129 @@
     border-radius: 2px;
     will-change: transform, opacity;
   }
+
+  /* ─── Lottie containers ──────────────────────────────────────────
+     Each scene gets a positioned <div class="lottie-X" data-anim="..."
+     data-mode="loop|progress"> that lottie-web hydrates into an SVG. */
+  .lottie { position: absolute; pointer-events: none; }
+
+  /* Scene 1: giant spinning ball, center stage, behind the emblem */
+  #s1 .lottie-ball {
+    left: 50%; top: 50%;
+    width: 720px; height: 720px;
+    transform: translate(-50%, -50%);
+    z-index: 1;
+    opacity: 0;
+  }
+  #s1 .center { z-index: 2; }
+  /* Slightly tinted backdrop ring behind the ball */
+  #s1 .ball-glow {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 900px; height: 900px;
+    transform: translate(-50%, -50%);
+    background: radial-gradient(circle, rgba(212,175,55,0.18) 0%, transparent 60%);
+    z-index: 0;
+    opacity: 0;
+  }
+
+  /* Scene 2: small TV broadcast widget bottom-right */
+  #s2 .lottie-broadcast {
+    right: 60px; bottom: 60px;
+    width: 320px; height: 320px;
+    opacity: 0;
+  }
+
+  /* Scene 3: small spinning ball inside one match card next to LIVE label */
+  #s3 .lottie-mini-ball {
+    position: absolute;
+    width: 36px; height: 36px;
+    top: 12px; right: 60px; /* aligned against the LIVE pill */
+  }
+  /* The mini-ball is wrapped inside the first match card so we put it
+     relative — see HTML. */
+  #s3 .match { position: relative; }
+
+  /* Scene 4: big kick-goal-post Lottie on the LEFT, behind the strap text */
+  #s4 .lottie-kick {
+    left: -40px; top: 50%;
+    transform: translateY(-50%);
+    width: 720px; height: 720px;
+    opacity: 0.18; /* low so the strap text reads above it */
+    z-index: 0;
+  }
+  #s4 .strap, #s4 .phone { position: absolute; z-index: 2; }
+
+  /* Scene 5: trophy Lottie sitting next to / above the bracket final slot */
+  #s5 .lottie-trophy {
+    right: 60px; bottom: 80px;
+    width: 360px; height: 360px;
+    opacity: 0;
+    z-index: 2;
+  }
+
+  /* Scene 6: stadium hero now cycles 3 photos (Azteca → MetLife → SoFi)
+     via background-image swap. Stack 3 layers and toggle opacity. */
+  #s6 .hero {
+    position: relative;
+  }
+  #s6 .hero-bg {
+    position: absolute; inset: 0;
+    background-size: cover; background-position: center;
+    opacity: 0;
+    transition: none; /* JS-driven */
+  }
+  #s6 .hero-bg.bg-1 { background-image: url("assets/estadio-azteca.jpg"); }
+  #s6 .hero-bg.bg-2 { background-image: url("assets/MetLife_Stadium.jpg"); }
+  #s6 .hero-bg.bg-3 { background-image: url("assets/SoFi_Stadium.jpg"); }
+  #s6 .hero-overlay {
+    position: absolute; inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.7) 100%);
+    z-index: 1;
+  }
+  #s6 .hero .label { z-index: 2; }
+  /* Small spinning ball badge top-right of the modal */
+  #s6 .lottie-mini-ball {
+    position: absolute;
+    top: 30px; right: 30px;
+    width: 64px; height: 64px;
+    z-index: 3;
+  }
+
+  /* Scene 7: small flying-kick Lottie bottom-left as decoration */
+  #s7 .lottie-flying-kick {
+    left: 80px; bottom: 80px;
+    width: 280px; height: 280px;
+    opacity: 0;
+  }
+
+  /* Scene 8: trophy Lottie REPLACES the emblem at the top, big and centered.
+     Confetti Lottie overlay sits behind everything. */
+  #s8 .lottie-trophy-big {
+    position: relative;
+    width: 360px; height: 360px;
+    opacity: 0;
+    filter: drop-shadow(0 0 60px rgba(212, 175, 55, 0.4));
+  }
+  #s8 .lottie-confetti {
+    position: absolute;
+    left: 0; top: 0; width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    opacity: 0;
+  }
+  #s8 .center { z-index: 1; position: relative; }
 </style>
 </head>
 <body>
 
 <!-- ─── Scene 1 · Intro splash (frames 0-149) ───────────────────── -->
+<!-- Replaced the 5 abstract shapes with a giant spinning football Lottie
+     for genuine football-themed motion. The emblem + wordmark fade in
+     on top of the ball mid-scene. -->
 <div class="scene" id="s1">
-  <div class="shape sh-1"></div>
-  <div class="shape sh-2"></div>
-  <div class="shape sh-3"></div>
-  <div class="shape sh-4"></div>
-  <div class="shape sh-5"></div>
+  <div class="ball-glow" id="s1-glow"></div>
+  <div class="lottie lottie-ball" id="s1-ball" data-anim="soccer-ball-spin" data-mode="loop"></div>
   <div class="center">
     <img src="assets/wc26-emblem.svg" alt="" id="s1-emblem">
     <div class="wm" id="s1-wm"><em>pressing</em> 90'</div>
@@ -469,6 +585,8 @@
     <div class="line" id="s2-l2">39 <span class="accent">days.</span></div>
     <div class="line" id="s2-l3">One <span class="accent">hub.</span></div>
   </div>
+  <!-- TV broadcast Lottie in the corner: hints at the live-football theme. -->
+  <div class="lottie lottie-broadcast" id="s2-broadcast" data-anim="online-match" data-mode="loop"></div>
 </div>
 
 <!-- ─── Scene 3 · Live scores (frames 360-659) ──────────────────── -->
@@ -482,6 +600,8 @@
     </div>
     <div class="matches">
       <div class="match"><div class="h"><span>GROUP A</span><span class="live">● LIVE 67'</span></div>
+        <!-- Spinning ball anchored top-right of the card = visual LIVE cue. -->
+        <div class="lottie lottie-mini-ball" id="s3-miniball" data-anim="soccer-ball-spin" data-mode="loop"></div>
         <div class="row"><span>🇲🇽 Mexico</span><span class="score" id="s3-score1">2</span></div>
         <div class="row"><span>🇿🇦 South Africa</span><span class="score">0</span></div>
       </div>
@@ -509,6 +629,9 @@
 <div class="scene dark" id="s4">
   <div class="badge">PUSH ALERTS</div>
   <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
+  <!-- Background kick-goal-post Lottie — frames-driven, plays once across
+       the scene's 300 frames so the kick lands roughly at mid-scene. -->
+  <div class="lottie lottie-kick" id="s4-kick" data-anim="kick-goal-post" data-mode="progress"></div>
   <div class="phone">
     <div class="notch"></div>
     <div class="lockscreen">
@@ -575,9 +698,13 @@
       <div class="slot win">🇫🇷 France</div>
     </div>
     <div class="col" id="s5-c5">
-      <div class="slot final">🏆 🇫🇷 FRANCE</div>
+      <div class="slot final">🇫🇷 FRANCE</div>
     </div>
   </div>
+  <!-- Trophy Lottie sits beside the bracket and plays once across the
+       scene's 300 frames; the trophy "appears" right as the final slot
+       lights up gold. -->
+  <div class="lottie lottie-trophy" id="s5-trophy" data-anim="trophy-ball-shoes" data-mode="progress"></div>
 </div>
 
 <!-- ─── Scene 6 · Stadiums (frames 1260-1499) ──────────────────── -->
@@ -585,21 +712,28 @@
   <div class="badge">16 VENUES</div>
   <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
   <div class="modal" id="s6-modal">
+    <!-- 3 stacked background layers; renderFrame() cross-fades between
+         them at scene-thirds so the modal feels like a stadium carousel. -->
     <div class="hero">
-      <div class="label">
-        <small>MEXICO · MEXICO CITY</small>
-        <h3>Estadio Azteca</h3>
+      <div class="hero-bg bg-1" id="s6-bg1"></div>
+      <div class="hero-bg bg-2" id="s6-bg2"></div>
+      <div class="hero-bg bg-3" id="s6-bg3"></div>
+      <div class="hero-overlay"></div>
+      <div class="label" id="s6-label">
+        <small id="s6-label-loc">MEXICO · MEXICO CITY</small>
+        <h3 id="s6-label-name">Estadio Azteca</h3>
       </div>
+      <div class="lottie lottie-mini-ball" id="s6-miniball" data-anim="soccer-ball-spin" data-mode="loop"></div>
     </div>
     <div class="stats">
-      <div class="stat"><div class="lbl">Capacity</div><div class="val">87 000</div><div class="sub">seats</div></div>
-      <div class="stat"><div class="lbl">WC26 matches</div><div class="val">5</div><div class="sub">games</div></div>
-      <div class="stat"><div class="lbl">Opened</div><div class="val">1966</div><div class="sub">60 yrs</div></div>
-      <div class="stat"><div class="lbl">Roof</div><div class="val">Open</div><div class="sub">natural grass</div></div>
+      <div class="stat"><div class="lbl">Capacity</div><div class="val" id="s6-stat-cap">87 000</div><div class="sub">seats</div></div>
+      <div class="stat"><div class="lbl">WC26 matches</div><div class="val" id="s6-stat-games">5</div><div class="sub">games</div></div>
+      <div class="stat"><div class="lbl">Opened</div><div class="val" id="s6-stat-opened">1966</div><div class="sub" id="s6-stat-age">60 yrs</div></div>
+      <div class="stat"><div class="lbl">Roof</div><div class="val" id="s6-stat-roof">Open</div><div class="sub" id="s6-stat-surf">natural grass</div></div>
     </div>
     <div class="climate">
-      <span class="pill">⚠ ALTITUDE 2240m</span>
-      <span>23°C / 12°C · Moderate humidity · Afternoon storms.</span>
+      <span class="pill" id="s6-pill">⚠ ALTITUDE 2240m</span>
+      <span id="s6-climate">23°C / 12°C · Moderate humidity · Afternoon storms.</span>
     </div>
   </div>
   <div class="strap">All <em>16</em><br>host venues<br>— in detail.</div>
@@ -627,26 +761,81 @@
       <div class="row"><div class="ic">🔖</div><span>Bookmark</span></div>
     </div>
   </div>
+  <!-- Flying-kick player Lottie bottom-left for extra football energy. -->
+  <div class="lottie lottie-flying-kick" id="s7-kick" data-anim="flying-kick" data-mode="loop"></div>
 </div>
 
 <!-- ─── Scene 8 · CTA (frames 1680-1799) ───────────────────────── -->
 <div class="scene" id="s8">
+  <!-- Full-canvas confetti Lottie underneath the CSS dots — adds richer
+       celebration motion than the CSS-only dots alone. -->
+  <div class="lottie lottie-confetti" id="s8-confetti" data-anim="confetti" data-mode="progress"></div>
   <div class="center">
-    <div class="emblem-glow" id="s8-glow">
-      <img src="assets/wc26-emblem.svg" alt="">
-    </div>
+    <!-- Trophy + ball Lottie replaces the emblem — the actual "win" image. -->
+    <div class="lottie lottie-trophy-big" id="s8-trophy" data-anim="trophy-ball-shoes" data-mode="progress"></div>
     <div class="url" id="s8-url">pressing90<span class="accent">.live</span></div>
     <div class="sub"><b>Free.</b> No signup. Just football.</div>
   </div>
-  <!-- 30 confetti dots — colors + positions distributed -->
+  <!-- 30 confetti dots (CSS-driven) layered on top of the Lottie confetti -->
 </div>
 
 <script>
+  // ─── Lottie registry ───────────────────────────────────────────
+  // Every <div class="lottie" data-anim="NAME" data-mode="loop|progress">
+  // gets bootstrapped into a paused lottie-web animation at page load.
+  // setLottieFrame() then maps the global frame N → that anim's local
+  // frame via goToAndStop(), so each global frame is deterministic.
+  const lotties = {}
+  let __lottiesLoaded = 0
+  let __lottiesTotal = 0
+  function bootLotties() {
+    const containers = document.querySelectorAll('.lottie[data-anim]')
+    __lottiesTotal = containers.length
+    containers.forEach(c => {
+      const name = c.dataset.anim
+      const anim = lottie.loadAnimation({
+        container: c,
+        renderer: 'svg',
+        loop: false,
+        autoplay: false,
+        path: `lottie/${name}.json`,
+      })
+      lotties[c.id] = anim
+      anim.addEventListener('DOMLoaded', () => {
+        __lottiesLoaded++
+        if (__lottiesLoaded === __lottiesTotal) window.__lottiesReady = true
+        // Re-issue the most recent frame now that the anim is ready, so
+        // the warmup paint matches what the first capture will see.
+        if (typeof window.__lastFrame === 'number') renderFrame(window.__lastFrame, window.__lastTotal || 1800)
+      })
+    })
+  }
+  // Map global frame F to a lottie local frame for the named anim.
+  // mode 'loop'     — play at the anim's natural fps, wrap on overflow
+  // mode 'progress' — map sceneStart..sceneEnd → 0..totalFrames once
+  function setLottieFrame(id, sceneStart, sceneEnd, F, mode) {
+    const a = lotties[id]
+    if (!a || !a.totalFrames || a.totalFrames === 0) return
+    const total = a.totalFrames
+    const localF = F - sceneStart
+    if (localF < 0 || F > sceneEnd) return
+    let lf
+    if (mode === 'loop') {
+      const rate = (a.frameRate || 30) / 30
+      lf = (localF * rate) % total
+    } else {
+      const t = Math.max(0, Math.min(1, localF / Math.max(1, sceneEnd - sceneStart)))
+      lf = t * (total - 1)
+    }
+    a.goToAndStop(lf, true)
+  }
+
   // ─── Driver: render exact state for frame N ─────────────────────
   // Wrapped in a function so Puppeteer can call `setFrame(N)` between
   // screenshots instead of reloading the entire page each time —
   // turns a ~15-minute capture into <2 minutes for 1800 frames.
   function renderFrame(F, T) {
+    window.__lastFrame = F; window.__lastTotal = T
     const fps = 30
 
   // ─── Easing helpers ────────────────────────────────────────────
@@ -683,35 +872,40 @@
     el.style.opacity = op
   })
 
-  // ─── Scene 1 · shapes converge to emblem ───────────────────────
+  // ─── Scene 1 · giant football zooms in, emblem reveals on top ──
+  // 0.0-1.5s : Football Lottie + radial glow zoom in from scale 0.4 → 1.0
+  // 1.5-2.5s : Football fades back to 35% opacity, emblem pops on top
+  // 2.5s-end : Wordmark + subtitle settle in
   {
-    const local = clamp((F - 0) / 90, 0, 1) // first 3s
-    const settle = easeOut(local)
-    // Shapes start scattered, ease into final position; final scale 1.
-    const shapes = ['sh-1','sh-2','sh-3','sh-4','sh-5']
-    shapes.forEach((c, i) => {
-      const el = document.querySelector('#s1 .' + c)
-      const angle = (i * 72 - 90) * Math.PI / 180
-      const fromX = Math.cos(angle) * 800 * (1 - settle)
-      const fromY = Math.sin(angle) * 800 * (1 - settle)
-      const rot = (1 - settle) * 60 * (i % 2 === 0 ? 1 : -1)
-      el.style.transform = `translate(${fromX}px, ${fromY}px) rotate(${rot}deg)`
-      el.style.opacity = settle
-    })
-    // Emblem pops at 1.5s
+    // Ball + glow (frames 0-90)
+    const ballLocal = clamp(F / 60, 0, 1)
+    const settle = easeOut(ballLocal)
+    const ball = document.getElementById('s1-ball')
+    const glow = document.getElementById('s1-glow')
+    const ballScale = 0.4 + 0.6 * settle
+    // After the emblem appears, fade the ball into the background.
+    const fadeBack = clamp((F - 60) / 30, 0, 1)
+    const ballOp = settle * (1 - 0.6 * fadeBack)
+    ball.style.transform = `translate(-50%, -50%) scale(${ballScale})`
+    ball.style.opacity = ballOp
+    glow.style.opacity = settle * 0.9
+    setLottieFrame('s1-ball', 0, 150, F, 'loop')
+
+    // Emblem pops at 1.5s (frame 45)
     const emblemLocal = clamp((F - 45) / 30, 0, 1)
     const emblemScale = 0.6 + 0.4 * easeOut(emblemLocal)
     const emblem = document.getElementById('s1-emblem')
     emblem.style.opacity = emblemLocal
     emblem.style.transform = `scale(${emblemScale})`
-    // Wordmark fades in at 2.5s
+
+    // Wordmark fades in at 2.5s (frame 75)
     const wmLocal = clamp((F - 75) / 30, 0, 1)
     document.getElementById('s1-wm').style.opacity = wmLocal
     document.getElementById('s1-wm').style.transform = `translateY(${(1 - easeOut(wmLocal)) * 20}px)`
     document.getElementById('s1-sub').style.opacity = clamp((F - 95) / 25, 0, 1)
   }
 
-  // ─── Scene 2 · 3 lines fade in stagger ─────────────────────────
+  // ─── Scene 2 · 3 lines fade in stagger + TV broadcast ──────────
   {
     const base = 150
     const reveals = [
@@ -725,9 +919,14 @@
       el.style.opacity = local
       el.style.transform = `translateY(${(1 - easeOut(local)) * 60}px)`
     })
+    // Broadcast Lottie fades in at frame 200 and loops behind the text.
+    const bLocal = clamp((F - 200) / 30, 0, 1)
+    const bEl = document.getElementById('s2-broadcast')
+    bEl.style.opacity = bLocal * 0.95
+    setLottieFrame('s2-broadcast', 150, 360, F, 'loop')
   }
 
-  // ─── Scene 3 · laptop scales in, score ticks 0 → 2 ─────────────
+  // ─── Scene 3 · laptop scales in, score ticks 0 → 2, ball spins ─
   {
     const base = 360
     const local = clamp((F - base) / 30, 0, 1)
@@ -737,9 +936,11 @@
     const sec = (F - base) / 30
     const score = sec >= 7 ? 2 : sec >= 4 ? 1 : 0
     document.getElementById('s3-score1').textContent = score
+    // Mini ball spins continuously in the live match card.
+    setLottieFrame('s3-miniball', 360, 660, F, 'loop')
   }
 
-  // ─── Scene 4 · 3 notifs slide in at staggered times ────────────
+  // ─── Scene 4 · 3 notifs slide in + kick-goal-post Lottie ──────
   {
     const base = 660
     const items = ['s4-n1', 's4-n2', 's4-n3']
@@ -750,9 +951,14 @@
       el.style.opacity = local
       el.style.transform = `translateY(${(1 - easeOut(local)) * -30}px) scale(${0.92 + 0.08 * easeOut(local)})`
     })
+    // Kick-goal-post plays once across the full scene (300 frames),
+    // fading into view at ~0.7s.
+    const kLocal = clamp((F - base - 20) / 30, 0, 1)
+    document.getElementById('s4-kick').style.opacity = kLocal * 0.22
+    setLottieFrame('s4-kick', 660, 960, F, 'progress')
   }
 
-  // ─── Scene 5 · slots reveal column by column ───────────────────
+  // ─── Scene 5 · slots reveal column by column + trophy ──────────
   {
     const base = 960
     const cols = ['s5-c1', 's5-c2', 's5-c3', 's5-c4', 's5-c5']
@@ -763,17 +969,77 @@
       col.style.opacity = local
       col.style.transform = `translateX(${(1 - easeOut(local)) * 60}px)`
     })
+    // Trophy fades in right when the final column reveals (~frame 1190).
+    const tLocal = clamp((F - 1190) / 40, 0, 1)
+    document.getElementById('s5-trophy').style.opacity = tLocal
+    setLottieFrame('s5-trophy', 960, 1260, F, 'progress')
   }
 
-  // ─── Scene 6 · modal zooms in from below ───────────────────────
+  // ─── Scene 6 · modal zooms in, then cycles 3 stadiums ──────────
+  // 1260-1290: modal enters
+  // 1290-1340: Estadio Azteca (Mexico City)
+  // 1340-1410: MetLife Stadium (New Jersey)
+  // 1410-1480: SoFi Stadium (Los Angeles)
+  // 1480-1500: modal exits via opacity fade-out (handled by scene fade)
   {
     const base = 1260
     const local = clamp((F - base) / 30, 0, 1)
     const m = document.getElementById('s6-modal')
     m.style.transform = `translate(-50%, calc(-50% + ${(1 - easeOut(local)) * 100}px)) scale(${0.92 + 0.08 * easeOut(local)})`
+
+    // Stadium carousel — 3 photos, 8-frame crossfades between them.
+    const stadiums = [
+      { from: 1260, to: 1340, bg: 's6-bg1', loc: 'MEXICO · MEXICO CITY',  name: 'Estadio Azteca',
+        cap: '87 000', games: '5', opened: '1966', age: '60 yrs', roof: 'Open', surf: 'natural grass',
+        pill: '⚠ ALTITUDE 2240m', climate: '23°C / 12°C · Moderate humidity · Afternoon storms.' },
+      { from: 1340, to: 1410, bg: 's6-bg2', loc: 'USA · NEW JERSEY',      name: 'MetLife Stadium',
+        cap: '82 500', games: '8', opened: '2010', age: '16 yrs', roof: 'Open', surf: 'natural grass',
+        pill: '🏟 FINAL VENUE',  climate: '28°C / 18°C · Humid summers · Occasional thunderstorms.' },
+      { from: 1410, to: 1500, bg: 's6-bg3', loc: 'USA · LOS ANGELES',     name: 'SoFi Stadium',
+        cap: '70 000', games: '8', opened: '2020', age: '6 yrs',  roof: 'Fixed', surf: 'hybrid grass',
+        pill: '☀ MEDITERRANEAN', climate: '24°C / 17°C · Mild · Dry June.' },
+    ]
+    // Determine which stadium index is active and the crossfade alpha.
+    const ids = ['s6-bg1', 's6-bg2', 's6-bg3']
+    let active = 0
+    for (let i = 0; i < stadiums.length; i++) {
+      if (F >= stadiums[i].from && F < stadiums[i].to) active = i
+    }
+    ids.forEach((bid, i) => {
+      const el = document.getElementById(bid)
+      const s = stadiums[i]
+      // 8-frame crossfade at each boundary, otherwise full opacity for active.
+      let op = 0
+      if (i === active) op = 1
+      // Fade IN for active when entering its window
+      if (i === active) {
+        const since = F - s.from
+        if (since < 8) op = since / 8
+      }
+      // Fade OUT for previous active during the first 8 frames of new window
+      if (i === active - 1) {
+        const since = F - stadiums[active].from
+        if (since < 8) op = 1 - since / 8
+      }
+      el.style.opacity = Math.max(0, Math.min(1, op))
+    })
+    // Update label + stats text to match active stadium.
+    const a = stadiums[active]
+    document.getElementById('s6-label-loc').textContent  = a.loc
+    document.getElementById('s6-label-name').textContent = a.name
+    document.getElementById('s6-stat-cap').textContent   = a.cap
+    document.getElementById('s6-stat-games').textContent = a.games
+    document.getElementById('s6-stat-opened').textContent= a.opened
+    document.getElementById('s6-stat-age').textContent   = a.age
+    document.getElementById('s6-stat-roof').textContent  = a.roof
+    document.getElementById('s6-stat-surf').textContent  = a.surf
+    document.getElementById('s6-pill').textContent       = a.pill
+    document.getElementById('s6-climate').textContent    = a.climate
+    // Mini ball spins continuously in the corner badge.
+    setLottieFrame('s6-miniball', 1260, 1500, F, 'loop')
   }
 
-  // ─── Scene 7 · phone slides in, share sheet pops up ────────────
+  // ─── Scene 7 · phone slides in, share sheet pops, kick deco ────
   {
     const base = 1500
     const phoneLocal = clamp((F - base) / 30, 0, 1)
@@ -789,15 +1055,25 @@
     const pulse = 1 + 0.08 * Math.sin((F - base) / 8)
     arrow.style.transform = `translateY(-50%) scale(${pulse})`
     arrow.style.opacity = clamp((F - base - 30) / 20, 0, 1)
+    // Flying-kick Lottie fades in at scene midpoint, loops.
+    const kLocal = clamp((F - base - 30) / 30, 0, 1)
+    document.getElementById('s7-kick').style.opacity = kLocal * 0.85
+    setLottieFrame('s7-kick', 1500, 1680, F, 'loop')
   }
 
-  // ─── Scene 8 · emblem scales, confetti rises ───────────────────
+  // ─── Scene 8 · trophy scales + confetti Lottie + CSS confetti ──
   {
     const base = 1680
     const local = clamp((F - base) / 30, 0, 1)
-    const glow = document.getElementById('s8-glow')
-    glow.style.transform = `scale(${0.5 + 0.5 * easeOut(local)})`
-    glow.style.opacity = local
+    // Trophy Lottie scales in and plays once across the scene.
+    const trophy = document.getElementById('s8-trophy')
+    trophy.style.transform = `scale(${0.5 + 0.5 * easeOut(local)})`
+    trophy.style.opacity = local
+    setLottieFrame('s8-trophy', 1680, 1800, F, 'progress')
+    // Confetti Lottie behind everything, plays once across the scene.
+    const confettiOp = clamp((F - base - 15) / 30, 0, 1)
+    document.getElementById('s8-confetti').style.opacity = confettiOp * 0.85
+    setLottieFrame('s8-confetti', 1680, 1800, F, 'progress')
     const urlEl = document.getElementById('s8-url')
     urlEl.style.opacity = clamp((F - base - 25) / 25, 0, 1)
 
@@ -838,6 +1114,9 @@
 
   // Expose for Puppeteer + initial paint from URL params.
   window.setFrame = (F, T = 1800) => { window.__frameReady = false; renderFrame(F, T) }
+  // Boot all lottie containers BEFORE the first frame paints so paths
+  // are queued and networkidle0 in render.mjs waits on them.
+  bootLotties()
   const _u = new URL(location.href)
   window.setFrame(
     Math.max(0, parseInt(_u.searchParams.get('frame') ?? '0')),

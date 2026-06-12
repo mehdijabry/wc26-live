@@ -46,11 +46,18 @@ const browser = await puppeteer.launch({
 const page = await browser.newPage()
 await page.setViewport({ width: W, height: H, deviceScaleFactor: 1 })
 
-// Pre-warm the page once so heavy assets (fonts, the Wikipedia hero
-// image, SVG emblem) load before we start the per-frame loop. Avoids
-// the first 30 frames showing FOIT placeholders.
+// Pre-warm the page once so heavy assets (fonts, stadium hero images,
+// SVG emblem, and all lottie JSONs) load before the per-frame loop.
+// We also wait explicitly for window.__lottiesReady to flip true so
+// goToAndStop() on the first capture isn't a no-op.
 console.log('▶  Warming up assets…')
 await page.goto(`${SCENE_URL}?frame=0&total=${TOTAL}`, { waitUntil: 'networkidle0', timeout: 30_000 })
+try {
+  await page.waitForFunction('window.__lottiesReady === true', { timeout: 15_000 })
+  console.log('   …all lotties loaded')
+} catch {
+  console.warn('   ! lotties did not all report ready — proceeding anyway')
+}
 await new Promise((r) => setTimeout(r, 1000))
 
 // Now render each frame — the page stays loaded; we only call the
