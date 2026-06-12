@@ -1,0 +1,42 @@
+# Cloudflare Pages _headers — per-path Cache-Control rules.
+# IMPORTANT: rules are applied top-to-bottom with the LAST match
+# winning per header. The catch-all (/*) goes FIRST as the fallback;
+# specific paths go AFTER so they override.
+
+# Default for HTML and everything else: browser never caches (so
+# deploys go live instantly), CDN caches for 60s (so concurrent
+# visitors don't hit origin). The Cache-Control / CDN-Cache-Control
+# split is a Cloudflare feature — the s-maxage applies at CF, the
+# max-age applies in the browser.
+/*
+  Cache-Control: public, max-age=0, must-revalidate
+  CDN-Cache-Control: public, s-maxage=60
+
+# Vite-hashed bundles (index-abc123.js, etc.) — content changes
+# whenever the hash changes, so cache them forever. 'immutable'
+# tells the browser to skip even the 'has it changed' conditional.
+# CDN-Cache-Control override needed because /* sets s-maxage=60 and
+# Cloudflare Pages MERGES headers across matching rules — without
+# the explicit override the catchall's short s-maxage would win.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+  CDN-Cache-Control: public, s-maxage=31536000, immutable
+
+# Referee notification icons — heavy SVG files but never change.
+/notif-icons/*
+  Cache-Control: public, max-age=31536000, immutable
+  CDN-Cache-Control: public, s-maxage=31536000, immutable
+
+# Brand assets — emblem, favicons, OG card. Change manually rarely;
+# 30 days strikes a balance between cache hit ratio and update speed.
+/wc26-emblem.svg
+  Cache-Control: public, max-age=2592000
+/og.png
+  Cache-Control: public, max-age=2592000
+/manifest.json
+  Cache-Control: public, max-age=86400
+
+# Service worker — must always revalidate so push fixes land
+# on the next page load.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
