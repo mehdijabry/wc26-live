@@ -111,6 +111,18 @@ export function NewsTicker() {
     suggestions: NewsArticle[]
   } | null>(null)
 
+  // Preload the News page chunk in the background so the first click
+  // on an article opens instantly — no Lottie boot animation flash
+  // between the home and the article (which is shared with the same
+  // chunk for NewsListPage). idleCallback so it doesn't compete with
+  // the article fetch for bandwidth on slow connections.
+  useEffect(() => {
+    const kick = () => { void import('./pages/News') }
+    const ric = (window as typeof window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+    if (ric) ric(kick)
+    else window.setTimeout(kick, 1500)
+  }, [])
+
   // Full refresh every 5 minutes.
   useEffect(() => {
     let stop = false
