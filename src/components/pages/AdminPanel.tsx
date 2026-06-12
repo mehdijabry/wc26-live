@@ -40,20 +40,27 @@ export function AdminPanel() {
 
   // Session probe on mount — sends the Bearer token from sessionStorage
   // if we have one. If not, immediately render the login screen.
+  //
+  // Also swaps the PWA manifest to the admin-only variant so iOS "Add
+  // to Home Screen" registers this URL (/admin-panel-1992) as the
+  // start_url. Without this, the saved icon would open the public site.
   useEffect(() => {
     document.title = 'Admin · Pressing 90'
     setMeta('robots', 'noindex,nofollow,noarchive')
+    const restoreManifest = swapPWAMetaForAdmin()
     const tok = getToken()
-    if (!tok) { setAuthed(false); return }
-    void fetch(`${API_BASE}/admin/auth/session`, {
-      headers: { authorization: `Bearer ${tok}` },
-    })
-      .then((r) => r.json())
-      .then((j) => {
-        if (j.ok) setAuthed(true)
-        else { setToken(null); setAuthed(false) }
+    if (!tok) { setAuthed(false) } else {
+      void fetch(`${API_BASE}/admin/auth/session`, {
+        headers: { authorization: `Bearer ${tok}` },
       })
-      .catch(() => setAuthed(false))
+        .then((r) => r.json())
+        .then((j) => {
+          if (j.ok) setAuthed(true)
+          else { setToken(null); setAuthed(false) }
+        })
+        .catch(() => setAuthed(false))
+    }
+    return restoreManifest
   }, [])
 
   async function onLogin(e: React.FormEvent) {
@@ -126,6 +133,14 @@ export function AdminPanel() {
           >
             {loggingIn ? 'Signing in…' : 'Sign in'}
           </button>
+          <div className="mt-6 pt-5 border-t border-slate-200 text-xs text-slate-500 font-mono leading-relaxed">
+            <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400 mb-2">
+              Install on iPhone
+            </div>
+            Open this page in Safari → tap <strong className="text-ink-900">Share</strong>
+            {' '}<span aria-hidden>⬆</span> → <strong className="text-ink-900">Add to Home Screen</strong>.
+            The icon opens straight to this admin login — not the public site.
+          </div>
         </form>
       </div>
     )
@@ -792,6 +807,31 @@ function setMeta(name: string, content: string) {
   let tag = document.querySelector(`meta[name="${name}"]`) as HTMLMetaElement | null
   if (!tag) { tag = document.createElement('meta'); tag.name = name; document.head.appendChild(tag) }
   tag.content = content
+}
+
+// Point the PWA manifest + iOS apple-* tags at the admin-only variant so
+// iOS "Add to Home Screen" registers /admin-panel-1992 as the start_url,
+// then revert on unmount. Without this, the saved icon opens the public
+// site instead of the operator console.
+//
+// iOS Safari re-reads these head tags at the moment "Add to Home Screen"
+// is tapped, so a runtime swap is enough — no SSR or static-HTML route
+// is needed.
+function swapPWAMetaForAdmin(): () => void {
+  const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement | null
+  const themeTag = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null
+  const appleTitle = document.querySelector('meta[name="apple-mobile-web-app-title"]') as HTMLMetaElement | null
+  const origManifest = link?.getAttribute('href') ?? null
+  const origTheme = themeTag?.getAttribute('content') ?? null
+  const origTitle = appleTitle?.getAttribute('content') ?? null
+  link?.setAttribute('href', '/admin-manifest.json')
+  themeTag?.setAttribute('content', '#0a1a2e')
+  appleTitle?.setAttribute('content', 'P90 Admin')
+  return () => {
+    if (origManifest !== null) link?.setAttribute('href', origManifest)
+    if (origTheme !== null) themeTag?.setAttribute('content', origTheme)
+    if (origTitle !== null) appleTitle?.setAttribute('content', origTitle)
+  }
 }
 
 // ─── News tab — manage AI-drafted articles ─────────────────────────
