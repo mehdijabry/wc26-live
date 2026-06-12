@@ -686,10 +686,8 @@ function Push() {
         )}
 
         {/* Editable fields — same for every preset, pre-filled by the picker above. */}
-        <div className="grid sm:grid-cols-2 gap-3">
-          <InputField label="Title" value={title} onChange={setTitle} placeholder="⚽ Morocco vs Spain" />
-          <InputField label="URL (relative)" value={url} onChange={setUrl} placeholder="/today" />
-        </div>
+        <InputField label="Title" value={title} onChange={setTitle} placeholder="⚽ Morocco vs Spain" />
+
         <div className="mt-3">
           <label className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">Body</label>
           <textarea
@@ -699,7 +697,18 @@ function Push() {
             className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-accent-gold/40 font-mono text-sm h-20"
           />
         </div>
-        <InputField label="Tag (groups notifications)" value={tag} onChange={setTag} placeholder="kickoff" />
+
+        {/* URL = the relative path the user lands on when they tap the
+            notification. Dropdown to avoid typos on the common
+            destinations; 'Custom path…' reveals a text input for deep
+            links like /news/<slug> or /team/MAR. */}
+        <UrlPicker value={url} onChange={setUrl} />
+
+        {/* TAG groups notifications — a newer one with the same tag
+            replaces the previous in the iOS notification tray instead
+            of stacking. Dropdown enforces consistency; 'Custom tag…'
+            reveals a text input. */}
+        <TagPicker value={tag} onChange={setTag} />
 
         {/* Live preview — matches the SW notification shape. */}
         {previewActive && (
@@ -1086,6 +1095,112 @@ function InputField({ label, value, onChange, placeholder }: { label: string; va
         placeholder={placeholder}
         className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-accent-gold/40 font-mono text-sm"
       />
+    </div>
+  )
+}
+
+// URL = the relative path the user lands on when they tap the
+// notification. A typo here is a wasted alert (404 page or wrong
+// section), so the dropdown enforces consistency on the common
+// destinations and a CUSTOM option still allows arbitrary deep links
+// like /news/<slug> or /team/MAR.
+const URL_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '/',            label: '/ · Home' },
+  { value: '/today',       label: '/today · Today\'s matches' },
+  { value: '/wc26',        label: '/wc26 · WC26 hub' },
+  { value: '/predictions', label: '/predictions · Bracket' },
+  { value: '/board',       label: '/board · Leaderboard' },
+  { value: '/news',        label: '/news · News index' },
+  { value: '/stadiums',    label: '/stadiums · Stadiums' },
+]
+const URL_CUSTOM = '__custom__'
+
+function UrlPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const known = URL_OPTIONS.find((o) => o.value === value)
+  const isCustom = !known
+  return (
+    <div className="mt-3">
+      <label className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
+        URL · where the tap lands
+      </label>
+      <select
+        value={isCustom ? URL_CUSTOM : value}
+        onChange={(e) => onChange(e.target.value === URL_CUSTOM ? '' : e.target.value)}
+        className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-accent-gold/40 font-mono text-sm"
+      >
+        {URL_OPTIONS.map((o) => (
+          <option key={o.value} value={o.value}>{o.label}</option>
+        ))}
+        <option value={URL_CUSTOM}>Custom path…</option>
+      </select>
+      {isCustom && (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="/news/some-slug or /team/MAR"
+          className="mt-2 w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-accent-gold/40 font-mono text-sm"
+        />
+      )}
+      <div className="mt-1 text-[10px] text-slate-400 font-mono">
+        Must start with <code>/</code>. Use slugs for articles
+        (<code>/news/&lt;slug&gt;</code>), abbreviations for teams
+        (<code>/team/MAR</code>).
+      </div>
+    </div>
+  )
+}
+
+// TAG groups notifications — a newer one with the same tag REPLACES
+// the previous in the iOS notification tray instead of stacking up.
+// Examples: kickoff alerts for the same match share a tag so reading
+// the latest one auto-clears the older. Free-form is allowed but we
+// list the conventions the app already uses.
+const TAG_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: '',                  label: '— none (each notif stacks separately) —' },
+  { value: 'manual',            label: 'manual · ad-hoc operator broadcast' },
+  { value: 'match-upcoming',    label: 'match-upcoming · pre-kickoff hype' },
+  { value: 'kickoff',           label: 'kickoff · match start' },
+  { value: 'goal',              label: 'goal · score change' },
+  { value: 'ft',                label: 'ft · full-time' },
+  { value: 'article',           label: 'article · news drop' },
+  { value: 'section-update',    label: 'section-update · in-app destination' },
+  { value: 'test',              label: 'test · QA / debug' },
+]
+const TAG_CUSTOM = '__custom__'
+
+function TagPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const known = TAG_OPTIONS.find((o) => o.value === value)
+  const isCustom = !!value && !known
+  return (
+    <div className="mt-3">
+      <label className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
+        Tag · groups notifications (newer replaces older)
+      </label>
+      <select
+        value={isCustom ? TAG_CUSTOM : value}
+        onChange={(e) => onChange(e.target.value === TAG_CUSTOM ? '' : e.target.value)}
+        className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-accent-gold/40 font-mono text-sm"
+      >
+        {TAG_OPTIONS.map((o) => (
+          <option key={o.value || 'none'} value={o.value}>{o.label}</option>
+        ))}
+        <option value={TAG_CUSTOM}>Custom tag…</option>
+      </select>
+      {isCustom && (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="e.g. match-upcoming-401702103"
+          className="mt-2 w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-accent-gold/40 font-mono text-sm"
+        />
+      )}
+      <div className="mt-1 text-[10px] text-slate-400 font-mono">
+        Match / article presets append the match id or slug for you,
+        so each match's alerts are grouped together but distinct from
+        another match.
+      </div>
     </div>
   )
 }
