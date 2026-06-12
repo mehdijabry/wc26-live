@@ -816,6 +816,9 @@ interface Article {
   source_name: string
   score: number | null
   status: 'draft' | 'published' | 'archived'
+  /** When true, the home-page NewsTicker carousel shows this article
+   *  in its first 2 pages. Toggled via the pin/unpin actions. */
+  pinned_to_home?: boolean
   created_at: string
   published_at: string | null
   archived_at: string | null
@@ -861,7 +864,7 @@ function News() {
 
   useEffect(() => { void load() }, [status])
 
-  async function act(id: string, action: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish') {
+  async function act(id: string, action: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish' | 'pin' | 'unpin') {
     if (action === 'delete' && !confirm('Delete this article permanently?')) return
     setBusy(id + ':' + action)
     setMsg(null)
@@ -1110,7 +1113,7 @@ function ArticleRow({
   expanded: boolean
   onExpand: () => void
   busy: string | null
-  onAct: (a: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish') => void
+  onAct: (a: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish' | 'pin' | 'unpin') => void
 }) {
   const isBusy = busy?.startsWith(article.id + ':')
   return (
@@ -1154,9 +1157,29 @@ function ArticleRow({
               </>
             )}
             {article.status === 'published' && (
-              <button disabled={isBusy} onClick={() => onAct('unpublish')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50">
-                Unpublish
-              </button>
+              <>
+                {/* Pin toggle — controls whether the home-page NewsTicker
+                    carousel shows this article in its first 2 pages.
+                    Unpinning drops it from home but leaves the article
+                    fully readable at /news/<slug>. Default for new
+                    publishes is pinned=true. */}
+                <button
+                  disabled={isBusy}
+                  onClick={() => onAct(article.pinned_to_home ? 'unpin' : 'pin')}
+                  className={
+                    'px-2.5 py-1 text-[11px] font-bold rounded-full disabled:opacity-50 ' +
+                    (article.pinned_to_home
+                      ? 'bg-accent-gold text-ink-900 hover:bg-yellow-300'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                  }
+                  title={article.pinned_to_home ? 'Pinned to home — click to unpin' : 'Not on home — click to pin'}
+                >
+                  {article.pinned_to_home ? '📌 Pinned' : '📌 Pin to home'}
+                </button>
+                <button disabled={isBusy} onClick={() => onAct('unpublish')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50">
+                  Unpublish
+                </button>
+              </>
             )}
             {article.status === 'archived' && (
               <button disabled={isBusy} onClick={() => onAct('republish')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-emerald-100 text-emerald-700 hover:bg-emerald-200 disabled:opacity-50">

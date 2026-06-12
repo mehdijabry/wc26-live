@@ -931,7 +931,7 @@ async function handleListNews(env: AdminEnv, req: Request): Promise<Response> {
   const limit = Math.min(100, parseInt(url.searchParams.get('limit') ?? '50'))
   try {
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/articles?status=eq.${encodeURIComponent(status)}&select=id,slug,title,excerpt,body,image_url,source_url,source_name,score,status,created_at,published_at,archived_at&order=created_at.desc&limit=${limit}`,
+      `${env.SUPABASE_URL}/rest/v1/articles?status=eq.${encodeURIComponent(status)}&select=id,slug,title,excerpt,body,image_url,source_url,source_name,score,status,pinned_to_home,created_at,published_at,archived_at&order=created_at.desc&limit=${limit}`,
       {
         headers: {
           apikey: env.SUPABASE_SERVICE_KEY,
@@ -1093,6 +1093,11 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
   if (action === 'reject')  return updateArticle(env, id, { status: 'archived',  archived_at: nowIso() })
   if (action === 'unpublish') return updateArticle(env, id, { status: 'draft',  published_at: null })
   if (action === 'republish') return updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null })
+  // Toggle the home-page pin flag. NewsTicker filters by pinned_to_home
+  // so unpinning instantly drops the article from the carousel without
+  // changing its publication state — it stays readable at /news/<slug>.
+  if (action === 'pin')   return updateArticle(env, id, { pinned_to_home: true  })
+  if (action === 'unpin') return updateArticle(env, id, { pinned_to_home: false })
   if (action === 'delete') {
     const r = await fetch(`${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(id)}`, {
       method: 'DELETE',

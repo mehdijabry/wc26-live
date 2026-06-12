@@ -16,6 +16,14 @@ async function fetchInternalArticles(): Promise<NewsArticle[]> {
       .from('articles')
       .select('id,slug,title,excerpt,image_url,published_at,created_at')
       .eq('status', 'published')
+      // Only show articles that the operator has explicitly pinned to
+      // the home page. This is the operator's editorial control over
+      // which 6 briefings (max) populate pages 1 + 2 of the carousel.
+      // New articles default to pinned=true via the DB schema, so the
+      // out-of-box behaviour stays the same; pinning is purely
+      // subtractive (unpin to hide a published article from home
+      // without unpublishing it).
+      .eq('pinned_to_home', true)
       .order('published_at', { ascending: false })
       .limit(6)
     if (error || !data) return []
