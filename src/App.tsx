@@ -57,7 +57,18 @@ function App() {
   // motion.div, cream background matching the rest of the site,
   // 1.2s visible, 0.4s fade. No HTML boot splash, no double-render,
   // no CSS keyframes fighting Framer Motion.
-  const [intro, setIntro] = useState<boolean>(typeof window !== 'undefined')
+  // Show the cream splash on cold boot, EXCEPT when the URL carries
+  // '?ad=ok' (the popunder-swap marker the Interstitial uses to mark
+  // its foreground tab). Without this guard, every article click on
+  // the home opens a new tab that boots from scratch and replays the
+  // 1.2 s splash — feels like the whole app is reloading mid-flow.
+  const [intro, setIntro] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      if (new URLSearchParams(window.location.search).get('ad') === 'ok') return false
+    } catch {}
+    return true
+  })
   useEffect(() => {
     if (!intro) return
     const t = setTimeout(() => setIntro(false), 1200)
