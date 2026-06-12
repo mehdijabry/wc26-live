@@ -113,7 +113,16 @@ function App() {
   // pressing90.live as a fallback for old bookmarks.
   if (typeof window !== 'undefined' && window.location.hostname === 'admin.pressing90.live') {
     if (!window.location.pathname.startsWith('/visca-barca')) {
-      // Generic 404 — doesn't hint at the existence of the real slug.
+      // Standalone-mode launch with the wrong start_url = an old PWA
+      // install that pre-dates the /visca-barca slug. Auto-redirect to
+      // the real path so the saved home-screen icon keeps working
+      // instead of dead-ending on the 404. Browser visits (not PWA)
+      // still see the 404 — the slug stays unleaked there.
+      try {
+        if (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) {
+          window.location.replace('/visca-barca')
+        }
+      } catch { /* matchMedia not available — fall through to 404 */ }
       return (
         <div className="min-h-svh flex items-center justify-center bg-slate-50">
           <div className="font-mono text-xs text-slate-400 tracking-widest">404 NOT FOUND</div>

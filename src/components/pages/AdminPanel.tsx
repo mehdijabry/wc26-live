@@ -104,8 +104,14 @@ export function AdminPanel() {
 
   if (!authed) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 p-6">
-        <form onSubmit={onLogin} className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
+      <div
+        className="min-h-screen flex items-center justify-center bg-slate-50 px-4 py-6"
+        style={{
+          paddingTop: 'calc(env(safe-area-inset-top, 0px) + 1.5rem)',
+          paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 1.5rem)',
+        }}
+      >
+        <form onSubmit={onLogin} className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-xl">
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-3">
             Pressing 90 · admin
           </div>
@@ -148,28 +154,46 @@ export function AdminPanel() {
 
   return (
     <div className="min-h-screen bg-slate-50">
-      <header className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-slate-200">
-        <div className="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between gap-4">
-          <div>
+      {/* Sticky header. Top padding combines the iOS safe-area (notch /
+          Dynamic Island in standalone PWA mode — 0 in a browser tab)
+          with the regular py-3 so content never hides under the notch. */}
+      <header
+        className="sticky top-0 z-40 backdrop-blur-xl bg-white/80 border-b border-slate-200"
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+      >
+        <div className="max-w-6xl mx-auto px-4 sm:px-5 py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0 flex-1">
             <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
               Pressing 90 · admin
             </div>
-            <div className="font-display font-bold text-ink-900">Operator console</div>
+            <div className="font-display font-bold text-ink-900 truncate text-base sm:text-lg">
+              Operator console
+            </div>
           </div>
-          <button onClick={onLogout} className="text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-accent-red">
+          {/* Real button instead of a tiny link — 44px min target for
+              comfortable iPhone taps, with a clear logout chip. */}
+          <button
+            onClick={onLogout}
+            className="shrink-0 px-3 py-2 rounded-full border border-slate-200 text-[11px] font-mono uppercase tracking-widest text-slate-600 hover:text-accent-red hover:border-accent-red active:bg-slate-50 transition-colors"
+          >
             Sign out
           </button>
         </div>
-        <nav className="max-w-6xl mx-auto px-5 pb-2 flex gap-1 overflow-x-auto">
+        {/* Horizontal tab strip — scroll-padding so the active chip never
+            sits right under the rounded edge when scrolled into view. */}
+        <nav
+          className="max-w-6xl mx-auto px-4 sm:px-5 pb-2 flex gap-1.5 overflow-x-auto scroll-smooth"
+          style={{ scrollPaddingInline: '1rem', WebkitOverflowScrolling: 'touch' }}
+        >
           {(['overview', 'analytics', 'news', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
               className={
-                'shrink-0 px-3 py-1.5 rounded-full text-xs font-mono uppercase tracking-widest transition-colors ' +
+                'shrink-0 px-3.5 py-2 rounded-full text-[11px] font-mono uppercase tracking-widest transition-colors ' +
                 (tab === t
                   ? 'bg-ink-900 text-white font-semibold'
-                  : 'text-slate-500 hover:bg-slate-100')
+                  : 'text-slate-500 hover:bg-slate-100 active:bg-slate-200')
               }
               // Explicit inline style as a belt-and-braces fallback —
               // Safari sometimes ignores the Tailwind text-white utility
@@ -183,7 +207,12 @@ export function AdminPanel() {
         </nav>
       </header>
 
-      <main className="max-w-6xl mx-auto px-5 py-8">
+      {/* Main scrollable area. Bottom padding adds the iOS home-indicator
+          safe area so the last section isn't covered by the gesture bar. */}
+      <main
+        className="max-w-6xl mx-auto px-4 sm:px-5 py-5 sm:py-8"
+        style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 2rem)' }}
+      >
         {tab === 'overview' && <Overview />}
         {tab === 'analytics' && <Analytics />}
         {tab === 'push' && <Push />}
@@ -695,9 +724,9 @@ function QuickActions() {
 
 function Section({ title, eyebrow, children }: { title: string; eyebrow?: string; children: React.ReactNode }) {
   return (
-    <section className="mb-8 rounded-2xl border border-slate-200 bg-white p-5 sm:p-6">
+    <section className="mb-6 sm:mb-8 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       {eyebrow && <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500 font-mono mb-1">{eyebrow}</div>}
-      <h2 className="font-display font-bold text-xl text-ink-900 mb-4">{title}</h2>
+      <h2 className="font-display font-bold text-lg sm:text-xl text-ink-900 mb-3 sm:mb-4">{title}</h2>
       {children}
     </section>
   )
