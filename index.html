@@ -32,19 +32,15 @@
       (function () {
         var host = location.hostname || ''
         var path = location.pathname || ''
-        // Only swap on either:
-        //  - admin.* subdomain AND the /visca-barca slug
-        //  - legacy /admin-panel-* path on any origin
-        // Bare admin.pressing90.live (no slug) renders the 404 in
-        // App.tsx and gets no special PWA treatment, so iOS users
-        // who only saw the bare subdomain can't install the admin.
-        var isSubdomain = host.indexOf('admin.') === 0 && path.indexOf('/visca-barca') === 0
-        var isLegacyPath = path.indexOf('/admin-panel-') === 0
-        if (!isSubdomain && !isLegacyPath) return
-        // Subdomain install → start_url '/visca-barca' (slug required).
-        // Legacy path install → start_url '/admin-panel-1992'.
-        var manifestHref = isSubdomain ? '/admin-manifest.json' : '/admin-manifest-path.json'
-        var m = document.getElementById('pwa-manifest');         if (m) m.href = manifestHref
+        // Only swap on the admin subdomain AND under the /visca-barca slug.
+        // Bare admin.pressing90.live renders a 404 in App.tsx and gets
+        // no PWA swap — install attempts there fall back to the public
+        // manifest, which is fine (they'd land on the public site anyway).
+        // The legacy /admin-panel-1992 path is now a honeypot decoy and
+        // intentionally does NOT trigger the admin manifest swap.
+        var isAdminSubdomain = host.indexOf('admin.') === 0 && path.indexOf('/visca-barca') === 0
+        if (!isAdminSubdomain) return
+        var m = document.getElementById('pwa-manifest');         if (m) m.href = '/admin-manifest.json'
         var t = document.getElementById('pwa-apple-title');      if (t) t.content = 'P90 Admin'
         var i = document.getElementById('pwa-apple-icon');       if (i) i.href = '/admin-emblem.svg'
         var i2 = document.getElementById('pwa-apple-icon-180');  if (i2) i2.href = '/admin-emblem.svg'

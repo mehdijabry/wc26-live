@@ -42,6 +42,10 @@ const TeamPage = lazy(() => import('./components/pages/TeamPage').then((m) => ({
 const Explained = lazy(() => import('./components/pages/Explained').then((m) => ({ default: m.Explained })))
 const ExplainedTopic = lazy(() => import('./components/pages/ExplainedTopic').then((m) => ({ default: m.ExplainedTopic })))
 const AdminPanel = lazy(() => import('./components/pages/AdminPanel').then((m) => ({ default: m.AdminPanel })))
+// Honeypot decoy that takes the place of the old AdminPanel on the
+// legacy path-based URL. Pretends to be a magic-link sign-in form;
+// the real admin lives on admin.pressing90.live/visca-barca now.
+const AdminHoneypot = lazy(() => import('./components/pages/AdminHoneypot').then((m) => ({ default: m.AdminHoneypot })))
 
 function App() {
   const authInit = useAuth((s) => s.init)
@@ -249,14 +253,16 @@ function App() {
               </Suspense>
             }
           />
-          {/* Admin panel — obscured slug, real auth is the password.
-              Pages-level <Suspense> wraps it without the global nav,
-              so the panel renders as its own standalone shell. */}
+          {/* Legacy admin URL is now a HONEYPOT.
+              Real admin moved to admin.pressing90.live/visca-barca
+              (handled by the hostname short-circuit at the top of App).
+              Anyone hitting this old path gets a polished but inert
+              "magic link" sign-in form — looks legit, does nothing. */}
           <Route
             path="/admin-panel-1992"
             element={
-              <Suspense fallback={<PageSkeleton caption="Loading admin…" />}>
-                <AdminPanel />
+              <Suspense fallback={<PageSkeleton caption="Loading sign in…" />}>
+                <AdminHoneypot />
               </Suspense>
             }
           />

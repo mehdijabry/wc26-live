@@ -41,13 +41,9 @@
   Cache-Control: public, max-age=2592000
 /manifest.json
   Cache-Control: public, max-age=86400
-# Admin PWA manifests — two variants:
-#   admin-manifest.json       → start_url '/'              (admin.* subdomain installs)
-#   admin-manifest-path.json  → start_url '/admin-panel-1992' (legacy path-based installs)
-# The inline script in index.html picks the right one based on hostname.
+# Admin PWA manifest — served when AdminPanel mounts on the
+# admin.pressing90.live/visca-barca route. start_url is '/visca-barca'.
 /admin-manifest.json
-  Cache-Control: public, max-age=86400
-/admin-manifest-path.json
   Cache-Control: public, max-age=86400
 
 # Service worker — must always revalidate so push fixes land
