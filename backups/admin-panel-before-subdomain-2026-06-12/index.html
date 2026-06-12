@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a2540" />
+    <link rel="icon" type="image/svg+xml" href="/wc26-emblem.svg" />
+    <link rel="canonical" href="https://pressing90.live/" />
+
+    <!-- PWA manifest + iOS "Add to Home Screen" support.
+         iOS doesn't honor manifest.json fully, so we duplicate the
+         critical metadata via apple-* tags so the saved icon + standalone
+         launch behave like a native app. -->
+    <link rel="manifest" href="/manifest.json" id="pwa-manifest" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="WC26 Live" id="pwa-apple-title" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <link rel="apple-touch-icon" href="/wc26-emblem.svg" id="pwa-apple-icon" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/wc26-emblem.svg" id="pwa-apple-icon-180" />
+
+    <!-- Admin PWA swap. iOS Safari often reads the manifest + apple-* tags
+         EAGERLY at page-parse time, before the React bundle finishes
+         downloading. A useEffect inside AdminPanel.tsx swaps too late —
+         tapping Share → Add to Home Screen on /admin-panel-* would still
+         capture the public manifest. So we swap synchronously, in the
+         head, before any other script runs. -->
+    <script>
+      (function () {
+        if (location.pathname.indexOf('/admin-panel-') !== 0) return
+        var m = document.getElementById('pwa-manifest');         if (m) m.href = '/admin-manifest.json'
+        var t = document.getElementById('pwa-apple-title');      if (t) t.content = 'P90 Admin'
+        var i = document.getElementById('pwa-apple-icon');       if (i) i.href = '/admin-emblem.svg'
+        var i2 = document.getElementById('pwa-apple-icon-180');  if (i2) i2.href = '/admin-emblem.svg'
+        var th = document.querySelector('meta[name="theme-color"]'); if (th) th.content = '#0a1a2e'
+      })()
+    </script>
+
+    <!-- Google Search Console verification -->
+    <meta name="google-site-verification" content="ooSl9AUG8WbW5zaA8Ezq6-JSe4jtxn_L4Ch4z2vhskY" />
+
+    <!-- Primary SEO -->
+    <title>WC26 Live · Pressing 90′ — World Cup 2026 scores, brackets & predictions</title>
+    <meta
+      name="description"
+      content="WC26 Live by Pressing 90′ — every FIFA World Cup 2026 match, group, stadium and prediction. 48 nations across USA, Mexico and Canada. Live scores, full bracket simulator, leaderboard. June 11 → July 19, 2026."
+    />
+    <meta
+      name="keywords"
+      content="World Cup 2026, WC26, FIFA World Cup, coupe du monde 2026, football, foot, soccer, brackets, predictions, pronostics, scores, leaderboard, Atlas Lions, Morocco, Maroc, Mexico, USA, Canada, Pressing 90, news foot, foot live, live scores, Premier League, LaLiga, Champions League, UCL"
+    />
+    <meta name="author" content="mehdijabry.dev" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="googlebot" content="index, follow" />
+    <meta http-equiv="content-language" content="en, fr" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="WC26 Live · Pressing 90′" />
+    <meta property="og:title" content="WC26 Live — World Cup 2026 hub, scores, brackets, predictions" />
+    <meta
+      property="og:description"
+      content="48 nations · 16 host cities · 104 matches. Predict every score, every starter, every card. Publish your bracket, climb the leaderboard."
+    />
+    <meta property="og:url" content="https://pressing90.live/" />
+    <meta property="og:image" content="https://pressing90.live/og.png" />
+    <meta property="og:image:alt" content="WC26 Live — FIFA World Cup 2026 hub" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="en_US" />
+    <meta property="og:locale:alternate" content="fr_FR" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="WC26 Live · Pressing 90′" />
+    <meta
+      name="twitter:description"
+      content="Every FIFA World Cup 2026 match, every group, every prediction — synced to your timezone."
+    />
+    <meta name="twitter:image" content="https://pressing90.live/og.png" />
+    <meta name="twitter:image:alt" content="WC26 Live — FIFA World Cup 2026" />
+
+    <!-- Performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://wc26-api.nameless-violet-5dc1.workers.dev" crossorigin />
+    <link rel="dns-prefetch" href="https://ssvvojhxyotlbcdosiog.supabase.co" />
+    <link rel="dns-prefetch" href="https://a.espncdn.com" />
+    <link rel="dns-prefetch" href="https://flagcdn.com" />
+    <!-- Warm the tournament endpoint in parallel with the JS bundle. By the
+         time the React store calls api.tournament() this response is already
+         sitting in the browser cache → near-zero blank gap on Groups. -->
+    <link rel="preload" as="fetch" crossorigin
+      href="https://wc26-api.nameless-violet-5dc1.workers.dev/tournament" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Structured data: SportsEvent (WC26) + Organization (Pressing 90′) + WebSite -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SportsEvent",
+            "name": "FIFA World Cup 2026",
+            "alternateName": ["World Cup 2026", "WC26", "Coupe du monde 2026"],
+            "description": "First 48-nation FIFA World Cup, co-hosted by the United States, Mexico and Canada.",
+            "startDate": "2026-06-11",
+            "endDate": "2026-07-19",
+            "sport": "Soccer",
+            "eventStatus": "https://schema.org/EventScheduled",
+            "eventAttendanceMode": "https://schema.org/MixedEventAttendanceMode",
+            "location": [
+              { "@type": "Country", "name": "United States" },
+              { "@type": "Country", "name": "Mexico" },
+              { "@type": "Country", "name": "Canada" }
+            ],
+            "organizer": { "@type": "SportsOrganization", "name": "FIFA" },
+            "url": "https://pressing90.live/"
+          },
+          {
+            "@type": "Organization",
+            "name": "Pressing 90'",
+            "alternateName": "WC26 Live",
+            "url": "https://pressing90.live/",
+            "logo": "https://pressing90.live/wc26-emblem.svg",
+            "sameAs": ["https://mehdijabry.dev"],
+            "description": "Football editorial — World Cup 2026 hub, live scores from every major competition, and a full-bracket prediction game."
+          },
+          {
+            "@type": "WebSite",
+            "name": "WC26 Live",
+            "url": "https://pressing90.live/",
+            "potentialAction": {
+              "@type": "SearchAction",
+              "target": "https://pressing90.live/?q={search_term_string}",
+              "query-input": "required name=search_term_string"
+            }
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Cloudflare Web Analytics (free, no cookies, GDPR-friendly) -->
+    <script defer src='https://static.cloudflareinsights.com/beacon.min.js'
+      data-cf-beacon='{"token": "d6a44cfcf6994e1798c8b6139f3813dd"}'></script>
+
+    <!-- SocialBar is NOT loaded site-wide — user wants it scoped to
+         the article-open interstitial only. The modal mount in
+         News.tsx injects the script into document.body on open and
+         removes it (+ rendered widget) on close. -->
+  </body>
+</html>

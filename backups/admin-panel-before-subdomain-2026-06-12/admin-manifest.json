@@ -1,0 +1,45 @@
+{
+  "name": "Pressing 90' Admin",
+  "short_name": "P90 Admin",
+  "description": "Operator console for pressing90.live — push, email, analytics, DB.",
+  "start_url": "/admin-panel-1992",
+  "scope": "/admin-panel-1992",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0a1a2e",
+  "theme_color": "#0a1a2e",
+  "lang": "en",
+  "icons": [
+    {
+      "src": "/admin-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/admin-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/admin-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/admin-icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/admin-emblem.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["business", "productivity"]
+}
