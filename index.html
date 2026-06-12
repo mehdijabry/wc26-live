@@ -32,12 +32,17 @@
       (function () {
         var host = location.hostname || ''
         var path = location.pathname || ''
-        var isSubdomain = host.indexOf('admin.') === 0
+        // Only swap on either:
+        //  - admin.* subdomain AND the /visca-barca slug
+        //  - legacy /admin-panel-* path on any origin
+        // Bare admin.pressing90.live (no slug) renders the 404 in
+        // App.tsx and gets no special PWA treatment, so iOS users
+        // who only saw the bare subdomain can't install the admin.
+        var isSubdomain = host.indexOf('admin.') === 0 && path.indexOf('/visca-barca') === 0
         var isLegacyPath = path.indexOf('/admin-panel-') === 0
         if (!isSubdomain && !isLegacyPath) return
-        // Subdomain install → start_url '/' (whole origin is admin).
-        // Legacy path install → start_url '/admin-panel-1992' so old
-        // bookmarks keep behaving the way they always did.
+        // Subdomain install → start_url '/visca-barca' (slug required).
+        // Legacy path install → start_url '/admin-panel-1992'.
         var manifestHref = isSubdomain ? '/admin-manifest.json' : '/admin-manifest-path.json'
         var m = document.getElementById('pwa-manifest');         if (m) m.href = manifestHref
         var t = document.getElementById('pwa-apple-title');      if (t) t.content = 'P90 Admin'

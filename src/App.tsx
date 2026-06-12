@@ -95,16 +95,27 @@ function App() {
   }, [location.pathname])
 
   // ── Admin subdomain short-circuit ──────────────────────────────────
-  // When the app is served from admin.pressing90.live, render ONLY the
+  // When the app is served from admin.pressing90.live, render the
   // operator console — no intro splash, no public-site Navigation /
-  // LiveTicker / Footer / PullToRefresh. The whole origin becomes the
-  // admin app, which is exactly what iOS PWAs need to install cleanly
-  // (scope = entire origin, no risk of opening the public homepage).
+  // LiveTicker / Footer / PullToRefresh.
+  //
+  // We require the obscure slug '/visca-barca' to keep the panel
+  // surface from being trivially guessable just by typing the bare
+  // subdomain (the password is still the real lock; the slug stops
+  // drive-by traffic and makes the login form invisible to anyone
+  // who doesn't know the URL).
   //
   // The path-based /admin-panel-1992 route below STAYS functional on
-  // pressing90.live as a fallback, so anyone with that bookmark keeps
-  // working through the migration.
+  // pressing90.live as a fallback for old bookmarks.
   if (typeof window !== 'undefined' && window.location.hostname === 'admin.pressing90.live') {
+    if (!window.location.pathname.startsWith('/visca-barca')) {
+      // Generic 404 — doesn't hint at the existence of the real slug.
+      return (
+        <div className="min-h-svh flex items-center justify-center bg-slate-50">
+          <div className="font-mono text-xs text-slate-400 tracking-widest">404 NOT FOUND</div>
+        </div>
+      )
+    }
     return (
       <div className="min-h-svh">
         <Suspense fallback={<PageSkeleton caption="Loading admin…" />}>
