@@ -217,7 +217,20 @@ function Analytics() {
     void adminGet('/admin/stats/gsc').then(setGsc)
   }, [range])
 
-  type CfMock = { requests: number; pageViews: number; uniques: number; bandwidth: string; topCountries: Array<{ code: string; name: string; requests: number }> }
+  type CfMock = {
+    requests: number
+    pageViews: number
+    uniques: number
+    bandwidth: string
+    cachedRequests?: number
+    cachedBytes?: string
+    cacheReqPct?: number
+    cacheBytesPct?: number
+    topCountries: Array<{ code: string; name: string; requests: number }>
+    topStatuses?: Array<{ code: number; requests: number }>
+    topBrowsers?: Array<{ name: string; pageViews: number }>
+    topContentTypes?: Array<{ name: string; requests: number; bytes: string }>
+  }
   type GscMock = { clicks: number; impressions: number; ctr: string; position: number; topQueries: Array<{ query: string; clicks: number; impressions: number }>; topPages: Array<{ url: string; clicks: number; impressions: number }> }
   const cfData = cf as { configured?: boolean; message?: string; mock?: CfMock; raw?: unknown } | null
   const gscData = gsc as { configured?: boolean; message?: string; mock?: GscMock } | null
@@ -257,21 +270,102 @@ function Analytics() {
               <KpiCard label="Unique visitors" value={cfShow.uniques} />
               <KpiCard label="Bandwidth" value={cfShow.bandwidth} mono />
             </div>
-            {cfShow.topCountries.length > 0 && (
-              <div className="mt-5">
-                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
-                  Top countries
-                </div>
-                <ul className="space-y-1.5">
-                  {cfShow.topCountries.map((c, i) => (
-                    <li key={i} className="flex items-center justify-between text-sm">
-                      <span>{c.name}</span>
-                      <span className="font-mono text-slate-500">{c.requests.toLocaleString()}</span>
-                    </li>
-                  ))}
-                </ul>
+            {/* Cache rate — single most-actionable number for a CDN-fronted
+                site. Higher = fewer round trips to origin = faster + cheaper.
+                Color-coded so you can grok at a glance. */}
+            {(cfShow.cacheReqPct !== undefined || cfShow.cachedRequests !== undefined) && (
+              <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <KpiCard
+                  label="Cache hit · requests"
+                  value={cfShow.cacheReqPct !== undefined ? `${cfShow.cacheReqPct.toFixed(1)}%` : '—'}
+                  mono
+                  accent={cfShow.cacheReqPct && cfShow.cacheReqPct >= 70 ? 'gold' : undefined}
+                />
+                <KpiCard
+                  label="Cache hit · bytes"
+                  value={cfShow.cacheBytesPct !== undefined ? `${cfShow.cacheBytesPct.toFixed(1)}%` : '—'}
+                  mono
+                />
+                <KpiCard
+                  label="Cached requests"
+                  value={cfShow.cachedRequests ?? 0}
+                />
+                <KpiCard
+                  label="Cached bytes"
+                  value={cfShow.cachedBytes ?? '—'}
+                  mono
+                />
               </div>
             )}
+
+            <div className="mt-5 grid sm:grid-cols-2 gap-5">
+              {cfShow.topCountries.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+                    Top countries
+                  </div>
+                  <ul className="space-y-1.5">
+                    {cfShow.topCountries.map((c, i) => (
+                      <li key={i} className="flex items-center justify-between text-sm">
+                        <span>{c.name}</span>
+                        <span className="font-mono text-slate-500">{c.requests.toLocaleString()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {cfShow.topBrowsers && cfShow.topBrowsers.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+                    Top browsers
+                  </div>
+                  <ul className="space-y-1.5">
+                    {cfShow.topBrowsers.map((b) => (
+                      <li key={b.name} className="flex items-center justify-between text-sm">
+                        <span>{b.name}</span>
+                        <span className="font-mono text-slate-500">{b.pageViews.toLocaleString()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {cfShow.topStatuses && cfShow.topStatuses.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+                    HTTP status codes
+                  </div>
+                  <ul className="space-y-1.5">
+                    {cfShow.topStatuses.map((s) => (
+                      <li key={s.code} className="flex items-center justify-between text-sm">
+                        <span className={
+                          'font-mono ' +
+                          (s.code >= 500 ? 'text-red-600' : s.code >= 400 ? 'text-amber-600' : 'text-emerald-700')
+                        }>{s.code}</span>
+                        <span className="font-mono text-slate-500">{s.requests.toLocaleString()}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {cfShow.topContentTypes && cfShow.topContentTypes.length > 0 && (
+                <div>
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
+                    Top content types · bytes
+                  </div>
+                  <ul className="space-y-1.5">
+                    {cfShow.topContentTypes.map((c) => (
+                      <li key={c.name} className="flex items-center justify-between text-sm">
+                        <span className="font-mono text-xs">{c.name}</span>
+                        <span className="font-mono text-slate-500">{c.bytes}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
           </>
         ) : (
           <div className="text-sm text-slate-600">No data.</div>

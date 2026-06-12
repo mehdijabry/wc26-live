@@ -348,17 +348,22 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
     : '{ datetime_geq: $since, datetime_leq: $until }'
   const sinceDate = since.slice(0, 10) // YYYY-MM-DD for date_geq
   const untilDate = until.slice(0, 10)
+  // Single GraphQL request bundles all sub-queries. Each sub-query
+  // grabs a different dimension breakdown so we render one rich panel
+  // instead of one panel per round-trip.
   const query = {
     query: `query($zoneTag:String!, $since:Time!, $until:Time!, $sinceDate:Date!, $untilDate:Date!){
       viewer { zones(filter:{zoneTag:$zoneTag}){
         ${groupName}(limit:${bucketLimit}, filter:${dateFilter}){
-          sum { requests pageViews bytes }
+          sum { requests pageViews bytes cachedRequests cachedBytes }
           uniq { uniques }
         }
         topNs: ${groupName}(limit:${bucketLimit}, filter:${dateFilter}){
           sum {
             countryMap{ clientCountryName requests }
             responseStatusMap{ edgeResponseStatus requests }
+            contentTypeMap{ edgeResponseContentTypeName requests bytes }
+            browserMap{ uaBrowserFamily pageViews }
           }
         }
       }}
@@ -377,7 +382,17 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
     return jsonResp({ configured: true, error: 'cf api error', status: resp.status }, 502)
   }
   type Bucket = {
-    sum?: { requests?: number; pageViews?: number; bytes?: number; countryMap?: Array<{ clientCountryName?: string; requests?: number }> }
+    sum?: {
+      requests?: number
+      pageViews?: number
+      bytes?: number
+      cachedRequests?: number
+      cachedBytes?: number
+      countryMap?: Array<{ clientCountryName?: string; requests?: number }>
+      responseStatusMap?: Array<{ edgeResponseStatus?: number; requests?: number }>
+      contentTypeMap?: Array<{ edgeResponseContentTypeName?: string; requests?: number; bytes?: number }>
+      browserMap?: Array<{ uaBrowserFamily?: string; pageViews?: number }>
+    }
     uniq?: { uniques?: number }
   }
   const data = await resp.json() as {
@@ -391,6 +406,10 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
   const totalReq = groups.reduce((s, g) => s + (g.sum?.requests ?? 0), 0)
   const totalPV = groups.reduce((s, g) => s + (g.sum?.pageViews ?? 0), 0)
   const totalBytes = groups.reduce((s, g) => s + (g.sum?.bytes ?? 0), 0)
+  const cachedReq = groups.reduce((s, g) => s + (g.sum?.cachedRequests ?? 0), 0)
+  const cachedBytes = groups.reduce((s, g) => s + (g.sum?.cachedBytes ?? 0), 0)
+  const cacheReqPct = totalReq > 0 ? Math.round((cachedReq / totalReq) * 1000) / 10 : 0
+  const cacheBytesPct = totalBytes > 0 ? Math.round((cachedBytes / totalBytes) * 1000) / 10 : 0
   // 'uniques' across multiple buckets is NOT additive — Cloudflare counts
   // distinct visitors per bucket, so summing double-counts repeat visitors.
   // The conservative answer is max(bucket uniques) which is the closest
@@ -413,6 +432,41 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
       name,
       requests,
     }))
+  // Roll up the other dimension breakdowns the same way as countryMap.
+  const statusTotals = new Map<number, number>()
+  const browserTotals = new Map<string, number>()
+  const contentTotals = new Map<string, { requests: number; bytes: number }>()
+  for (const g of topGroups) {
+    for (const s of g.sum?.responseStatusMap ?? []) {
+      const code = s.edgeResponseStatus ?? 0
+      statusTotals.set(code, (statusTotals.get(code) ?? 0) + (s.requests ?? 0))
+    }
+    for (const b of g.sum?.browserMap ?? []) {
+      const name = b.uaBrowserFamily ?? '??'
+      browserTotals.set(name, (browserTotals.get(name) ?? 0) + (b.pageViews ?? 0))
+    }
+    for (const c of g.sum?.contentTypeMap ?? []) {
+      const name = c.edgeResponseContentTypeName ?? '??'
+      const cur = contentTotals.get(name) ?? { requests: 0, bytes: 0 }
+      contentTotals.set(name, {
+        requests: cur.requests + (c.requests ?? 0),
+        bytes: cur.bytes + (c.bytes ?? 0),
+      })
+    }
+  }
+  const topStatuses = Array.from(statusTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([code, requests]) => ({ code, requests }))
+  const topBrowsers = Array.from(browserTotals.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6)
+    .map(([name, pageViews]) => ({ name, pageViews }))
+  const topContentTypes = Array.from(contentTotals.entries())
+    .sort((a, b) => b[1].bytes - a[1].bytes)
+    .slice(0, 6)
+    .map(([name, v]) => ({ name, requests: v.requests, bytes: formatBytes(v.bytes) }))
+
   return jsonResp({
     configured: true,
     range,
@@ -421,7 +475,14 @@ async function handleCloudflareAnalytics(env: AdminEnv, req: Request): Promise<R
       pageViews: totalPV,
       uniques: maxUniques,
       bandwidth: formatBytes(totalBytes),
+      cachedRequests: cachedReq,
+      cachedBytes: formatBytes(cachedBytes),
+      cacheReqPct,    // 0..100 — percent of requests served from cache
+      cacheBytesPct,  // 0..100 — percent of bytes served from cache
       topCountries,
+      topStatuses,
+      topBrowsers,
+      topContentTypes,
     },
   })
 }
@@ -440,12 +501,33 @@ function mockCfData() {
     pageViews: 8921,
     uniques: 3412,
     bandwidth: '890 MB',
+    cachedRequests: 8420,
+    cachedBytes: '612 MB',
+    cacheReqPct: 68.2,
+    cacheBytesPct: 68.7,
     topCountries: [
       { code: 'FR', name: 'France', requests: 4210 },
       { code: 'MA', name: 'Morocco', requests: 2870 },
       { code: 'US', name: 'United States', requests: 1650 },
       { code: 'CA', name: 'Canada', requests: 890 },
       { code: 'DE', name: 'Germany', requests: 620 },
+    ],
+    topStatuses: [
+      { code: 200, requests: 11000 },
+      { code: 304, requests: 800 },
+      { code: 404, requests: 320 },
+      { code: 500, requests: 12 },
+    ],
+    topBrowsers: [
+      { name: 'Chrome', pageViews: 5400 },
+      { name: 'Safari', pageViews: 2100 },
+      { name: 'Firefox', pageViews: 800 },
+    ],
+    topContentTypes: [
+      { name: 'html', requests: 4800, bytes: '120 MB' },
+      { name: 'js',   requests: 3200, bytes: '410 MB' },
+      { name: 'css',  requests: 1100, bytes: '90 MB' },
+      { name: 'png',  requests: 2200, bytes: '180 MB' },
     ],
   }
 }
