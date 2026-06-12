@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { stadiums } from '../data/stadiums'
+import { stadiums, type Stadium } from '../data/stadiums'
 import { SectionHeader } from './Groups'
+import { StadiumSheet } from './StadiumSheet'
 
 const COUNTRY_FLAGS: Record<string, string> = { USA: '🇺🇸', MEX: '🇲🇽', CAN: '🇨🇦' }
 
@@ -8,6 +10,8 @@ export function Stadiums() {
   // Group by country
   const byCountry: Record<string, typeof stadiums> = { USA: [], MEX: [], CAN: [] }
   stadiums.forEach((s) => byCountry[s.country].push(s))
+
+  const [selected, setSelected] = useState<Stadium | null>(null)
 
   return (
     <section id="stadiums" className="py-20 sm:py-28 border-t border-slate-200/70">
@@ -39,24 +43,27 @@ export function Stadiums() {
               </div>
               <ul className="space-y-2">
                 {byCountry[country].map((s) => (
-                  <li
-                    key={s.id}
-                    className="rounded-lg bg-slate-50 hover:bg-white/[0.06] transition-colors px-3 py-3"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-sm font-semibold truncate">{s.name}</div>
-                        <div className="text-xs text-slate-500 truncate">📍 {s.city}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-xs font-mono text-accent-gold">
-                          {s.capacity.toLocaleString()}
+                  <li key={s.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelected(s)}
+                      className="w-full text-left rounded-lg bg-slate-50 hover:bg-slate-100 hover:ring-2 hover:ring-accent-gold/40 transition-all px-3 py-3 cursor-pointer"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold truncate">{s.name}</div>
+                          <div className="text-xs text-slate-500 truncate">📍 {s.city}</div>
                         </div>
-                        <div className="text-[10px] text-slate-500 font-mono">
-                          {s.matches} matches
+                        <div className="text-right">
+                          <div className="text-xs font-mono text-accent-gold">
+                            {s.capacity.toLocaleString()}
+                          </div>
+                          <div className="text-[10px] text-slate-500 font-mono">
+                            {s.matches} matches
+                          </div>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   </li>
                 ))}
               </ul>
@@ -77,6 +84,8 @@ export function Stadiums() {
           <Stat label="Historic" value="Azteca" suffix="3rd WC" />
         </motion.div>
       </div>
+
+      <StadiumSheet stadium={selected} onClose={() => setSelected(null)} />
     </section>
   )
 }
