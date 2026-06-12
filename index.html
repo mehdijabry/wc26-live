@@ -42,8 +42,13 @@
         if (!isAdminSubdomain) return
         var m = document.getElementById('pwa-manifest');         if (m) m.href = '/admin-manifest.json'
         var t = document.getElementById('pwa-apple-title');      if (t) t.content = 'P90 Admin'
-        var i = document.getElementById('pwa-apple-icon');       if (i) i.href = '/admin-emblem.svg'
-        var i2 = document.getElementById('pwa-apple-icon-180');  if (i2) i2.href = '/admin-emblem.svg'
+        // iOS Safari's Add-to-Home-Screen reads apple-touch-icon as
+        // PNG — SVG support is patchy across iOS versions and falls
+        // back to the favicon (the WC26 emblem) when it can't decode.
+        // Force PNG at the exact 180x180 canonical size + the generic
+        // entry, both pointing at the cadenas/lock icon.
+        var i = document.getElementById('pwa-apple-icon');       if (i) i.href = '/admin-icon-192.png'
+        var i2 = document.getElementById('pwa-apple-icon-180');  if (i2) i2.href = '/admin-icon-180.png'
         var th = document.querySelector('meta[name="theme-color"]'); if (th) th.content = '#0a1a2e'
       })()
     </script>

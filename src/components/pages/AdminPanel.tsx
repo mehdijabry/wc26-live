@@ -861,7 +861,12 @@ function swapPWAMetaForAdmin(): () => void {
   link?.setAttribute('href', '/admin-manifest.json')
   themeTag?.setAttribute('content', '#0a1a2e')
   appleTitle?.setAttribute('content', 'P90 Admin')
-  appleIcons.forEach((el) => el.setAttribute('href', '/admin-emblem.svg'))
+  // PNG, not SVG — iOS Safari falls back to the favicon when the
+  // apple-touch-icon SVG can't be decoded reliably.
+  appleIcons.forEach((el) => {
+    const size = el.getAttribute('sizes')
+    el.setAttribute('href', size === '180x180' ? '/admin-icon-180.png' : '/admin-icon-192.png')
+  })
   return () => {
     if (origManifest !== null) link?.setAttribute('href', origManifest)
     if (origTheme !== null) themeTag?.setAttribute('content', origTheme)
