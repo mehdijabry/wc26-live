@@ -1,0 +1,4 @@
+# Regenerable artifacts — run `node render.mjs` to recreate
+node_modules/
+frames/
+sample-frames/

@@ -6,3 +6,8 @@ dist
 .vscode
 .env.local
 .env
+
+# Promo video pipeline regenerables
+promo/node_modules/
+promo/frames/
+promo/sample-frames/

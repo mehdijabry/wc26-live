@@ -1,0 +1,12 @@
+{
+  "name": "pressing90-promo",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "render": "node render.mjs"
+  },
+  "devDependencies": {
+    "puppeteer": "^22.0.0"
+  }
+}

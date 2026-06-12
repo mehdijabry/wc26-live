@@ -1,0 +1,848 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Pressing 90' — Promo render</title>
+<style>
+  /* ─── Brand tokens (mirrors src/index.css Tailwind config) ────── */
+  :root {
+    --paper:      #f8f5ee;
+    --paper-elev: #ffffff;
+    --cream:      #efe9da;
+    --ink-900:    #0a1a2e;
+    --ink-700:    #16243d;
+    --slate-200:  #e2e8f0;
+    --slate-500:  #64748b;
+    --slate-800:  #1e293b;
+    --gold:       #d4af37;
+    --gold-light: #f0d878;
+    --accent-red: #d4423a;
+    --emerald:    #059669;
+    --yellow:     #facc15;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 1920px; height: 1080px;
+    overflow: hidden;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    background: var(--paper);
+    color: var(--ink-900);
+  }
+  /* Bricolage Grotesque feel — fallback to local system serif. */
+  .display { font-family: 'Bricolage Grotesque', 'Playfair Display', Georgia, serif; font-weight: 800; }
+  .mono    { font-family: 'JetBrains Mono', 'SF Mono', Menlo, monospace; }
+
+  /* Each scene is fixed-positioned full-screen; opacity is driven by JS. */
+  .scene {
+    position: absolute; inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    will-change: opacity, transform;
+  }
+  .scene.active { opacity: 1; }
+
+  /* Top-right pill — appears on most scenes, like the cradly REF. */
+  .badge {
+    position: absolute; top: 60px; right: 80px;
+    background: var(--ink-900); color: white;
+    font-size: 22px; font-weight: 700; letter-spacing: 0.18em;
+    padding: 12px 24px; border-radius: 999px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .scene.dark .badge { background: var(--gold); color: var(--ink-900); }
+
+  /* Bottom-left brand mark on every non-intro scene. */
+  .markwrap {
+    position: absolute; bottom: 50px; left: 80px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .markwrap .emblem { width: 36px; height: 36px; }
+  .markwrap .name {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-weight: 800; font-size: 28px;
+    color: var(--ink-900);
+  }
+  .scene.dark .markwrap .name { color: var(--paper); }
+
+  /* ─── Scene 1 · Intro splash ──────────────────────────────────── */
+  #s1 { background: var(--paper); }
+  #s1 .shape {
+    position: absolute;
+    border-radius: 12px;
+    will-change: transform, opacity;
+  }
+  #s1 .sh-1 { left: 20%;  top: 25%; width: 340px; height: 220px; background: var(--cream); }
+  #s1 .sh-2 { right: 18%; top: 18%; width: 280px; height: 280px; background: var(--gold-light); border-radius: 999px; }
+  #s1 .sh-3 { left: 35%;  bottom: 22%; width: 240px; height: 240px;
+    background: var(--accent-red);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+    border-radius: 0;
+  }
+  #s1 .sh-4 { right: 30%; bottom: 18%; width: 320px; height: 200px; background: var(--ink-900); }
+  #s1 .sh-5 { left: 15%;  bottom: 30%; width: 180px; height: 180px; background: #b2c8d8; }
+
+  #s1 .center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+  }
+  #s1 .center img { width: 220px; height: 220px; }
+  #s1 .center .wm {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-weight: 800; font-size: 96px;
+    color: var(--ink-900);
+    letter-spacing: -0.02em;
+    margin-top: 18px;
+  }
+  #s1 .center .wm em {
+    font-style: normal;
+    color: var(--gold);
+  }
+  #s1 .center .sub {
+    margin-top: 8px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 22px; letter-spacing: 0.25em;
+    color: var(--slate-500);
+  }
+  #s1 .center .sub strong { color: var(--accent-red); font-weight: 800; }
+
+  /* ─── Scene 2 · Tagline ──────────────────────────────────────── */
+  #s2 { background: var(--ink-900); color: var(--paper); }
+  #s2 .stack {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    gap: 18px;
+  }
+  #s2 .line {
+    font-family: 'Bricolage Grotesque', Georgia, serif;
+    font-weight: 800; font-size: 140px;
+    line-height: 1;
+    color: var(--paper);
+    letter-spacing: -0.025em;
+  }
+  #s2 .line .accent { color: var(--gold); }
+  #s2 .line .red    { color: var(--accent-red); }
+
+  /* ─── Scene 3 · Live scores ──────────────────────────────────── */
+  #s3 { background: var(--paper); }
+  #s3 .laptop {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 1100px; height: 700px;
+    background: white;
+    border-radius: 22px;
+    box-shadow: 0 40px 90px rgba(10, 26, 46, 0.18), 0 0 0 1px var(--slate-200);
+    padding: 28px;
+    overflow: hidden;
+  }
+  #s3 .nav {
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--slate-200); padding-bottom: 16px;
+  }
+  #s3 .nav .brand { display: flex; align-items: center; gap: 10px; }
+  #s3 .nav .brand img { width: 28px; height: 28px; }
+  #s3 .nav .brand b { font-family: 'Bricolage Grotesque', serif; font-size: 24px; }
+  #s3 .nav .tabs { display: flex; gap: 28px; font-family: 'JetBrains Mono', monospace; font-size: 16px; color: var(--slate-500); }
+  #s3 .nav .tabs .on { color: var(--ink-900); font-weight: 700; }
+  #s3 .matches {
+    margin-top: 24px;
+    display: flex; gap: 18px;
+  }
+  #s3 .match {
+    flex: 1;
+    background: var(--cream);
+    border-radius: 14px;
+    padding: 18px 20px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  #s3 .match .h {
+    display: flex; justify-content: space-between;
+    font-size: 13px; color: var(--slate-500); margin-bottom: 12px;
+  }
+  #s3 .match .h .live { color: var(--accent-red); font-weight: 700; }
+  #s3 .match .row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-weight: 600; font-size: 18px; }
+  #s3 .match .row .score { color: var(--accent-red); font-size: 22px; font-weight: 800; }
+  #s3 .headline {
+    margin-top: 30px; padding: 24px;
+    background: var(--ink-900); color: var(--paper); border-radius: 14px;
+    display: flex; align-items: center; gap: 24px;
+  }
+  #s3 .headline .tag { background: var(--gold); color: var(--ink-900); padding: 6px 12px; border-radius: 999px; font-family: monospace; font-size: 12px; font-weight: 800; letter-spacing: 0.15em; }
+  #s3 .headline .title { font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 28px; flex: 1; }
+  #s3 .strap {
+    position: absolute; bottom: 80px; left: 80px;
+    font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 64px;
+    line-height: 1.05;
+  }
+  #s3 .strap em { font-style: normal; color: var(--accent-red); }
+  #s3 .strap small {
+    display: block; margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 16px;
+    color: var(--slate-500); font-weight: 400; letter-spacing: 0.12em;
+  }
+
+  /* ─── Scene 4 · Push notifications ───────────────────────────── */
+  #s4 { background: var(--ink-900); }
+  #s4 .phone {
+    position: absolute; right: 12%; top: 50%;
+    transform: translateY(-50%);
+    width: 480px; height: 960px;
+    background: #0f1924; border-radius: 60px;
+    box-shadow: 0 60px 100px rgba(0,0,0,0.4), 0 0 0 12px #1a2738;
+    overflow: hidden;
+    padding-top: 40px;
+  }
+  #s4 .notch {
+    position: absolute; top: 0; left: 50%;
+    transform: translateX(-50%);
+    width: 240px; height: 38px;
+    background: black;
+    border-radius: 0 0 24px 24px;
+  }
+  #s4 .lockscreen {
+    padding: 80px 24px 0;
+    color: white;
+    text-align: center;
+  }
+  #s4 .lockscreen .time { font-family: 'Bricolage Grotesque', serif; font-weight: 600; font-size: 80px; line-height: 1; margin-top: 30px; }
+  #s4 .lockscreen .date { font-size: 18px; opacity: 0.8; margin-top: 6px; }
+  #s4 .notif {
+    margin: 14px auto;
+    width: 90%;
+    background: rgba(255,255,255,0.92);
+    color: var(--ink-900);
+    border-radius: 18px;
+    padding: 12px 14px;
+    display: flex; gap: 12px; align-items: flex-start;
+    text-align: left;
+    font-size: 14px;
+  }
+  #s4 .notif img { width: 36px; height: 36px; border-radius: 8px; flex-shrink: 0; }
+  #s4 .notif .body { flex: 1; }
+  #s4 .notif .title { font-weight: 800; font-size: 15px; }
+  #s4 .notif .sub { font-size: 13px; opacity: 0.7; margin-top: 2px; }
+  #s4 .notif .when { font-size: 11px; opacity: 0.5; font-family: monospace; }
+  #s4 .strap {
+    position: absolute; left: 80px; top: 50%;
+    transform: translateY(-50%);
+    max-width: 700px;
+  }
+  #s4 .strap h2 {
+    font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 96px;
+    line-height: 1; color: var(--paper);
+    letter-spacing: -0.025em;
+  }
+  #s4 .strap h2 em { font-style: normal; color: var(--gold); }
+  #s4 .strap p {
+    margin-top: 24px;
+    font-family: 'JetBrains Mono', monospace; font-size: 22px;
+    color: rgba(248, 245, 238, 0.6);
+    line-height: 1.5;
+  }
+
+  /* ─── Scene 5 · Bracket predictor ────────────────────────────── */
+  #s5 { background: var(--cream); }
+  #s5 .bracket {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 1300px; height: 700px;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 28px;
+    align-items: stretch;
+  }
+  #s5 .col { display: flex; flex-direction: column; justify-content: space-around; gap: 12px; }
+  #s5 .slot {
+    background: white;
+    border: 1.5px solid var(--slate-200);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 14px; font-weight: 600;
+    color: var(--ink-900);
+    display: flex; align-items: center; gap: 10px;
+    min-height: 50px;
+  }
+  #s5 .slot.win { background: var(--gold); border-color: var(--gold); }
+  #s5 .slot.final { background: var(--ink-900); color: var(--gold); border-color: var(--ink-900); font-weight: 800; font-size: 18px; }
+  #s5 .strap {
+    position: absolute; top: 100px; left: 80px;
+    font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 72px;
+    line-height: 1; max-width: 800px;
+  }
+  #s5 .strap em { font-style: normal; color: var(--accent-red); }
+  #s5 .strap small {
+    display: block; margin-top: 10px;
+    font-family: 'JetBrains Mono', monospace; font-size: 18px;
+    color: var(--slate-500); font-weight: 400; letter-spacing: 0.12em;
+  }
+
+  /* ─── Scene 6 · Stadiums ─────────────────────────────────────── */
+  #s6 { background: var(--ink-900); }
+  #s6 .modal {
+    position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%);
+    width: 1100px;
+    background: white; border-radius: 24px; overflow: hidden;
+    box-shadow: 0 50px 100px rgba(0,0,0,0.5);
+  }
+  #s6 .hero {
+    height: 380px;
+    background:
+      linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.7) 100%),
+      url("assets/estadio-azteca.jpg")
+      center/cover, var(--slate-800);
+    position: relative;
+  }
+  #s6 .hero .label {
+    position: absolute; bottom: 24px; left: 30px; color: white;
+  }
+  #s6 .hero .label small {
+    font-family: monospace; font-size: 13px; letter-spacing: 0.2em;
+    opacity: 0.85;
+  }
+  #s6 .hero .label h3 {
+    font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 48px;
+    line-height: 1; margin-top: 6px;
+  }
+  #s6 .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr); gap: 16px;
+    padding: 30px;
+  }
+  #s6 .stat {
+    background: var(--paper); border-radius: 12px;
+    padding: 16px 18px;
+  }
+  #s6 .stat .lbl { font-family: monospace; font-size: 11px; letter-spacing: 0.18em; color: var(--slate-500); text-transform: uppercase; }
+  #s6 .stat .val { font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 28px; margin-top: 4px; }
+  #s6 .stat .sub { font-family: monospace; font-size: 11px; color: var(--slate-500); margin-top: 2px; }
+  #s6 .climate { padding: 0 30px 30px; display: flex; gap: 14px; align-items: center; font-family: monospace; font-size: 14px; color: var(--slate-500); }
+  #s6 .climate .pill { background: #fef3c7; color: #92400e; padding: 6px 12px; border-radius: 999px; font-weight: 700; font-family: monospace; font-size: 13px; }
+  #s6 .strap {
+    position: absolute; right: 80px; bottom: 100px;
+    text-align: right;
+    font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 56px;
+    color: var(--paper);
+    line-height: 1; max-width: 480px;
+  }
+  #s6 .strap em { font-style: normal; color: var(--gold); }
+
+  /* ─── Scene 7 · Install PWA ──────────────────────────────────── */
+  #s7 { background: var(--paper); }
+  #s7 .phone {
+    position: absolute; left: 60%; top: 50%;
+    transform: translateY(-50%);
+    width: 460px; height: 920px;
+    background: white;
+    border-radius: 56px;
+    box-shadow: 0 60px 100px rgba(0,0,0,0.18), 0 0 0 12px #d1d5db;
+    overflow: hidden;
+  }
+  #s7 .phone .browser {
+    background: #eef0f3;
+    padding: 12px 16px 8px;
+    text-align: center;
+    font-family: monospace; font-size: 13px; color: var(--slate-500);
+  }
+  #s7 .phone .browser .url {
+    background: white; border-radius: 999px; padding: 6px 14px;
+    display: inline-block; color: var(--ink-900); font-weight: 600;
+  }
+  #s7 .phone .browser .url .share { color: var(--accent-red); font-size: 16px; margin-left: 4px; }
+  #s7 .phone .sheet {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    background: rgba(245, 247, 250, 0.96);
+    backdrop-filter: blur(20px);
+    border-radius: 24px 24px 0 0;
+    padding: 24px 20px;
+    height: 460px;
+  }
+  #s7 .phone .sheet .grip {
+    width: 60px; height: 5px; background: #d1d5db;
+    border-radius: 999px; margin: 0 auto 20px;
+  }
+  #s7 .phone .sheet h4 {
+    font-family: 'Bricolage Grotesque', serif; font-size: 22px;
+    margin-bottom: 16px;
+  }
+  #s7 .phone .sheet .row {
+    background: white; border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    display: flex; align-items: center; gap: 14px;
+    font-size: 15px; font-weight: 600;
+  }
+  #s7 .phone .sheet .row.highlight {
+    background: var(--gold);
+  }
+  #s7 .phone .sheet .row .ic {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--slate-200);
+    display: flex; align-items: center; justify-content: center;
+  }
+  #s7 .phone .sheet .row.highlight .ic { background: var(--ink-900); color: white; }
+  #s7 .strap {
+    position: absolute; left: 80px; top: 50%;
+    transform: translateY(-50%);
+    max-width: 700px;
+  }
+  #s7 .strap h2 {
+    font-family: 'Bricolage Grotesque', serif; font-weight: 800; font-size: 110px;
+    line-height: 0.98; color: var(--ink-900);
+    letter-spacing: -0.03em;
+  }
+  #s7 .strap h2 em { font-style: normal; color: var(--accent-red); }
+  #s7 .strap p {
+    margin-top: 24px;
+    font-family: monospace; font-size: 20px;
+    color: var(--slate-500); line-height: 1.6;
+    letter-spacing: 0.05em;
+  }
+  #s7 .arrow {
+    position: absolute; left: 47%; top: 38%;
+    width: 140px; height: 140px;
+    transform: translateY(-50%);
+    color: var(--accent-red);
+    font-size: 100px;
+  }
+
+  /* ─── Scene 8 · CTA ──────────────────────────────────────────── */
+  #s8 { background: var(--paper); }
+  #s8 .center {
+    position: absolute; inset: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+  }
+  #s8 .emblem-glow {
+    position: relative;
+    width: 240px; height: 240px;
+    filter: drop-shadow(0 0 60px rgba(212, 175, 55, 0.4));
+  }
+  #s8 .emblem-glow img { width: 100%; height: 100%; }
+  #s8 .url {
+    margin-top: 30px;
+    font-family: 'Bricolage Grotesque', serif; font-weight: 800;
+    font-size: 130px; line-height: 1;
+    color: var(--ink-900); letter-spacing: -0.03em;
+  }
+  #s8 .url .accent { color: var(--gold); }
+  #s8 .sub {
+    margin-top: 24px;
+    font-family: monospace; font-size: 28px;
+    color: var(--slate-500); letter-spacing: 0.15em;
+  }
+  #s8 .sub b { color: var(--accent-red); }
+
+  /* Confetti dots — 30 small circles distributed across the canvas */
+  #s8 .confetti {
+    position: absolute;
+    width: 14px; height: 14px;
+    border-radius: 2px;
+    will-change: transform, opacity;
+  }
+</style>
+</head>
+<body>
+
+<!-- ─── Scene 1 · Intro splash (frames 0-149) ───────────────────── -->
+<div class="scene" id="s1">
+  <div class="shape sh-1"></div>
+  <div class="shape sh-2"></div>
+  <div class="shape sh-3"></div>
+  <div class="shape sh-4"></div>
+  <div class="shape sh-5"></div>
+  <div class="center">
+    <img src="assets/wc26-emblem.svg" alt="" id="s1-emblem">
+    <div class="wm" id="s1-wm"><em>pressing</em> 90'</div>
+    <div class="sub" id="s1-sub">WORLD <strong>CUP</strong> 2026 · LIVE</div>
+  </div>
+</div>
+
+<!-- ─── Scene 2 · Tagline (frames 150-359) ──────────────────────── -->
+<div class="scene dark" id="s2">
+  <div class="badge">INTRO</div>
+  <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
+  <div class="stack">
+    <div class="line" id="s2-l1">104 <span class="red">matches.</span></div>
+    <div class="line" id="s2-l2">39 <span class="accent">days.</span></div>
+    <div class="line" id="s2-l3">One <span class="accent">hub.</span></div>
+  </div>
+</div>
+
+<!-- ─── Scene 3 · Live scores (frames 360-659) ──────────────────── -->
+<div class="scene" id="s3">
+  <div class="badge">LIVE SCORES</div>
+  <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
+  <div class="laptop" id="s3-laptop">
+    <div class="nav">
+      <div class="brand"><img src="assets/wc26-emblem.svg" alt=""><b>WC<span style="color:var(--gold)">26</span> Live</b></div>
+      <div class="tabs"><span class="on">Home</span><span>Today</span><span>News</span><span>Board</span><span>Stadiums</span></div>
+    </div>
+    <div class="matches">
+      <div class="match"><div class="h"><span>GROUP A</span><span class="live">● LIVE 67'</span></div>
+        <div class="row"><span>🇲🇽 Mexico</span><span class="score" id="s3-score1">2</span></div>
+        <div class="row"><span>🇿🇦 South Africa</span><span class="score">0</span></div>
+      </div>
+      <div class="match"><div class="h"><span>GROUP D</span><span>FT</span></div>
+        <div class="row"><span>🇺🇸 USA</span><span class="score">3</span></div>
+        <div class="row"><span>🇵🇾 Paraguay</span><span class="score">1</span></div>
+      </div>
+      <div class="match"><div class="h"><span>GROUP C</span><span>20:00</span></div>
+        <div class="row"><span>🇧🇷 Brazil</span><span class="score" style="color:var(--slate-500)">·</span></div>
+        <div class="row"><span>🇲🇦 Morocco</span><span class="score" style="color:var(--slate-500)">·</span></div>
+      </div>
+    </div>
+    <div class="headline">
+      <div class="tag">PRESSING 90'</div>
+      <div class="title">Mexico kick off World Cup 2026 against South Africa</div>
+    </div>
+  </div>
+  <div class="strap">
+    <em>Live.</em><br>Every match.
+    <small>Refreshed every 5 seconds.</small>
+  </div>
+</div>
+
+<!-- ─── Scene 4 · Push notifications (frames 660-959) ───────────── -->
+<div class="scene dark" id="s4">
+  <div class="badge">PUSH ALERTS</div>
+  <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
+  <div class="phone">
+    <div class="notch"></div>
+    <div class="lockscreen">
+      <div class="time">14:38</div>
+      <div class="date">Thursday, June 11</div>
+
+      <div class="notif" id="s4-n1">
+        <img src="assets/referee-red-card.png" alt="">
+        <div class="body">
+          <div class="title">🟥 Red card · Casemiro</div>
+          <div class="sub">Sent off at 67'.</div>
+        </div>
+        <div class="when">now</div>
+      </div>
+
+      <div class="notif" id="s4-n2">
+        <img src="assets/wc26-emblem.svg" alt="">
+        <div class="body">
+          <div class="title">⚽ Pulisic — Goal at 12'</div>
+          <div class="sub">USA 1-0 Paraguay</div>
+        </div>
+        <div class="when">2m</div>
+      </div>
+
+      <div class="notif" id="s4-n3">
+        <img src="assets/referee-yellow-card.png" alt="">
+        <div class="body">
+          <div class="title">🟨 Yellow card · Bellingham</div>
+          <div class="sub">Booked at 34'.</div>
+        </div>
+        <div class="when">5m</div>
+      </div>
+    </div>
+  </div>
+  <div class="strap">
+    <h2>Never <em>miss</em> a goal.</h2>
+    <p>Kickoff, goals, cards, full-time —<br>delivered to your lock screen in seconds.</p>
+  </div>
+</div>
+
+<!-- ─── Scene 5 · Bracket predictor (frames 960-1259) ──────────── -->
+<div class="scene" id="s5">
+  <div class="badge">BRACKET PREDICTOR</div>
+  <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
+  <div class="strap">
+    Predict the <em>whole</em><br>tournament.
+    <small>From groups · to final · shareable poster.</small>
+  </div>
+  <div class="bracket">
+    <div class="col" id="s5-c1">
+      <div class="slot">🇲🇽 Mexico</div>
+      <div class="slot">🇧🇷 Brazil</div>
+      <div class="slot">🇪🇸 Spain</div>
+      <div class="slot">🇫🇷 France</div>
+    </div>
+    <div class="col" id="s5-c2">
+      <div class="slot win">🇧🇷 Brazil</div>
+      <div class="slot win">🇫🇷 France</div>
+    </div>
+    <div class="col" id="s5-c3">
+      <div class="slot win">🇫🇷 France</div>
+    </div>
+    <div class="col" id="s5-c4">
+      <div class="slot win">🇫🇷 France</div>
+    </div>
+    <div class="col" id="s5-c5">
+      <div class="slot final">🏆 🇫🇷 FRANCE</div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Scene 6 · Stadiums (frames 1260-1499) ──────────────────── -->
+<div class="scene dark" id="s6">
+  <div class="badge">16 VENUES</div>
+  <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
+  <div class="modal" id="s6-modal">
+    <div class="hero">
+      <div class="label">
+        <small>MEXICO · MEXICO CITY</small>
+        <h3>Estadio Azteca</h3>
+      </div>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="lbl">Capacity</div><div class="val">87 000</div><div class="sub">seats</div></div>
+      <div class="stat"><div class="lbl">WC26 matches</div><div class="val">5</div><div class="sub">games</div></div>
+      <div class="stat"><div class="lbl">Opened</div><div class="val">1966</div><div class="sub">60 yrs</div></div>
+      <div class="stat"><div class="lbl">Roof</div><div class="val">Open</div><div class="sub">natural grass</div></div>
+    </div>
+    <div class="climate">
+      <span class="pill">⚠ ALTITUDE 2240m</span>
+      <span>23°C / 12°C · Moderate humidity · Afternoon storms.</span>
+    </div>
+  </div>
+  <div class="strap">All <em>16</em><br>host venues<br>— in detail.</div>
+</div>
+
+<!-- ─── Scene 7 · Install PWA (frames 1500-1679) ───────────────── -->
+<div class="scene" id="s7">
+  <div class="badge">INSTALL AS APP</div>
+  <div class="markwrap"><img class="emblem" src="assets/wc26-emblem.svg" alt=""><span class="name">pressing 90'</span></div>
+  <div class="strap">
+    <h2>Install in <em>2 taps</em>.</h2>
+    <p>No App Store. No signup. Tap share →<br>Add to Home Screen. That's it.</p>
+  </div>
+  <div class="arrow" id="s7-arrow">→</div>
+  <div class="phone" id="s7-phone">
+    <div class="browser">
+      <span class="url">pressing90.live <span class="share">⬆</span></span>
+    </div>
+    <div class="sheet" id="s7-sheet">
+      <div class="grip"></div>
+      <h4>Share</h4>
+      <div class="row"><div class="ic">📋</div><span>Copy</span></div>
+      <div class="row"><div class="ic">💬</div><span>Messages</span></div>
+      <div class="row highlight"><div class="ic">+</div><span>Add to Home Screen</span></div>
+      <div class="row"><div class="ic">🔖</div><span>Bookmark</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Scene 8 · CTA (frames 1680-1799) ───────────────────────── -->
+<div class="scene" id="s8">
+  <div class="center">
+    <div class="emblem-glow" id="s8-glow">
+      <img src="assets/wc26-emblem.svg" alt="">
+    </div>
+    <div class="url" id="s8-url">pressing90<span class="accent">.live</span></div>
+    <div class="sub"><b>Free.</b> No signup. Just football.</div>
+  </div>
+  <!-- 30 confetti dots — colors + positions distributed -->
+</div>
+
+<script>
+  // ─── Driver: render exact state for frame N ─────────────────────
+  // Wrapped in a function so Puppeteer can call `setFrame(N)` between
+  // screenshots instead of reloading the entire page each time —
+  // turns a ~15-minute capture into <2 minutes for 1800 frames.
+  function renderFrame(F, T) {
+    const fps = 30
+
+  // ─── Easing helpers ────────────────────────────────────────────
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v))
+  const lerp = (a, b, t) => a + (b - a) * t
+  const easeOut = t => 1 - Math.pow(1 - t, 3)
+  const easeIn  = t => t * t
+  const easeInOut = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+
+  // ─── Scene timeline ────────────────────────────────────────────
+  const scenes = [
+    { id: 's1', start: 0,    end: 150  },   // 0-5s    Intro
+    { id: 's2', start: 150,  end: 360  },   // 5-12s   Tagline
+    { id: 's3', start: 360,  end: 660  },   // 12-22s  Live scores
+    { id: 's4', start: 660,  end: 960  },   // 22-32s  Push notifs
+    { id: 's5', start: 960,  end: 1260 },   // 32-42s  Bracket
+    { id: 's6', start: 1260, end: 1500 },   // 42-50s  Stadiums
+    { id: 's7', start: 1500, end: 1680 },   // 50-56s  Install
+    { id: 's8', start: 1680, end: 1800 },   // 56-60s  CTA
+  ]
+
+  // ─── Activate the right scene with crossfade ───────────────────
+  const fadeFrames = 8 // ~0.27s crossfade between scenes
+  scenes.forEach((sc, i) => {
+    const el = document.getElementById(sc.id)
+    const inFadeStart = sc.start
+    const inFadeEnd   = sc.start + fadeFrames
+    const outFadeStart = sc.end - fadeFrames
+    const outFadeEnd   = sc.end
+    let op = 0
+    if (F >= inFadeEnd && F <= outFadeStart) op = 1
+    else if (F >= inFadeStart && F < inFadeEnd) op = easeOut((F - inFadeStart) / fadeFrames)
+    else if (F > outFadeStart && F <= outFadeEnd) op = 1 - easeIn((F - outFadeStart) / fadeFrames)
+    el.style.opacity = op
+  })
+
+  // ─── Scene 1 · shapes converge to emblem ───────────────────────
+  {
+    const local = clamp((F - 0) / 90, 0, 1) // first 3s
+    const settle = easeOut(local)
+    // Shapes start scattered, ease into final position; final scale 1.
+    const shapes = ['sh-1','sh-2','sh-3','sh-4','sh-5']
+    shapes.forEach((c, i) => {
+      const el = document.querySelector('#s1 .' + c)
+      const angle = (i * 72 - 90) * Math.PI / 180
+      const fromX = Math.cos(angle) * 800 * (1 - settle)
+      const fromY = Math.sin(angle) * 800 * (1 - settle)
+      const rot = (1 - settle) * 60 * (i % 2 === 0 ? 1 : -1)
+      el.style.transform = `translate(${fromX}px, ${fromY}px) rotate(${rot}deg)`
+      el.style.opacity = settle
+    })
+    // Emblem pops at 1.5s
+    const emblemLocal = clamp((F - 45) / 30, 0, 1)
+    const emblemScale = 0.6 + 0.4 * easeOut(emblemLocal)
+    const emblem = document.getElementById('s1-emblem')
+    emblem.style.opacity = emblemLocal
+    emblem.style.transform = `scale(${emblemScale})`
+    // Wordmark fades in at 2.5s
+    const wmLocal = clamp((F - 75) / 30, 0, 1)
+    document.getElementById('s1-wm').style.opacity = wmLocal
+    document.getElementById('s1-wm').style.transform = `translateY(${(1 - easeOut(wmLocal)) * 20}px)`
+    document.getElementById('s1-sub').style.opacity = clamp((F - 95) / 25, 0, 1)
+  }
+
+  // ─── Scene 2 · 3 lines fade in stagger ─────────────────────────
+  {
+    const base = 150
+    const reveals = [
+      { el: 's2-l1', start: base + 10 },
+      { el: 's2-l2', start: base + 40 },
+      { el: 's2-l3', start: base + 70 },
+    ]
+    reveals.forEach(r => {
+      const el = document.getElementById(r.el)
+      const local = clamp((F - r.start) / 22, 0, 1)
+      el.style.opacity = local
+      el.style.transform = `translateY(${(1 - easeOut(local)) * 60}px)`
+    })
+  }
+
+  // ─── Scene 3 · laptop scales in, score ticks 0 → 2 ─────────────
+  {
+    const base = 360
+    const local = clamp((F - base) / 30, 0, 1)
+    const laptop = document.getElementById('s3-laptop')
+    laptop.style.transform = `translate(-50%, -50%) scale(${0.85 + 0.15 * easeOut(local)})`
+    // Live-goal counter ticks: 0 at t=0, 1 at t=4s, 2 at t=7s within scene
+    const sec = (F - base) / 30
+    const score = sec >= 7 ? 2 : sec >= 4 ? 1 : 0
+    document.getElementById('s3-score1').textContent = score
+  }
+
+  // ─── Scene 4 · 3 notifs slide in at staggered times ────────────
+  {
+    const base = 660
+    const items = ['s4-n1', 's4-n2', 's4-n3']
+    items.forEach((id, i) => {
+      const start = base + 30 + i * 60   // each notif 2s apart
+      const local = clamp((F - start) / 25, 0, 1)
+      const el = document.getElementById(id)
+      el.style.opacity = local
+      el.style.transform = `translateY(${(1 - easeOut(local)) * -30}px) scale(${0.92 + 0.08 * easeOut(local)})`
+    })
+  }
+
+  // ─── Scene 5 · slots reveal column by column ───────────────────
+  {
+    const base = 960
+    const cols = ['s5-c1', 's5-c2', 's5-c3', 's5-c4', 's5-c5']
+    cols.forEach((id, i) => {
+      const start = base + 30 + i * 40
+      const local = clamp((F - start) / 30, 0, 1)
+      const col = document.getElementById(id)
+      col.style.opacity = local
+      col.style.transform = `translateX(${(1 - easeOut(local)) * 60}px)`
+    })
+  }
+
+  // ─── Scene 6 · modal zooms in from below ───────────────────────
+  {
+    const base = 1260
+    const local = clamp((F - base) / 30, 0, 1)
+    const m = document.getElementById('s6-modal')
+    m.style.transform = `translate(-50%, calc(-50% + ${(1 - easeOut(local)) * 100}px)) scale(${0.92 + 0.08 * easeOut(local)})`
+  }
+
+  // ─── Scene 7 · phone slides in, share sheet pops up ────────────
+  {
+    const base = 1500
+    const phoneLocal = clamp((F - base) / 30, 0, 1)
+    const phone = document.getElementById('s7-phone')
+    phone.style.transform = `translateY(calc(-50% + ${(1 - easeOut(phoneLocal)) * 80}px))`
+    phone.style.opacity = phoneLocal
+    // Sheet pops up at 1.5s into the scene
+    const sheetLocal = clamp((F - base - 45) / 25, 0, 1)
+    const sheet = document.getElementById('s7-sheet')
+    sheet.style.transform = `translateY(${(1 - easeOut(sheetLocal)) * 460}px)`
+    // Arrow pulses
+    const arrow = document.getElementById('s7-arrow')
+    const pulse = 1 + 0.08 * Math.sin((F - base) / 8)
+    arrow.style.transform = `translateY(-50%) scale(${pulse})`
+    arrow.style.opacity = clamp((F - base - 30) / 20, 0, 1)
+  }
+
+  // ─── Scene 8 · emblem scales, confetti rises ───────────────────
+  {
+    const base = 1680
+    const local = clamp((F - base) / 30, 0, 1)
+    const glow = document.getElementById('s8-glow')
+    glow.style.transform = `scale(${0.5 + 0.5 * easeOut(local)})`
+    glow.style.opacity = local
+    const urlEl = document.getElementById('s8-url')
+    urlEl.style.opacity = clamp((F - base - 25) / 25, 0, 1)
+
+    // Generate 36 confetti dots once (idempotent)
+    const s8 = document.getElementById('s8')
+    if (!s8.querySelector('.confetti')) {
+      const colors = ['#d4af37', '#d4423a', '#0a1a2e', '#059669', '#f0d878']
+      for (let i = 0; i < 36; i++) {
+        const c = document.createElement('div')
+        c.className = 'confetti'
+        c.style.background = colors[i % colors.length]
+        c.dataset.x0 = (Math.random() * 1920)
+        c.dataset.y0 = (1100 + Math.random() * 100)
+        c.dataset.amp = (150 + Math.random() * 250)
+        c.dataset.phase = (Math.random() * 6.28)
+        c.dataset.rot = (Math.random() * 360)
+        s8.appendChild(c)
+      }
+    }
+    // Animate confetti each frame: rise + drift
+    const dots = s8.querySelectorAll('.confetti')
+    dots.forEach((c, i) => {
+      const t = clamp((F - base - 20) / 100, 0, 1)
+      const y0 = parseFloat(c.dataset.y0)
+      const y = y0 - easeOut(t) * 1100 - Math.sin(parseFloat(c.dataset.phase)) * 30
+      const x0 = parseFloat(c.dataset.x0)
+      const drift = Math.sin(t * 4 + parseFloat(c.dataset.phase)) * 40
+      const r = parseFloat(c.dataset.rot) + t * 360
+      const opacity = t > 0.85 ? 1 - (t - 0.85) / 0.15 : t < 0.05 ? t / 0.05 : 1
+      c.style.transform = `translate(${x0 + drift}px, ${y}px) rotate(${r}deg)`
+      c.style.opacity = opacity
+    })
+  }
+
+    // Tell Puppeteer we're done rendering this frame.
+    window.__frameReady = true
+  }
+
+  // Expose for Puppeteer + initial paint from URL params.
+  window.setFrame = (F, T = 1800) => { window.__frameReady = false; renderFrame(F, T) }
+  const _u = new URL(location.href)
+  window.setFrame(
+    Math.max(0, parseInt(_u.searchParams.get('frame') ?? '0')),
+    Math.max(60, parseInt(_u.searchParams.get('total') ?? '1800'))
+  )
+</script>
+</body>
+</html>
