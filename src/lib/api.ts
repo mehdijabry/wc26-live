@@ -1631,6 +1631,26 @@ export function statusLabel(ev: EspnEvent): {
   const paused = isMatchPaused(detail)
   const rawClock = ev.status?.displayClock ?? ''
   if (s === 'in') {
+    // ZOMBIE-MATCH GUARD. ESPN sometimes flips lower-tier matches
+    // (Argentine Primera C, women's reserves, friendlies they don't
+    // track live) to state='in' HOURS before the actual kickoff,
+    // with displayClock stuck at "0'" because no real-time feed is
+    // wired up. We get matches showing as "LIVE · 0'" at 7pm for a
+    // 1am kickoff. The event.date is the source of truth — if the
+    // scheduled kickoff is still in the future by more than a
+    // 90-second slack, downgrade to 'Scheduled' regardless of what
+    // ESPN's status block claims.
+    const eventDate = ev.date ? Date.parse(ev.date) : NaN
+    const clockMs = parseClockMs(rawClock)
+    if (Number.isFinite(eventDate) && eventDate - Date.now() > 90_000 && clockMs === 0) {
+      return {
+        label: ev.status?.type?.description ?? 'Scheduled',
+        live: false,
+        finished: false,
+        rawClock,
+        paused: false,
+      }
+    }
     return {
       label: paused ? 'HT' : (rawClock || 'LIVE'),
       live: true,
@@ -1641,6 +1661,16 @@ export function statusLabel(ev: EspnEvent): {
   }
   if (s === 'post') return { label: ev.status?.type?.description ?? 'FT', live: false, finished: true, rawClock, paused: false }
   return { label: ev.status?.type?.description ?? 'Scheduled', live: false, finished: false, rawClock, paused: false }
+}
+
+/** Parse '0'', '45+2'', '67'' into milliseconds. Returns 0 for missing/invalid. */
+function parseClockMs(clock: string): number {
+  if (!clock) return 0
+  const stoppage = /^(\d+)\+(\d+)'?/.exec(clock)
+  if (stoppage) return (parseInt(stoppage[1], 10) + parseInt(stoppage[2], 10)) * 60_000
+  const plain = /^(\d+)'?/.exec(clock)
+  if (plain) return parseInt(plain[1], 10) * 60_000
+  return 0
 }
 
 export function eventTeams(ev: EspnEvent): { home: EspnCompetitor | undefined; away: EspnCompetitor | undefined } {
