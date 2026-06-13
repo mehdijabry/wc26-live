@@ -122,47 +122,49 @@ export const matches: Match[] = [
   // Resolved at render time by bracket.ts from the user's predicted
   // group standings. W-X = group winner; RU-X = runner-up; 3-XYZ =
   // one of the top 3rd-placed teams advancing from groups X/Y/Z.
+  //
+  // Dates + venues taken verbatim from ESPN /tournament 2026-06-12.
 
-  // Round of 32 — 16 matches across June 28-July 3
-  { id: 'R32-1',  stage: 'r32', home: 'W-A',    away: 'RU-B',   kickoffUTC: t('2026-06-28T19:00'), stadium: 'lax', status: 'scheduled' },
-  { id: 'R32-2',  stage: 'r32', home: 'W-C',    away: '3-FGH',  kickoffUTC: t('2026-06-29T17:00'), stadium: 'hou', status: 'scheduled' },
-  { id: 'R32-3',  stage: 'r32', home: 'W-E',    away: '3-ABDF', kickoffUTC: t('2026-06-29T20:30'), stadium: 'bos', status: 'scheduled' },
-  { id: 'R32-4',  stage: 'r32', home: 'W-B',    away: '3-EFGH', kickoffUTC: t('2026-06-30T17:00'), stadium: 'tor', status: 'scheduled' },
-  { id: 'R32-5',  stage: 'r32', home: 'W-D',    away: 'RU-F',   kickoffUTC: t('2026-06-30T20:30'), stadium: 'sfo', status: 'scheduled' },
-  { id: 'R32-6',  stage: 'r32', home: 'W-G',    away: '3-CDEF', kickoffUTC: t('2026-07-01T00:00'), stadium: 'dal', status: 'scheduled' },
-  { id: 'R32-7',  stage: 'r32', home: 'W-F',    away: '3-ACDE', kickoffUTC: t('2026-07-01T17:00'), stadium: 'mty', status: 'scheduled' },
-  { id: 'R32-8',  stage: 'r32', home: 'RU-A',   away: 'RU-C',   kickoffUTC: t('2026-07-01T20:30'), stadium: 'sea', status: 'scheduled' },
-  { id: 'R32-9',  stage: 'r32', home: 'W-H',    away: '3-IJKL', kickoffUTC: t('2026-07-02T00:00'), stadium: 'atl', status: 'scheduled' },
-  { id: 'R32-10', stage: 'r32', home: 'W-I',    away: 'RU-K',   kickoffUTC: t('2026-07-02T17:00'), stadium: 'nyc', status: 'scheduled' },
-  { id: 'R32-11', stage: 'r32', home: 'W-K',    away: 'RU-L',   kickoffUTC: t('2026-07-02T20:30'), stadium: 'phi', status: 'scheduled' },
-  { id: 'R32-12', stage: 'r32', home: 'W-L',    away: 'RU-J',   kickoffUTC: t('2026-07-03T00:00'), stadium: 'kan', status: 'scheduled' },
-  { id: 'R32-13', stage: 'r32', home: 'W-J',    away: 'RU-I',   kickoffUTC: t('2026-07-03T17:00'), stadium: 'mia', status: 'scheduled' },
-  { id: 'R32-14', stage: 'r32', home: 'RU-G',   away: 'RU-H',   kickoffUTC: t('2026-07-03T20:30'), stadium: 'van', status: 'scheduled' },
-  { id: 'R32-15', stage: 'r32', home: 'RU-E',   away: 'RU-D',   kickoffUTC: t('2026-07-03T23:00'), stadium: 'gdl', status: 'scheduled' },
-  { id: 'R32-16', stage: 'r32', home: '3-BCDE', away: '3-HIJK', kickoffUTC: t('2026-07-04T00:00'), stadium: 'mex', status: 'scheduled' },
+  // Round of 32 — 16 matches across June 28 - July 4
+  { id: 'R32-1', stage: 'r32', home: 'W-A', away: 'RU-B', kickoffUTC: t('2026-06-28T19:00'), stadium: 'lax', status: 'scheduled' },
+  { id: 'R32-2', stage: 'r32', home: 'W-C', away: '3-FGH', kickoffUTC: t('2026-06-29T17:00'), stadium: 'hou', status: 'scheduled' },
+  { id: 'R32-3', stage: 'r32', home: 'W-E', away: '3-ABDF', kickoffUTC: t('2026-06-29T20:30'), stadium: 'bos', status: 'scheduled' },
+  { id: 'R32-4', stage: 'r32', home: 'W-B', away: '3-EFGH', kickoffUTC: t('2026-06-30T01:00'), stadium: 'mty', status: 'scheduled' },
+  { id: 'R32-5', stage: 'r32', home: 'W-D', away: 'RU-F', kickoffUTC: t('2026-06-30T17:00'), stadium: 'dal', status: 'scheduled' },
+  { id: 'R32-6', stage: 'r32', home: 'W-G', away: '3-CDEF', kickoffUTC: t('2026-06-30T21:00'), stadium: 'nyc', status: 'scheduled' },
+  { id: 'R32-7', stage: 'r32', home: 'W-F', away: '3-ACDE', kickoffUTC: t('2026-07-01T01:00'), stadium: 'mex', status: 'scheduled' },
+  { id: 'R32-8', stage: 'r32', home: 'RU-A', away: 'RU-C', kickoffUTC: t('2026-07-01T16:00'), stadium: 'atl', status: 'scheduled' },
+  { id: 'R32-9', stage: 'r32', home: 'W-H', away: '3-IJKL', kickoffUTC: t('2026-07-01T20:00'), stadium: 'sea', status: 'scheduled' },
+  { id: 'R32-10', stage: 'r32', home: 'W-I', away: 'RU-K', kickoffUTC: t('2026-07-02T00:00'), stadium: 'sfo', status: 'scheduled' },
+  { id: 'R32-11', stage: 'r32', home: 'W-K', away: 'RU-L', kickoffUTC: t('2026-07-02T19:00'), stadium: 'lax', status: 'scheduled' },
+  { id: 'R32-12', stage: 'r32', home: 'W-L', away: 'RU-J', kickoffUTC: t('2026-07-02T23:00'), stadium: 'tor', status: 'scheduled' },
+  { id: 'R32-13', stage: 'r32', home: 'W-J', away: 'RU-I', kickoffUTC: t('2026-07-03T03:00'), stadium: 'van', status: 'scheduled' },
+  { id: 'R32-14', stage: 'r32', home: 'RU-G', away: 'RU-H', kickoffUTC: t('2026-07-03T18:00'), stadium: 'dal', status: 'scheduled' },
+  { id: 'R32-15', stage: 'r32', home: 'RU-E', away: 'RU-D', kickoffUTC: t('2026-07-03T22:00'), stadium: 'mia', status: 'scheduled' },
+  { id: 'R32-16', stage: 'r32', home: '3-BCDE', away: '3-HIJK', kickoffUTC: t('2026-07-04T01:30'), stadium: 'kan', status: 'scheduled' },
 
   // Round of 16 — 8 matches July 4-7
-  { id: 'R16-1', stage: 'r16', home: 'W-R32-1',  away: 'W-R32-2',  kickoffUTC: t('2026-07-04T20:00'), stadium: 'lax', status: 'scheduled' },
-  { id: 'R16-2', stage: 'r16', home: 'W-R32-3',  away: 'W-R32-4',  kickoffUTC: t('2026-07-05T00:00'), stadium: 'dal', status: 'scheduled' },
-  { id: 'R16-3', stage: 'r16', home: 'W-R32-5',  away: 'W-R32-6',  kickoffUTC: t('2026-07-05T17:00'), stadium: 'phi', status: 'scheduled' },
-  { id: 'R16-4', stage: 'r16', home: 'W-R32-7',  away: 'W-R32-8',  kickoffUTC: t('2026-07-05T21:00'), stadium: 'mia', status: 'scheduled' },
-  { id: 'R16-5', stage: 'r16', home: 'W-R32-9',  away: 'W-R32-10', kickoffUTC: t('2026-07-06T17:00'), stadium: 'nyc', status: 'scheduled' },
-  { id: 'R16-6', stage: 'r16', home: 'W-R32-11', away: 'W-R32-12', kickoffUTC: t('2026-07-06T21:00'), stadium: 'atl', status: 'scheduled' },
-  { id: 'R16-7', stage: 'r16', home: 'W-R32-13', away: 'W-R32-14', kickoffUTC: t('2026-07-07T17:00'), stadium: 'sfo', status: 'scheduled' },
-  { id: 'R16-8', stage: 'r16', home: 'W-R32-15', away: 'W-R32-16', kickoffUTC: t('2026-07-07T21:00'), stadium: 'bos', status: 'scheduled' },
+  { id: 'R16-1', stage: 'r16', home: 'W-R32-1', away: 'W-R32-2', kickoffUTC: t('2026-07-04T17:00'), stadium: 'hou', status: 'scheduled' },
+  { id: 'R16-2', stage: 'r16', home: 'W-R32-3', away: 'W-R32-4', kickoffUTC: t('2026-07-04T21:00'), stadium: 'phi', status: 'scheduled' },
+  { id: 'R16-3', stage: 'r16', home: 'W-R32-5', away: 'W-R32-6', kickoffUTC: t('2026-07-05T20:00'), stadium: 'nyc', status: 'scheduled' },
+  { id: 'R16-4', stage: 'r16', home: 'W-R32-7', away: 'W-R32-8', kickoffUTC: t('2026-07-06T00:00'), stadium: 'mex', status: 'scheduled' },
+  { id: 'R16-5', stage: 'r16', home: 'W-R32-9', away: 'W-R32-10', kickoffUTC: t('2026-07-06T19:00'), stadium: 'dal', status: 'scheduled' },
+  { id: 'R16-6', stage: 'r16', home: 'W-R32-11', away: 'W-R32-12', kickoffUTC: t('2026-07-07T00:00'), stadium: 'sea', status: 'scheduled' },
+  { id: 'R16-7', stage: 'r16', home: 'W-R32-13', away: 'W-R32-14', kickoffUTC: t('2026-07-07T16:00'), stadium: 'atl', status: 'scheduled' },
+  { id: 'R16-8', stage: 'r16', home: 'W-R32-15', away: 'W-R32-16', kickoffUTC: t('2026-07-07T20:00'), stadium: 'van', status: 'scheduled' },
 
-  // Quarter-finals — 4 matches July 9-11
-  { id: 'QF-1', stage: 'qf', home: 'W-R16-1', away: 'W-R16-2', kickoffUTC: t('2026-07-09T21:00'), stadium: 'bos', status: 'scheduled' },
-  { id: 'QF-2', stage: 'qf', home: 'W-R16-3', away: 'W-R16-4', kickoffUTC: t('2026-07-10T01:00'), stadium: 'lax', status: 'scheduled' },
-  { id: 'QF-3', stage: 'qf', home: 'W-R16-5', away: 'W-R16-6', kickoffUTC: t('2026-07-10T21:00'), stadium: 'kan', status: 'scheduled' },
-  { id: 'QF-4', stage: 'qf', home: 'W-R16-7', away: 'W-R16-8', kickoffUTC: t('2026-07-11T01:00'), stadium: 'mia', status: 'scheduled' },
+  // Quarter-finals — 4 matches July 9-12
+  { id: 'QF-1', stage: 'qf', home: 'W-R16-1', away: 'W-R16-2', kickoffUTC: t('2026-07-09T20:00'), stadium: 'bos', status: 'scheduled' },
+  { id: 'QF-2', stage: 'qf', home: 'W-R16-3', away: 'W-R16-4', kickoffUTC: t('2026-07-10T19:00'), stadium: 'lax', status: 'scheduled' },
+  { id: 'QF-3', stage: 'qf', home: 'W-R16-5', away: 'W-R16-6', kickoffUTC: t('2026-07-11T21:00'), stadium: 'mia', status: 'scheduled' },
+  { id: 'QF-4', stage: 'qf', home: 'W-R16-7', away: 'W-R16-8', kickoffUTC: t('2026-07-12T01:00'), stadium: 'kan', status: 'scheduled' },
 
   // Semi-finals — July 14-15
-  { id: 'SF-1', stage: 'sf', home: 'W-QF-1', away: 'W-QF-2', kickoffUTC: t('2026-07-14T22:00'), stadium: 'dal', status: 'scheduled' },
-  { id: 'SF-2', stage: 'sf', home: 'W-QF-3', away: 'W-QF-4', kickoffUTC: t('2026-07-15T22:00'), stadium: 'atl', status: 'scheduled' },
+  { id: 'SF-1', stage: 'sf', home: 'W-QF-1', away: 'W-QF-2', kickoffUTC: t('2026-07-14T19:00'), stadium: 'dal', status: 'scheduled' },
+  { id: 'SF-2', stage: 'sf', home: 'W-QF-3', away: 'W-QF-4', kickoffUTC: t('2026-07-15T19:00'), stadium: 'atl', status: 'scheduled' },
 
   // Third place playoff + Final
-  { id: 'TP',    stage: 'tp',    home: 'L-SF-1', away: 'L-SF-2', kickoffUTC: t('2026-07-18T18:00'), stadium: 'mia', status: 'scheduled' },
+  { id: 'TP', stage: 'tp', home: 'L-SF-1', away: 'L-SF-2', kickoffUTC: t('2026-07-18T21:00'), stadium: 'mia', status: 'scheduled' },
   { id: 'FINAL', stage: 'final', home: 'W-SF-1', away: 'W-SF-2', kickoffUTC: t('2026-07-19T19:00'), stadium: 'nyc', status: 'scheduled' },
 ]
 

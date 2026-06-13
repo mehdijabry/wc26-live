@@ -575,7 +575,14 @@ const BROADCAST_RIGHTS: Record<string, Record<string, Broadcaster[]>> = {
     CA: [TV('TSN'), TV('CTV')],
 
     // ─── Big-five European audiences ─────────────────────────────
-    FR: [FREE_TV('TF1'), FREE_TV('M6'), TV('beIN Sports')],
+    // M6 is the sole free-to-air rights holder for the 2026 World
+    // Cup in France (54 matches, including ALL Equipe de France
+    // games — confirmed by M6 press release March 2024 + Wikipedia
+    // broadcaster table). beIN Sports holds the pay-TV deal covering
+    // the full 104-match slate (announced February 2026). TF1 has
+    // NOT acquired WC26 rights — verified 2026-06-12, do NOT re-add
+    // unless Wikipedia or M6/beIN release explicit updates.
+    FR: [FREE_TV('M6'), TV('beIN Sports')],
     GB: [FREE_TV('BBC'), FREE_TV('ITV')],
     DE: [FREE_TV('ARD'), FREE_TV('ZDF'), STREAM('MagentaTV')],
     IT: [FREE_TV('RAI')],

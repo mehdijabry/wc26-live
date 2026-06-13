@@ -933,16 +933,18 @@ function rateLimitedResponse(retryAfterSeconds: number): Response {
   return new Response(resp.body, { status: 429, headers: h })
 }
 
-// Map ESPN event ID → our internal match id (M01..M72 group stage).
+// Map ESPN event ID → our internal match id (M01..M72 + 32 KO slots).
 //
 // Generated from ESPN /tournament on 2026-06-12 — same source of truth as
-// src/data/matches.ts. Re-run scripts/regen-id-map.py if FIFA / ESPN shift
-// any fixture (rare; the schedule is locked once the draw lands).
+// src/data/matches.ts. Re-run scripts/regen-id-map.py + scripts/regen-ko.py
+// if FIFA / ESPN shift any fixture (rare; the schedule is locked once the
+// draw lands).
 //
-// KO matches (R32, R16, QF, SF, TP, FINAL) aren't pre-mapped because their
-// ESPN IDs and team codes only resolve after the group stage finishes —
-// the cron will need a date+venue lookup once we cross June 28. v1
-// scoring covers group stage; KO scoring lands in a follow-up.
+// KO matches (R32, R16, QF, SF, TP, FINAL) ARE pre-mapped now — the ESPN
+// IDs for the slot positions are stable from the moment the bracket
+// fixture is published, even though team codes only resolve once the
+// group stage closes. The bracket wizard handles the team-code resolution
+// separately via bracket.ts; this map only cares about slot identity.
 const ESPN_EVENT_TO_INTERNAL: Record<string, string> = {
   '760415': 'M01',  // MEX vs RSA  2026-06-11T19:00Z
   '760414': 'M02',  // KOR vs CZE  2026-06-12T02:00Z
@@ -1016,6 +1018,39 @@ const ESPN_EVENT_TO_INTERNAL: Record<string, string> = {
   '760482': 'M70',  // COD vs UZB  2026-06-27T23:30Z
   '760484': 'M71',  // ALG vs AUT  2026-06-28T02:00Z
   '760483': 'M72',  // JOR vs ARG  2026-06-28T02:00Z
+  // ─── Knockout stage ─────────────────────────────────────────────
+  '760486': 'R32-1',   // R32-1  2026-06-28T19:00Z  @ SoFi Stadium (lax)
+  '760487': 'R32-2',   // R32-2  2026-06-29T17:00Z  @ NRG Stadium (hou)
+  '760489': 'R32-3',   // R32-3  2026-06-29T20:30Z  @ Gillette Stadium (bos)
+  '760488': 'R32-4',   // R32-4  2026-06-30T01:00Z  @ Estadio BBVA (mty)
+  '760490': 'R32-5',   // R32-5  2026-06-30T17:00Z  @ AT&T Stadium (dal)
+  '760492': 'R32-6',   // R32-6  2026-06-30T21:00Z  @ MetLife Stadium (nyc)
+  '760491': 'R32-7',   // R32-7  2026-07-01T01:00Z  @ Estadio Banorte (mex)
+  '760495': 'R32-8',   // R32-8  2026-07-01T16:00Z  @ Mercedes-Benz Stadium (atl)
+  '760493': 'R32-9',   // R32-9  2026-07-01T20:00Z  @ Lumen Field (sea)
+  '760494': 'R32-10',  // R32-10 2026-07-02T00:00Z  @ Levi's Stadium (sfo)
+  '760497': 'R32-11',  // R32-11 2026-07-02T19:00Z  @ SoFi Stadium (lax)
+  '760496': 'R32-12',  // R32-12 2026-07-02T23:00Z  @ BMO Field (tor)
+  '760498': 'R32-13',  // R32-13 2026-07-03T03:00Z  @ BC Place (van)
+  '760499': 'R32-14',  // R32-14 2026-07-03T18:00Z  @ AT&T Stadium (dal)
+  '760500': 'R32-15',  // R32-15 2026-07-03T22:00Z  @ Hard Rock Stadium (mia)
+  '760501': 'R32-16',  // R32-16 2026-07-04T01:30Z  @ GEHA Field Arrowhead (kan)
+  '760502': 'R16-1',   // R16-1  2026-07-04T17:00Z  @ NRG Stadium (hou)
+  '760503': 'R16-2',   // R16-2  2026-07-04T21:00Z  @ Lincoln Financial Field (phi)
+  '760504': 'R16-3',   // R16-3  2026-07-05T20:00Z  @ MetLife Stadium (nyc)
+  '760505': 'R16-4',   // R16-4  2026-07-06T00:00Z  @ Estadio Banorte (mex)
+  '760506': 'R16-5',   // R16-5  2026-07-06T19:00Z  @ AT&T Stadium (dal)
+  '760507': 'R16-6',   // R16-6  2026-07-07T00:00Z  @ Lumen Field (sea)
+  '760509': 'R16-7',   // R16-7  2026-07-07T16:00Z  @ Mercedes-Benz Stadium (atl)
+  '760508': 'R16-8',   // R16-8  2026-07-07T20:00Z  @ BC Place (van)
+  '760510': 'QF-1',    // QF-1   2026-07-09T20:00Z  @ Gillette Stadium (bos)
+  '760511': 'QF-2',    // QF-2   2026-07-10T19:00Z  @ SoFi Stadium (lax)
+  '760512': 'QF-3',    // QF-3   2026-07-11T21:00Z  @ Hard Rock Stadium (mia)
+  '760513': 'QF-4',    // QF-4   2026-07-12T01:00Z  @ GEHA Field Arrowhead (kan)
+  '760514': 'SF-1',    // SF-1   2026-07-14T19:00Z  @ AT&T Stadium (dal)
+  '760515': 'SF-2',    // SF-2   2026-07-15T19:00Z  @ Mercedes-Benz Stadium (atl)
+  '760516': 'TP',      // TP     2026-07-18T21:00Z  @ Hard Rock Stadium (mia)
+  '760517': 'FINAL',   // FINAL  2026-07-19T19:00Z  @ MetLife Stadium (nyc)
 }
 
 function mapEspnIdToInternal(espnId: string): string | null {
