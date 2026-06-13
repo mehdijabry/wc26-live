@@ -569,26 +569,69 @@ const STREAM = (name: string): Broadcaster => ({ name, type: 'streaming' })
 
 const BROADCAST_RIGHTS: Record<string, Record<string, Broadcaster[]>> = {
   'fifa.world': {
+    // ─── Host countries ──────────────────────────────────────────
+    US: [TV('FOX'), TV('Telemundo')],
+    MX: [TV('Televisa'), TV('TV Azteca')],
+    CA: [TV('TSN'), TV('CTV')],
+
+    // ─── Big-five European audiences ─────────────────────────────
     FR: [FREE_TV('TF1'), FREE_TV('M6'), TV('beIN Sports')],
     GB: [FREE_TV('BBC'), FREE_TV('ITV')],
-    US: [TV('FOX'), TV('Telemundo')],
     DE: [FREE_TV('ARD'), FREE_TV('ZDF'), STREAM('MagentaTV')],
     IT: [FREE_TV('RAI')],
     ES: [FREE_TV('La 1 (RTVE)'), STREAM('DAZN')],
+
+    // ─── Other UEFA nations qualified for WC26 ───────────────────
     NL: [TV('NOS'), STREAM('Videoland')],
     BE: [FREE_TV('RTBF'), FREE_TV('VRT'), TV('Pickx Sports')],
     PT: [FREE_TV('RTP'), TV('SIC')],
+    CH: [FREE_TV('SRF'), FREE_TV('RTS'), FREE_TV('RSI')], // Switzerland — SRG SSR public pool
+    AT: [FREE_TV('ORF 1')],                                // Austria
+    HR: [FREE_TV('HRT')],                                   // Croatia
+    CZ: [FREE_TV('ČT Sport')],                              // Czechia
+    NO: [FREE_TV('NRK'), FREE_TV('TV 2')],                 // Norway
+    SE: [FREE_TV('SVT'), TV('TV4')],                       // Sweden
+    BA: [FREE_TV('BHRT')],                                  // Bosnia & Herzegovina
+    // Scottish viewers fall under the GB entry above (BBC / ITV pool).
+
+    // ─── MENA / North Africa ─────────────────────────────────────
     MA: [FREE_TV('SNRT (Al Aoula · Arryadia)')],
     DZ: [FREE_TV('ENTV')],
     TN: [FREE_TV('Watania')],
+    EG: [TV('ON Sport'), FREE_TV('ETV')],
     SA: [TV('SSC')],
     AE: [TV('AD Sports')],
     QA: [TV('beIN Sports MENA')],
-    MX: [TV('Televisa'), TV('TV Azteca')],
-    CA: [TV('TSN'), TV('CTV')],
+    JO: [FREE_TV('Jordan TV'), TV('beIN Sports MENA')],
+    IQ: [FREE_TV('Al Iraqiya'), TV('beIN Sports MENA')],
+    IR: [FREE_TV('IRIB Varzesh')],
+
+    // ─── Sub-Saharan Africa qualified nations ────────────────────
+    CI: [FREE_TV('RTI')],                                   // Ivory Coast
+    SN: [FREE_TV('RTS')],                                   // Senegal
+    GH: [FREE_TV('GTV Sports+'), TV('SuperSport')],         // Ghana
+    CD: [FREE_TV('RTNC')],                                  // DR Congo
+    ZA: [TV('SABC'), TV('SuperSport')],                     // South Africa
+    CV: [FREE_TV('RTC')],                                   // Cape Verde
+
+    // ─── Americas qualified nations (beyond host trio) ───────────
     BR: [FREE_TV('Globo'), TV('SporTV'), TV('CazéTV')],
     AR: [TV('TyC Sports'), TV('TV Pública')],
+    UY: [TV('TenField'), TV('Canal 10')],                   // Uruguay
+    CO: [TV('Caracol'), TV('RCN')],                         // Colombia
+    EC: [TV('Teleamazonas'), TV('GamaTV')],                 // Ecuador
+    PY: [FREE_TV('Tigo Sports'), TV('Telefuturo')],         // Paraguay
+    HT: [FREE_TV('TNH'), TV('Télémax')],                    // Haiti
+    PA: [TV('TVN'), TV('RPC')],                             // Panama
+    CW: [TV('TeleCuraçao')],                                // Curaçao
+
+    // ─── AFC / Oceania qualified nations ─────────────────────────
     JP: [TV('TV Asahi'), TV('Fuji TV'), TV('NHK'), STREAM('ABEMA')],
+    KR: [TV('KBS'), TV('SBS'), TV('MBC')],                  // South Korea — broadcaster pool
+    AU: [TV('Channel 9'), STREAM('Optus Sport')],           // Australia
+    NZ: [TV('Sky Sport NZ'), STREAM('Three Now')],          // New Zealand
+    UZ: [TV('UZTV'), TV('Match TV')],                       // Uzbekistan
+    TR: [FREE_TV('TRT 1')],                                 // Turkey
   },
 
   'uefa.champions': {
@@ -789,6 +832,16 @@ const COUNTRY_NAMES: Record<string, string> = {
   SA: 'Saudi Arabia', AE: 'United Arab Emirates', QA: 'Qatar',
   MX: 'Mexico', CA: 'Canada', BR: 'Brazil', AR: 'Argentina',
   CL: 'Chile', CO: 'Colombia', JP: 'Japan',
+  // WC26 qualified nations added 2026-06-12
+  CH: 'Switzerland', AT: 'Austria', HR: 'Croatia', CZ: 'Czechia',
+  NO: 'Norway', SE: 'Sweden', BA: 'Bosnia and Herzegovina',
+  JO: 'Jordan', IQ: 'Iraq', IR: 'Iran',
+  CI: 'Ivory Coast', SN: 'Senegal', GH: 'Ghana', CD: 'DR Congo',
+  ZA: 'South Africa', CV: 'Cape Verde',
+  UY: 'Uruguay', EC: 'Ecuador', PY: 'Paraguay', HT: 'Haiti',
+  PA: 'Panama', CW: 'Curaçao',
+  KR: 'South Korea', AU: 'Australia', NZ: 'New Zealand',
+  UZ: 'Uzbekistan', TR: 'Turkey',
 }
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -796,6 +849,12 @@ const COUNTRY_FLAGS: Record<string, string> = {
   NL: '🇳🇱', BE: '🇧🇪', PT: '🇵🇹', MA: '🇲🇦', DZ: '🇩🇿', TN: '🇹🇳',
   EG: '🇪🇬', SA: '🇸🇦', AE: '🇦🇪', QA: '🇶🇦', MX: '🇲🇽', CA: '🇨🇦',
   BR: '🇧🇷', AR: '🇦🇷', CL: '🇨🇱', CO: '🇨🇴', JP: '🇯🇵',
+  // WC26 qualified nations
+  CH: '🇨🇭', AT: '🇦🇹', HR: '🇭🇷', CZ: '🇨🇿', NO: '🇳🇴', SE: '🇸🇪',
+  BA: '🇧🇦', JO: '🇯🇴', IQ: '🇮🇶', IR: '🇮🇷',
+  CI: '🇨🇮', SN: '🇸🇳', GH: '🇬🇭', CD: '🇨🇩', ZA: '🇿🇦', CV: '🇨🇻',
+  UY: '🇺🇾', EC: '🇪🇨', PY: '🇵🇾', HT: '🇭🇹', PA: '🇵🇦', CW: '🇨🇼',
+  KR: '🇰🇷', AU: '🇦🇺', NZ: '🇳🇿', UZ: '🇺🇿', TR: '🇹🇷',
 }
 
 /**
@@ -830,6 +889,19 @@ const COUNTRY_TIMEZONES: Record<string, string> = {
   QA: 'Asia/Qatar',         MX: 'America/Mexico_City', CA: 'America/Toronto',
   BR: 'America/Sao_Paulo',  AR: 'America/Argentina/Buenos_Aires',
   CL: 'America/Santiago',   CO: 'America/Bogota',    JP: 'Asia/Tokyo',
+  // WC26 qualified nations
+  CH: 'Europe/Zurich',      AT: 'Europe/Vienna',     HR: 'Europe/Zagreb',
+  CZ: 'Europe/Prague',      NO: 'Europe/Oslo',       SE: 'Europe/Stockholm',
+  BA: 'Europe/Sarajevo',    TR: 'Europe/Istanbul',
+  JO: 'Asia/Amman',         IQ: 'Asia/Baghdad',      IR: 'Asia/Tehran',
+  UZ: 'Asia/Tashkent',      KR: 'Asia/Seoul',
+  AU: 'Australia/Sydney',   NZ: 'Pacific/Auckland',
+  CI: 'Africa/Abidjan',     SN: 'Africa/Dakar',      GH: 'Africa/Accra',
+  CD: 'Africa/Kinshasa',    ZA: 'Africa/Johannesburg',
+  CV: 'Atlantic/Cape_Verde',
+  UY: 'America/Montevideo', EC: 'America/Guayaquil', PY: 'America/Asuncion',
+  HT: 'America/Port-au-Prince', PA: 'America/Panama',
+  CW: 'America/Curacao',
 }
 
 /** URL slug per country — keeps URLs SEO-friendly. */
@@ -842,6 +914,18 @@ const COUNTRY_SLUGS: Record<string, string> = {
   QA: 'qatar',           MX: 'mexico',          CA: 'canada',
   BR: 'brazil',          AR: 'argentina',       CL: 'chile',
   CO: 'colombia',        JP: 'japan',
+  // WC26 qualified nations added 2026-06-12 — every URL is the lowercased,
+  // kebab-cased English name. /watch/switzerland, /watch/south-korea, etc.
+  CH: 'switzerland',     AT: 'austria',         HR: 'croatia',
+  CZ: 'czechia',         NO: 'norway',          SE: 'sweden',
+  BA: 'bosnia-and-herzegovina',
+  JO: 'jordan',          IQ: 'iraq',            IR: 'iran',
+  CI: 'ivory-coast',     SN: 'senegal',         GH: 'ghana',
+  CD: 'dr-congo',        ZA: 'south-africa',    CV: 'cape-verde',
+  UY: 'uruguay',         EC: 'ecuador',         PY: 'paraguay',
+  HT: 'haiti',           PA: 'panama',          CW: 'curacao',
+  KR: 'south-korea',     AU: 'australia',       NZ: 'new-zealand',
+  UZ: 'uzbekistan',      TR: 'turkey',
 }
 
 const SLUG_TO_COUNTRY = Object.fromEntries(
