@@ -933,14 +933,93 @@ function rateLimitedResponse(retryAfterSeconds: number): Response {
   return new Response(resp.body, { status: 429, headers: h })
 }
 
-// Map ESPN event ID → our internal match id (M01..M104 + KO labels).
-// For v1 we leave this as a stub returning null; it will be filled with the
-// real mapping once ESPN publishes WC26 event IDs (post-draw).
-function mapEspnIdToInternal(_espnId: string): string | null {
-  // TODO: build a table of ESPN event IDs → internal M01..M104 ids.
-  // Until then, scheduled scoring is a no-op and the frontend serves
-  // mock data through /scoreboard etc.
-  return null
+// Map ESPN event ID → our internal match id (M01..M72 group stage).
+//
+// Generated from ESPN /tournament on 2026-06-12 — same source of truth as
+// src/data/matches.ts. Re-run scripts/regen-id-map.py if FIFA / ESPN shift
+// any fixture (rare; the schedule is locked once the draw lands).
+//
+// KO matches (R32, R16, QF, SF, TP, FINAL) aren't pre-mapped because their
+// ESPN IDs and team codes only resolve after the group stage finishes —
+// the cron will need a date+venue lookup once we cross June 28. v1
+// scoring covers group stage; KO scoring lands in a follow-up.
+const ESPN_EVENT_TO_INTERNAL: Record<string, string> = {
+  '760415': 'M01',  // MEX vs RSA  2026-06-11T19:00Z
+  '760414': 'M02',  // KOR vs CZE  2026-06-12T02:00Z
+  '760416': 'M03',  // CAN vs BIH  2026-06-12T19:00Z
+  '760417': 'M04',  // USA vs PAR  2026-06-13T01:00Z
+  '760420': 'M05',  // QAT vs SUI  2026-06-13T19:00Z
+  '760419': 'M06',  // BRA vs MAR  2026-06-13T22:00Z
+  '760418': 'M07',  // HAI vs SCO  2026-06-14T01:00Z
+  '760421': 'M08',  // AUS vs TUR  2026-06-14T04:00Z
+  '760422': 'M09',  // GER vs CUW  2026-06-14T17:00Z
+  '760425': 'M10',  // NED vs JPN  2026-06-14T20:00Z
+  '760423': 'M11',  // CIV vs ECU  2026-06-14T23:00Z
+  '760424': 'M12',  // SWE vs TUN  2026-06-15T02:00Z
+  '760428': 'M13',  // ESP vs CPV  2026-06-15T16:00Z
+  '760426': 'M14',  // BEL vs EGY  2026-06-15T19:00Z
+  '760429': 'M15',  // KSA vs URU  2026-06-15T22:00Z
+  '760427': 'M16',  // IRN vs NZL  2026-06-16T01:00Z
+  '760432': 'M17',  // FRA vs SEN  2026-06-16T19:00Z
+  '760430': 'M18',  // IRQ vs NOR  2026-06-16T22:00Z
+  '760433': 'M19',  // ARG vs ALG  2026-06-17T01:00Z
+  '760431': 'M20',  // AUT vs JOR  2026-06-17T04:00Z
+  '760435': 'M21',  // POR vs COD  2026-06-17T17:00Z
+  '760437': 'M22',  // ENG vs CRO  2026-06-17T20:00Z
+  '760434': 'M23',  // GHA vs PAN  2026-06-17T23:00Z
+  '760436': 'M24',  // UZB vs COL  2026-06-18T02:00Z
+  '760438': 'M25',  // CZE vs RSA  2026-06-18T16:00Z
+  '760439': 'M26',  // SUI vs BIH  2026-06-18T19:00Z
+  '760440': 'M27',  // CAN vs QAT  2026-06-18T22:00Z
+  '760441': 'M28',  // MEX vs KOR  2026-06-19T01:00Z
+  '760442': 'M29',  // USA vs AUS  2026-06-19T19:00Z
+  '760445': 'M30',  // SCO vs MAR  2026-06-19T22:00Z
+  '760444': 'M31',  // BRA vs HAI  2026-06-20T00:30Z
+  '760443': 'M32',  // TUR vs PAR  2026-06-20T03:00Z
+  '760447': 'M33',  // NED vs SWE  2026-06-20T17:00Z
+  '760448': 'M34',  // GER vs CIV  2026-06-20T20:00Z
+  '760446': 'M35',  // ECU vs CUW  2026-06-21T00:00Z
+  '760449': 'M36',  // TUN vs JPN  2026-06-21T04:00Z
+  '760453': 'M37',  // ESP vs KSA  2026-06-21T16:00Z
+  '760451': 'M38',  // BEL vs IRN  2026-06-21T19:00Z
+  '760450': 'M39',  // URU vs CPV  2026-06-21T22:00Z
+  '760452': 'M40',  // NZL vs EGY  2026-06-22T01:00Z
+  '760456': 'M41',  // ARG vs AUT  2026-06-22T17:00Z
+  '760457': 'M42',  // FRA vs IRQ  2026-06-22T21:00Z
+  '760454': 'M43',  // NOR vs SEN  2026-06-23T00:00Z
+  '760455': 'M44',  // JOR vs ALG  2026-06-23T03:00Z
+  '760461': 'M45',  // POR vs UZB  2026-06-23T17:00Z
+  '760458': 'M46',  // ENG vs GHA  2026-06-23T20:00Z
+  '760460': 'M47',  // PAN vs CRO  2026-06-23T23:00Z
+  '760459': 'M48',  // COL vs COD  2026-06-24T02:00Z
+  '760462': 'M49',  // BIH vs QAT  2026-06-24T19:00Z
+  '760463': 'M50',  // SUI vs CAN  2026-06-24T19:00Z
+  '760464': 'M51',  // MAR vs HAI  2026-06-24T22:00Z
+  '760465': 'M52',  // SCO vs BRA  2026-06-24T22:00Z
+  '760467': 'M53',  // CZE vs MEX  2026-06-25T01:00Z
+  '760466': 'M54',  // RSA vs KOR  2026-06-25T01:00Z
+  '760473': 'M55',  // CUW vs CIV  2026-06-25T20:00Z
+  '760468': 'M56',  // ECU vs GER  2026-06-25T20:00Z
+  '760471': 'M57',  // JPN vs SWE  2026-06-25T23:00Z
+  '760472': 'M58',  // TUN vs NED  2026-06-25T23:00Z
+  '760469': 'M59',  // PAR vs AUS  2026-06-26T02:00Z
+  '760470': 'M60',  // TUR vs USA  2026-06-26T02:00Z
+  '760475': 'M61',  // NOR vs FRA  2026-06-26T19:00Z
+  '760474': 'M62',  // SEN vs IRQ  2026-06-26T19:00Z
+  '760478': 'M63',  // CPV vs KSA  2026-06-27T00:00Z
+  '760479': 'M64',  // URU vs ESP  2026-06-27T00:00Z
+  '760476': 'M65',  // EGY vs IRN  2026-06-27T03:00Z
+  '760477': 'M66',  // NZL vs BEL  2026-06-27T03:00Z
+  '760480': 'M67',  // CRO vs GHA  2026-06-27T21:00Z
+  '760485': 'M68',  // PAN vs ENG  2026-06-27T21:00Z
+  '760481': 'M69',  // COL vs POR  2026-06-27T23:30Z
+  '760482': 'M70',  // COD vs UZB  2026-06-27T23:30Z
+  '760484': 'M71',  // ALG vs AUT  2026-06-28T02:00Z
+  '760483': 'M72',  // JOR vs ARG  2026-06-28T02:00Z
+}
+
+function mapEspnIdToInternal(espnId: string): string | null {
+  return ESPN_EVENT_TO_INTERNAL[espnId] ?? null
 }
 
 function ymdUtc(d: Date): string {
