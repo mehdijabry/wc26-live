@@ -1404,6 +1404,8 @@ function News() {
   // 6 candidate articles returned by /poll. The operator picks one
   // and we call /produce to AI-rewrite + save as draft.
   const [candidates, setCandidates] = useState<PolledCandidate[] | null>(null)
+  // Optional keyword to narrow the poll — empty = base poll (same as before).
+  const [pollKeyword, setPollKeyword] = useState('')
 
   async function load() {
     setLoading(true)
@@ -1451,7 +1453,9 @@ function News() {
     setBusy('poll')
     setMsg(null)
     try {
-      const r = await fetch(`${API_BASE}/admin/news/poll`, {
+      const kw = pollKeyword.trim()
+      const qs = kw ? `?keyword=${encodeURIComponent(kw)}` : ''
+      const r = await fetch(`${API_BASE}/admin/news/poll${qs}`, {
         method: 'POST',
         headers: { authorization: `Bearer ${getToken() ?? ''}` },
       })
@@ -1459,12 +1463,43 @@ function News() {
       const data = await r.json() as { candidates: PolledCandidate[]; diagnostics: Record<string, unknown> }
       setCandidates(data.candidates)
       if (data.candidates.length === 0) {
-        setMsg('No fresh candidates — RSS feeds may be slow or all top items are already in DB. Try again later.')
+        setMsg(kw
+          ? `No candidates match "${kw}" — try a broader term or another poll without the keyword.`
+          : 'No fresh candidates — RSS feeds may be slow or all top items are already in DB. Try again later.')
       } else {
-        setMsg(`✓ ${data.candidates.length} candidates ready — pick one to produce`)
+        setMsg(`✓ ${data.candidates.length} candidates ready${kw ? ` for "${kw}"` : ''} — pick one to produce`)
       }
     } catch (e) {
       setMsg('Poll failed: ' + String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  /**
+   * Reject = persist a "never show this again" marker. The worker
+   * inserts a minimal articles row with status='archived', so the same
+   * source_url stops showing up in future polls (the dedup pass at
+   * fetchAllSourceUrls picks up archived rows too).
+   */
+  async function rejectCandidate(c: PolledCandidate) {
+    setBusy('reject:' + c.link)
+    setMsg(null)
+    try {
+      const r = await fetch(`${API_BASE}/admin/news/reject-candidate`, {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${getToken() ?? ''}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify({ candidate: { link: c.link, title: c.title, source: c.source } }),
+      })
+      if (!r.ok) throw new Error(await r.text())
+      // Drop the rejected candidate locally; the dedup persists server-side.
+      setCandidates((prev) => prev?.filter((x) => x.link !== c.link) ?? null)
+      setMsg(`✓ Rejected — won't resurface in future polls`)
+    } catch (e) {
+      setMsg('Reject failed: ' + String(e))
     } finally {
       setBusy(null)
     }
@@ -1529,13 +1564,38 @@ function News() {
               </button>
             ))}
           </div>
-          <button
-            onClick={poll}
-            disabled={busy === 'poll'}
-            className="px-3 py-1.5 rounded-full bg-accent-gold text-ink-900 text-xs font-bold hover:bg-yellow-300 disabled:opacity-50"
-          >
-            {busy === 'poll' ? 'Polling…' : '🎣 Poll 6 articles'}
-          </button>
+          {/* Keyword + Poll grouped together — keyword is optional. Empty
+              input = same poll as before. Filled = filters candidates to
+              titles/descriptions matching the term. */}
+          <div className="flex items-stretch gap-0 rounded-full overflow-hidden border border-slate-200 bg-white">
+            <input
+              type="text"
+              value={pollKeyword}
+              onChange={(e) => setPollKeyword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void poll() }}
+              placeholder="optional keyword…"
+              className="px-3 py-1.5 text-xs font-mono w-[160px] focus:outline-none placeholder:text-slate-400"
+              disabled={busy === 'poll'}
+            />
+            {pollKeyword && (
+              <button
+                onClick={() => setPollKeyword('')}
+                disabled={busy === 'poll'}
+                className="px-2 text-slate-400 hover:text-slate-700 text-xs"
+                title="Clear keyword"
+                type="button"
+              >
+                ✕
+              </button>
+            )}
+            <button
+              onClick={poll}
+              disabled={busy === 'poll'}
+              className="px-3 py-1.5 bg-accent-gold text-ink-900 text-xs font-bold hover:bg-yellow-300 disabled:opacity-50 border-l border-slate-200"
+            >
+              {busy === 'poll' ? 'Polling…' : pollKeyword ? `🎣 Poll "${pollKeyword.slice(0,12)}${pollKeyword.length>12?'…':''}"` : '🎣 Poll 6 articles'}
+            </button>
+          </div>
           <button
             onClick={async () => {
               setBusy('backfill')
@@ -1627,8 +1687,10 @@ function News() {
                 candidate={c}
                 rank={i + 1}
                 busy={busy === 'produce:' + c.link}
-                anyBusy={busy?.startsWith('produce:') ?? false}
+                rejecting={busy === 'reject:' + c.link}
+                anyBusy={busy?.startsWith('produce:') || busy?.startsWith('reject:') || false}
                 onProduce={() => produce(c)}
+                onReject={() => rejectCandidate(c)}
               />
             ))}
           </div>
@@ -1772,13 +1834,17 @@ function CandidateRow({
   rank,
   busy,
   anyBusy,
+  rejecting,
   onProduce,
+  onReject,
 }: {
   candidate: PolledCandidate
   rank: number
   busy: boolean
   anyBusy: boolean
+  rejecting: boolean
   onProduce: () => void
+  onReject: () => void
 }) {
   const ageH = Math.round((Date.now() - candidate.pubDate) / 3600_000 * 10) / 10
   return (
@@ -1830,6 +1896,17 @@ function CandidateRow({
           >
             ↗ Read source
           </a>
+          {/* Reject persists a 'never show this again' marker — the
+              source_url is stored as an archived row so the dedup pass
+              filters it out of every future poll. */}
+          <button
+            onClick={onReject}
+            disabled={anyBusy}
+            className="px-3 py-1.5 text-[11px] font-mono rounded-full border border-rose-200 text-rose-600 hover:bg-rose-50 disabled:opacity-40"
+            title="Hide this article forever — won't show up in future polls"
+          >
+            {rejecting ? 'Rejecting…' : '✕ Reject'}
+          </button>
         </div>
       </div>
     </div>

@@ -67,8 +67,18 @@ export interface PolledCandidate {
  * Manual flow: poll top-N candidates skipping anything already in DB
  * (regardless of status). The frontend then renders these as a list
  * for the operator to pick from.
+ *
+ * The optional `keyword` parameter narrows the selection to candidates
+ * whose title OR description contains the term (case-insensitive,
+ * substring match). The base scoring + RSS source mix is untouched —
+ * keyword is an ADDITIVE filter that runs AFTER dedup, so the same
+ * editorial signals still decide ranking inside the matching subset.
  */
-export async function pollTopCandidates(env: Env, n = 6): Promise<{ candidates: PolledCandidate[]; diagnostics: Record<string, number | string> }> {
+export async function pollTopCandidates(
+  env: Env,
+  n = 6,
+  keyword?: string
+): Promise<{ candidates: PolledCandidate[]; diagnostics: Record<string, number | string> }> {
   const diag: Record<string, number | string> = { step: 'rss' }
   const { all, perSource } = await fetchCandidatesWithStats()
   Object.assign(diag, { rssTotal: all.length, ...perSource })
@@ -84,11 +94,25 @@ export async function pollTopCandidates(env: Env, n = 6): Promise<{ candidates: 
   diag.redditHot = reddit.length
   crossReferenceReddit(candidates, reddit)
 
-  // Drop anything already processed (any status).
+  // Drop anything already processed (any status). Rejected candidates
+  // get a minimal row inserted with status='archived' (see
+  // rejectCandidate below), so this same dedup pass swallows them.
   const seen = await fetchAllSourceUrls(env)
   diag.alreadyInDb = seen.size
   candidates = candidates.filter((c) => !seen.has(c.link))
   diag.afterDedup = candidates.length
+
+  // Optional keyword filter — narrows to title/description matches but
+  // doesn't change the scoring formula or source weights.
+  if (keyword && keyword.trim()) {
+    const needle = keyword.trim().toLowerCase()
+    candidates = candidates.filter((c) => {
+      const hay = (c.title + ' ' + (c.description ?? '')).toLowerCase()
+      return hay.includes(needle)
+    })
+    diag.keyword = keyword.trim()
+    diag.afterKeyword = candidates.length
+  }
 
   // Score, sort, take top N.
   const top = candidates
@@ -115,6 +139,55 @@ export async function pollTopCandidates(env: Env, n = 6): Promise<{ candidates: 
  * dedup as a safety check (someone might have raced us), then AI
  * rewrites + inserts + emails.
  */
+/**
+ * Mark a polled candidate as rejected so it stops resurfacing on every
+ * future /poll. Inserts a minimal articles row with status='archived' —
+ * the existing dedup pass at fetchAllSourceUrls() picks up source_url
+ * across ALL statuses, so the URL never reappears in the candidate
+ * stream. No AI runs; no editor email.
+ *
+ * Operator's flow: they click ✕ Reject on a candidate row in the poll
+ * panel. The candidate disappears from the UI immediately, and the
+ * worker persists a 'don't show this again' marker.
+ */
+export async function rejectCandidate(
+  env: Env,
+  picked: { link: string; title: string; source: string }
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!picked.link) return { ok: false, reason: 'missing_link' }
+  // Idempotent: if a row already exists for this source_url we leave
+  // it alone — could be a previously-produced article the operator
+  // re-rejected by mistake, in which case touching status would mess
+  // up the publish state.
+  if (await alreadyHave(env, picked.link)) return { ok: true, reason: 'already_in_db' }
+  const slug = 'rejected-' + Math.random().toString(36).slice(2, 8) +
+               '-' + Date.now().toString(36)
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/articles`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      slug,
+      title: (picked.title || 'rejected candidate').slice(0, 200),
+      excerpt: '',
+      body: '',
+      image_url: null,
+      source_url: picked.link,
+      source_name: picked.source || 'unknown',
+      score: 0,
+      status: 'archived',
+      archived_at: new Date().toISOString(),
+    }),
+  })
+  if (!r.ok) {
+    return { ok: false, reason: `insert_failed_${r.status}` }
+  }
+  return { ok: true }
+}
+
 export async function produceFromCandidate(env: Env, picked: PolledCandidate): Promise<{ ok: boolean; draft?: { id: string; slug: string; title: string }; error?: string; ai_raw_preview?: string }> {
   // Re-hydrate to a full Candidate shape so we can reuse the scoring +
   // AI prompt builder.

@@ -1249,10 +1249,33 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
 
   if (tail === 'poll' && !action) {
     // Return top 6 candidates skipping anything already in DB. The
-    // operator picks which one to produce.
+    // operator picks which one to produce. Optional `keyword` query
+    // param narrows the selection to title/description matches —
+    // useful when the operator wants 'Vinicius after Brazil-Morocco'
+    // articles and the default poll won't surface them.
+    const url = new URL(req.url)
+    const keyword = url.searchParams.get('keyword') ?? undefined
     const { pollTopCandidates } = await import('./news')
-    const result = await pollTopCandidates(env as unknown as Parameters<typeof pollTopCandidates>[0], 6)
+    const result = await pollTopCandidates(
+      env as unknown as Parameters<typeof pollTopCandidates>[0],
+      6,
+      keyword || undefined
+    )
     return jsonResp({ ok: true, ...result })
+  }
+
+  if (tail === 'reject-candidate' && !action && req.method === 'POST') {
+    // Persist a 'never show this again' marker for a polled candidate
+    // the operator declined. Frontend should remove the row from its
+    // local state on a 200 OK.
+    const body = await req.json().catch(() => null) as { candidate?: { link: string; title: string; source: string } } | null
+    if (!body?.candidate?.link) return jsonResp({ error: 'missing_candidate' }, 400)
+    const { rejectCandidate } = await import('./news')
+    const result = await rejectCandidate(
+      env as unknown as Parameters<typeof rejectCandidate>[0],
+      body.candidate
+    )
+    return jsonResp(result, result.ok ? 200 : 502)
   }
 
   if (tail === 'produce' && !action && req.method === 'POST') {
