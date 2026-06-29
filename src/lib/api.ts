@@ -35,7 +35,12 @@ export type EspnEvent = {
   shortName?: string
   name?: string
   status?: EspnStatus
+  // season.slug carries the tournament stage: 'group-stage', 'round-of-32',
+  // 'round-of-16', 'quarterfinals', 'semifinals', '3rd-place-match', 'final'.
+  // Used by deriveBracket to bucket KO events.
+  season?: { slug?: string; year?: number; type?: number }
   competitions?: Array<{
+    status?: EspnStatus
     competitors?: EspnCompetitor[]
     venue?: { fullName?: string; address?: { city?: string; country?: string } }
   }>
@@ -1660,7 +1665,7 @@ export async function fetchNews(perLeague = 4): Promise<NewsArticle[]> {
     NEWS_LEAGUES.map(async (lg) => {
       try {
         const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${lg.slug}/news?limit=${perLeague}`
-        const r = await fetch(url)
+        const r = await fetch(url, { signal: AbortSignal.timeout(4000) })
         if (!r.ok) return []
         const d = await r.json() as { articles?: EspnArticle[] }
         const arr = d.articles ?? []

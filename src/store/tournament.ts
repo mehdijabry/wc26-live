@@ -276,3 +276,246 @@ export function matchesForTeam(events: EspnEvent[], abbr: string): EspnEvent[] {
     return cs.some((c) => c.team?.abbreviation?.toUpperCase() === A)
   })
 }
+
+// ----- Group standings + qualifier projection ---------------------------
+//
+// recordForTeam above considers ALL the team's matches (group + knockout).
+// For the standings of a single group we must restrict to the team's three
+// group-stage matches only — otherwise a KO win would inflate the table.
+
+export type GroupRow = {
+  abbr: string
+  name: string
+  record: TeamRecord
+  goalDiff: number
+}
+
+export type GroupStanding = {
+  letter: string
+  rows: GroupRow[]            // sorted by points → GD → GF
+  matchdayLabel: string       // "MD3 · final" | "MD2 · live" | "MD1 · upcoming"
+}
+
+function isGroupStageEvent(ev: EspnEvent): boolean {
+  return (ev.season?.slug ?? '') === 'group-stage'
+}
+
+function recordForTeamInGroup(groupEvents: EspnEvent[], abbr: string): TeamRecord {
+  // Same maths as recordForTeam but scoped to the events passed in.
+  const r: TeamRecord = { played: 0, won: 0, drawn: 0, lost: 0, goalsFor: 0, goalsAgainst: 0, points: 0 }
+  const A = abbr.toUpperCase()
+  for (const ev of groupEvents) {
+    if (ev.status?.type?.state !== 'post') continue
+    const cs = ev.competitions?.[0]?.competitors ?? []
+    if (cs.length < 2) continue
+    const mine = cs.find((c) => c.team?.abbreviation?.toUpperCase() === A)
+    const other = cs.find((c) => c.team?.abbreviation?.toUpperCase() !== A)
+    if (!mine || !other) continue
+    const my = parseInt(mine.score ?? '0', 10)
+    const op = parseInt(other.score ?? '0', 10)
+    r.played++
+    r.goalsFor += my
+    r.goalsAgainst += op
+    if (my > op) { r.won++; r.points += 3 }
+    else if (my === op) { r.drawn++; r.points += 1 }
+    else r.lost++
+  }
+  return r
+}
+
+export function deriveGroupStandings(events: EspnEvent[], groups: LiveGroup[]): GroupStanding[] {
+  // Restrict the universe of events to the group stage. Falls back to the
+  // first 72 events sorted by date when ESPN hasn't tagged season.slug yet.
+  let groupStage = events.filter(isGroupStageEvent)
+  if (groupStage.length === 0) {
+    groupStage = [...events].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? '')).slice(0, 72)
+  }
+  return groups.map((g) => {
+    // The three group matches per team: events whose BOTH competitors are
+    // in this group's team set. Filtering this way avoids accidentally
+    // counting a KO match against an outside opponent.
+    const teamSet = new Set(g.teams.map((t) => t.abbr.toUpperCase()))
+    const matches = groupStage.filter((ev) => {
+      const cs = ev.competitions?.[0]?.competitors ?? []
+      if (cs.length < 2) return false
+      const a = cs[0]?.team?.abbreviation?.toUpperCase()
+      const b = cs[1]?.team?.abbreviation?.toUpperCase()
+      return !!a && !!b && teamSet.has(a) && teamSet.has(b)
+    })
+    const rows: GroupRow[] = g.teams.map((t) => {
+      const record = recordForTeamInGroup(matches, t.abbr)
+      return {
+        abbr: t.abbr,
+        name: t.name,
+        record,
+        goalDiff: record.goalsFor - record.goalsAgainst,
+      }
+    })
+    rows.sort((a, b) => {
+      if (b.record.points !== a.record.points) return b.record.points - a.record.points
+      if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff
+      return b.record.goalsFor - a.record.goalsFor
+    })
+    // Matchday label — best-effort indicator of group state. Each group
+    // has 6 matches total (4 teams × 3 matchdays); if any group match is
+    // currently 'in' state, surface that; if all 6 are 'post', label MD3
+    // final; otherwise pick the highest MD that has any 'post' event.
+    const anyLive = matches.some((m) => m.status?.type?.state === 'in')
+    const completed = matches.filter((m) => m.status?.type?.state === 'post').length
+    const matchdayLabel = anyLive
+      ? 'live'
+      : completed >= 6 ? 'MD3 · final'
+      : completed >= 4 ? 'MD3 · in progress'
+      : completed >= 2 ? 'MD2 · in progress'
+      : completed >= 1 ? 'MD1 · in progress'
+      : 'upcoming'
+    return { letter: g.letter, rows, matchdayLabel }
+  })
+}
+
+// ----- Qualified teams for the Round of 32 ------------------------------
+//
+// Twelve group winners + twelve runners-up qualify automatically. The eight
+// best third-placed teams complete the 32-team bracket. Tiebreakers follow
+// FIFA's published order: points → goal difference → goals for. The next
+// FIFA tiebreakers (fair-play points, drawing of lots) aren't exposed in
+// ESPN's feed, so we stop there and label the cutoff with `provisional`
+// when the 8th vs 9th third-placed teams are tied on the visible fields.
+
+export type Qualified = {
+  firsts: string[]            // 12 group-winner abbreviations (in group order A→L)
+  seconds: string[]           // 12 runners-up abbreviations
+  bestThirds: string[]        // up to 8 third-placed abbreviations
+  remainingThirds: string[]   // the other thirds (4) — for context
+  provisional: boolean        // true if the 8/9 cutoff is on tied teams
+}
+
+export function deriveQualified(standings: GroupStanding[]): Qualified {
+  const firsts: string[] = []
+  const seconds: string[] = []
+  const thirds: Array<{ abbr: string; points: number; gd: number; gf: number; group: string }> = []
+  for (const s of standings) {
+    if (s.rows[0]) firsts.push(s.rows[0].abbr)
+    if (s.rows[1]) seconds.push(s.rows[1].abbr)
+    if (s.rows[2]) thirds.push({
+      abbr: s.rows[2].abbr,
+      points: s.rows[2].record.points,
+      gd: s.rows[2].goalDiff,
+      gf: s.rows[2].record.goalsFor,
+      group: s.letter,
+    })
+  }
+  thirds.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points
+    if (b.gd !== a.gd) return b.gd - a.gd
+    return b.gf - a.gf
+  })
+  const bestThirds = thirds.slice(0, 8).map((t) => t.abbr)
+  const remainingThirds = thirds.slice(8).map((t) => t.abbr)
+  // Flag provisional if the 8th and 9th best are dead-locked on visible
+  // tiebreakers — the editor (or FIFA) will resolve via fair-play / draw.
+  const provisional = thirds.length >= 9
+    && thirds[7].points === thirds[8].points
+    && thirds[7].gd === thirds[8].gd
+    && thirds[7].gf === thirds[8].gf
+  return { firsts, seconds, bestThirds, remainingThirds, provisional }
+}
+
+// ----- Knockout bracket -------------------------------------------------
+//
+// ESPN tags each event with a season.slug for the stage and pre-populates
+// the knockout pairings from the moment of the draw. For matches that
+// haven't been resolved yet, competitors carry placeholder displayNames
+// like "Semifinal 1 Winner" with abbreviation "SFW1" — these stay visible
+// until the upstream match completes, at which point ESPN auto-fills the
+// real team. The cascade therefore comes free from the data feed; we just
+// bucket events by stage and surface them as-is.
+
+export type BracketMatchTeam = {
+  abbr: string                // either real 3-letter code or placeholder ref ("SFW1")
+  name: string
+  score?: string
+  winner?: boolean
+  isPlaceholder: boolean      // true while we're waiting on the previous round
+}
+
+export type BracketMatch = {
+  id: string
+  date?: string
+  shortName?: string
+  venue?: string
+  city?: string
+  stage: BracketStage
+  status: 'pre' | 'in' | 'post'
+  home: BracketMatchTeam | null
+  away: BracketMatchTeam | null
+}
+
+export type BracketStage =
+  | 'round-of-32'
+  | 'round-of-16'
+  | 'quarterfinals'
+  | 'semifinals'
+  | '3rd-place-match'
+  | 'final'
+
+export const BRACKET_STAGES: BracketStage[] = [
+  'round-of-32',
+  'round-of-16',
+  'quarterfinals',
+  'semifinals',
+  '3rd-place-match',
+  'final',
+]
+
+function toBracketTeam(c: { team?: { abbreviation?: string; displayName?: string }; score?: string; winner?: boolean } | undefined): BracketMatchTeam | null {
+  if (!c) return null
+  const abbr = c.team?.abbreviation ?? '?'
+  const name = c.team?.displayName ?? abbr
+  // Placeholder rule: ESPN uses 3-4 letter codes for real teams (FRA, USA,
+  // MAR…) and tokens like "SFW1", "QFW2", "RD16 W8" for unresolved slots.
+  // The simplest discriminator is "displayName contains 'Winner' or 'Loser'".
+  const isPlaceholder = /winner|loser/i.test(name) || /^(SF|QF|RD|R\d)/i.test(abbr)
+  return {
+    abbr,
+    name,
+    score: c.score,
+    winner: c.winner,
+    isPlaceholder,
+  }
+}
+
+export function deriveBracket(events: EspnEvent[]): Record<BracketStage, BracketMatch[]> {
+  const empty: Record<BracketStage, BracketMatch[]> = {
+    'round-of-32': [],
+    'round-of-16': [],
+    'quarterfinals': [],
+    'semifinals': [],
+    '3rd-place-match': [],
+    'final': [],
+  }
+  for (const ev of events) {
+    const slug = ev.season?.slug as BracketStage | undefined
+    if (!slug || !(slug in empty)) continue
+    const comp = ev.competitions?.[0]
+    const cs = comp?.competitors ?? []
+    const home = toBracketTeam(cs.find((c) => c.homeAway === 'home') ?? cs[0])
+    const away = toBracketTeam(cs.find((c) => c.homeAway === 'away') ?? cs[1])
+    const state = (comp?.status?.type?.state ?? ev.status?.type?.state ?? 'pre') as 'pre' | 'in' | 'post'
+    empty[slug].push({
+      id: ev.id,
+      date: ev.date,
+      shortName: ev.shortName,
+      venue: comp?.venue?.fullName,
+      city: comp?.venue?.address?.city,
+      stage: slug,
+      status: state,
+      home,
+      away,
+    })
+  }
+  for (const s of BRACKET_STAGES) {
+    empty[s].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+  }
+  return empty
+}

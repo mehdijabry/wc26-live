@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { Hero } from './components/Hero'
+import { Bracket } from './components/Bracket'
 import { Groups } from './components/Groups'
 import { Schedule } from './components/Schedule'
 import { Footer } from './components/Footer'
@@ -16,6 +17,9 @@ import { Ad, AdPair } from './components/AdSlot'
 import { AmazonShelf } from './components/AmazonShelf'
 import { PushOptIn } from './components/PushOptIn'
 import { IosInstallPrompt } from './components/IosInstallPrompt'
+import { InstallDebugPage } from './components/pages/InstallDebug'
+import { AskAiPage } from './components/pages/AskAi'
+import { AskAiBubble } from './components/AskAiBubble'
 
 // Each section is its own page now — lazy-loaded per route so a slow
 // chunk doesn't block sibling pages. The previous design had ALL lazy
@@ -41,6 +45,7 @@ const WatchCountry = lazy(() => import('./components/pages/WatchCountry').then((
 const TeamPage = lazy(() => import('./components/pages/TeamPage').then((m) => ({ default: m.TeamPage })))
 const Explained = lazy(() => import('./components/pages/Explained').then((m) => ({ default: m.Explained })))
 const ExplainedTopic = lazy(() => import('./components/pages/ExplainedTopic').then((m) => ({ default: m.ExplainedTopic })))
+const RulesPage = lazy(() => import('./components/pages/Rules').then((m) => ({ default: m.RulesPage })))
 const AdminPanel = lazy(() => import('./components/pages/AdminPanel').then((m) => ({ default: m.AdminPanel })))
 // Honeypot decoy that takes the place of the old AdminPanel on the
 // legacy path-based URL. Pretends to be a magic-link sign-in form;
@@ -136,6 +141,14 @@ function App() {
         </Suspense>
       </div>
     )
+  }
+
+  // ── AI subdomain short-circuit ─────────────────────────────────────
+  // ai.pressing90.live → render the standalone conversational assistant.
+  // Same playbook as admin: no Navigation / LiveTicker / Footer / BottomNav,
+  // just the chat shell. Any path on the subdomain lands on the chat.
+  if (typeof window !== 'undefined' && window.location.hostname === 'ai.pressing90.live') {
+    return <AskAiPage />
   }
 
   return (
@@ -296,6 +309,16 @@ function App() {
               </Suspense>
             }
           />
+          {/* /rules — the WC26 cheat-sheet (format + subs + cards + tech).
+              Glanceable reference; the deep-dive FAQ lives at /explained. */}
+          <Route
+            path="/rules"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading rules…" />}>
+                <RulesPage />
+              </Suspense>
+            }
+          />
           {/* Static pages — required for AdSense + general trust. */}
           <Route
             path="/about"
@@ -329,6 +352,8 @@ function App() {
               </Suspense>
             }
           />
+          <Route path="/install-debug" element={<InstallDebugPage />} />
+          <Route path="/ai" element={<AskAiPage />} />
           <Route path="*" element={<HomePage />} />
         </Routes>
       </main>
@@ -339,6 +364,9 @@ function App() {
         <>
           <Footer />
           <BottomNav />
+          {/* Discrete "Ask AI" entry point — hidden on admin / ai /
+              install-debug routes via the component's own gate. */}
+          <AskAiBubble />
         </>
       )}
 
@@ -431,10 +459,15 @@ function HomePage() {
 }
 
 function WC26Page() {
+  // Hub layout reads top-down as: who's already through (qualifiers band) →
+  // who plays whom on the way to the final (bracket) → current group
+  // state (standings). All three pull from the same shared tournament
+  // store so a single ESPN refresh updates the whole page.
   return (
     <>
-      <Groups />
+      <Bracket />
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="wc26-mid" /></div>
+      <Groups />
       <Schedule />
     </>
   )
