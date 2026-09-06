@@ -29,6 +29,34 @@ const serialize = (fn) => {
 
 app.get('/health', (_req, res) => res.json({ ok: true, pending, uptime: Math.round(process.uptime()) }))
 
+// ESPN proxy — ESPN's site API 403s Cloudflare Workers egress IPs, so the
+// worker's automation reads today's scoreboards through this box
+// (Render/AWS IPs are fine). GET /espn/today?date=YYYYMMDD&leagues=a,b,c
+// → {date, competitions:[{slug, events}]}. 60 s in-memory cache per key.
+const espnCache = new Map()
+const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+app.get('/espn/today', async (req, res) => {
+  if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
+  const date = String(req.query.date || '').replace(/[^0-9]/g, '').slice(0, 8)
+  const leagues = String(req.query.leagues || '').split(',').map((l) => l.trim()).filter((l) => /^[a-z0-9._-]{2,40}$/i.test(l)).slice(0, 40)
+  if (!date || leagues.length === 0) return res.status(400).json({ error: 'date + leagues required' })
+  const key = date + '|' + leagues.join(',')
+  const hit = espnCache.get(key)
+  if (hit && Date.now() - hit.t < 60_000) return res.json(hit.body)
+  const competitions = await Promise.all(leagues.map(async (slug) => {
+    try {
+      const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${date}`, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(12000) })
+      if (!r.ok) return { slug, events: [], error: r.status }
+      const j = await r.json()
+      return { slug, events: j.events || [] }
+    } catch (e) { return { slug, events: [], error: String(e.message || e) } }
+  }))
+  const body = { date, competitions, fetchedAt: new Date().toISOString() }
+  espnCache.set(key, { t: Date.now(), body })
+  if (espnCache.size > 50) espnCache.delete(espnCache.keys().next().value)
+  res.json(body)
+})
+
 app.use((req, res, next) => {
   if (req.path === '/health') return next()
   if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
