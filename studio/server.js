@@ -35,6 +35,20 @@ app.get('/health', (_req, res) => res.json({ ok: true, pending, uptime: Math.rou
 // → {date, competitions:[{slug, events}]}. 60 s in-memory cache per key.
 const espnCache = new Map()
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+// Diagnostic: fetch any URL from this box (auth) → {status, head}. Used to
+// find which sports endpoints let datacenter IPs through.
+app.get('/probe', async (req, res) => {
+  if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
+  const url = String(req.query.url || '')
+  if (!/^https?:\/\//.test(url)) return res.status(400).json({ error: 'url' })
+  const headers = { 'user-agent': UA, accept: 'application/json,text/plain,*/*', 'accept-language': 'en-US,en;q=0.9', referer: 'https://www.espn.com/', origin: 'https://www.espn.com' }
+  try {
+    const r = await fetch(url, { headers, signal: AbortSignal.timeout(15000) })
+    const text = await r.text()
+    res.json({ status: r.status, ct: r.headers.get('content-type'), len: text.length, head: text.slice(0, 300) })
+  } catch (e) { res.json({ error: String(e.message || e) }) }
+})
+
 app.get('/espn/today', async (req, res) => {
   if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
   const date = String(req.query.date || '').replace(/[^0-9]/g, '').slice(0, 8)
