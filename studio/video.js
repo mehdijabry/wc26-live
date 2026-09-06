@@ -23,7 +23,7 @@ export async function musicPath(kind) {
   const file = MUSIC[kind] || MUSIC.article
   const p = path.join(os.tmpdir(), 'p90-' + file)
   try { await fs.access(p); return p } catch { /* fetch */ }
-  const r = await fetch(`${SITE}/audio/${file}`)
+  const r = await fetch(`${SITE}/audio/${file}`, { headers: { 'user-agent': 'p90-studio/1.0' } })
   if (!r.ok) throw new Error('music fetch failed ' + r.status)
   await fs.writeFile(p, Buffer.from(await r.arrayBuffer()))
   return p

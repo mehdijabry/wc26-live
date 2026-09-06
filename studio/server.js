@@ -39,7 +39,7 @@ app.use((req, res, next) => {
 async function upload(key, buf, contentType) {
   const r = await fetch(`${WORKER}/studio/media/${key}`, {
     method: 'PUT',
-    headers: { 'x-studio-secret': SECRET, 'content-type': contentType },
+    headers: { 'x-studio-secret': SECRET, 'content-type': contentType, 'user-agent': 'p90-studio/1.0' },
     body: buf,
   })
   if (!r.ok) throw new Error('upload failed ' + r.status + ' ' + (await r.text()).slice(0, 200))
@@ -124,7 +124,7 @@ app.post('/render/reel', async (req, res) => {
       .catch((e) => ({ jobId, ok: false, error: String(e.message || e) }))
       .then(async (payload) => {
         try {
-          await fetch(callbackUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-studio-secret': SECRET }, body: JSON.stringify(payload) })
+          await fetch(callbackUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-studio-secret': SECRET, 'user-agent': 'p90-studio/1.0' }, body: JSON.stringify(payload) })
         } catch (e) { console.error('callback failed', jobId, e.message) }
       })
     return
