@@ -49,6 +49,33 @@ app.get('/probe', async (req, res) => {
   } catch (e) { res.json({ error: String(e.message || e) }) }
 })
 
+// Article fetch for the news pipeline — press sites (footmercato.net,
+// ESPN, BBC…) often 403 Cloudflare Workers; Render's IPs get through.
+// GET /html?url=… → {status, head (first 60 KB), text (main paragraphs)}
+const htmlCache = new Map()
+app.get('/html', async (req, res) => {
+  if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
+  const url = String(req.query.url || '')
+  if (!/^https?:\/\//.test(url)) return res.status(400).json({ error: 'url' })
+  const hit = htmlCache.get(url)
+  if (hit && Date.now() - hit.t < 600_000) return res.json(hit.body)
+  try {
+    const r = await fetch(url, { headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml,*/*;q=0.8', 'accept-language': 'fr-FR,fr;q=0.9,en;q=0.8' }, redirect: 'follow', signal: AbortSignal.timeout(15000) })
+    const html = (await r.text()).slice(0, 400_000)
+    const head = html.slice(0, 60_000)
+    // Main text: <p> paragraphs with a bit of substance, scripts/styles stripped.
+    const stripped = html.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
+    const paras = [...stripped.matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi)]
+      .map((m) => m[1].replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&rsquo;/g, "'").replace(/\s+/g, ' ').trim())
+      .filter((t) => t.length > 60)
+    const text = paras.join('\n\n').slice(0, 6000)
+    const body = { status: r.status, url: r.url, head, text }
+    htmlCache.set(url, { t: Date.now(), body })
+    if (htmlCache.size > 100) htmlCache.delete(htmlCache.keys().next().value)
+    res.json(body)
+  } catch (e) { res.json({ status: 0, error: String(e.message || e) }) }
+})
+
 app.get('/espn/today', async (req, res) => {
   if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
   const date = String(req.query.date || '').replace(/[^0-9]/g, '').slice(0, 8)
