@@ -70,14 +70,34 @@ export function wrapLines(ctx, text, maxWidth, maxLines) {
   const words = String(text).split(/\s+/).filter(Boolean)
   const lines = []
   let cur = ''
+  let overflow = false
   for (const w of words) {
     const probe = cur ? cur + ' ' + w : w
-    if (ctx.measureText(probe).width <= maxWidth || !cur) cur = probe
-    else { lines.push(cur); cur = w; if (lines.length === maxLines - 1) break }
+    if (!cur || ctx.measureText(probe).width <= maxWidth) { cur = probe; continue }
+    if (lines.length === maxLines - 1) { overflow = true; break }
+    lines.push(cur)
+    cur = w
   }
-  if (cur && lines.length < maxLines) lines.push(cur)
-  if (lines.length === maxLines && words.join(' ') !== lines.join(' ')) lines[maxLines - 1] = lines[maxLines - 1].replace(/\s*\S*$/, '') + '…'
-  return lines
+  if (!overflow && cur) lines.push(cur)
+  const ellipsize = (s) => {
+    let l = s
+    while (l.length > 1 && ctx.measureText(l + '…').width > maxWidth) l = l.slice(0, -1).trimEnd()
+    return l + '…'
+  }
+  if (overflow) lines[lines.length - 1] = ellipsize(cur ? lines[lines.length - 1] : lines[lines.length - 1])
+  // A single word wider than the box (rare, e.g. very long club names) still gets clipped cleanly.
+  return lines.map((l) => (ctx.measureText(l).width > maxWidth ? ellipsize(l) : l))
+}
+
+/** One-line text that shrinks (down to minSize) before it truncates —
+ *  for team names in list rows. Sets ctx.font; returns the text to draw. */
+export function fitLine(ctx, text, maxWidth, family, size, minSize) {
+  for (let s = size; s >= minSize; s -= 2) {
+    ctx.font = `${s}px ${family}`
+    if (ctx.measureText(text).width <= maxWidth) return text
+  }
+  ctx.font = `${minSize}px ${family}`
+  return wrapLines(ctx, text, maxWidth, 1)[0]
 }
 
 export function roundedPath(ctx, x, y, w, h, r) {
@@ -211,10 +231,10 @@ export async function drawMatchdayPost(matches, dateLabel) {
   await paintBrandRow(ctx, 60, 60, 96)
   ctx.textAlign = 'center'
   ctx.fillStyle = GOLD; ctx.font = '72px Anton'
-  ctx.fillText("⚽ TODAY'S MATCHES", W / 2, 290)
+  ctx.fillText("TODAY'S MATCHES", W / 2, 290)
   ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '28px "IBM Plex Mono"'
   ctx.fillText(dateLabel || '', W / 2, 340)
-  const top = 400, rowH = 150, cr = 84
+  const top = 380, rowH = 138, cr = 84
   const rows = matches.slice(0, 6)
   for (let i = 0; i < rows.length; i++) {
     const m = rows[i]; const y = top + i * rowH; const cy = y + (rowH - 18) / 2
@@ -224,9 +244,9 @@ export async function drawMatchdayPost(matches, dateLabel) {
     const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
     ctx.drawImage(h, 76, cy - cr / 2 - 6, cr, cr)
     ctx.drawImage(a, W - 76 - cr, cy - cr / 2 - 6, cr, cr)
-    ctx.fillStyle = CREAM; ctx.font = '34px Anton'
-    ctx.textAlign = 'left'; ctx.fillText(wrapLines(ctx, m.home, 250, 1)[0], 76 + cr + 16, cy + 4)
-    ctx.textAlign = 'right'; ctx.fillText(wrapLines(ctx, m.away, 250, 1)[0], W - 76 - cr - 16, cy + 4)
+    ctx.fillStyle = CREAM
+    ctx.textAlign = 'left'; ctx.fillText(fitLine(ctx, m.home, 270, 'Anton', 34, 24), 76 + cr + 16, cy + 4)
+    ctx.textAlign = 'right'; ctx.fillText(fitLine(ctx, m.away, 270, 'Anton', 34, 24), W - 76 - cr - 16, cy + 4)
     const label = m.time || 'VS'
     ctx.font = '26px "IBM Plex Mono"'
     const pw = Math.max(140, ctx.measureText(label).width + 44)
@@ -252,7 +272,7 @@ export async function drawMatchStory(matches, dateLabel, page, pages) {
   await paintBrandRow(ctx, 60, 70, 96)
   if (pages > 1) { ctx.textAlign = 'right'; ctx.fillStyle = GOLD; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(`${page} / ${pages}`, W - 60, 130) }
   ctx.textAlign = 'center'
-  ctx.fillStyle = GOLD; ctx.font = '78px Anton'; ctx.fillText("⚽ TODAY'S MATCHES", W / 2, 330)
+  ctx.fillStyle = GOLD; ctx.font = '78px Anton'; ctx.fillText("TODAY'S MATCHES", W / 2, 330)
   ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(dateLabel || '', W / 2, 392)
   const top = 470, rowH = 190, cr = 96
   for (let i = 0; i < matches.length; i++) {
@@ -263,9 +283,9 @@ export async function drawMatchStory(matches, dateLabel, page, pages) {
     const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
     ctx.drawImage(h, 78, cy - cr / 2 - 8, cr, cr)
     ctx.drawImage(a, W - 78 - cr, cy - cr / 2 - 8, cr, cr)
-    ctx.fillStyle = CREAM; ctx.font = '38px Anton'
-    ctx.textAlign = 'left'; ctx.fillText(wrapLines(ctx, m.home, 250, 1)[0], 78 + cr + 18, cy + 4)
-    ctx.textAlign = 'right'; ctx.fillText(wrapLines(ctx, m.away, 250, 1)[0], W - 78 - cr - 18, cy + 4)
+    ctx.fillStyle = CREAM
+    ctx.textAlign = 'left'; ctx.fillText(fitLine(ctx, m.home, 265, 'Anton', 38, 26), 78 + cr + 18, cy + 4)
+    ctx.textAlign = 'right'; ctx.fillText(fitLine(ctx, m.away, 265, 'Anton', 38, 26), W - 78 - cr - 18, cy + 4)
     const label = m.score ?? m.time ?? 'VS'
     ctx.font = m.score ? '44px Anton' : '30px "IBM Plex Mono"'
     const pw = Math.max(150, ctx.measureText(label).width + 48)
@@ -295,7 +315,7 @@ export async function drawMatchSlide(m, idx, total) {
   ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
   paintLogo(ctx, W / 2 - 55, 120, 110)
   ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
-  ctx.fillStyle = GOLD; ctx.font = '44px "IBM Plex Mono"'; ctx.fillText("⚽ TODAY'S MATCHES", W / 2, 400)
+  ctx.fillStyle = GOLD; ctx.font = '44px "IBM Plex Mono"'; ctx.fillText("TODAY'S MATCHES", W / 2, 400)
   ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(m.league || '', W / 2, 560)
   const size = 300, cy = 850
   const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])

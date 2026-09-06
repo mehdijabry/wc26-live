@@ -3,11 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Pressing 90' render service — branded images + reels (node-canvas + ffmpeg), driven by the Cloudflare worker.",
-  "engines": { "node": ">=20" },
-  "scripts": { "start": "node server.js" },
+  "description": "Pressing 90' render service \u2014 branded images + reels (node-canvas + ffmpeg), driven by the Cloudflare worker.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
-    "canvas": "^2.11.2",
+    "canvas": "^3.2.3",
     "express": "^4.19.2",
     "qrcode": "^1.5.4"
   }

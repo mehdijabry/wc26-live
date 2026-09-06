@@ -5,7 +5,7 @@ FROM node:20-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ffmpeg curl ca-certificates \
-      libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 \
+      libcairo2 libpango-1.0-0 libpangocairo-1.0-0 libjpeg62-turbo libgif7 librsvg2-2 libfontconfig1 fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Brand fonts (same families as the site) — fetched from the Google Fonts repo.
