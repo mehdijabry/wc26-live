@@ -76,6 +76,18 @@ app.get('/html', async (req, res) => {
   } catch (e) { res.json({ status: 0, error: String(e.message || e) }) }
 })
 
+// Raw fetch (RSS feeds etc.) — GET /raw?url=… → {status, ct, body (≤400 KB)}
+app.get('/raw', async (req, res) => {
+  if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
+  const url = String(req.query.url || '')
+  if (!/^https?:\/\//.test(url)) return res.status(400).json({ error: 'url' })
+  try {
+    const r = await fetch(url, { headers: { 'user-agent': UA, accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.8' }, redirect: 'follow', signal: AbortSignal.timeout(15000) })
+    const body = (await r.text()).slice(0, 400_000)
+    res.json({ status: r.status, ct: r.headers.get('content-type'), body })
+  } catch (e) { res.json({ status: 0, error: String(e.message || e) }) }
+})
+
 app.get('/espn/today', async (req, res) => {
   if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
   const date = String(req.query.date || '').replace(/[^0-9]/g, '').slice(0, 8)
