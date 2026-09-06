@@ -40,7 +40,7 @@ export async function loadImg(src) {
     })
     if (!r.ok) throw new Error('http ' + r.status)
     const img = await loadImage(Buffer.from(await r.arrayBuffer()))
-    if (imgCache.size > 300) imgCache.clear()
+    if (imgCache.size > 40) imgCache.clear()
     imgCache.set(src, img)
     return img
   } catch (e) { console.warn('img', src.slice(0, 80), e.message); return null }
