@@ -53,7 +53,11 @@ export async function renderReel({ scenes, voice, music, musicGain, seconds, out
   const per = total / n
   const fade = Math.min(0.4, per / 4)
   const args = ['-y', '-loglevel', 'error', '-threads', '1']
-  for (const s of scenes) args.push('-loop', '1', '-t', per.toFixed(3), '-i', s)
+  // ONE decoded frame per scene (no -loop): zoompan itself generates the
+  // `frames` output frames from that single image. Looping the input on
+  // top of zoompan multiplied the scene length and left black frames after
+  // the fade-out, so every scene after the first was black.
+  for (const s of scenes) args.push('-i', s)
   const musicIdx = n
   args.push('-stream_loop', '-1', '-i', music)
   const voiceIdx = voice ? n + 1 : -1
@@ -62,7 +66,7 @@ export async function renderReel({ scenes, voice, music, musicGain, seconds, out
   const frames = Math.round(per * fps)
   const fc = []
   for (let i = 0; i < n; i++) {
-    fc.push(`[${i}:v]scale=1080:1920,zoompan=z='min(zoom+0.0007,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=1080x1920:fps=${fps},fade=t=in:st=0:d=${fade},fade=t=out:st=${Math.max(0, per - fade).toFixed(3)}:d=${fade},format=yuv420p,setsar=1[v${i}]`)
+    fc.push(`[${i}:v]scale=1080:1920,zoompan=z='min(zoom+0.0007,1.06)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=1080x1920:fps=${fps},trim=duration=${per.toFixed(3)},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${fade},fade=t=out:st=${Math.max(0, per - fade).toFixed(3)}:d=${fade},format=yuv420p,setsar=1[v${i}]`)
   }
   fc.push(`${scenes.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[vout]`)
   const fadeOutStart = Math.max(0, total - 1.5).toFixed(2)
