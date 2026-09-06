@@ -57,12 +57,28 @@ app.get('/espn/today', async (req, res) => {
   const key = date + '|' + leagues.join(',')
   const hit = espnCache.get(key)
   if (hit && Date.now() - hit.t < 60_000) return res.json(hit.body)
+  // site.api.espn.com 403s datacenter IPs; the "header" scoreboard on
+  // site.web.api.espn.com does not. Its events are reshaped into the
+  // site-API layout (competitions[0].competitors[].team…) the worker parses.
   const competitions = await Promise.all(leagues.map(async (slug) => {
     try {
-      const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${date}`, { headers: { 'user-agent': UA, accept: 'application/json' }, signal: AbortSignal.timeout(12000) })
+      const r = await fetch(`https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=soccer&league=${encodeURIComponent(slug)}&dates=${date}`, { headers: { 'user-agent': UA, accept: 'application/json', referer: 'https://www.espn.com/' }, signal: AbortSignal.timeout(12000) })
       if (!r.ok) return { slug, events: [], error: r.status }
       const j = await r.json()
-      return { slug, events: j.events || [] }
+      const lg = ((j.sports || [])[0]?.leagues || []).find((l) => l.slug === slug) || (j.sports || [])[0]?.leagues?.[0]
+      const events = (lg?.events || []).map((e) => ({
+        id: String(e.id),
+        date: e.date,
+        status: { type: { state: e.fullStatus?.type?.state || e.status || 'pre', completed: !!e.fullStatus?.type?.completed, name: e.fullStatus?.type?.name || '' } },
+        competitions: [{
+          venue: e.location ? { fullName: e.location } : undefined,
+          competitors: (e.competitors || []).map((c) => ({
+            homeAway: c.homeAway, score: c.score ?? '', winner: !!c.winner,
+            team: { displayName: c.displayName, shortDisplayName: c.name || c.displayName, abbreviation: c.abbreviation, logo: c.logo },
+          })),
+        }],
+      }))
+      return { slug, label: lg?.name, events }
     } catch (e) { return { slug, events: [], error: String(e.message || e) } }
   }))
   const body = { date, competitions, fetchedAt: new Date().toISOString() }
