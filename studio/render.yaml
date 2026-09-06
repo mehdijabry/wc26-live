@@ -1,0 +1,17 @@
+# Render Blueprint — deploy with: Render dashboard → New → Blueprint → this repo.
+# Free plan + UptimeRobot ping on /health every 5 min keeps it awake.
+services:
+  - type: web
+    name: p90-studio
+    runtime: docker
+    plan: free
+    rootDir: studio
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: STUDIO_SECRET
+        sync: false   # paste the value shown by Claude (same as the worker secret)
+      - key: WORKER_URL
+        value: https://wc26-api.nameless-violet-5dc1.workers.dev
+      - key: SITE_URL
+        value: https://pressing90.live
