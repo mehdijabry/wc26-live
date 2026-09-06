@@ -185,6 +185,15 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         const p = path.join(dir, 's0.png')
         await fs.writeFile(p, c.toBuffer('image/png'))
         scenes.push(p)
+      } else if (type === 'story-match' || type === 'story-article') {
+        // Video story: one still (the story card) with Ken Burns + the
+        // stories jingle, 12 s by default. Posted through /video_stories.
+        const c = type === 'story-match'
+          ? await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1)
+          : await drawArticleStory(data)
+        const p = path.join(dir, 's0.png')
+        await fs.writeFile(p, c.toBuffer('image/png'))
+        scenes.push(p)
       } else throw new Error('unknown reel type')
       if (scenes.length === 0) throw new Error('no scenes')
       let voice = null
@@ -194,16 +203,17 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         voice = path.join(dir, 'voice.mp3')
         await fs.writeFile(voice, Buffer.from(await r.arrayBuffer()))
       }
-      const music = await musicPath(type === 'matchday' ? 'matchday' : 'article')
+      const isStory = type.startsWith('story-')
+      const music = await musicPath(isStory ? 'story' : type === 'matchday' ? 'matchday' : 'article')
       const out = path.join(dir, 'reel.mp4')
       const { seconds: len } = await renderReel({
         scenes, voice, music,
         musicGain: voice ? 0.22 : 0.9,
-        seconds: seconds || 20,
+        seconds: seconds || (isStory ? 12 : 20),
         out,
       })
       const buf = await fs.readFile(out)
-      const url = await upload(`reel-${type}-${stamp()}.mp4`, buf, 'video/mp4')
+      const url = await upload(`${isStory ? 'story' : 'reel'}-${type}-${stamp()}.mp4`, buf, 'video/mp4')
       await fs.rm(dir, { recursive: true, force: true })
       return { url, seconds: len }
 }

@@ -7,7 +7,8 @@ import path from 'node:path'
 import os from 'node:os'
 
 const SITE = process.env.SITE_URL || 'https://pressing90.live'
-const MUSIC = { matchday: 'matchday.m4a', article: 'articles.m4a' }
+// Signature tracks (Mehdi's, never regenerated). `story` is EXCLUSIVE to stories.
+const MUSIC = { matchday: 'matchday.m4a', article: 'articles.m4a', story: 'stories.m4a' }
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
