@@ -15,6 +15,17 @@ export const RED = '#FF4D5E'
 export const GREEN = '#41C97C'
 const SITE = process.env.SITE_URL || 'https://pressing90.live'
 
+/** 2D context with the best resampling / anti-aliasing node-canvas offers. */
+function ctx2d(canvas) {
+  const ctx = canvas.getContext('2d')
+  ctx.quality = 'best'
+  ctx.patternQuality = 'best'
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.antialias = 'subpixel'
+  return ctx
+}
+
 let fontsReady = false
 export function registerBrandFonts() {
   if (fontsReady) return
@@ -141,7 +152,7 @@ async function paintBrandRow(ctx, x = 60, y = 70, size = 110) {
 /** Gold monogram for clubs ESPN has no crest for (same idea as the site). */
 export function monogram(name, size = 300) {
   const c = createCanvas(size, size)
-  const ctx = c.getContext('2d')
+  const ctx = ctx2d(c)
   ctx.fillStyle = '#0D2C4B'
   ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2); ctx.fill()
   ctx.strokeStyle = GOLD; ctx.lineWidth = size * 0.03; ctx.stroke()
@@ -173,7 +184,7 @@ export async function drawScoreCard(m) {
   registerBrandFonts()
   const W = 1080, H = 1350
   const c = createCanvas(W, H)
-  const ctx = c.getContext('2d')
+  const ctx = ctx2d(c)
   paintGround(ctx, W, H)
   await paintBrandRow(ctx)
   ctx.textAlign = 'right'
@@ -226,7 +237,7 @@ export async function drawMatchdayPost(matches, dateLabel) {
   registerBrandFonts()
   const W = 1080, H = 1350
   const c = createCanvas(W, H)
-  const ctx = c.getContext('2d')
+  const ctx = ctx2d(c)
   paintGround(ctx, W, H)
   await paintBrandRow(ctx, 60, 60, 96)
   ctx.textAlign = 'center'
@@ -267,7 +278,7 @@ export async function drawMatchStory(matches, dateLabel, page, pages) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const c = createCanvas(W, H)
-  const ctx = c.getContext('2d')
+  const ctx = ctx2d(c)
   paintGround(ctx, W, H)
   await paintBrandRow(ctx, 60, 70, 96)
   if (pages > 1) { ctx.textAlign = 'right'; ctx.fillStyle = GOLD; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(`${page} / ${pages}`, W - 60, 130) }
@@ -308,7 +319,7 @@ export async function drawMatchSlide(m, idx, total) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const c = createCanvas(W, H)
-  const ctx = c.getContext('2d')
+  const ctx = ctx2d(c)
   ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
   const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
   g1.addColorStop(0, 'rgba(217,181,74,0.14)'); g1.addColorStop(1, 'rgba(217,181,74,0)')
@@ -342,7 +353,7 @@ export async function drawArticlePost(a) {
   registerBrandFonts()
   const W = 1080, H = 1350, PHOTO_H = 700
   const c = createCanvas(W, H)
-  const ctx = c.getContext('2d')
+  const ctx = ctx2d(c)
   paintGround(ctx, W, H)
   const img = await loadImg(a.image_url)
   if (img) {
@@ -374,7 +385,7 @@ export async function drawArticleStory(a) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const c = createCanvas(W, H)
-  const ctx = c.getContext('2d')
+  const ctx = ctx2d(c)
   paintGround(ctx, W, H)
   await paintBrandRow(ctx)
   ctx.textAlign = 'left'; ctx.fillStyle = GOLD; ctx.font = '36px "IBM Plex Mono"'; ctx.fillText('N E W   A R T I C L E', 64, 300)
