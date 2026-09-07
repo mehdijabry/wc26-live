@@ -185,6 +185,15 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         const p = path.join(dir, 's0.png')
         await fs.writeFile(p, c.toBuffer('image/png'))
         scenes.push(p)
+      } else if (type === 'articles') {
+        // Article digest reel: one story card per article (2 by default).
+        const list = (data.articles || []).slice(0, 4)
+        for (let i = 0; i < list.length; i++) {
+          const c = await drawArticleStory(list[i])
+          const p = path.join(dir, `s${i}.png`)
+          await fs.writeFile(p, c.toBuffer('image/png'))
+          scenes.push(p)
+        }
       } else if (type === 'story-match' || type === 'story-article') {
         // Video story: one still (the story card) with Ken Burns + the
         // stories jingle, 12 s by default. Posted through /video_stories.
@@ -209,7 +218,7 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
       const { seconds: len } = await renderReel({
         scenes, voice, music,
         musicGain: voice ? 0.22 : 0.9,
-        seconds: seconds || (isStory ? 12 : 20),
+        seconds: seconds || (isStory ? 12 : type === 'articles' ? 10 * scenes.length : 20),
         out,
       })
       const buf = await fs.readFile(out)
