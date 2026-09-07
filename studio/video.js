@@ -58,7 +58,11 @@ export async function renderReel({ scenes, voice, music, musicGain, seconds, out
   // `frames` output frames from that single image. Looping the input on
   // top of zoompan multiplied the scene length and left black frames after
   // the fade-out, so every scene after the first was black.
-  for (const s of scenes) args.push('-loop', '1', '-t', per.toFixed(3), '-i', s)
+  // ONE decoded frame per scene. `-loop 1` inputs made ffmpeg decode
+  // every scene eagerly (hundreds of 8 MB frames queued for the concat)
+  // → OOM-kill on Render's 512 MB (2026-09-07). The `loop` filter below
+  // repeats the single frame lazily, so memory stays flat.
+  for (const s of scenes) args.push('-i', s)
   const musicIdx = n
   args.push('-stream_loop', '-1', '-i', music)
   const voiceIdx = voice ? n + 1 : -1
@@ -70,7 +74,8 @@ export async function renderReel({ scenes, voice, music, musicGain, seconds, out
   // quality first, no trembling).
   const fc = []
   for (let i = 0; i < n; i++) {
-    fc.push(`[${i}:v]scale=1080:1920:flags=lanczos,fps=${fps},trim=duration=${per.toFixed(3)},setpts=PTS-STARTPTS,fade=t=in:st=0:d=${fade},fade=t=out:st=${Math.max(0, per - fade).toFixed(3)}:d=${fade},format=yuv420p,setsar=1[v${i}]`)
+    const frames = Math.max(1, Math.round(per * fps))
+    fc.push(`[${i}:v]scale=1080:1920:flags=lanczos,loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${per.toFixed(3)},fade=t=in:st=0:d=${fade},fade=t=out:st=${Math.max(0, per - fade).toFixed(3)}:d=${fade},format=yuv420p,setsar=1[v${i}]`)
   }
   fc.push(`${scenes.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[vout]`)
   const fadeOutStart = Math.max(0, total - 1.5).toFixed(2)
