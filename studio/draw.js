@@ -315,7 +315,7 @@ export async function drawMatchStory(matches, dateLabel, page, pages) {
 }
 
 // ─── 4. Reel slide 1080×1920 (one match) ───────────────────────────
-export async function drawMatchSlide(m, idx, total) {
+export async function drawMatchSlide(m, idx, total, heading) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const c = createCanvas(W, H)
@@ -326,7 +326,7 @@ export async function drawMatchSlide(m, idx, total) {
   ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
   paintLogo(ctx, W / 2 - 55, 120, 110)
   ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
-  ctx.fillStyle = GOLD; ctx.font = '44px "IBM Plex Mono"'; ctx.fillText("TODAY'S MATCHES", W / 2, 400)
+  ctx.fillStyle = GOLD; ctx.font = '44px "IBM Plex Mono"'; ctx.fillText(heading || "TODAY'S MATCHES", W / 2, 400)
   ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(m.league || '', W / 2, 560)
   const size = 300, cy = 850
   const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])

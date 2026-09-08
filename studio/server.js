@@ -191,9 +191,9 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-'))
       const scenes = []
       if (type === 'matchday') {
-        const ms = (data.matches || []).slice(0, 8)
+        const ms = (data.matches || []).slice(0, 10)
         for (let i = 0; i < ms.length; i++) {
-          const c = await drawMatchSlide(ms[i], i, ms.length)
+          const c = await drawMatchSlide(ms[i], i, ms.length, data.heading)
           const p = path.join(dir, `s${i}.png`)
           await fs.writeFile(p, c.toBuffer('image/png'))
           scenes.push(p)
