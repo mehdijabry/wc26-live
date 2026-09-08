@@ -3,6 +3,7 @@
 // Tuned for a 0.1-CPU Render instance: ultrafast preset, 30 fps.
 import { spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 
@@ -16,7 +17,7 @@ function run(cmd, args) {
     let err = ''
     p.stderr.on('data', (d) => { err += d.toString(); if (err.length > 20000) err = err.slice(-20000) })
     p.on('close', (code) => {
-      if (code !== 0 && process.env.P90_FFDEBUG) console.error('[ffmpeg]', args.join(' '), '\n', err)
+      if (process.env.P90_FFDEBUG) { if (code !== 0) console.error('[ffmpeg]', args.join(' '), '\n', err); try { if (process.env.P90_FFDEBUG.startsWith('/')) fsSync.appendFileSync(process.env.P90_FFDEBUG, JSON.stringify(args) + '\n') } catch { /* ignore */ } }
       return code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}: ${err.slice(-1500)}`))
     })
   })
@@ -102,6 +103,13 @@ async function muxAudio({ video, music, musicGain, voice, total, out }) {
  * layers: {bg, flash, goal, home, away, score, scorer, minute} PNG paths + rest positions.
  */
 export async function renderGoalAnim({ layers, rest, seconds, music, musicGain, voice, out }) {
+  // Memory (measured locally, 9 s): rgba overlays 363 MB → yuva420p + single
+  // filter thread 257 MB → same at 720p 186 MB. 1080p first; if ffmpeg dies
+  // (OOM on the 512 MB instance) retry once at 720p.
+  try { return await goalAnimPass({ layers, rest, seconds, music, musicGain, voice, out, small: false }) }
+  catch (e) { console.log('[goal-anim] 1080p pass failed, retrying at 720p:', String(e).slice(0, 200)); return goalAnimPass({ layers, rest, seconds, music, musicGain, voice, out, small: true }) }
+}
+async function goalAnimPass({ layers, rest, seconds, music, musicGain, voice, out, small }) {
   const fps = 25
   const total = voice ? Math.max(seconds, (await probeDuration(voice)) + 1.2) : seconds
   const frames = Math.round(total * fps)
@@ -110,7 +118,8 @@ export async function renderGoalAnim({ layers, rest, seconds, music, musicGain, 
   const inputs = []
   for (const k of order) inputs.push('-i', layers[k])
   const ease = (t0, d) => `pow(1-min(1,max(0,(t-${t0})/${d})),3)`   // 1 → 0 with ease-out
-  const still = (i, lbl) => `[${i}:v]format=rgba,loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${total.toFixed(3)}[${lbl}]`
+  const still = (i, lbl) => `[${i}:v]format=${i === 0 ? 'yuv420p' : 'yuva420p'},loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${total.toFixed(3)}[${lbl}]`
+  const OV = 'format=yuv420'   // overlay in yuv420 (2.5 B/px instead of 4 for rgba)
   const [gx, gy] = rest.goal, [hx, hy] = rest.home, [ax, ay] = rest.away, [sx, sy] = rest.score, [px, py] = rest.scorer, [mx, my] = rest.minute
   const fc = [
     still(0, 'bg0'), still(1, 'fl0'), still(2, 'go0'), still(3, 'ho0'), still(4, 'aw0'), still(5, 'sc0'), still(6, 'pi0'), still(7, 'mi0'),
@@ -119,16 +128,16 @@ export async function renderGoalAnim({ layers, rest, seconds, music, musicGain, 
     `[go0]fade=t=in:st=0.25:d=0.15:alpha=1,scale=w='iw*(1+2.2*${ease(0.25, 0.45)})*(1+0.025*sin(2*PI*max(0,t-1.2)/1.8))':h=-1:eval=frame[go]`,
     `[ho0]fade=t=in:st=0.7:d=0.25:alpha=1[ho]`, `[aw0]fade=t=in:st=0.7:d=0.25:alpha=1[aw]`,
     `[sc0]fade=t=in:st=1.2:d=0.3:alpha=1[sc]`, `[pi0]fade=t=in:st=1.9:d=0.3:alpha=1[pi]`, `[mi0]fade=t=in:st=2.3:d=0.3:alpha=1[mi]`,
-    `[bg0][fl]overlay=0:0:format=auto[v1]`,
-    `[v1][go]overlay=x='(W-w)/2':y='${gy + 160}-h/2':eval=frame:format=auto[v2]`,
-    `[v2][ho]overlay=x='${hx}-460*${ease(0.7, 0.6)}':y=${hy}:eval=frame:format=auto[v3]`,
-    `[v3][aw]overlay=x='${ax}+460*${ease(0.7, 0.6)}':y=${ay}:eval=frame:format=auto[v4]`,
-    `[v4][sc]overlay=x=${sx}:y='${sy}+70*${ease(1.2, 0.5)}':eval=frame:format=auto[v5]`,
-    `[v5][pi]overlay=x=${px}:y='${py}+120*${ease(1.9, 0.55)}':eval=frame:format=auto[v6]`,
-    `[v6][mi]overlay=x=${mx}:y=${my}:format=auto,format=yuv420p,setsar=1,fade=t=out:st=${Math.max(0, total - 0.6).toFixed(2)}:d=0.6[v]`,
+    `[bg0][fl]overlay=0:0:${OV}[v1]`,
+    `[v1][go]overlay=x='(W-w)/2':y='${gy + 160}-h/2':eval=frame:${OV}[v2]`,
+    `[v2][ho]overlay=x='${hx}-460*${ease(0.7, 0.6)}':y=${hy}:eval=frame:${OV}[v3]`,
+    `[v3][aw]overlay=x='${ax}+460*${ease(0.7, 0.6)}':y=${ay}:eval=frame:${OV}[v4]`,
+    `[v4][sc]overlay=x=${sx}:y='${sy}+70*${ease(1.2, 0.5)}':eval=frame:${OV}[v5]`,
+    `[v5][pi]overlay=x=${px}:y='${py}+120*${ease(1.9, 0.55)}':eval=frame:${OV}[v6]`,
+    `[v6][mi]overlay=x=${mx}:y=${my}:${OV},format=yuv420p,setsar=1,fade=t=out:st=${Math.max(0, total - 0.6).toFixed(2)}:d=0.6${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`,
   ]
   const video = path.join(dir, 'video.mp4')
-  await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
     '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '21', '-an', '-movflags', '+faststart', video])
   await muxAudio({ video, music, musicGain, voice, total, out })
   return { out, seconds: Math.round(total) }
