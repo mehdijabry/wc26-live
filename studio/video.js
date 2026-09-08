@@ -44,52 +44,39 @@ export async function probeDuration(file) {
  * Returns {out, seconds}.
  */
 export async function renderReel({ scenes, voice, music, musicGain, seconds, out }) {
-  // Memory-lean pipeline for a 512 MB / 0.1 CPU box: scenes are chained
-  // with `concat` (one input decoded at a time) and get a short fade
-  // in/out each instead of xfade (which decodes every scene in parallel
-  // and OOM-killed the process). Ken Burns via zoompan, 25 fps.
+  // Memory-flat pipeline (Render 512 MB): each scene is encoded on its
+  // own (one still → short mp4), the segments are joined with the concat
+  // DEMUXER (stream copy, no decoding), then the audio is mixed in a last
+  // pass with the video copied. Peak memory no longer grows with the
+  // number of scenes (8-slide reel OOM-killed the studio on 2026-09-08).
   const fps = 25
   const total = voice ? (await probeDuration(voice)) + 1.2 : seconds
   const n = scenes.length
   const per = total / n
   const fade = Math.min(0.4, per / 4)
-  const args = ['-y', '-loglevel', 'error', '-threads', '1']
-  // ONE decoded frame per scene (no -loop): zoompan itself generates the
-  // `frames` output frames from that single image. Looping the input on
-  // top of zoompan multiplied the scene length and left black frames after
-  // the fade-out, so every scene after the first was black.
-  // ONE decoded frame per scene. `-loop 1` inputs made ffmpeg decode
-  // every scene eagerly (hundreds of 8 MB frames queued for the concat)
-  // → OOM-kill on Render's 512 MB (2026-09-07). The `loop` filter below
-  // repeats the single frame lazily, so memory stays flat.
-  for (const s of scenes) args.push('-i', s)
-  const musicIdx = n
-  args.push('-stream_loop', '-1', '-i', music)
-  const voiceIdx = voice ? n + 1 : -1
-  if (voice) args.push('-i', voice)
-
-  // Crisp static scenes with fade in/out — no Ken Burns. zoompan shakes
-  // at 1080p (integer rounding) and the only smooth fix (2× render)
-  // costs ~10 min per story on Render's 0.1 CPU (Mehdi, 2026-09-07:
-  // quality first, no trembling).
-  const fc = []
+  const frames = Math.max(1, Math.round(per * fps))
+  const dir = path.resolve(path.dirname(out))   // absolute: the concat demuxer resolves list entries relative to the list file
+  const segs = []
   for (let i = 0; i < n; i++) {
-    const frames = Math.max(1, Math.round(per * fps))
-    fc.push(`[${i}:v]scale=1080:1920:flags=lanczos,loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${per.toFixed(3)},fade=t=in:st=0:d=${fade},fade=t=out:st=${Math.max(0, per - fade).toFixed(3)}:d=${fade},format=yuv420p,setsar=1[v${i}]`)
+    const seg = path.join(dir, `seg${i}.mp4`)
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-i', scenes[i],
+      '-vf', `scale=1080:1920:flags=lanczos,loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${per.toFixed(3)},fade=t=in:st=0:d=${fade},fade=t=out:st=${Math.max(0, per - fade).toFixed(3)}:d=${fade},format=yuv420p,setsar=1`,
+      '-r', String(fps), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-tune', 'stillimage', '-an', '-movflags', '+faststart', seg])
+    segs.push(seg)
   }
-  fc.push(`${scenes.map((_, i) => `[v${i}]`).join('')}concat=n=${n}:v=1:a=0[vout]`)
+  const list = path.join(dir, 'segs.txt')
+  await fs.writeFile(list, segs.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
+  const video = path.join(dir, 'video.mp4')
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video])
   const fadeOutStart = Math.max(0, total - 1.5).toFixed(2)
-  fc.push(`[${musicIdx}:a]volume=${musicGain},afade=t=in:st=0:d=0.8,afade=t=out:st=${fadeOutStart}:d=1.5[m]`)
+  const args = ['-y', '-loglevel', 'error', '-threads', '1', '-i', video, '-stream_loop', '-1', '-i', music]
+  if (voice) args.push('-i', voice)
+  const fc = [`[1:a]volume=${musicGain},afade=t=in:st=0:d=0.8,afade=t=out:st=${fadeOutStart}:d=1.5[m]`]
   let alast = 'm'
-  if (voice) {
-    fc.push(`[${voiceIdx}:a]volume=1.0[vo]`)
-    fc.push(`[vo][m]amix=inputs=2:duration=longest:dropout_transition=0[mix]`)
-    alast = 'mix'
-  }
-  args.push('-filter_complex', fc.join(';'), '-map', '[vout]', '-map', `[${alast}]`,
-    '-t', total.toFixed(2), '-r', String(fps),
-    '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '20', '-tune', 'stillimage', '-pix_fmt', 'yuv420p',
-    '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out)
+  if (voice) { fc.push('[2:a]volume=1.0[vo]', '[vo][m]amix=inputs=2:duration=longest:dropout_transition=0[mix]'); alast = 'mix' }
+  args.push('-filter_complex', fc.join(';'), '-map', '0:v', '-map', `[${alast}]`, '-t', total.toFixed(2),
+    '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out)
   await run('ffmpeg', args)
+  for (const s of segs) fs.rm(s, { force: true }).catch(() => {})
   return { out, seconds: Math.round(total) }
 }
