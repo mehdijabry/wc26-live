@@ -8,7 +8,7 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, registerBrandFonts } from './draw.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, registerBrandFonts } from './draw.js'
 import { renderReel, musicPath } from './video.js'
 
 const PORT = process.env.PORT || 10000
@@ -88,6 +88,24 @@ app.get('/raw', async (req, res) => {
   } catch (e) { res.json({ status: 0, error: String(e.message || e) }) }
 })
 
+// Match summary (key events: goals with scorer/minute) — site.web.api works from here.
+app.get('/espn/summary', async (req, res) => {
+  if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
+  const league = String(req.query.league || ''); const event = String(req.query.event || '').replace(/[^0-9]/g, '')
+  if (!/^[a-z0-9._-]{2,40}$/i.test(league) || !event) return res.status(400).json({ error: 'league + event required' })
+  try {
+    const r = await fetch(`https://site.web.api.espn.com/apis/site/v2/sports/soccer/${encodeURIComponent(league)}/summary?event=${event}`, { headers: { 'user-agent': UA, accept: 'application/json', referer: 'https://www.espn.com/' }, signal: AbortSignal.timeout(12000) })
+    if (!r.ok) return res.json({ status: r.status, goals: [] })
+    const j = await r.json()
+    const goals = (j.keyEvents || []).filter((k) => k.scoringPlay || /goal/i.test(k.type?.text || '')).map((k) => ({
+      minute: k.clock?.displayValue || '', type: k.type?.text || '', team: k.team?.displayName || '', teamId: k.team?.id || '',
+      scorer: (k.participants || [])[0]?.athlete?.displayName || '', assist: (k.participants || [])[1]?.athlete?.displayName || '',
+      text: (k.text || '').slice(0, 220), ownGoal: /own goal/i.test(k.type?.text || '') || /own goal/i.test(k.text || ''), penalty: /penalty/i.test(k.type?.text || ''),
+    }))
+    res.json({ status: 200, goals })
+  } catch (e) { res.json({ status: 0, goals: [], error: String(e.message || e) }) }
+})
+
 app.get('/espn/today', async (req, res) => {
   if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
   const date = String(req.query.date || '').replace(/[^0-9]/g, '').slice(0, 8)
@@ -108,7 +126,7 @@ app.get('/espn/today', async (req, res) => {
       const events = (lg?.events || []).map((e) => ({
         id: String(e.id),
         date: e.date,
-        status: { type: { state: e.fullStatus?.type?.state || e.status || 'pre', completed: !!e.fullStatus?.type?.completed, name: e.fullStatus?.type?.name || '' } },
+        status: { type: { state: e.fullStatus?.type?.state || e.status || 'pre', completed: !!e.fullStatus?.type?.completed, name: e.fullStatus?.type?.name || '' }, displayClock: e.fullStatus?.displayClock || '' },
         competitions: [{
           venue: e.location ? { fullName: e.location } : undefined,
           competitors: (e.competitors || []).map((c) => ({
@@ -185,6 +203,11 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         const p = path.join(dir, 's0.png')
         await fs.writeFile(p, c.toBuffer('image/png'))
         scenes.push(p)
+      } else if (type === 'goal') {
+        const c = await drawGoalSlide(data)
+        const p = path.join(dir, 's0.png')
+        await fs.writeFile(p, c.toBuffer('image/png'))
+        scenes.push(p)
       } else if (type === 'articles') {
         // Article digest reel: one story card per article (2 by default).
         const list = (data.articles || []).slice(0, 4)
@@ -213,7 +236,7 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         await fs.writeFile(voice, Buffer.from(await r.arrayBuffer()))
       }
       const isStory = type.startsWith('story-')
-      const music = await musicPath(isStory ? 'story' : type === 'matchday' ? 'matchday' : 'article')
+      const music = await musicPath(isStory ? 'story' : (type === 'matchday' || type === 'goal') ? 'matchday' : 'article')
       const out = path.join(dir, 'reel.mp4')
       const { seconds: len } = await renderReel({
         scenes, voice, music,

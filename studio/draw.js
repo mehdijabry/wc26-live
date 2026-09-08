@@ -417,3 +417,44 @@ export async function drawArticleStory(a) {
   ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', tx + 170, cardY + 270)
   return c
 }
+
+// ─── 7. GOAL alert slide 1080×1920 ─────────────────────────────────
+// g: {home, away, homeLogo, awayLogo, homeScore, awayScore, league, scorer, minute, scoringSide:'home'|'away', ownGoal?, penalty?}
+export async function drawGoalSlide(g) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const c = createCanvas(W, H)
+  const ctx = ctx2d(c)
+  ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+  const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
+  glow.addColorStop(0, 'rgba(65,201,124,0.22)'); glow.addColorStop(1, 'rgba(65,201,124,0)')
+  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+  paintLogo(ctx, W / 2 - 55, 110, 110)
+  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
+  ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '32px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.league || '', 900, 1)[0], W / 2, 370)
+  // GOAL!
+  ctx.fillStyle = GREEN; ctx.font = '210px Anton'; ctx.fillText('GOAL!', W / 2, 620)
+  // crests + score, scoring side highlighted
+  const size = 260, cy = 900
+  const [h, a] = await Promise.all([crest(g.homeLogo, g.home), crest(g.awayLogo, g.away)])
+  const dim = (side) => (g.scoringSide && g.scoringSide !== side ? 0.45 : 1)
+  ctx.globalAlpha = dim('home'); ctx.drawImage(h, 110, cy - size / 2, size, size)
+  ctx.globalAlpha = dim('away'); ctx.drawImage(a, W - 110 - size, cy - size / 2, size, size)
+  ctx.globalAlpha = 1
+  ctx.font = '150px Anton'
+  ctx.fillStyle = g.scoringSide === 'home' ? GREEN : CREAM; ctx.fillText(String(g.homeScore ?? 0), W / 2 - 95, cy + 55)
+  ctx.fillStyle = GOLD; ctx.font = '90px Anton'; ctx.fillText('–', W / 2, cy + 40)
+  ctx.font = '150px Anton'; ctx.fillStyle = g.scoringSide === 'away' ? GREEN : CREAM; ctx.fillText(String(g.awayScore ?? 0), W / 2 + 95, cy + 55)
+  ctx.fillStyle = CREAM; ctx.font = '40px Anton'
+  wrapLines(ctx, g.home, 330, 2).forEach((l, i) => ctx.fillText(l, 110 + size / 2, cy + size / 2 + 62 + i * 46))
+  wrapLines(ctx, g.away, 330, 2).forEach((l, i) => ctx.fillText(l, W - 110 - size / 2, cy + size / 2 + 62 + i * 46))
+  // scorer pill
+  const label = `${g.scorer || 'Goal'}${g.ownGoal ? ' (OG)' : ''}${g.penalty ? ' (pen)' : ''}`
+  ctx.font = '60px Anton'
+  const pw = Math.min(980, Math.max(420, ctx.measureText(label).width + 120))
+  roundedPath(ctx, W / 2 - pw / 2, 1290, pw, 110, 55); ctx.fillStyle = GREEN; ctx.fill()
+  ctx.fillStyle = NIGHT; ctx.fillText(wrapLines(ctx, label, pw - 80, 1)[0], W / 2, 1367)
+  ctx.fillStyle = GOLD; ctx.font = '64px "IBM Plex Mono"'; ctx.fillText(g.minute ? `${g.minute}` : '', W / 2, 1500)
+  ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('LIVE on pressing90.live', W / 2, 1740)
+  return c
+}
