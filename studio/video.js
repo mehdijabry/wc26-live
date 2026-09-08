@@ -22,7 +22,9 @@ function run(cmd, args) {
 /** Signature music, fetched once from the site and cached on disk. */
 export async function musicPath(kind) {
   const file = MUSIC[kind] || MUSIC.article
-  const p = path.join(os.tmpdir(), 'p90-' + file)
+  // Cache key versioned: bump when a signature track is replaced on the site
+  // (v2 = new match-day jingle, Mehdi 2026-09-08).
+  const p = path.join(os.tmpdir(), 'p90-v2-' + file)
   try { await fs.access(p); return p } catch { /* fetch */ }
   const r = await fetch(`${SITE}/audio/${file}`, { headers: { 'user-agent': 'p90-studio/1.0' } })
   if (!r.ok) throw new Error('music fetch failed ' + r.status)
