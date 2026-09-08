@@ -8,8 +8,8 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, registerBrandFonts } from './draw.js'
-import { renderReel, musicPath } from './video.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, registerBrandFonts } from './draw.js'
+import { renderReel, renderGoalAnim, musicPath } from './video.js'
 
 const PORT = process.env.PORT || 10000
 const SECRET = process.env.STUDIO_SECRET || ''
@@ -204,10 +204,19 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         await fs.writeFile(p, c.toBuffer('image/png'))
         scenes.push(p)
       } else if (type === 'goal') {
-        const c = await drawGoalSlide(data)
-        const p = path.join(dir, 's0.png')
-        await fs.writeFile(p, c.toBuffer('image/png'))
-        scenes.push(p)
+        // Animated goal reel: layered PNGs composited by ffmpeg (renderGoalAnim).
+        const L = await drawGoalLayers(data)
+        const layers = {}
+        for (const k of ['bg', 'flash', 'goal', 'home', 'away', 'score', 'scorer', 'minute']) { layers[k] = path.join(dir, `${k}.png`); await fs.writeFile(layers[k], L[k]) }
+        let voice = null
+        if (voiceUrl) { const r = await fetch(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
+        const music = await musicPath('matchday')
+        const out = path.join(dir, 'reel.mp4')
+        const { seconds: len } = await renderGoalAnim({ layers, rest: L.rest, seconds: seconds || 9, music, musicGain: voice ? 0.22 : 0.9, voice, out })
+        const buf = await fs.readFile(out)
+        const url = await upload(`reel-goal-${stamp()}.mp4`, buf, 'video/mp4')
+        await fs.rm(dir, { recursive: true, force: true })
+        return { url, seconds: len }
       } else if (type === 'articles') {
         // Article digest reel: one story card per article (2 by default).
         const list = (data.articles || []).slice(0, 4)

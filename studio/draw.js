@@ -420,6 +420,66 @@ export async function drawArticleStory(a) {
 
 // ─── 7. GOAL alert slide 1080×1920 ─────────────────────────────────
 // g: {home, away, homeLogo, awayLogo, homeScore, awayScore, league, scorer, minute, scoringSide:'home'|'away', ownGoal?, penalty?}
+// ─── GOAL animation layers (Mehdi, 2026-09-08 soir: « une animation de but »)
+// Same look as drawGoalSlide, split into transparent PNG layers that
+// video.js animates with ffmpeg expressions (slam, slide-ins, pulse).
+// Every layer comes with its resting position on the 1080×1920 canvas.
+export async function drawGoalLayers(g) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const png = (c) => c.toBuffer('image/png')
+  // bg: night + glow + brand + league + footer (opaque)
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+    const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
+    glow.addColorStop(0, 'rgba(65,201,124,0.22)'); glow.addColorStop(1, 'rgba(65,201,124,0)')
+    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+    paintLogo(ctx, W / 2 - 55, 110, 110)
+    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
+    ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '32px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.league || '', 900, 1)[0], W / 2, 370)
+    ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('LIVE on pressing90.live', W / 2, 1740) }
+  // flash: white radial burst behind GOAL! (faded in/out by ffmpeg)
+  const flash = createCanvas(W, H); { const ctx = ctx2d(flash)
+    const f = ctx.createRadialGradient(W / 2, 540, 0, W / 2, 540, 700)
+    f.addColorStop(0, 'rgba(255,255,255,0.85)'); f.addColorStop(0.35, 'rgba(120,255,180,0.35)'); f.addColorStop(1, 'rgba(255,255,255,0)')
+    ctx.fillStyle = f; ctx.fillRect(0, 0, W, H) }
+  // goal: "GOAL!" 1000×320, baseline 250 → rests at (40, 370)
+  const goal = createCanvas(1000, 320); { const ctx = ctx2d(goal)
+    ctx.textAlign = 'center'; ctx.fillStyle = GREEN; ctx.font = '210px Anton'
+    ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8
+    ctx.fillText('GOAL!', 500, 250) }
+  // crests + names 360×420 each (crest 260 at (50,0), names below)
+  const size = 260
+  const [hImg, aImg] = await Promise.all([crest(g.homeLogo, g.home), crest(g.awayLogo, g.away)])
+  const dim = (side) => (g.scoringSide && g.scoringSide !== side ? 0.45 : 1)
+  const team = (img, name, side) => { const c = createCanvas(360, 420); const ctx = ctx2d(c)
+    ctx.globalAlpha = dim(side); ctx.drawImage(img, 50, 0, size, size); ctx.globalAlpha = 1
+    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '40px Anton'
+    wrapLines(ctx, name, 330, 2).forEach((l, i) => ctx.fillText(l, 180, size + 62 + i * 46)); return c }
+  const home = team(hImg, g.home, 'home'), away = team(aImg, g.away, 'away')
+  // score 500×200, baseline 150 → rests at (290, 805)
+  const score = createCanvas(500, 200); { const ctx = ctx2d(score)
+    ctx.textAlign = 'center'; ctx.font = '150px Anton'
+    ctx.fillStyle = g.scoringSide === 'home' ? GREEN : CREAM; ctx.fillText(String(g.homeScore ?? 0), 250 - 95, 150)
+    ctx.fillStyle = GOLD; ctx.font = '90px Anton'; ctx.fillText('–', 250, 135)
+    ctx.font = '150px Anton'; ctx.fillStyle = g.scoringSide === 'away' ? GREEN : CREAM; ctx.fillText(String(g.awayScore ?? 0), 250 + 95, 150) }
+  // scorer pill (+ assist line) 1000×200 → rests at (40, 1290)
+  const label = `${g.scorer || 'Goal'}${g.ownGoal ? ' (OG)' : ''}${g.penalty ? ' (pen)' : ''}`
+  const scorer = createCanvas(1000, 200); { const ctx = ctx2d(scorer)
+    ctx.textAlign = 'center'; ctx.font = '60px Anton'
+    const pw = Math.min(980, Math.max(420, ctx.measureText(label).width + 120))
+    roundedPath(ctx, 500 - pw / 2, 0, pw, 110, 55); ctx.fillStyle = GREEN; ctx.fill()
+    ctx.fillStyle = NIGHT; ctx.fillText(wrapLines(ctx, label, pw - 80, 1)[0], 500, 77)
+    if (g.assist) { ctx.fillStyle = 'rgba(243,239,230,0.8)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, `Assist · ${g.assist}`, 900, 1)[0], 500, 170) } }
+  // minute 400×90, baseline 70 → rests at (340, 1450)
+  const minute = createCanvas(400, 90); { const ctx = ctx2d(minute)
+    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '64px "IBM Plex Mono"'; ctx.fillText(g.minute ? `${g.minute}` : '', 200, 70) }
+  return {
+    bg: png(bg), flash: png(flash), goal: png(goal), home: png(home), away: png(away), score: png(score), scorer: png(scorer), minute: png(minute),
+    rest: { goal: [40, 370], home: [60, 770], away: [660, 770], score: [290, 805], scorer: [40, 1290], minute: [340, 1450] },
+  }
+}
+
 export async function drawGoalSlide(g) {
   registerBrandFonts()
   const W = 1080, H = 1920

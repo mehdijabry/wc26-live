@@ -15,7 +15,10 @@ function run(cmd, args) {
     const p = spawn(cmd, args, { stdio: ['ignore', 'ignore', 'pipe'] })
     let err = ''
     p.stderr.on('data', (d) => { err += d.toString(); if (err.length > 20000) err = err.slice(-20000) })
-    p.on('close', (code) => (code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}: ${err.slice(-1500)}`))))
+    p.on('close', (code) => {
+      if (code !== 0 && process.env.P90_FFDEBUG) console.error('[ffmpeg]', args.join(' '), '\n', err)
+      return code === 0 ? resolve() : reject(new Error(`${cmd} exited ${code}: ${err.slice(-1500)}`))
+    })
   })
 }
 
@@ -70,6 +73,13 @@ export async function renderReel({ scenes, voice, music, musicGain, seconds, out
   await fs.writeFile(list, segs.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
   const video = path.join(dir, 'video.mp4')
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video])
+  await muxAudio({ video, music, musicGain, voice, total, out })
+  for (const s of segs) fs.rm(s, { force: true }).catch(() => {})
+  return { out, seconds: Math.round(total) }
+}
+
+/** Last pass: music (looped, faded) + optional voice under the finished video (video copied). */
+async function muxAudio({ video, music, musicGain, voice, total, out }) {
   const fadeOutStart = Math.max(0, total - 1.5).toFixed(2)
   const args = ['-y', '-loglevel', 'error', '-threads', '1', '-i', video, '-stream_loop', '-1', '-i', music]
   if (voice) args.push('-i', voice)
@@ -79,6 +89,47 @@ export async function renderReel({ scenes, voice, music, musicGain, seconds, out
   args.push('-filter_complex', fc.join(';'), '-map', '0:v', '-map', `[${alast}]`, '-t', total.toFixed(2),
     '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out)
   await run('ffmpeg', args)
-  for (const s of segs) fs.rm(s, { force: true }).catch(() => {})
+}
+
+/**
+ * Animated GOAL reel (Mehdi, 2026-09-08): transparent layers composited
+ * by ffmpeg with time expressions — no per-frame canvas work, one image
+ * per layer looped in the graph (memory-flat like renderReel).
+ *   0.25 s  GOAL! slams in (3.2× → 1×, ease-out) with a white flash
+ *   0.7 s   crests slide in from both sides
+ *   1.2 s   score rises in · 1.9 s scorer pill rises · 2.3 s minute fades in
+ *   then    GOAL! breathes (±2.5 %), fade to black at the end
+ * layers: {bg, flash, goal, home, away, score, scorer, minute} PNG paths + rest positions.
+ */
+export async function renderGoalAnim({ layers, rest, seconds, music, musicGain, voice, out }) {
+  const fps = 25
+  const total = voice ? Math.max(seconds, (await probeDuration(voice)) + 1.2) : seconds
+  const frames = Math.round(total * fps)
+  const dir = path.resolve(path.dirname(out))
+  const order = ['bg', 'flash', 'goal', 'home', 'away', 'score', 'scorer', 'minute']
+  const inputs = []
+  for (const k of order) inputs.push('-i', layers[k])
+  const ease = (t0, d) => `pow(1-min(1,max(0,(t-${t0})/${d})),3)`   // 1 → 0 with ease-out
+  const still = (i, lbl) => `[${i}:v]format=rgba,loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${total.toFixed(3)}[${lbl}]`
+  const [gx, gy] = rest.goal, [hx, hy] = rest.home, [ax, ay] = rest.away, [sx, sy] = rest.score, [px, py] = rest.scorer, [mx, my] = rest.minute
+  const fc = [
+    still(0, 'bg0'), still(1, 'fl0'), still(2, 'go0'), still(3, 'ho0'), still(4, 'aw0'), still(5, 'sc0'), still(6, 'pi0'), still(7, 'mi0'),
+    `[fl0]fade=t=in:st=0.25:d=0.08:alpha=1,fade=t=out:st=0.38:d=0.7:alpha=1[fl]`,
+    // fade BEFORE scale: filters after a per-frame scale see a changing frame size and fail (EINVAL)
+    `[go0]fade=t=in:st=0.25:d=0.15:alpha=1,scale=w='iw*(1+2.2*${ease(0.25, 0.45)})*(1+0.025*sin(2*PI*max(0,t-1.2)/1.8))':h=-1:eval=frame[go]`,
+    `[ho0]fade=t=in:st=0.7:d=0.25:alpha=1[ho]`, `[aw0]fade=t=in:st=0.7:d=0.25:alpha=1[aw]`,
+    `[sc0]fade=t=in:st=1.2:d=0.3:alpha=1[sc]`, `[pi0]fade=t=in:st=1.9:d=0.3:alpha=1[pi]`, `[mi0]fade=t=in:st=2.3:d=0.3:alpha=1[mi]`,
+    `[bg0][fl]overlay=0:0:format=auto[v1]`,
+    `[v1][go]overlay=x='(W-w)/2':y='${gy + 160}-h/2':eval=frame:format=auto[v2]`,
+    `[v2][ho]overlay=x='${hx}-460*${ease(0.7, 0.6)}':y=${hy}:eval=frame:format=auto[v3]`,
+    `[v3][aw]overlay=x='${ax}+460*${ease(0.7, 0.6)}':y=${ay}:eval=frame:format=auto[v4]`,
+    `[v4][sc]overlay=x=${sx}:y='${sy}+70*${ease(1.2, 0.5)}':eval=frame:format=auto[v5]`,
+    `[v5][pi]overlay=x=${px}:y='${py}+120*${ease(1.9, 0.55)}':eval=frame:format=auto[v6]`,
+    `[v6][mi]overlay=x=${mx}:y=${my}:format=auto,format=yuv420p,setsar=1,fade=t=out:st=${Math.max(0, total - 0.6).toFixed(2)}:d=0.6[v]`,
+  ]
+  const video = path.join(dir, 'video.mp4')
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
+    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '21', '-an', '-movflags', '+faststart', video])
+  await muxAudio({ video, music, musicGain, voice, total, out })
   return { out, seconds: Math.round(total) }
 }
