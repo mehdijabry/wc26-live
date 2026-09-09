@@ -93,6 +93,75 @@ async function muxAudio({ video, music, musicGain, voice, total, out }) {
 }
 
 /**
+ * Generic animated slide (Mehdi, 2026-09-09 — every reel shares the goal
+ * reel's language). spec = { layers: {name: pngPath}, anims: [ {layer, x, y,
+ * fade:{st,d}, out:{st,d}, slide:{dx,dy,st,d}, pop:{from,st,d}, pulse:{amp,period,st}} ] }.
+ * Layer 'bg' is the opaque background; the others are stacked in `anims` order.
+ * One PNG per layer looped inside the graph (memory-flat), yuva420p overlays,
+ * single filter thread (≈ 250 MB at 1080p). Writes a silent mp4 segment.
+ */
+export async function animSlide({ spec, seconds, fps = 25, out, small = false, fadeIn = 0.25, fadeOut = 0.3 }) {
+  const total = seconds
+  const frames = Math.max(1, Math.round(total * fps))
+  const names = ['bg', ...spec.anims.map((x) => x.layer)]
+  const inputs = []
+  for (const n of names) inputs.push('-i', spec.layers[n])
+  const ease = (t0, d) => `pow(1-min(1,max(0,(t-${t0})/${d})),3)`
+  const still = (i) => `[${i}:v]format=${i === 0 ? 'yuv420p' : 'yuva420p'},loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${total.toFixed(3)}`
+  const fc = [`${still(0)}[v0]`]
+  let cur = 'v0'
+  spec.anims.forEach((an, k) => {
+    const i = k + 1
+    const chain = [still(i)]
+    if (an.fade) chain.push(`fade=t=in:st=${an.fade.st}:d=${an.fade.d}:alpha=1`)
+    if (an.out) chain.push(`fade=t=out:st=${an.out.st}:d=${an.out.d}:alpha=1`)
+    // scale LAST in the layer chain (filters after a per-frame scale fail on size changes)
+    const sc = []
+    if (an.pop) sc.push(`(1+${(an.pop.from - 1).toFixed(3)}*${ease(an.pop.st, an.pop.d)})`)
+    if (an.pulse) sc.push(`(1+${an.pulse.amp}*sin(2*PI*max(0,t-${an.pulse.st})/${an.pulse.period}))`)
+    if (sc.length) chain.push(`scale=w='iw*${sc.join('*')}':h=-1:eval=frame`)
+    fc.push(`${chain.join(',')}[l${i}]`)
+    let x = String(an.x), y = String(an.y)
+    if (an.slide) { x = `${an.x}+${an.slide.dx}*${ease(an.slide.st, an.slide.d)}`; y = `${an.y}+${an.slide.dy}*${ease(an.slide.st, an.slide.d)}` }
+    if (sc.length) {
+      // keep the layer centred on its resting centre while it scales (w,h = layer PNG size)
+      if (!an.w || !an.h) throw new Error(`anim '${an.layer}': pop/pulse need w,h`)
+      x = `${an.x + an.w / 2}-w/2`; y = `${an.y + an.h / 2}-h/2`
+    }
+    const nxt = `v${i}`
+    fc.push(`[${cur}][l${i}]overlay=x='${x}':y='${y}':eval=frame:format=yuv420[${nxt}]`)
+    cur = nxt
+  })
+  fc.push(`[${cur}]format=yuv420p,setsar=1,fade=t=in:st=0:d=${fadeIn},fade=t=out:st=${Math.max(0, total - fadeOut).toFixed(2)}:d=${fadeOut}${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
+    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '21', '-an', '-movflags', '+faststart', out])
+  return out
+}
+
+/** Animated reel: n animated slides → concat (stream copy) → music/voice pass. */
+export async function renderAnimatedReel({ slides, voice, music, musicGain, seconds, out }) {
+  const fps = 25
+  const total = voice ? Math.max(seconds || 0, (await probeDuration(voice)) + 1.2) : seconds
+  const n = slides.length
+  const per = total / n
+  const dir = path.resolve(path.dirname(out))
+  const segs = []
+  for (let i = 0; i < n; i++) {
+    const seg = path.join(dir, `aseg${i}.mp4`)
+    try { await animSlide({ spec: slides[i], seconds: per, fps, out: seg }) }
+    catch (e) { console.log('[anim] 1080p slide failed, retrying at 720p:', String(e).slice(0, 160)); await animSlide({ spec: slides[i], seconds: per, fps, out: seg, small: true }) }
+    segs.push(seg)
+  }
+  const list = path.join(dir, 'asegs.txt')
+  await fs.writeFile(list, segs.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
+  const video = path.join(dir, 'video.mp4')
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video])
+  await muxAudio({ video, music, musicGain, voice, total, out })
+  for (const s of segs) fs.rm(s, { force: true }).catch(() => {})
+  return { out, seconds: Math.round(total) }
+}
+
+/**
  * Animated GOAL reel (Mehdi, 2026-09-08): transparent layers composited
  * by ffmpeg with time expressions — no per-frame canvas work, one image
  * per layer looped in the graph (memory-flat like renderReel).

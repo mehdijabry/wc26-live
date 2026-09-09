@@ -8,8 +8,8 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, registerBrandFonts } from './draw.js'
-import { renderReel, renderGoalAnim, musicPath } from './video.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, registerBrandFonts } from './draw.js'
+import { renderReel, renderGoalAnim, renderAnimatedReel, musicPath } from './video.js'
 
 const PORT = process.env.PORT || 10000
 const SECRET = process.env.STUDIO_SECRET || ''
@@ -189,6 +189,31 @@ app.post('/render/image', async (req, res) => {
 async function buildReel({ type, data, voiceUrl, seconds }) {
       registerBrandFonts()
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-'))
+      // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
+      if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
+        const specs = []
+        if (type === 'matchday') { const ms = (data.matches || []).slice(0, 10); for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading)) }
+        else if (type === 'goal') specs.push(await drawGoalAnimSpec(data))
+        else if (type === 'article') specs.push(await drawArticleLayers(data))
+        else for (const art of (data.articles || []).slice(0, 4)) specs.push(await drawArticleLayers(art))
+        if (specs.length === 0) throw new Error('no scenes')
+        const slides = []
+        for (let i = 0; i < specs.length; i++) {
+          const layers = {}
+          for (const [k, buf] of Object.entries(specs[i].layers)) { layers[k] = path.join(dir, `s${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
+          slides.push({ layers, anims: specs[i].anims })
+        }
+        let voice = null
+        if (voiceUrl) { const r = await fetch(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
+        const music = await musicPath(type === 'matchday' || type === 'goal' ? 'matchday' : 'article')
+        const out = path.join(dir, 'reel.mp4')
+        const dflt = type === 'goal' ? 9 : type === 'article' ? 12 : type === 'articles' ? 10 * slides.length : 4 * slides.length
+        const { seconds: len } = await renderAnimatedReel({ slides, voice, music, musicGain: voice ? 0.22 : 0.9, seconds: seconds || dflt, out })
+        const buf = await fs.readFile(out)
+        const url = await upload(`reel-${type}-${stamp()}.mp4`, buf, 'video/mp4')
+        await fs.rm(dir, { recursive: true, force: true })
+        return { url, seconds: len }
+      }
       const scenes = []
       if (type === 'matchday') {
         const ms = (data.matches || []).slice(0, 10)

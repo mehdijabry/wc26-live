@@ -420,6 +420,113 @@ export async function drawArticleStory(a) {
 
 // ─── 7. GOAL alert slide 1080×1920 ─────────────────────────────────
 // g: {home, away, homeLogo, awayLogo, homeScore, awayScore, league, scorer, minute, scoringSide:'home'|'away', ownGoal?, penalty?}
+// ─── Animated slide layers (Mehdi, 2026-09-09: « tous les reels animés du même style ») ─
+// Each builder returns transparent PNG layers + an `anims` timeline that
+// video.js turns into an ffmpeg graph (see animSlide). Timings in seconds.
+const PNG = (c) => c.toBuffer('image/png')
+
+/** Match slide (matchday / results): bg + home + away + score + pill. */
+export async function drawMatchLayers(m, idx, total, heading) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+    const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
+    g1.addColorStop(0, 'rgba(217,181,74,0.14)'); g1.addColorStop(1, 'rgba(217,181,74,0)')
+    ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
+    paintLogo(ctx, W / 2 - 55, 120, 110)
+    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
+    ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(m.league || '', W / 2, 560)
+    ctx.fillStyle = 'rgba(243,239,230,0.5)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('pressing90.live', W / 2, 1700)
+    ctx.fillStyle = GOLD; ctx.font = '26px "IBM Plex Mono"'; ctx.fillText(`${idx + 1} / ${total}`, W / 2, 1760) }
+  const head = createCanvas(900, 70); { const ctx = ctx2d(head)
+    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '44px "IBM Plex Mono"'; ctx.fillText(heading || "TODAY'S MATCHES", 450, 52) }
+  const size = 300
+  const [hImg, aImg] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
+  const team = (img, name) => { const c = createCanvas(360, 440); const ctx = ctx2d(c)
+    ctx.drawImage(img, 30, 0, size, size)
+    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'
+    wrapLines(ctx, name, 380, 2).forEach((l, i) => ctx.fillText(l, 180, size + 80 + i * 52)); return c }
+  const home = team(hImg, m.home), away = team(aImg, m.away)
+  const score = createCanvas(500, 200); { const ctx = ctx2d(score)
+    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '90px Anton'
+    ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6
+    ctx.fillText(m.score ?? 'VS', 250, 150) }
+  const pill = createCanvas(400, 100); { const ctx = ctx2d(pill); ctx.textAlign = 'center'
+    if (m.live) { ctx.fillStyle = RED; roundedPath(ctx, 60, 0, 280, 90, 45); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '48px Anton'; ctx.fillText('LIVE', 200, 62) }
+    else if (m.time) { ctx.fillStyle = GOLD; roundedPath(ctx, 30, 0, 340, 90, 45); ctx.fill(); ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(m.time, 200, 60) } }
+  return {
+    layers: { bg: PNG(bg), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill) },
+    anims: [
+      { layer: 'head', x: 90, y: 352, w: 900, h: 70, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
+      { layer: 'home', x: 90, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
+      { layer: 'away', x: 630, y: 700, slide: { dx: 460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
+      { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 2.4, st: 0.6, d: 0.4 }, fade: { st: 0.6, d: 0.15 }, pulse: { amp: 0.02, period: 1.8, st: 1.2 } },
+      { layer: 'pill', x: 340, y: 1380, slide: { dx: 0, dy: 90, st: 1.0, d: 0.4 }, fade: { st: 1.0, d: 0.3 } },
+    ],
+  }
+}
+
+/** Article slide (article reels): bg + kicker + photo + title + QR card. */
+export async function drawArticleLayers(a) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg); paintGround(ctx, W, H); await paintBrandRow(ctx) }
+  const kicker = createCanvas(900, 70); { const ctx = ctx2d(kicker)
+    ctx.textAlign = 'left'; ctx.fillStyle = GOLD; ctx.font = '36px "IBM Plex Mono"'; ctx.fillText('N E W   A R T I C L E', 0, 50) }
+  const pw = W - 120, ph = 760
+  const photo = createCanvas(pw, ph); { const ctx = ctx2d(photo)
+    const img = await loadImg(a.image_url)
+    roundedPath(ctx, 0, 0, pw, ph, 36); ctx.save(); ctx.clip()
+    if (img) { const s = Math.max(pw / img.width, ph / img.height); const dw = img.width * s, dh = img.height * s; ctx.drawImage(img, (pw - dw) / 2, (ph - dh) / 2, dw, dh) }
+    else { ctx.fillStyle = '#12314F'; ctx.fillRect(0, 0, pw, ph) }
+    const fade = ctx.createLinearGradient(0, ph - 260, 0, ph)
+    fade.addColorStop(0, 'rgba(7,27,48,0)'); fade.addColorStop(1, 'rgba(7,27,48,0.92)')
+    ctx.fillStyle = fade; ctx.fillRect(0, 0, pw, ph); ctx.restore() }
+  const title = createCanvas(960, 340); { const ctx = ctx2d(title)
+    ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 10, 190)
+    ctx.fillStyle = CREAM; ctx.font = '72px Anton'; ctx.textAlign = 'left'
+    wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 44, 58 + i * 92)) }
+  const card = createCanvas(960, 320); { const ctx = ctx2d(card)
+    roundedPath(ctx, 0, 0, 960, 320, 36); ctx.fillStyle = '#FFFFFF'; ctx.fill()
+    const qr = createCanvas(480, 480)
+    await QRCode.toCanvas(qr, `${SITE}/news/${a.slug}?ref=fb-story`, { width: 480, margin: 1, color: { dark: NIGHT, light: '#FFFFFF' } })
+    ctx.drawImage(qr, 36, 35, 250, 250)
+    const tx = 36 + 250 + 44
+    ctx.fillStyle = NIGHT; ctx.font = '52px Anton'; ctx.textAlign = 'left'; ctx.fillText('Scan the QR code', tx, 105)
+    ctx.fillStyle = '#3A4C63'; ctx.font = 'bold 34px Archivo'
+    wrapLines(ctx, 'or visit our profile to read the full article', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, tx, 170 + i * 46))
+    ctx.fillStyle = GOLD; roundedPath(ctx, tx, 232, 340, 56, 28); ctx.fill()
+    ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', tx + 170, 270) }
+  return {
+    layers: { bg: PNG(bg), kicker: PNG(kicker), photo: PNG(photo), title: PNG(title), card: PNG(card) },
+    anims: [
+      { layer: 'photo', x: 60, y: 340, slide: { dx: 0, dy: 70, st: 0.1, d: 0.7 }, fade: { st: 0.1, d: 0.45 } },
+      { layer: 'kicker', x: 64, y: 250, w: 900, h: 70, pop: { from: 1.8, st: 0.55, d: 0.35 }, fade: { st: 0.55, d: 0.15 } },
+      { layer: 'title', x: 60, y: 1132, slide: { dx: -90, dy: 0, st: 0.85, d: 0.5 }, fade: { st: 0.85, d: 0.3 } },
+      { layer: 'card', x: 60, y: 1500, slide: { dx: 0, dy: 130, st: 1.35, d: 0.5 }, fade: { st: 1.35, d: 0.3 } },
+    ],
+  }
+}
+
+/** Goal slide as a generic animated spec (same timings as the validated goal reel). */
+export async function drawGoalAnimSpec(g) {
+  const L = await drawGoalLayers(g)
+  const r = L.rest
+  return {
+    layers: { bg: L.bg, flash: L.flash, goal: L.goal, home: L.home, away: L.away, score: L.score, scorer: L.scorer, minute: L.minute },
+    anims: [
+      { layer: 'flash', x: 0, y: 0, fade: { st: 0.25, d: 0.08 }, out: { st: 0.38, d: 0.7 } },
+      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 3.2, st: 0.25, d: 0.45 }, fade: { st: 0.25, d: 0.15 }, pulse: { amp: 0.025, period: 1.8, st: 1.2 } },
+      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -460, dy: 0, st: 0.7, d: 0.6 }, fade: { st: 0.7, d: 0.25 } },
+      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 460, dy: 0, st: 0.7, d: 0.6 }, fade: { st: 0.7, d: 0.25 } },
+      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 70, st: 1.2, d: 0.5 }, fade: { st: 1.2, d: 0.3 } },
+      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], slide: { dx: 0, dy: 120, st: 1.9, d: 0.55 }, fade: { st: 1.9, d: 0.3 } },
+      { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 2.3, d: 0.3 } },
+    ],
+  }
+}
+
 // ─── GOAL animation layers (Mehdi, 2026-09-08 soir: « une animation de but »)
 // Same look as drawGoalSlide, split into transparent PNG layers that
 // video.js animates with ffmpeg expressions (slam, slide-ins, pulse).
