@@ -206,8 +206,8 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         }
         const music = await musicPath('tale')
         const out = path.join(dir, 'reel.mp4')
-        const { seconds: len } = await renderTaleReel({ beats, music, out, buildSpec: async (i, progress) => {
-          const L = await drawTaleBeatLayers(beatsIn[i], lang, labels, progress)
+        const { seconds: len } = await renderTaleReel({ beats, music, out, buildSpec: async (i, progress, timing) => {
+          const L = await drawTaleBeatLayers(beatsIn[i], lang, labels, progress, timing)
           const layers = {}
           for (const [k, buf] of Object.entries(L.layers)) { layers[k] = path.join(dir, `t${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
           return { layers, anims: L.anims }

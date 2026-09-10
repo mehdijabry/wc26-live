@@ -629,19 +629,82 @@ function taleVisual(v, lang, labels) {
   if (v.type === 'mark') return { c: taleMark(String(v.text), v.color), pos: [60, 880], w: 960, h: 520 }
   return null
 }
-/** One story beat → animated layer spec (+ progress bar layer). */
-export async function drawTaleBeatLayers(beat, lang, labels, progress) {
+// Word-by-word captions (Mehdi, 2026-09-10: « animer un peu plus pour garder
+// l'attention »): the caption layout is computed once, then one cumulative
+// image per word is rendered — the newest word in the accent colour with its
+// pill, earlier words in their final style. video.js shows image k only in
+// its time window, so nothing ever moves: no jitter, just words landing.
+function taleCaptionFrames(text, lang, size, hotColor) {
+  const m = ctx2d(createCanvas(10, 10)); m.font = TALE_FONT(lang, size)
+  const lines = []
+  for (const para of String(text).split('\n')) lines.push(...wrapLines(m, para, 940, 6))
+  const lh = size * (lang === 'ar' ? 1.3 : 1.12)
+  const H = Math.min(760, Math.round(lines.length * lh + 30))
+  const isHot = (w) => /^\*.+\*[^\w]*$/.test(w) || /^[A-ZÀ-ÜÉÈÊ][A-ZÀ-ÜÉÈÊ'’-]{2,}[!?.,…:]*$/.test(w) || /\d+[–\-:]\d+|^\d{2,4}[!?.,:]*$|^[£$€]\s?\d|^\d+\s?[£$€%]|^×\d/.test(w)
+  const clean = (w) => w.replace(/\*/g, '')
+  const rtl = lang === 'ar'
+  // layout pass
+  const placed = []
+  lines.forEach((l, i) => {
+    const y = size + i * lh
+    const words = l.split(' ').filter(Boolean)
+    const widths = words.map((w) => m.measureText(clean(w)).width)
+    const space = m.measureText(' ').width
+    const total = widths.reduce((s, w) => s + w, 0) + space * (words.length - 1)
+    let x = rtl ? 500 + total / 2 : 500 - total / 2
+    words.forEach((w, k) => { const ww = widths[k]; const wx = rtl ? x - ww : x; placed.push({ w: clean(w), hot: isHot(w), x: wx, y, ww }); x = rtl ? wx - space : x + ww + space })
+  })
+  const frames = []
+  // ≤ 8 frames per caption: group words when the caption is long (memory on the 512 MB studio)
+  const step = Math.max(1, Math.ceil(placed.length / 8))
+  const stops = []
+  for (let n = step; n < placed.length; n += step) stops.push(n)
+  stops.push(placed.length)
+  for (const n of stops) {
+    const c = createCanvas(1000, H); const ctx = ctx2d(c); ctx.font = TALE_FONT(lang, size); ctx.textAlign = 'left'
+    for (let k = 0; k < n; k++) {
+      const p = placed[k]; const newest = k === n - 1
+      if (p.hot || newest) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = (p.hot ? hotColor : CREAM) === GOLD ? 'rgba(217,181,74,0.18)' : (p.hot ? 'rgba(65,201,124,0.18)' : 'rgba(243,239,230,0.12)'); roundedPath(ctx, p.x - 10, p.y - size * 0.86, p.ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
+      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6
+      ctx.fillStyle = p.hot ? hotColor : (newest ? '#FFFFFF' : CREAM)
+      ctx.fillText(p.w, p.x, p.y)
+    }
+    frames.push(c.toBuffer('image/png'))
+  }
+  return { frames, H }
+}
+function taleGlowBlob(color) { const c = createCanvas(1400, 1400); const ctx = ctx2d(c); const g = ctx.createRadialGradient(700, 700, 0, 700, 700, 700); g.addColorStop(0, color === 'gold' ? 'rgba(217,181,74,0.22)' : 'rgba(65,201,124,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, 1400, 1400); return c }
+function taleFlash() { const c = createCanvas(900, 900); const ctx = ctx2d(c); const f = ctx.createRadialGradient(450, 450, 0, 450, 450, 450); f.addColorStop(0, 'rgba(255,255,255,0.55)'); f.addColorStop(0.4, 'rgba(120,255,180,0.18)'); f.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = f; ctx.fillRect(0, 0, 900, 900); return c }
+/** One story beat → animated layer spec (+ progress bar layer). timing = { dur, voiceDur }. */
+export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = {}) {
   registerBrandFonts()
   const PNGb = (c) => c.toBuffer('image/png')
   const glow = beat.glow || 'green'
   const hot = glow === 'gold' ? GOLD : GREEN
-  const layers = { bg: PNGb(taleBg(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)), cap: PNGb(taleCaption(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot)) }
+  const dur = timing.dur || 6
+  const layers = { bg: PNGb(taleBg(glow)), glow: PNGb(taleGlowBlob(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
+  const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
+  layers.line = PNGb(line)
   const anims = [
+    { layer: 'glow', x: -160, y: 100, drift: { dx: 400, dy: 260, dur: Math.max(4, dur) } },
     { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: 1.7, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
-    { layer: 'cap', x: 40, y: 430, slide: { dx: 0, dy: 70, st: 0.25, d: 0.55 }, fade: { st: 0.25, d: 0.35 } },
+    { layer: 'line', x: 380, y: 372, grow: { st: 0.3, d: 0.45 } },
   ]
+  // word-by-word caption: words land across the first ~65 % of the voice (or of the beat when silent)
+  const { frames } = taleCaptionFrames(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot)
+  const span = Math.min(Math.max(1.2, (timing.voiceDur || dur * 0.7) * 0.65), 6)
+  frames.forEach((buf, k) => {
+    layers[`w${k}`] = buf
+    const st = 0.35 + (k / Math.max(1, frames.length - 1)) * span
+    const en = k < frames.length - 1 ? 0.35 + ((k + 1) / Math.max(1, frames.length - 1)) * span : undefined
+    anims.push({ layer: `w${k}`, x: 40, y: 430, show: { st: +st.toFixed(3), en: en != null ? +en.toFixed(3) : undefined } })
+  })
   const vis = taleVisual(beat.visual, lang, labels)
-  if (vis) { layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: vis.pos[0], y: vis.pos[1], w: vis.w, h: vis.h, pop: { from: 1.9, st: 0.75, d: 0.45 }, fade: { st: 0.75, d: 0.2 } }) }
+  if (vis) {
+    layers.flash = PNGb(taleFlash())
+    anims.push({ layer: 'flash', x: 90, y: vis.pos[1] + vis.h / 2 - 450, fade: { st: 0.75, d: 0.1 }, out: { st: 0.9, d: 0.6 } })
+    layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: vis.pos[0], y: vis.pos[1], w: vis.w, h: vis.h, pop: { from: 1.9, st: 0.75, d: 0.45 }, fade: { st: 0.75, d: 0.2 } })
+  }
   if (progress) {
     const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 1080, 10)
     layers.bar = PNGb(bar)

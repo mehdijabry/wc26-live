@@ -100,7 +100,7 @@ async function muxAudio({ video, music, musicGain, voice, total, out }) {
  * One PNG per layer looped inside the graph (memory-flat), yuva420p overlays,
  * single filter thread (≈ 250 MB at 1080p). Writes a silent mp4 segment.
  */
-export async function animSlide({ spec, seconds, fps = 25, out, small = false, fadeIn = 0.25, fadeOut = 0.3 }) {
+export async function animSlide({ spec, seconds, fps = 25, out, small = false, fadeIn = 0.25, fadeOut = 0.3, push = false }) {
   const total = seconds
   const frames = Math.max(1, Math.round(total * fps))
   const names = ['bg', ...spec.anims.map((x) => x.layer)]
@@ -120,8 +120,14 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
     if (an.pop) sc.push(`(1+${(an.pop.from - 1).toFixed(3)}*${ease(an.pop.st, an.pop.d)})`)
     if (an.pulse) sc.push(`(1+${an.pulse.amp}*sin(2*PI*max(0,t-${an.pulse.st})/${an.pulse.period}))`)
     if (sc.length) chain.push(`scale=w='iw*${sc.join('*')}':h=-1:eval=frame`)
+    // grow: a bar unrolling from its left edge (width 1 → full), height untouched
+    if (an.grow) chain.push(`scale=w='max(1,iw*min(1,max(0,(t-${an.grow.st})/${an.grow.d})))':h=ih:eval=frame`)
     fc.push(`${chain.join(',')}[l${i}]`)
     let x = String(an.x), y = String(an.y)
+    if (an.drift) {
+      // slow linear drift (blurry layers only — sharp edges would step visibly)
+      x = `${an.x}+${an.drift.dx}*min(1,t/${an.drift.dur})`; y = `${an.y}+${an.drift.dy}*min(1,t/${an.drift.dur})`
+    }
     if (an.progress) {
       // progress bar: slides from fully hidden (left) to fully shown across the whole reel
       const { from, to, dur } = an.progress
@@ -134,10 +140,20 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
       x = `${an.x + an.w / 2}-w/2`; y = `${an.y + an.h / 2}-h/2`
     }
     const nxt = `v${i}`
-    fc.push(`[${cur}][l${i}]overlay=x='${x}':y='${y}':eval=frame:format=yuv420[${nxt}]`)
+    // show: the layer exists only inside a time window (word-by-word captions)
+    const en = an.show ? `:enable='between(t,${an.show.st},${an.show.en ?? total.toFixed(3)})'` : ''
+    fc.push(`[${cur}][l${i}]overlay=x='${x}':y='${y}':eval=frame:format=yuv420${en}[${nxt}]`)
     cur = nxt
   })
-  fc.push(`[${cur}]format=yuv420p,setsar=1,fade=t=in:st=0:d=${fadeIn},fade=t=out:st=${Math.max(0, total - fadeOut).toFixed(2)}:d=${fadeOut}${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
+  if (push) {
+    // push transition: the whole slide flies in from the right (0.3 s) and out to the left (0.22 s)
+    const T = total.toFixed(3)
+    fc.push(`color=c=0x071B30:s=1080x1920:r=${fps}:d=${T}[base]`)
+    fc.push(`[${cur}]format=yuv420p[sl]`)
+    fc.push(`[base][sl]overlay=x='if(lt(t,0.3),W*pow(1-t/0.3,3),if(gt(t,${T}-0.22),-W*(1-pow(1-(t-(${T}-0.22))/0.22,3)),0))':y=0:eval=frame:format=yuv420,format=yuv420p,setsar=1${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
+  } else {
+    fc.push(`[${cur}]format=yuv420p,setsar=1,fade=t=in:st=0:d=${fadeIn},fade=t=out:st=${Math.max(0, total - fadeOut).toFixed(2)}:d=${fadeOut}${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
+  }
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
     // ultrafast (veryfast OOM-killed the 512 MB instance on 2026-09-10) + stillimage tune + crf 19;
     // the "trembling" came from the per-frame pulse rescales, now removed.
@@ -184,10 +200,12 @@ export async function renderTaleReel({ beats, music, out, buildSpec }) {
   let t = 0
   for (let i = 0; i < beats.length; i++) {
     const d = durs[i]
-    const spec = await buildSpec(i, { from: t / total, to: (t + d) / total, dur: d })
+    const voiceDur = beats[i].voice ? (d - 0.5) : 0
+    const spec = await buildSpec(i, { from: t / total, to: (t + d) / total, dur: d }, { dur: d, voiceDur })
     const seg = path.join(dir, `tseg${i}.mp4`)
-    try { await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0.2 : 0.15, fadeOut: 0.2 }) }
-    catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: 0.15, fadeOut: 0.2, small: true }) }
+    const push = i > 0
+    try { await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0.2 : 0.15, fadeOut: 0.2, push }) }
+    catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: 0.15, fadeOut: 0.2, small: true, push }) }
     segs.push(seg)
     const aud = path.join(dir, `taud${i}.m4a`)
     if (beats[i].voice) await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', beats[i].voice, '-af', `adelay=250|250,apad=whole_dur=${d.toFixed(3)}`, '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2', aud])
