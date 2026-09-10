@@ -527,6 +527,148 @@ export async function drawGoalAnimSpec(g) {
   }
 }
 
+// ─── FOOTBALL STORIES ("tale") — Mehdi, 2026-09-10: retention reels telling a
+// true, strange football story in 10 animated beats, EN / FR / AR. ──────────
+const TALE_FONT = (lang, size, bold = true) => lang === 'ar' ? `${bold ? 'bold ' : ''}${size}px Tajawal` : `${size}px Anton`
+const TALE_MONO = (lang, size) => lang === 'ar' ? `500 ${size}px Tajawal` : `${size}px "IBM Plex Mono"`
+function taleBg(glow) {
+  const W = 1080, H = 1920
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+  const g = ctx.createRadialGradient(W / 2, 700, 0, W / 2, 700, 1000)
+  g.addColorStop(0, glow === 'gold' ? 'rgba(217,181,74,0.16)' : 'rgba(65,201,124,0.16)'); g.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  const v = ctx.createRadialGradient(W / 2, H / 2, 500, W / 2, H / 2, 1300); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)')
+  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H)
+  paintLogo(ctx, 60, 100, 84)
+  ctx.textAlign = 'left'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'; ctx.fillText('Pressing 90’', 164, 158)
+  ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '24px "IBM Plex Mono"'; ctx.fillText('F O O T B A L L   S T O R I E S', 164, 194)
+  ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(243,239,230,0.45)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('pressing90.live', W / 2, 1800)
+  return c
+}
+function taleKicker(text, lang) { const c = createCanvas(960, 80); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, lang === 'ar' ? 44 : 40); ctx.fillText(text, 480, 56); return c }
+// Coloured subtitles (Mehdi, 2026-09-10): key words pop in the accent colour —
+// *marked* words, ALL-CAPS words, numbers / scores / times — with a soft
+// highlight behind them, so the eye catches the important word first.
+function taleCaption(text, lang, size, hotColor) {
+  const m = ctx2d(createCanvas(10, 10)); m.font = TALE_FONT(lang, size)
+  const lines = []
+  for (const para of String(text).split('\n')) lines.push(...wrapLines(m, para, 940, 6))
+  const lh = size * (lang === 'ar' ? 1.3 : 1.12)
+  const c = createCanvas(1000, Math.min(760, Math.round(lines.length * lh + 30))); const ctx = ctx2d(c)
+  ctx.font = TALE_FONT(lang, size)
+  const isHot = (w) => /^\*.+\*[^\w]*$/.test(w) || /^[A-ZÀ-ÜÉÈÊ][A-ZÀ-ÜÉÈÊ'’-]{2,}[!?.,…:]*$/.test(w) || /\d+[–\-:]\d+|^\d{2,4}[!?.,:]*$|^[£$€]\s?\d|^\d+\s?[£$€%]|^×\d/.test(w)
+  const clean = (w) => w.replace(/\*/g, '')
+  const rtl = lang === 'ar'
+  lines.forEach((l, i) => {
+    const y = size + i * lh
+    const words = l.split(' ').filter(Boolean)
+    const widths = words.map((w) => ctx.measureText(clean(w)).width)
+    const space = ctx.measureText(' ').width
+    const total = widths.reduce((s, w) => s + w, 0) + space * (words.length - 1)
+    // right-to-left languages: lay the words out from the right edge
+    let x = rtl ? 500 + total / 2 : 500 - total / 2
+    words.forEach((w, k) => {
+      const hot = isHot(w)
+      const ww = widths[k]
+      const wx = rtl ? x - ww : x
+      if (hot) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = hotColor === GOLD ? 'rgba(217,181,74,0.18)' : 'rgba(65,201,124,0.18)'; roundedPath(ctx, wx - 10, y - size * 0.86, ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
+      ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6
+      ctx.fillStyle = hot ? hotColor : CREAM
+      ctx.fillText(clean(w), wx, y)
+      x = rtl ? wx - space : x + ww + space
+    })
+  })
+  return c
+}
+function taleBadge(code, colors) { const c = createCanvas(220, 220); const ctx = ctx2d(c); const cx = 110, cy = 110
+  ctx.beginPath(); ctx.arc(cx, cy, 104, 0, Math.PI * 2); ctx.fillStyle = colors[0]; ctx.fill()
+  ctx.beginPath(); ctx.arc(cx, cy, 104, -Math.PI / 2, Math.PI / 2); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fillStyle = colors[1]; ctx.fill()
+  ctx.beginPath(); ctx.arc(cx, cy, 104, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.stroke()
+  ctx.beginPath(); ctx.arc(cx, cy, 62, 0, Math.PI * 2); ctx.fillStyle = NIGHT; ctx.fill()
+  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'; ctx.fillText(code, cx, cy + 16); return c }
+function taleScoreboard(v, lang) { const c = createCanvas(960, 300); const ctx = ctx2d(c)
+  roundedPath(ctx, 0, 20, 960, 260, 40); ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(217,181,74,0.5)'; ctx.stroke()
+  ctx.drawImage(taleBadge(v.hCode, v.hColors), 50, 40, 190, 190); ctx.drawImage(taleBadge(v.aCode, v.aColors), 720, 40, 190, 190)
+  ctx.textAlign = 'center'; ctx.font = String(v.h).length > 2 || String(v.a).length > 2 ? '110px Anton' : '150px Anton'
+  ctx.fillStyle = v.hl === 'h' ? GREEN : CREAM; ctx.fillText(String(v.h), 390, 200)
+  ctx.fillStyle = GOLD; ctx.font = '90px Anton'; ctx.fillText('–', 480, 185)
+  ctx.font = String(v.h).length > 2 || String(v.a).length > 2 ? '110px Anton' : '150px Anton'; ctx.fillStyle = v.hl === 'a' ? GREEN : CREAM; ctx.fillText(String(v.a), 570, 200)
+  ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = TALE_MONO(lang, 26); ctx.fillText(v.home, 145, 268); ctx.fillText(v.away, 815, 268)
+  if (v.tag) { ctx.fillStyle = RED; roundedPath(ctx, 380, 0, 200, 44, 22); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = TALE_FONT(lang, 26); ctx.fillText(v.tag, 480, 31) }
+  return c }
+function taleMark(text, color) { const size = text.length > 4 ? 260 : text.length > 2 ? 340 : 420; const c = createCanvas(960, 520); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = color === 'gold' ? GOLD : GREEN; ctx.font = `${size}px Anton`; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 30; ctx.fillText(text, 480, 260 + size * 0.38); return c }
+function talePitch(v, lang) { const c = createCanvas(960, 560); const ctx = ctx2d(c)
+  roundedPath(ctx, 30, 30, 900, 500, 24); ctx.fillStyle = 'rgba(65,201,124,0.10)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(243,239,230,0.6)'; ctx.stroke()
+  ctx.beginPath(); ctx.moveTo(480, 30); ctx.lineTo(480, 530); ctx.stroke(); ctx.beginPath(); ctx.arc(480, 280, 90, 0, Math.PI * 2); ctx.stroke()
+  ctx.strokeRect(30, 150, 120, 260); ctx.strokeRect(810, 150, 120, 260)
+  ctx.fillStyle = GOLD; ctx.fillRect(18, 220, 12, 120); ctx.fillRect(930, 220, 12, 120)
+  const arrow = (x1, y1, x2, y2, col) => { ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); const ang = Math.atan2(y2 - y1, x2 - x1); ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - 34 * Math.cos(ang - 0.5), y2 - 34 * Math.sin(ang - 0.5)); ctx.lineTo(x2 - 34 * Math.cos(ang + 0.5), y2 - 34 * Math.sin(ang + 0.5)); ctx.closePath(); ctx.fill() }
+  if (v.mode === 'both') { arrow(480, 280, 190, 280, RED); arrow(480, 280, 770, 280, RED) }
+  else if (v.mode === 'one') { arrow(480, 280, 770, 280, RED) }
+  else if (v.mode === 'empty') { ctx.fillStyle = 'rgba(243,239,230,0.35)'; ctx.font = '120px Anton'; ctx.textAlign = 'center'; ctx.fillText('?', 700, 320) }
+  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = TALE_MONO(lang, 30); if (v.bottom) ctx.fillText(v.bottom, 480, 480)
+  ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 24); if (v.top) ctx.fillText(v.top, 480, 90)
+  return c }
+function taleQuote() { const c = createCanvas(960, 520); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '420px Anton'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 30; ctx.fillText('”', 480, 430); return c }
+function taleCta(labels, lang) { const c = createCanvas(960, 420); const ctx = ctx2d(c); ctx.textAlign = 'center'
+  const icon = { heart: (x, y) => { ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.bezierCurveTo(x - 22, y - 14, x - 2, y - 26, x, y - 10); ctx.bezierCurveTo(x + 2, y - 26, x + 22, y - 14, x, y + 8); ctx.closePath(); ctx.fill() },
+    bubble: (x, y) => { roundedPath(ctx, x - 18, y - 20, 36, 26, 8); ctx.fill(); ctx.beginPath(); ctx.moveTo(x - 8, y + 5); ctx.lineTo(x - 2, y + 14); ctx.lineTo(x + 4, y + 5); ctx.closePath(); ctx.fill() },
+    plus: (x, y) => { ctx.fillRect(x - 3, y - 18, 6, 36); ctx.fillRect(x - 18, y - 3, 36, 6) } }
+  const pill = (x, label, col, ic) => { roundedPath(ctx, x, 0, 290, 96, 48); ctx.fillStyle = col; ctx.fill(); ctx.fillStyle = NIGHT; icon[ic](x + 46, 48); ctx.font = TALE_FONT(lang, 38); ctx.fillText(label, x + 165, 62) }
+  pill(20, labels.like, GOLD, 'heart'); pill(335, labels.comment, GREEN, 'bubble'); pill(650, labels.follow, CREAM, 'plus')
+  ctx.fillStyle = 'rgba(243,239,230,0.85)'; ctx.font = TALE_MONO(lang, 34); ctx.fillText(labels.full, 480, 190)
+  roundedPath(ctx, 130, 240, 700, 120, 30); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(217,181,74,0.6)'; ctx.lineWidth = 2; ctx.stroke()
+  ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 30); ctx.fillText(labels.weekly, 480, 312); return c }
+function taleVisual(v, lang, labels) {
+  if (!v) return null
+  if (v.type === 'scoreboard') return { c: taleScoreboard(v, lang), pos: [60, 960], w: 960, h: 300 }
+  if (v.type === 'pitch') return { c: talePitch(v, lang), pos: [60, 900], w: 960, h: 560 }
+  if (v.type === 'quote') return { c: taleQuote(), pos: [60, 880], w: 960, h: 520 }
+  if (v.type === 'cta') return { c: taleCta(labels, lang), pos: [60, 980], w: 960, h: 420 }
+  if (v.type === 'mark') return { c: taleMark(String(v.text), v.color), pos: [60, 880], w: 960, h: 520 }
+  return null
+}
+/** One story beat → animated layer spec (+ progress bar layer). */
+export async function drawTaleBeatLayers(beat, lang, labels, progress) {
+  registerBrandFonts()
+  const PNGb = (c) => c.toBuffer('image/png')
+  const glow = beat.glow || 'green'
+  const hot = glow === 'gold' ? GOLD : GREEN
+  const layers = { bg: PNGb(taleBg(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)), cap: PNGb(taleCaption(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot)) }
+  const anims = [
+    { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: 1.7, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
+    { layer: 'cap', x: 40, y: 430, slide: { dx: 0, dy: 70, st: 0.25, d: 0.55 }, fade: { st: 0.25, d: 0.35 } },
+  ]
+  const vis = taleVisual(beat.visual, lang, labels)
+  if (vis) { layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: vis.pos[0], y: vis.pos[1], w: vis.w, h: vis.h, pop: { from: 1.9, st: 0.75, d: 0.45 }, fade: { st: 0.75, d: 0.2 }, pulse: { amp: 0.015, period: 2.2, st: 1.5 } }) }
+  if (progress) {
+    const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 1080, 10)
+    layers.bar = PNGb(bar)
+    anims.push({ layer: 'bar', x: 0, y: 1910, progress })   // {from, to, dur} handled by animSlide
+  }
+  return { layers, anims }
+}
+/** Story cover 1200×675 (site hero / og:image). */
+export async function drawTaleCover(d) {
+  registerBrandFonts()
+  const W = 1200, H = 675
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+  const g = ctx.createRadialGradient(W * 0.3, H * 0.5, 0, W * 0.3, H * 0.5, 800); g.addColorStop(0, 'rgba(65,201,124,0.18)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  paintLogo(ctx, 60, 50, 70)
+  ctx.textAlign = 'left'; ctx.fillStyle = CREAM; ctx.font = '36px Anton'; ctx.fillText('Pressing 90’', 146, 96)
+  ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '20px "IBM Plex Mono"'; ctx.fillText('F O O T B A L L   S T O R I E S', 146, 126)
+  const lang = d.lang || 'en'
+  ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 30); ctx.textAlign = lang === 'ar' ? 'right' : 'left'; ctx.fillText(d.kicker || '', lang === 'ar' ? W - 60 : 60, 230)
+  ctx.fillStyle = CREAM; ctx.font = TALE_FONT(lang, 64)
+  const lines = wrapLines(ctx, String(d.hook || ''), 760, 4)
+  lines.forEach((l, i) => ctx.fillText(l, lang === 'ar' ? W - 60 : 60, 310 + i * 76))
+  if (d.year) { ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(217,181,74,0.25)'; ctx.font = '220px Anton'; ctx.fillText(String(d.year), W - 40, H - 40) }
+  ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(243,239,230,0.45)'; ctx.font = '22px "IBM Plex Mono"'; ctx.fillText('pressing90.live', 60, H - 40)
+  return c
+}
+
 // ─── GOAL animation layers (Mehdi, 2026-09-08 soir: « une animation de but »)
 // Same look as drawGoalSlide, split into transparent PNG layers that
 // video.js animates with ffmpeg expressions (slam, slide-ins, pulse).

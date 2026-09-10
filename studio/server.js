@@ -8,8 +8,8 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, registerBrandFonts } from './draw.js'
-import { renderReel, renderGoalAnim, renderAnimatedReel, musicPath } from './video.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, registerBrandFonts } from './draw.js'
+import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
 
 const PORT = process.env.PORT || 10000
 const SECRET = process.env.STUDIO_SECRET || ''
@@ -172,6 +172,7 @@ app.post('/render/image', async (req, res) => {
       switch (type) {
         case 'score': canvas = await drawScoreCard(data); break
         case 'matchday-post': canvas = await drawMatchdayPost(data.matches, data.dateLabel); break
+        case 'tale-cover': canvas = await drawTaleCover(data); break
         case 'matchday-story': canvas = await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1); break
         case 'article-post': canvas = await drawArticlePost(data); break
         case 'article-story': canvas = await drawArticleStory(data); break
@@ -189,6 +190,31 @@ app.post('/render/image', async (req, res) => {
 async function buildReel({ type, data, voiceUrl, seconds }) {
       registerBrandFonts()
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-'))
+      // ── Football Stories (Mehdi, 2026-09-10): beats with their own voice clips ──
+      if (type === 'tale') {
+        const lang = data.lang || 'en'
+        const labels = data.labels || { like: 'LIKE', comment: 'COMMENT', follow: 'FOLLOW', full: 'Full story → pressing90.live', weekly: 'New story every week' }
+        const beatsIn = (data.beats || []).slice(0, 14)
+        if (beatsIn.length === 0) throw new Error('no beats')
+        const beats = []
+        for (let i = 0; i < beatsIn.length; i++) {
+          let voice = null
+          if (beatsIn[i].voiceUrl) { const r = await fetch(beatsIn[i].voiceUrl); if (!r.ok) throw new Error(`voice ${i} fetch failed ${r.status}`); voice = path.join(dir, `tv${i}.mp3`); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
+          beats.push({ voice, min: beatsIn[i].min })
+        }
+        const music = await musicPath('tale')
+        const out = path.join(dir, 'reel.mp4')
+        const { seconds: len } = await renderTaleReel({ beats, music, out, buildSpec: async (i, progress) => {
+          const L = await drawTaleBeatLayers(beatsIn[i], lang, labels, progress)
+          const layers = {}
+          for (const [k, buf] of Object.entries(L.layers)) { layers[k] = path.join(dir, `t${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
+          return { layers, anims: L.anims }
+        } })
+        const buf = await fs.readFile(out)
+        const url = await upload(`reel-tale-${lang}-${stamp()}.mp4`, buf, 'video/mp4')
+        await fs.rm(dir, { recursive: true, force: true })
+        return { url, seconds: len }
+      }
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []

@@ -9,7 +9,7 @@ import os from 'node:os'
 
 const SITE = process.env.SITE_URL || 'https://pressing90.live'
 // Signature tracks (Mehdi's, never regenerated). `story` is EXCLUSIVE to stories.
-const MUSIC = { matchday: 'matchday.m4a', article: 'articles.m4a', story: 'stories.m4a' }
+const MUSIC = { matchday: 'matchday.m4a', article: 'articles.m4a', story: 'stories.m4a', tale: 'tales.m4a' }
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
@@ -122,6 +122,11 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
     if (sc.length) chain.push(`scale=w='iw*${sc.join('*')}':h=-1:eval=frame`)
     fc.push(`${chain.join(',')}[l${i}]`)
     let x = String(an.x), y = String(an.y)
+    if (an.progress) {
+      // progress bar: slides from fully hidden (left) to fully shown across the whole reel
+      const { from, to, dur } = an.progress
+      x = `-W+W*(${from}+(${to}-${from})*min(1,t/${dur}))`
+    }
     if (an.slide) { x = `${an.x}+${an.slide.dx}*${ease(an.slide.st, an.slide.d)}`; y = `${an.y}+${an.slide.dy}*${ease(an.slide.st, an.slide.d)}` }
     if (sc.length) {
       // keep the layer centred on its resting centre while it scales (w,h = layer PNG size)
@@ -158,6 +163,46 @@ export async function renderAnimatedReel({ slides, voice, music, musicGain, seco
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video])
   await muxAudio({ video, music, musicGain, voice, total, out })
   for (const s of segs) fs.rm(s, { force: true }).catch(() => {})
+  return { out, seconds: Math.round(total) }
+}
+
+/**
+ * Football Stories reel: n beats, each with its own voice clip (duration =
+ * clip + 0.5 s), progress bar across the whole reel, voice track rebuilt by
+ * concatenation, music bed under it, loudness normalised to -16 LUFS.
+ * beats: [{ spec (layers+anims), voice: path|null, min }]
+ */
+export async function renderTaleReel({ beats, music, out, buildSpec }) {
+  const fps = 25
+  const dir = path.resolve(path.dirname(out))
+  const durs = []
+  for (const b of beats) durs.push(Math.max(b.min ?? 3, (b.voice ? await probeDuration(b.voice) : 4) + 0.5))
+  const total = durs.reduce((a, b) => a + b, 0)
+  const segs = [], auds = []
+  let t = 0
+  for (let i = 0; i < beats.length; i++) {
+    const d = durs[i]
+    const spec = await buildSpec(i, { from: t / total, to: (t + d) / total, dur: d })
+    const seg = path.join(dir, `tseg${i}.mp4`)
+    try { await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0.2 : 0.15, fadeOut: 0.2 }) }
+    catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: 0.15, fadeOut: 0.2, small: true }) }
+    segs.push(seg)
+    const aud = path.join(dir, `taud${i}.m4a`)
+    if (beats[i].voice) await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', beats[i].voice, '-af', `adelay=250|250,apad=whole_dur=${d.toFixed(3)}`, '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2', aud])
+    else await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', aud])
+    auds.push(aud)
+    t += d
+  }
+  const vlist = path.join(dir, 'tsegs.txt'), alist = path.join(dir, 'tauds.txt')
+  await fs.writeFile(vlist, segs.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
+  await fs.writeFile(alist, auds.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
+  const video = path.join(dir, 'tvideo.mp4'), voice = path.join(dir, 'tvoice.m4a')
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', vlist, '-c', 'copy', video])
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', alist, '-c', 'copy', voice])
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-i', video, '-stream_loop', '-1', '-i', music, '-i', voice,
+    '-filter_complex', `[1:a]volume=0.20,afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, total - 2).toFixed(2)}:d=2[m];[2:a]volume=1.0[vo];[vo][m]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=-16:TP=-1.5:LRA=11[a]`,
+    '-map', '0:v', '-map', '[a]', '-t', total.toFixed(2), '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', out])
+  for (const s of [...segs, ...auds]) fs.rm(s, { force: true }).catch(() => {})
   return { out, seconds: Math.round(total) }
 }
 
