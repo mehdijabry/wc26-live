@@ -139,8 +139,9 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
   })
   fc.push(`[${cur}]format=yuv420p,setsar=1,fade=t=in:st=0:d=${fadeIn},fade=t=out:st=${Math.max(0, total - fadeOut).toFixed(2)}:d=${fadeOut}${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
-    // veryfast + stillimage tune + crf 19: no quality "breathing" on static text (Mehdi: « les images tremblent »)
-    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'stillimage', '-crf', '19', '-an', '-movflags', '+faststart', out])
+    // ultrafast (veryfast OOM-killed the 512 MB instance on 2026-09-10) + stillimage tune + crf 19;
+    // the "trembling" came from the per-frame pulse rescales, now removed.
+    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-crf', '19', '-an', '-movflags', '+faststart', out])
   return out
 }
 
