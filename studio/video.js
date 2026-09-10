@@ -28,7 +28,7 @@ export async function musicPath(kind) {
   const file = MUSIC[kind] || MUSIC.article
   // Cache key versioned: bump when a signature track is replaced on the site
   // (v2 = new match-day jingle, Mehdi 2026-09-08).
-  const p = path.join(os.tmpdir(), 'p90-v2-' + file)
+  const p = path.join(os.tmpdir(), 'p90-v3-' + file)
   try { await fs.access(p); return p } catch { /* fetch */ }
   const r = await fetch(`${SITE}/audio/${file}`, { headers: { 'user-agent': 'p90-studio/1.0' } })
   if (!r.ok) throw new Error('music fetch failed ' + r.status)
@@ -139,7 +139,8 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
   })
   fc.push(`[${cur}]format=yuv420p,setsar=1,fade=t=in:st=0:d=${fadeIn},fade=t=out:st=${Math.max(0, total - fadeOut).toFixed(2)}:d=${fadeOut}${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
-    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '21', '-an', '-movflags', '+faststart', out])
+    // veryfast + stillimage tune + crf 19: no quality "breathing" on static text (Mehdi: « les images tremblent »)
+    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'veryfast', '-tune', 'stillimage', '-crf', '19', '-an', '-movflags', '+faststart', out])
   return out
 }
 
@@ -200,7 +201,8 @@ export async function renderTaleReel({ beats, music, out, buildSpec }) {
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', vlist, '-c', 'copy', video])
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', alist, '-c', 'copy', voice])
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-i', video, '-stream_loop', '-1', '-i', music, '-i', voice,
-    '-filter_complex', `[1:a]volume=0.20,afade=t=in:st=0:d=1,afade=t=out:st=${Math.max(0, total - 2).toFixed(2)}:d=2[m];[2:a]volume=1.0[vo];[vo][m]amix=inputs=2:duration=first:dropout_transition=0,loudnorm=I=-16:TP=-1.5:LRA=11[a]`,
+    // Static gains (no loudnorm: it pumped the bed up between sentences → "background noise"): voice ≈ -16 LUFS, bed well under it.
+    '-filter_complex', `[1:a]volume=0.13,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, total - 2).toFixed(2)}:d=2[m];[2:a]volume=1.7,alimiter=limit=0.92:level=false[vo];[vo][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]`,
     '-map', '0:v', '-map', '[a]', '-t', total.toFixed(2), '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', out])
   for (const s of [...segs, ...auds]) fs.rm(s, { force: true }).catch(() => {})
   return { out, seconds: Math.round(total) }

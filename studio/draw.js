@@ -461,7 +461,7 @@ export async function drawMatchLayers(m, idx, total, heading) {
       { layer: 'head', x: 90, y: 352, w: 900, h: 70, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
       { layer: 'home', x: 90, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
       { layer: 'away', x: 630, y: 700, slide: { dx: 460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
-      { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 2.4, st: 0.6, d: 0.4 }, fade: { st: 0.6, d: 0.15 }, pulse: { amp: 0.02, period: 1.8, st: 1.2 } },
+      { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 2.4, st: 0.6, d: 0.4 }, fade: { st: 0.6, d: 0.15 } },
       { layer: 'pill', x: 340, y: 1380, slide: { dx: 0, dy: 90, st: 1.0, d: 0.4 }, fade: { st: 1.0, d: 0.3 } },
     ],
   }
@@ -517,7 +517,7 @@ export async function drawGoalAnimSpec(g) {
     layers: { bg: L.bg, flash: L.flash, goal: L.goal, home: L.home, away: L.away, score: L.score, scorer: L.scorer, minute: L.minute },
     anims: [
       { layer: 'flash', x: 0, y: 0, fade: { st: 0.25, d: 0.08 }, out: { st: 0.38, d: 0.7 } },
-      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 3.2, st: 0.25, d: 0.45 }, fade: { st: 0.25, d: 0.15 }, pulse: { amp: 0.025, period: 1.8, st: 1.2 } },
+      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 3.2, st: 0.25, d: 0.45 }, fade: { st: 0.25, d: 0.15 } },
       { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -460, dy: 0, st: 0.7, d: 0.6 }, fade: { st: 0.7, d: 0.25 } },
       { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 460, dy: 0, st: 0.7, d: 0.6 }, fade: { st: 0.7, d: 0.25 } },
       { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 70, st: 1.2, d: 0.5 }, fade: { st: 1.2, d: 0.3 } },
@@ -641,7 +641,7 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress) {
     { layer: 'cap', x: 40, y: 430, slide: { dx: 0, dy: 70, st: 0.25, d: 0.55 }, fade: { st: 0.25, d: 0.35 } },
   ]
   const vis = taleVisual(beat.visual, lang, labels)
-  if (vis) { layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: vis.pos[0], y: vis.pos[1], w: vis.w, h: vis.h, pop: { from: 1.9, st: 0.75, d: 0.45 }, fade: { st: 0.75, d: 0.2 }, pulse: { amp: 0.015, period: 2.2, st: 1.5 } }) }
+  if (vis) { layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: vis.pos[0], y: vis.pos[1], w: vis.w, h: vis.h, pop: { from: 1.9, st: 0.75, d: 0.45 }, fade: { st: 0.75, d: 0.2 } }) }
   if (progress) {
     const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 1080, 10)
     layers.bar = PNGb(bar)

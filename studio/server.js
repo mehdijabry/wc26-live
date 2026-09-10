@@ -10,6 +10,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, registerBrandFonts } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
+import edgePkg from 'msedge-tts'
+const { MsEdgeTTS, OUTPUT_FORMAT } = edgePkg
 
 const PORT = process.env.PORT || 10000
 const SECRET = process.env.STUDIO_SECRET || ''
@@ -313,6 +315,27 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
 // Async mode (the worker's cron can't wait minutes for ffmpeg on 0.1 CPU):
 // with `callbackUrl` we answer 202 at once and POST the result to the
 // worker when done. Without it, the render is synchronous (handy for tests).
+// Free neural voices (Microsoft Edge "read aloud" endpoint, no key) — Mehdi,
+// 2026-09-10: Arabic (ar-MA-JamalNeural), English (en-US-AndrewMultilingualNeural),
+// French (fr-FR-HenriNeural). Unofficial endpoint → the worker keeps fallbacks.
+app.post('/tts', async (req, res) => {
+  if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
+  const { text, voice = 'en-US-AndrewMultilingualNeural', rate } = req.body || {}
+  if (!text) return res.status(400).json({ error: 'missing text' })
+  let tts
+  try {
+    tts = new MsEdgeTTS()
+    await tts.setMetadata(String(voice), OUTPUT_FORMAT.AUDIO_24KHZ_96KBITRATE_MONO_MP3)
+    const r = tts.toStream(String(text).slice(0, 3000), rate ? { rate: Number(rate) } : undefined)
+    const chunks = []
+    for await (const c of (r.audioStream || r)) chunks.push(c)
+    const buf = Buffer.concat(chunks)
+    if (buf.length < 1000) throw new Error('empty audio')
+    res.setHeader('content-type', 'audio/mpeg'); res.send(buf)
+  } catch (e) { res.status(502).json({ error: String(e && e.message || e) }) }
+  finally { try { tts && tts.close && tts.close() } catch { /* ignore */ } }
+})
+
 app.post('/render/reel', async (req, res) => {
   const { type, data, voiceUrl, seconds, callbackUrl, jobId } = req.body || {}
   if (!type) return res.status(400).json({ error: 'missing type' })
