@@ -194,7 +194,7 @@ export async function renderTaleReel({ beats, music, out, buildSpec }) {
   const fps = 25
   const dir = path.resolve(path.dirname(out))
   const durs = []
-  for (const b of beats) durs.push(Math.max(b.min ?? 3, (b.voice ? await probeDuration(b.voice) : 4) + 0.5))
+  for (const b of beats) durs.push(Math.max(b.min ?? 3, (b.voice ? await probeDuration(b.voice) : 4) + 0.3))   // 0.3 s pad (was 0.5): tighter cut, Mehdi 2026-09-11
   const total = durs.reduce((a, b) => a + b, 0)
   const segs = [], auds = []
   let t = 0
@@ -208,7 +208,7 @@ export async function renderTaleReel({ beats, music, out, buildSpec }) {
     catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: 0.15, fadeOut: 0.2, small: true, push }) }
     segs.push(seg)
     const aud = path.join(dir, `taud${i}.m4a`)
-    if (beats[i].voice) await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', beats[i].voice, '-af', `adelay=250|250,apad=whole_dur=${d.toFixed(3)}`, '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2', aud])
+    if (beats[i].voice) await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', beats[i].voice, '-af', `adelay=150|150,apad=whole_dur=${d.toFixed(3)}`, '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2', aud])
     else await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', aud])
     auds.push(aud)
     t += d
