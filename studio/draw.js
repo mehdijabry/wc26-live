@@ -52,6 +52,9 @@ export async function loadImg(src) {
     if (!r.ok) throw new Error('http ' + r.status)
     const img = await loadImage(Buffer.from(await r.arrayBuffer()))
     if (imgCache.size > 40) imgCache.clear()
+    // Bounded cache: decoded photos are 5-8 MB each; unbounded growth across consecutive renders
+    // pushed the 512 MB instance over the limit (restart on 2026-09-11 11:08).
+    if (imgCache.size >= 6) imgCache.clear()
     imgCache.set(src, img)
     return img
   } catch (e) { console.warn('img', src.slice(0, 80), e.message); return null }
