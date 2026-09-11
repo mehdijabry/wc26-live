@@ -371,9 +371,17 @@ export async function drawArticlePost(a) {
   await paintBrandRow(ctx, 60, 728, 78)
   ctx.fillStyle = GOLD; ctx.textAlign = 'right'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('N E W   A R T I C L E', W - 64, 782)
   const titleTop = 910
-  ctx.fillStyle = GOLD; ctx.fillRect(60, titleTop - 50, 10, 168)
-  ctx.fillStyle = CREAM; ctx.font = '62px Anton'; ctx.textAlign = 'left'
-  wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 104, titleTop + i * 80))
+  if (a.lang === 'ar') {
+    // Arabic headline: Tajawal, right-aligned, gold bar on the right
+    ctx.fillStyle = GOLD; ctx.fillRect(W - 70, titleTop - 50, 10, 168)
+    ctx.fillStyle = CREAM; ctx.font = 'bold 60px Tajawal'; ctx.textAlign = 'right'
+    wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, W - 104, titleTop + i * 80))
+    ctx.textAlign = 'left'
+  } else {
+    ctx.fillStyle = GOLD; ctx.fillRect(60, titleTop - 50, 10, 168)
+    ctx.fillStyle = CREAM; ctx.font = '62px Anton'; ctx.textAlign = 'left'
+    wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 104, titleTop + i * 80))
+  }
   const qrCard = 190, qrX = W - 60 - qrCard, qrY = H - 60 - qrCard
   await drawQR(ctx, `${SITE}/news/${a.slug}?ref=fb-post`, qrX, qrY, qrCard)
   ctx.fillStyle = GOLD; roundedPath(ctx, 60, qrY + 30, 340, 58, 29); ctx.fill()
@@ -429,7 +437,7 @@ export async function drawArticleStory(a) {
 const PNG = (c) => c.toBuffer('image/png')
 
 /** Match slide (matchday / results): bg + home + away + score + pill. */
-export async function drawMatchLayers(m, idx, total, heading) {
+export async function drawMatchLayers(m, idx, total, heading, lang) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
@@ -443,7 +451,7 @@ export async function drawMatchLayers(m, idx, total, heading) {
     ctx.fillStyle = 'rgba(243,239,230,0.5)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('pressing90.live', W / 2, 1700)
     ctx.fillStyle = GOLD; ctx.font = '26px "IBM Plex Mono"'; ctx.fillText(`${idx + 1} / ${total}`, W / 2, 1760) }
   const head = createCanvas(900, 70); { const ctx = ctx2d(head)
-    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '44px "IBM Plex Mono"'; ctx.fillText(heading || "TODAY'S MATCHES", 450, 52) }
+    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = lang === 'ar' ? 'bold 46px Tajawal' : '44px "IBM Plex Mono"'; ctx.fillText(heading || "TODAY'S MATCHES", 450, 52) }
   const size = 300
   const [hImg, aImg] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
   const team = (img, name) => { const c = createCanvas(360, 440); const ctx = ctx2d(c)
@@ -460,7 +468,14 @@ export async function drawMatchLayers(m, idx, total, heading) {
     else if (m.time) { ctx.fillStyle = GOLD; roundedPath(ctx, 30, 0, 340, 90, 45); ctx.fill(); ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(m.time, 200, 60) } }
   return {
     layers: { bg: PNG(bg), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill) },
-    anims: [
+    // First slide: everything readable from the first frame (audit: viewers leave within 3 s), later slides animate in.
+    anims: idx === 0 ? [
+      { layer: 'head', x: 90, y: 352, w: 900, h: 70, fade: { st: 0, d: 0.1 } },
+      { layer: 'home', x: 90, y: 700, fade: { st: 0, d: 0.1 } },
+      { layer: 'away', x: 630, y: 700, fade: { st: 0, d: 0.1 } },
+      { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 1.6, st: 0.05, d: 0.3 }, fade: { st: 0, d: 0.1 } },
+      { layer: 'pill', x: 340, y: 1380, fade: { st: 0.2, d: 0.2 } },
+    ] : [
       { layer: 'head', x: 90, y: 352, w: 900, h: 70, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
       { layer: 'home', x: 90, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
       { layer: 'away', x: 630, y: 700, slide: { dx: 460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
@@ -707,21 +722,23 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
   const hot = glow === 'gold' ? GOLD : GREEN
   const dur = timing.dur || 6
   const photo = beat.imageUrl ? await talePhoto(beat.imageUrl, beat.credit).catch(() => null) : null
+  const first = !!beat.first   // hook beat: the claim must be readable at frame 0 (average play time was 3 s)
   if (photo) {
     // Reportage layout: photo on top (slow pan), kicker + caption in the lower third, visual only if it is a scoreboard.
     const layers = { bg: PNGb(taleBg(glow)), photo: PNGb(photo), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
     const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
     layers.line = PNGb(line)
     const anims = [
-      { layer: 'photo', x: -110, y: 0, drift: { dx: 110, dy: 0, dur: Math.max(4, dur) }, fade: { st: 0, d: 0.35 } },
-      { layer: 'kicker', x: 60, y: 1150, w: 960, h: 80, pop: { from: 1.7, st: 0.1, d: 0.35 }, fade: { st: 0.1, d: 0.2 } },
-      { layer: 'line', x: 380, y: 1222, grow: { st: 0.35, d: 0.45 } },
+      { layer: 'photo', x: -110, y: 0, drift: { dx: 110, dy: 0, dur: Math.max(4, dur) }, fade: { st: 0, d: first ? 0.05 : 0.35 } },
+      { layer: 'kicker', x: 60, y: 1150, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.1, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: 0.1 } },
+      { layer: 'line', x: 380, y: 1222, grow: { st: first ? 0.05 : 0.35, d: 0.45 } },
     ]
-    const { frames } = taleCaptionFrames(beat.caption || '', lang, Math.min(beat.capSize || 76, 76), hot)
+    const capFrames = taleCaptionFrames(beat.caption || '', lang, Math.min(beat.capSize || 76, 76), hot).frames
+    const frames = first ? [capFrames[capFrames.length - 1]] : capFrames
     const span = Math.min(Math.max(1.2, (timing.voiceDur || dur * 0.7) * 0.65), 6)
     frames.forEach((buf, k) => {
       layers[`w${k}`] = buf
-      const st = 0.4 + (k / Math.max(1, frames.length - 1)) * span
+      const st = first ? 0 : 0.4 + (k / Math.max(1, frames.length - 1)) * span
       const en = k < frames.length - 1 ? 0.4 + ((k + 1) / Math.max(1, frames.length - 1)) * span : undefined
       anims.push({ layer: `w${k}`, x: 40, y: 1270, show: { st: +st.toFixed(3), en: en != null ? +en.toFixed(3) : undefined } })
     })
@@ -737,15 +754,16 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
   layers.line = PNGb(line)
   const anims = [
     { layer: 'glow', x: -160, y: 100, drift: { dx: 400, dy: 260, dur: Math.max(4, dur) } },
-    { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: 1.7, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
-    { layer: 'line', x: 380, y: 372, grow: { st: 0.3, d: 0.45 } },
+    { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.05, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: 0.1 } },
+    { layer: 'line', x: 380, y: 372, grow: { st: first ? 0.05 : 0.3, d: 0.45 } },
   ]
-  // word-by-word caption: words land across the first ~65 % of the voice (or of the beat when silent)
-  const { frames } = taleCaptionFrames(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot)
+  // word-by-word caption: words land across the first ~65 % of the voice; the hook beat shows the whole claim at once
+  const allFrames = taleCaptionFrames(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot).frames
+  const frames = first ? [allFrames[allFrames.length - 1]] : allFrames
   const span = Math.min(Math.max(1.2, (timing.voiceDur || dur * 0.7) * 0.65), 6)
   frames.forEach((buf, k) => {
     layers[`w${k}`] = buf
-    const st = 0.35 + (k / Math.max(1, frames.length - 1)) * span
+    const st = first ? 0 : 0.35 + (k / Math.max(1, frames.length - 1)) * span
     const en = k < frames.length - 1 ? 0.35 + ((k + 1) / Math.max(1, frames.length - 1)) * span : undefined
     anims.push({ layer: `w${k}`, x: 40, y: 430, show: { st: +st.toFixed(3), en: en != null ? +en.toFixed(3) : undefined } })
   })

@@ -207,7 +207,7 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         const music = await musicPath('tale')
         const out = path.join(dir, 'reel.mp4')
         const { seconds: len } = await renderTaleReel({ beats, music, out, buildSpec: async (i, progress, timing) => {
-          const L = await drawTaleBeatLayers(beatsIn[i], lang, labels, progress, timing)
+          const L = await drawTaleBeatLayers({ ...beatsIn[i], first: i === 0 }, lang, labels, progress, timing)
           const layers = {}
           for (const [k, buf] of Object.entries(L.layers)) { layers[k] = path.join(dir, `t${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
           return { layers, anims: L.anims }
@@ -220,7 +220,7 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []
-        if (type === 'matchday') { const ms = (data.matches || []).slice(0, 10); for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading)) }
+        if (type === 'matchday') { const ms = (data.matches || []).slice(0, 10); for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang)) }
         else if (type === 'goal') specs.push(await drawGoalAnimSpec(data))
         else if (type === 'article') specs.push(await drawArticleLayers(data))
         else for (const art of (data.articles || []).slice(0, 4)) specs.push(await drawArticleLayers(art))
