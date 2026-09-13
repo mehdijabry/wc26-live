@@ -651,7 +651,7 @@ function taleCaption(text, lang, size, hotColor) {
   const rtl = lang === 'ar'
   lines.forEach((l, i) => {
     const y = size + i * lh
-    const words = l.split(' ').filter(Boolean)
+    const words = l.split(' ').filter((w) => taleWord(w, rtl).length > 0)   // an emoji-only word would leave an empty highlight box
     const widths = words.map((w) => ctx.measureText(taleWord(w, rtl)).width)
     const space = ctx.measureText(' ').width
     const total = widths.reduce((s, w) => s + w, 0) + space * (words.length - 1)
@@ -736,7 +736,7 @@ function taleCaptionFrames(text, lang, size, hotColor) {
   const placed = []
   lines.forEach((l, i) => {
     const y = size + i * lh
-    const words = l.split(' ').filter(Boolean)
+    const words = l.split(' ').filter((w) => taleWord(w, rtl).length > 0)   // an emoji-only word would leave an empty highlight box
     const widths = words.map((w) => m.measureText(taleWord(w, rtl)).width)
     const space = m.measureText(' ').width
     const total = widths.reduce((s, w) => s + w, 0) + space * (words.length - 1)
