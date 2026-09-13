@@ -8,7 +8,7 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, registerBrandFonts } from './draw.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
 import edgePkg from 'msedge-tts'
 const { MsEdgeTTS, OUTPUT_FORMAT } = edgePkg
@@ -166,10 +166,11 @@ async function upload(key, buf, contentType) {
 const stamp = () => new Date().toISOString().slice(0, 10) + '-' + Math.random().toString(36).slice(2, 8)
 
 app.post('/render/image', async (req, res) => {
-  const { type, data } = req.body || {}
+  const { type, data, theme } = req.body || {}
   try {
     const url = await serialize(async () => {
       registerBrandFonts()
+      setTheme(theme || (data && data.theme) || process.env.P90_THEME || 'barca')
       let canvas
       switch (type) {
         case 'score': canvas = await drawScoreCard(data); break
@@ -189,7 +190,8 @@ app.post('/render/image', async (req, res) => {
 })
 
 /** Full reel render (scenes → ffmpeg → upload). Shared by sync + async modes. */
-async function buildReel({ type, data, voiceUrl, seconds }) {
+async function buildReel({ type, data, voiceUrl, seconds, theme }) {
+  setTheme(theme || (data && data.theme) || process.env.P90_THEME || 'barca')
       registerBrandFonts()
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-'))
       // ── Football Stories (Mehdi, 2026-09-10): beats with their own voice clips ──
@@ -337,11 +339,11 @@ app.post('/tts', async (req, res) => {
 })
 
 app.post('/render/reel', async (req, res) => {
-  const { type, data, voiceUrl, seconds, callbackUrl, jobId } = req.body || {}
+  const { type, data, voiceUrl, seconds, callbackUrl, jobId, theme } = req.body || {}
   if (!type) return res.status(400).json({ error: 'missing type' })
   if (callbackUrl && jobId) {
     res.status(202).json({ ok: true, queued: true, jobId, pending })
-    serialize(() => buildReel({ type, data, voiceUrl, seconds }))
+    serialize(() => buildReel({ type, data, voiceUrl, seconds, theme }))
       .then((r) => ({ jobId, ok: true, ...r }))
       .catch((e) => ({ jobId, ok: false, error: String(e.message || e) }))
       .then(async (payload) => {
@@ -352,7 +354,7 @@ app.post('/render/reel', async (req, res) => {
     return
   }
   try {
-    const result = await serialize(() => buildReel({ type, data, voiceUrl, seconds }))
+    const result = await serialize(() => buildReel({ type, data, voiceUrl, seconds, theme }))
     res.json({ ok: true, ...result })
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })

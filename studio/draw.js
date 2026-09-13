@@ -8,11 +8,33 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-export const NIGHT = '#071B30'
-export const CREAM = '#F3EFE6'
-export const GOLD = '#D9B54A'
-export const RED = '#FF4D5E'
-export const GREEN = '#41C97C'
+// ─── Themes (Mehdi, 2026-09-13) ──────────────────────────────────────────
+// 'p90'   = the original navy / gold / green identity (kept for the future
+//           general page and its sub-brands);
+// 'barca' = « nuit blaugrana » for this page, born as a Barça fan page: deeper
+//           blue night, garnet instead of green, warmer gold, a blaugrana chip
+//           next to the wordmark and a Barça tagline.
+// Only the palette, tagline and chip change — logo, layouts and typography are
+// shared. The official crest is NEVER part of the brand mark (trademark): it
+// only appears inside match graphics (ESPN crests), like any other club.
+export const THEMES = {
+  p90:   { NIGHT: '#071B30', CREAM: '#F3EFE6', GOLD: '#D9B54A', RED: '#FF4D5E', GREEN: '#41C97C', LOSER: '#FF4D5E', PHOTO: '#12314F', rgb: { night: '7,27,48', gold: '217,181,74', accent: '65,201,124', flash: '120,255,180' }, tagline: 'L I V E   F O O T B A L L   S C O R E S', chip: null },
+  barca: { NIGHT: '#0B1F4B', CREAM: '#F3EFE6', GOLD: '#E4B93E', RED: '#FF4D5E', GREEN: '#D0103A', LOSER: 'rgba(243,239,230,0.5)', PHOTO: '#173463', rgb: { night: '11,31,75', gold: '228,185,62', accent: '208,16,58', flash: '255,150,170' }, tagline: 'B A R Ç A   ·   L I V E   S C O R E S   ·   N E W S', chip: ['#004D98', '#A50044'] },
+}
+export let THEME = 'barca'
+export let NIGHT = THEMES.barca.NIGHT, CREAM = THEMES.barca.CREAM, GOLD = THEMES.barca.GOLD, RED = THEMES.barca.RED, GREEN = THEMES.barca.GREEN, LOSER = THEMES.barca.LOSER, PHOTO = THEMES.barca.PHOTO
+let RGB = THEMES.barca.rgb, TAGLINE = THEMES.barca.tagline, CHIP = THEMES.barca.chip
+export function setTheme(name) {
+  const key = THEMES[name] ? name : 'barca'
+  const t = THEMES[key]
+  THEME = key; NIGHT = t.NIGHT; CREAM = t.CREAM; GOLD = t.GOLD; RED = t.RED; GREEN = t.GREEN; LOSER = t.LOSER; PHOTO = t.PHOTO; RGB = t.rgb; TAGLINE = t.tagline; CHIP = t.chip
+  return key
+}
+setTheme(process.env.P90_THEME || 'barca')
+const night = (a) => `rgba(${RGB.night},${a})`
+const gold = (a) => `rgba(${RGB.gold},${a})`
+const accent = (a) => `rgba(${RGB.accent},${a})`
+const flashTint = (a) => `rgba(${RGB.flash},${a})`
 const SITE = process.env.SITE_URL || 'https://pressing90.live'
 
 /** 2D context with the best resampling / anti-aliasing node-canvas offers. */
@@ -62,11 +84,27 @@ export async function loadImg(src) {
 
 /** Brand mark drawn natively (mirror of public/p90-logo.svg): navy tile,
  *  gold "90’", pitch line + centre circle. */
-function paintLogo(ctx, x, y, size) {
+export function paintLogo(ctx, x, y, size) {
   const s = size / 512
   ctx.save()
   ctx.translate(x, y)
   ctx.scale(s, s)
+  if (THEME === 'barca') {
+    // Our own mark, inspired by the Senyera (Mehdi, 2026-09-13): 9 bands — 5 gold,
+    // 4 red — under a night-blue "90’". Not a club crest, not the official flag.
+    roundedPath(ctx, 0, 0, 512, 512, 96); ctx.save(); ctx.clip()
+    ctx.fillStyle = '#F2C230'; ctx.fillRect(0, 0, 512, 512)
+    ctx.fillStyle = '#C8102E'
+    for (let i = 1; i < 9; i += 2) ctx.fillRect(0, Math.round(i * 512 / 9), 512, Math.round(512 / 9) + 1)
+    ctx.restore()
+    ctx.font = '236px Anton'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5
+    ctx.lineJoin = 'round'; ctx.lineWidth = 10; ctx.strokeStyle = '#0B1F4B'; ctx.strokeText('90’', 250, 344)
+    ctx.shadowColor = 'transparent'
+    ctx.fillStyle = '#0B1F4B'; ctx.fillText('90’', 250, 344)
+    ctx.restore()
+    return
+  }
   roundedPath(ctx, 0, 0, 512, 512, 96)
   ctx.fillStyle = '#0a2540'; ctx.fill()
   ctx.fillStyle = '#d4af37'
@@ -128,14 +166,14 @@ function paintGround(ctx, W, H) {
   ctx.fillStyle = NIGHT
   ctx.fillRect(0, 0, W, H)
   const g1 = ctx.createRadialGradient(140, -100, 0, 140, -100, 900)
-  g1.addColorStop(0, 'rgba(217,181,74,0.16)'); g1.addColorStop(1, 'rgba(217,181,74,0)')
+  g1.addColorStop(0, gold(0.16)); g1.addColorStop(1, gold(0))
   ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
   const g2 = ctx.createRadialGradient(W, H, 0, W, H, 1100)
-  g2.addColorStop(0, 'rgba(217,181,74,0.10)'); g2.addColorStop(1, 'rgba(217,181,74,0)')
+  g2.addColorStop(0, gold(0.10)); g2.addColorStop(1, gold(0))
   ctx.fillStyle = g2; ctx.fillRect(0, 0, W, H)
 }
 
-async function paintBrandRow(ctx, x = 60, y = 70, size = 110) {
+export async function paintBrandRow(ctx, x = 60, y = 70, size = 110) {
   paintLogo(ctx, x, y, size)
   const s = size / 110
   ctx.textAlign = 'left'
@@ -147,9 +185,14 @@ async function paintBrandRow(ctx, x = 60, y = 70, size = 110) {
   const pw = ctx.measureText('Pressing ').width
   ctx.fillStyle = GOLD
   ctx.fillText('90’', tx + pw, ty)
+  if (CHIP) {   // blaugrana chip: two bars, our own mark — not the club crest
+    const cx = tx + pw + ctx.measureText('90’').width + 26 * s, cy = ty - 46 * s, bw = 12 * s, bh = 50 * s
+    ctx.fillStyle = CHIP[0]; roundedPath(ctx, cx, cy, bw, bh, 4 * s); ctx.fill()
+    ctx.fillStyle = CHIP[1]; roundedPath(ctx, cx + bw + 6 * s, cy, bw, bh, 4 * s); ctx.fill()
+  }
   ctx.fillStyle = 'rgba(243,239,230,0.55)'
   ctx.font = `${Math.round(26 * s)}px "IBM Plex Mono"`
-  ctx.fillText('L I V E   F O O T B A L L   S C O R E S', tx + 2, ty + 42 * s)
+  ctx.fillText(TAGLINE, tx + 2, ty + 42 * s)
 }
 
 /** Gold monogram for clubs ESPN has no crest for (same idea as the site). */
@@ -206,8 +249,8 @@ export async function drawScoreCard(m) {
   ctx.drawImage(h, 90, cy - size / 2, size, size)
   ctx.drawImage(a, W - 90 - size, cy - size / 2, size, size)
   const hs = Number(m.homeScore ?? 0), as = Number(m.awayScore ?? 0)
-  const hCol = hs === as ? CREAM : hs > as ? GREEN : RED
-  const aCol = hs === as ? CREAM : as > hs ? GREEN : RED
+  const hCol = hs === as ? CREAM : hs > as ? GREEN : LOSER
+  const aCol = hs === as ? CREAM : as > hs ? GREEN : LOSER
   ctx.font = '190px Anton'
   ctx.textAlign = 'center'
   ctx.fillStyle = hCol; ctx.fillText(String(hs), W / 2 - 120, cy + 68)
@@ -325,7 +368,7 @@ export async function drawMatchSlide(m, idx, total, heading) {
   const ctx = ctx2d(c)
   ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
   const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
-  g1.addColorStop(0, 'rgba(217,181,74,0.14)'); g1.addColorStop(1, 'rgba(217,181,74,0)')
+  g1.addColorStop(0, gold(0.14)); g1.addColorStop(1, gold(0))
   ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
   paintLogo(ctx, W / 2 - 55, 120, 110)
   ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
@@ -365,7 +408,7 @@ export async function drawArticlePost(a) {
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, PHOTO_H); ctx.clip()
     ctx.drawImage(img, (W - dw) / 2, (PHOTO_H - dh) / 2, dw, dh); ctx.restore()
     const fade = ctx.createLinearGradient(0, PHOTO_H - 240, 0, PHOTO_H)
-    fade.addColorStop(0, 'rgba(7,27,48,0)'); fade.addColorStop(1, 'rgba(7,27,48,1)')
+    fade.addColorStop(0, night(0)); fade.addColorStop(1, night(1))
     ctx.fillStyle = fade; ctx.fillRect(0, PHOTO_H - 240, W, 240)
   }
   await paintBrandRow(ctx, 60, 728, 78)
@@ -408,7 +451,7 @@ export async function drawArticleStory(a) {
     const dw = img.width * s, dh = img.height * s
     ctx.drawImage(img, 60 + ((W - 120) - dw) / 2, y + (h - dh) / 2, dw, dh)
     const fade = ctx.createLinearGradient(0, y + h - 260, 0, y + h)
-    fade.addColorStop(0, 'rgba(7,27,48,0)'); fade.addColorStop(1, 'rgba(7,27,48,0.92)')
+    fade.addColorStop(0, night(0)); fade.addColorStop(1, night(0.92))
     ctx.fillStyle = fade; ctx.fillRect(60, y, W - 120, h); ctx.restore()
   }
   const titleTop = 1190
@@ -443,7 +486,7 @@ export async function drawMatchLayers(m, idx, total, heading, lang) {
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
     ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
     const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
-    g1.addColorStop(0, 'rgba(217,181,74,0.14)'); g1.addColorStop(1, 'rgba(217,181,74,0)')
+    g1.addColorStop(0, gold(0.14)); g1.addColorStop(1, gold(0))
     ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
     paintLogo(ctx, W / 2 - 55, 120, 110)
     ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
@@ -501,9 +544,9 @@ export async function drawArticleLayers(a, heading, lang) {
     const img = await loadImg(a.image_url)
     roundedPath(ctx, 0, 0, pw, ph, 36); ctx.save(); ctx.clip()
     if (img) { const s = Math.max(pw / img.width, ph / img.height); const dw = img.width * s, dh = img.height * s; ctx.drawImage(img, (pw - dw) / 2, (ph - dh) / 2, dw, dh) }
-    else { ctx.fillStyle = '#12314F'; ctx.fillRect(0, 0, pw, ph) }
+    else { ctx.fillStyle = PHOTO; ctx.fillRect(0, 0, pw, ph) }
     const fade = ctx.createLinearGradient(0, ph - 260, 0, ph)
-    fade.addColorStop(0, 'rgba(7,27,48,0)'); fade.addColorStop(1, 'rgba(7,27,48,0.92)')
+    fade.addColorStop(0, night(0)); fade.addColorStop(1, night(0.92))
     ctx.fillStyle = fade; ctx.fillRect(0, 0, pw, ph); ctx.restore() }
   const title = createCanvas(960, 340); { const ctx = ctx2d(title)
     if (ar) {
@@ -573,7 +616,7 @@ function taleBg(glow) {
   const c = createCanvas(W, H); const ctx = ctx2d(c)
   ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
   const g = ctx.createRadialGradient(W / 2, 700, 0, W / 2, 700, 1000)
-  g.addColorStop(0, glow === 'gold' ? 'rgba(217,181,74,0.16)' : 'rgba(65,201,124,0.16)'); g.addColorStop(1, 'rgba(0,0,0,0)')
+  g.addColorStop(0, glow === 'gold' ? gold(0.16) : accent(0.16)); g.addColorStop(1, 'rgba(0,0,0,0)')
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
   const v = ctx.createRadialGradient(W / 2, H / 2, 500, W / 2, H / 2, 1300); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)')
   ctx.fillStyle = v; ctx.fillRect(0, 0, W, H)
@@ -618,7 +661,7 @@ function taleCaption(text, lang, size, hotColor) {
       const hot = isHot(w)
       const ww = widths[k]
       const wx = rtl ? x - ww : x
-      if (hot) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = hotColor === GOLD ? 'rgba(217,181,74,0.18)' : 'rgba(65,201,124,0.18)'; roundedPath(ctx, wx - 10, y - size * 0.86, ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
+      if (hot) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = hotColor === GOLD ? gold(0.18) : accent(0.18); roundedPath(ctx, wx - 10, y - size * 0.86, ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
       ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6
       ctx.fillStyle = hot ? hotColor : CREAM
       ctx.fillText(taleWord(w, rtl), wx, y)
@@ -634,7 +677,7 @@ function taleBadge(code, colors) { const c = createCanvas(220, 220); const ctx =
   ctx.beginPath(); ctx.arc(cx, cy, 62, 0, Math.PI * 2); ctx.fillStyle = NIGHT; ctx.fill()
   ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'; ctx.fillText(code, cx, cy + 16); return c }
 function taleScoreboard(v, lang) { const c = createCanvas(960, 300); const ctx = ctx2d(c)
-  roundedPath(ctx, 0, 20, 960, 260, 40); ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(217,181,74,0.5)'; ctx.stroke()
+  roundedPath(ctx, 0, 20, 960, 260, 40); ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = gold(0.5); ctx.stroke()
   ctx.drawImage(taleBadge(v.hCode, v.hColors), 50, 40, 190, 190); ctx.drawImage(taleBadge(v.aCode, v.aColors), 720, 40, 190, 190)
   ctx.textAlign = 'center'; ctx.font = String(v.h).length > 2 || String(v.a).length > 2 ? '110px Anton' : '150px Anton'
   ctx.fillStyle = v.hl === 'h' ? GREEN : CREAM; ctx.fillText(String(v.h), 390, 200)
@@ -645,7 +688,7 @@ function taleScoreboard(v, lang) { const c = createCanvas(960, 300); const ctx =
   return c }
 function taleMark(text, color) { const size = text.length > 4 ? 260 : text.length > 2 ? 340 : 420; const c = createCanvas(960, 520); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = color === 'gold' ? GOLD : GREEN; ctx.font = `${size}px Anton`; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 30; ctx.fillText(text, 480, 260 + size * 0.38); return c }
 function talePitch(v, lang) { const c = createCanvas(960, 560); const ctx = ctx2d(c)
-  roundedPath(ctx, 30, 30, 900, 500, 24); ctx.fillStyle = 'rgba(65,201,124,0.10)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(243,239,230,0.6)'; ctx.stroke()
+  roundedPath(ctx, 30, 30, 900, 500, 24); ctx.fillStyle = accent(0.10); ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(243,239,230,0.6)'; ctx.stroke()
   ctx.beginPath(); ctx.moveTo(480, 30); ctx.lineTo(480, 530); ctx.stroke(); ctx.beginPath(); ctx.arc(480, 280, 90, 0, Math.PI * 2); ctx.stroke()
   ctx.strokeRect(30, 150, 120, 260); ctx.strokeRect(810, 150, 120, 260)
   ctx.fillStyle = GOLD; ctx.fillRect(18, 220, 12, 120); ctx.fillRect(930, 220, 12, 120)
@@ -665,7 +708,7 @@ function taleCta(labels, lang) { const c = createCanvas(960, 420); const ctx = c
   // Mehdi, 2026-09-13: Meta demotes explicit like / comment asks (engagement bait) — only the follow pill stays.
   pill(335, labels.follow, GOLD, 'plus')
   ctx.fillStyle = 'rgba(243,239,230,0.85)'; ctx.font = TALE_MONO(lang, 34); ctx.fillText(labels.full, 480, 190)
-  roundedPath(ctx, 130, 240, 700, 120, 30); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(217,181,74,0.6)'; ctx.lineWidth = 2; ctx.stroke()
+  roundedPath(ctx, 130, 240, 700, 120, 30); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); ctx.strokeStyle = gold(0.6); ctx.lineWidth = 2; ctx.stroke()
   ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 30); ctx.fillText(labels.weekly, 480, 312); return c }
 function taleVisual(v, lang, labels) {
   if (!v) return null
@@ -710,7 +753,7 @@ function taleCaptionFrames(text, lang, size, hotColor) {
     const c = createCanvas(1000, H); const ctx = ctx2d(c); ctx.font = TALE_FONT(lang, size); ctx.textAlign = 'left'
     for (let k = 0; k < n; k++) {
       const p = placed[k]; const newest = k === n - 1
-      if (p.hot || newest) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = (p.hot ? hotColor : CREAM) === GOLD ? 'rgba(217,181,74,0.18)' : (p.hot ? 'rgba(65,201,124,0.18)' : 'rgba(243,239,230,0.12)'); roundedPath(ctx, p.x - 10, p.y - size * 0.86, p.ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
+      if (p.hot || newest) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = (p.hot ? hotColor : CREAM) === GOLD ? gold(0.18) : (p.hot ? accent(0.18) : 'rgba(243,239,230,0.12)'); roundedPath(ctx, p.x - 10, p.y - size * 0.86, p.ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
       ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6
       ctx.fillStyle = p.hot ? hotColor : (newest ? '#FFFFFF' : CREAM)
       ctx.fillText(p.w, p.x, p.y)
@@ -719,7 +762,7 @@ function taleCaptionFrames(text, lang, size, hotColor) {
   }
   return { frames, H }
 }
-function taleGlowBlob(color) { const c = createCanvas(1400, 1400); const ctx = ctx2d(c); const g = ctx.createRadialGradient(700, 700, 0, 700, 700, 700); g.addColorStop(0, color === 'gold' ? 'rgba(217,181,74,0.22)' : 'rgba(65,201,124,0.22)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, 1400, 1400); return c }
+function taleGlowBlob(color) { const c = createCanvas(1400, 1400); const ctx = ctx2d(c); const g = ctx.createRadialGradient(700, 700, 0, 700, 700, 700); g.addColorStop(0, color === 'gold' ? gold(0.22) : accent(0.22)); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, 1400, 1400); return c }
 function taleFlash() { const c = createCanvas(900, 900); const ctx = ctx2d(c); const f = ctx.createRadialGradient(450, 450, 0, 450, 450, 450); f.addColorStop(0, 'rgba(255,255,255,0.55)'); f.addColorStop(0.4, 'rgba(120,255,180,0.18)'); f.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = f; ctx.fillRect(0, 0, 900, 900); return c }
 // "Mini-reportage" photo layer (Mehdi, 2026-09-11): a real, free-licensed
 // photo (Wikimedia Commons) fills the top of the frame, darkened towards
@@ -734,10 +777,10 @@ async function talePhoto(url, credit) {
   const dw = img.width * s, dh = img.height * s
   ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2 - Math.min(0, (dh - H) / 4), dw, dh)
   const fade = ctx.createLinearGradient(0, H - 420, 0, H)
-  fade.addColorStop(0, 'rgba(7,27,48,0)'); fade.addColorStop(1, 'rgba(7,27,48,1)')
+  fade.addColorStop(0, night(0)); fade.addColorStop(1, night(1))
   ctx.fillStyle = fade; ctx.fillRect(0, 0, W, H)
   const top = ctx.createLinearGradient(0, 0, 0, 260)
-  top.addColorStop(0, 'rgba(7,27,48,0.85)'); top.addColorStop(1, 'rgba(7,27,48,0)')
+  top.addColorStop(0, night(0.85)); top.addColorStop(1, night(0))
   ctx.fillStyle = top; ctx.fillRect(0, 0, W, 260)
   if (credit) { ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '20px "IBM Plex Mono"'; ctx.fillText(String(credit).slice(0, 90), 120, H - 24) }
   return c
@@ -814,7 +857,7 @@ export async function drawTaleCover(d) {
   const W = 1200, H = 675
   const c = createCanvas(W, H); const ctx = ctx2d(c)
   ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-  const g = ctx.createRadialGradient(W * 0.3, H * 0.5, 0, W * 0.3, H * 0.5, 800); g.addColorStop(0, 'rgba(65,201,124,0.18)'); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
+  const g = ctx.createRadialGradient(W * 0.3, H * 0.5, 0, W * 0.3, H * 0.5, 800); g.addColorStop(0, accent(0.18)); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
   paintLogo(ctx, 60, 50, 70)
   ctx.textAlign = 'left'; ctx.fillStyle = CREAM; ctx.font = '36px Anton'; ctx.fillText('Pressing 90’', 146, 96)
   ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '20px "IBM Plex Mono"'; ctx.fillText('F O O T B A L L   S T O R I E S', 146, 126)
@@ -823,7 +866,7 @@ export async function drawTaleCover(d) {
   ctx.fillStyle = CREAM; ctx.font = TALE_FONT(lang, 64)
   const lines = wrapLines(ctx, String(d.hook || ''), 760, 4)
   lines.forEach((l, i) => ctx.fillText(l, lang === 'ar' ? W - 60 : 60, 310 + i * 76))
-  if (d.year) { ctx.textAlign = 'right'; ctx.fillStyle = 'rgba(217,181,74,0.25)'; ctx.font = '220px Anton'; ctx.fillText(String(d.year), W - 40, H - 40) }
+  if (d.year) { ctx.textAlign = 'right'; ctx.fillStyle = gold(0.25); ctx.font = '220px Anton'; ctx.fillText(String(d.year), W - 40, H - 40) }
   ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(243,239,230,0.45)'; ctx.font = '22px "IBM Plex Mono"'; ctx.fillText('pressing90.live', 60, H - 40)
   return c
 }
@@ -840,7 +883,7 @@ export async function drawGoalLayers(g) {
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
     ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
     const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
-    glow.addColorStop(0, 'rgba(65,201,124,0.22)'); glow.addColorStop(1, 'rgba(65,201,124,0)')
+    glow.addColorStop(0, accent(0.22)); glow.addColorStop(1, accent(0))
     ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
     paintLogo(ctx, W / 2 - 55, 110, 110)
     ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
@@ -849,7 +892,7 @@ export async function drawGoalLayers(g) {
   // flash: white radial burst behind GOAL! (faded in/out by ffmpeg)
   const flash = createCanvas(W, H); { const ctx = ctx2d(flash)
     const f = ctx.createRadialGradient(W / 2, 540, 0, W / 2, 540, 700)
-    f.addColorStop(0, 'rgba(255,255,255,0.85)'); f.addColorStop(0.35, 'rgba(120,255,180,0.35)'); f.addColorStop(1, 'rgba(255,255,255,0)')
+    f.addColorStop(0, 'rgba(255,255,255,0.85)'); f.addColorStop(0.35, flashTint(0.35)); f.addColorStop(1, 'rgba(255,255,255,0)')
     ctx.fillStyle = f; ctx.fillRect(0, 0, W, H) }
   // goal: "GOAL!" 1000×320, baseline 250 → rests at (40, 370)
   const goal = createCanvas(1000, 320); { const ctx = ctx2d(goal)
@@ -897,7 +940,7 @@ export async function drawGoalSlide(g) {
   const ctx = ctx2d(c)
   ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
   const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
-  glow.addColorStop(0, 'rgba(65,201,124,0.22)'); glow.addColorStop(1, 'rgba(65,201,124,0)')
+  glow.addColorStop(0, accent(0.22)); glow.addColorStop(1, accent(0))
   ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
   paintLogo(ctx, W / 2 - 55, 110, 110)
   ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
