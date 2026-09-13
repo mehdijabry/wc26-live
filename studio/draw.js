@@ -486,12 +486,16 @@ export async function drawMatchLayers(m, idx, total, heading, lang) {
 }
 
 /** Article slide (article reels): bg + kicker + photo + title + QR card. */
-export async function drawArticleLayers(a) {
+// heading + lang (2026-09-13): the Arabic « برشلونة اليوم » digest reuses this
+// layout with Tajawal, right-to-left title and an Arabic QR card.
+export async function drawArticleLayers(a, heading, lang) {
   registerBrandFonts()
   const W = 1080, H = 1920
+  const ar = lang === 'ar'
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg); paintGround(ctx, W, H); await paintBrandRow(ctx) }
   const kicker = createCanvas(900, 70); { const ctx = ctx2d(kicker)
-    ctx.textAlign = 'left'; ctx.fillStyle = GOLD; ctx.font = '36px "IBM Plex Mono"'; ctx.fillText('N E W   A R T I C L E', 0, 50) }
+    if (ar) { ctx.textAlign = 'right'; ctx.fillStyle = GOLD; ctx.font = 'bold 44px Tajawal'; ctx.fillText(heading || 'خبر جديد', 900, 54) }
+    else { ctx.textAlign = 'left'; ctx.fillStyle = GOLD; ctx.font = '36px "IBM Plex Mono"'; ctx.fillText(heading || 'N E W   A R T I C L E', 0, 50) } }
   const pw = W - 120, ph = 760
   const photo = createCanvas(pw, ph); { const ctx = ctx2d(photo)
     const img = await loadImg(a.image_url)
@@ -502,18 +506,30 @@ export async function drawArticleLayers(a) {
     fade.addColorStop(0, 'rgba(7,27,48,0)'); fade.addColorStop(1, 'rgba(7,27,48,0.92)')
     ctx.fillStyle = fade; ctx.fillRect(0, 0, pw, ph); ctx.restore() }
   const title = createCanvas(960, 340); { const ctx = ctx2d(title)
-    ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 10, 190)
-    ctx.fillStyle = CREAM; ctx.font = '72px Anton'; ctx.textAlign = 'left'
-    wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 44, 58 + i * 92)) }
+    if (ar) {
+      ctx.fillStyle = GOLD; ctx.fillRect(950, 0, 10, 190)
+      ctx.fillStyle = CREAM; ctx.font = 'bold 64px Tajawal'; ctx.textAlign = 'right'
+      wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 916, 62 + i * 92))
+    } else {
+      ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 10, 190)
+      ctx.fillStyle = CREAM; ctx.font = '72px Anton'; ctx.textAlign = 'left'
+      wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 44, 58 + i * 92))
+    } }
   const card = createCanvas(960, 320); { const ctx = ctx2d(card)
     roundedPath(ctx, 0, 0, 960, 320, 36); ctx.fillStyle = '#FFFFFF'; ctx.fill()
     const qr = createCanvas(480, 480)
-    await QRCode.toCanvas(qr, `${SITE}/news/${a.slug}?ref=fb-story`, { width: 480, margin: 1, color: { dark: NIGHT, light: '#FFFFFF' } })
+    await QRCode.toCanvas(qr, `${SITE}/news/${a.slug}?${ar ? 'lang=ar&' : ''}ref=fb-story`, { width: 480, margin: 1, color: { dark: NIGHT, light: '#FFFFFF' } })
     ctx.drawImage(qr, 36, 35, 250, 250)
     const tx = 36 + 250 + 44
-    ctx.fillStyle = NIGHT; ctx.font = '52px Anton'; ctx.textAlign = 'left'; ctx.fillText('Scan the QR code', tx, 105)
-    ctx.fillStyle = '#3A4C63'; ctx.font = 'bold 34px Archivo'
-    wrapLines(ctx, 'or visit our profile to read the full article', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, tx, 170 + i * 46))
+    if (ar) {
+      ctx.fillStyle = NIGHT; ctx.font = 'bold 50px Tajawal'; ctx.textAlign = 'right'; ctx.fillText('امسح رمز QR', 924, 100)
+      ctx.fillStyle = '#3A4C63'; ctx.font = '500 34px Tajawal'
+      wrapLines(ctx, 'أو ادخل إلى موقعنا لقراءة الخبر كاملاً', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, 924, 165 + i * 46))
+    } else {
+      ctx.fillStyle = NIGHT; ctx.font = '52px Anton'; ctx.textAlign = 'left'; ctx.fillText('Scan the QR code', tx, 105)
+      ctx.fillStyle = '#3A4C63'; ctx.font = 'bold 34px Archivo'
+      wrapLines(ctx, 'or visit our profile to read the full article', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, tx, 170 + i * 46))
+    }
     ctx.fillStyle = GOLD; roundedPath(ctx, tx, 232, 340, 56, 28); ctx.fill()
     ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', tx + 170, 270) }
   return {
@@ -829,7 +845,7 @@ export async function drawGoalLayers(g) {
     paintLogo(ctx, W / 2 - 55, 110, 110)
     ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
     ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '32px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.league || '', 900, 1)[0], W / 2, 370)
-    ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('LIVE on pressing90.live', W / 2, 1740) }
+    ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText(g.footer || 'LIVE on pressing90.live', W / 2, 1740) }
   // flash: white radial burst behind GOAL! (faded in/out by ffmpeg)
   const flash = createCanvas(W, H); { const ctx = ctx2d(flash)
     const f = ctx.createRadialGradient(W / 2, 540, 0, W / 2, 540, 700)
@@ -837,9 +853,11 @@ export async function drawGoalLayers(g) {
     ctx.fillStyle = f; ctx.fillRect(0, 0, W, H) }
   // goal: "GOAL!" 1000×320, baseline 250 → rests at (40, 370)
   const goal = createCanvas(1000, 320); { const ctx = ctx2d(goal)
-    ctx.textAlign = 'center'; ctx.fillStyle = GREEN; ctx.font = '210px Anton'
+    ctx.textAlign = 'center'; ctx.fillStyle = GREEN
     ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8
-    ctx.fillText('GOAL!', 500, 250) }
+    // g.title overrides "GOAL!" (Barça full-time card, 2026-09-13: 'نهاية المباراة' in Tajawal)
+    if (g.title && g.titleLang === 'ar') { ctx.font = 'bold 150px Tajawal'; ctx.fillText(g.title, 500, 235) }
+    else { ctx.font = '210px Anton'; ctx.fillText(g.title || 'GOAL!', 500, 250) } }
   // crests + names 360×420 each (crest 260 at (50,0), names below)
   const size = 260
   const [hImg, aImg] = await Promise.all([crest(g.homeLogo, g.home), crest(g.awayLogo, g.away)])
@@ -862,7 +880,7 @@ export async function drawGoalLayers(g) {
     const pw = Math.min(980, Math.max(420, ctx.measureText(label).width + 120))
     roundedPath(ctx, 500 - pw / 2, 0, pw, 110, 55); ctx.fillStyle = GREEN; ctx.fill()
     ctx.fillStyle = NIGHT; ctx.fillText(wrapLines(ctx, label, pw - 80, 1)[0], 500, 77)
-    if (g.assist) { ctx.fillStyle = 'rgba(243,239,230,0.8)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, `Assist · ${g.assist}`, 900, 1)[0], 500, 170) } }
+    if (g.assist) { ctx.fillStyle = 'rgba(243,239,230,0.8)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.assistLabel === '' ? g.assist : `${g.assistLabel || 'Assist'} · ${g.assist}`, 900, 1)[0], 500, 170) } }
   // minute 400×90, baseline 70 → rests at (340, 1450)
   const minute = createCanvas(400, 90); { const ctx = ctx2d(minute)
     ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '64px "IBM Plex Mono"'; ctx.fillText(g.minute ? `${g.minute}` : '', 200, 70) }

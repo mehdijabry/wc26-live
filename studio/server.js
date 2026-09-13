@@ -223,7 +223,7 @@ async function buildReel({ type, data, voiceUrl, seconds }) {
         if (type === 'matchday') { const ms = (data.matches || []).slice(0, 10); for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang)) }
         else if (type === 'goal') specs.push(await drawGoalAnimSpec(data))
         else if (type === 'article') specs.push(await drawArticleLayers(data))
-        else for (const art of (data.articles || []).slice(0, 4)) specs.push(await drawArticleLayers(art))
+        else for (const art of (data.articles || []).slice(0, 4)) specs.push(await drawArticleLayers(art, data.heading, data.lang))
         if (specs.length === 0) throw new Error('no scenes')
         const slides = []
         for (let i = 0; i < specs.length; i++) {
