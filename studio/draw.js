@@ -522,7 +522,7 @@ export async function drawArticleLayers(a, heading, lang) {
     ctx.drawImage(qr, 36, 35, 250, 250)
     const tx = 36 + 250 + 44
     if (ar) {
-      ctx.fillStyle = NIGHT; ctx.font = 'bold 50px Tajawal'; ctx.textAlign = 'right'; ctx.fillText('امسح رمز QR', 924, 100)
+      ctx.fillStyle = NIGHT; ctx.font = 'bold 50px Tajawal'; ctx.textAlign = 'right'; ctx.fillText('امسح الرمز', 924, 100)   // no Latin inside the Arabic line (bidi flips it)
       ctx.fillStyle = '#3A4C63'; ctx.font = '500 34px Tajawal'
       wrapLines(ctx, 'أو ادخل إلى موقعنا لقراءة الخبر كاملاً', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, 924, 165 + i * 46))
     } else {
