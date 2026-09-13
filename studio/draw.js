@@ -637,7 +637,8 @@ function taleCta(labels, lang) { const c = createCanvas(960, 420); const ctx = c
     bubble: (x, y) => { roundedPath(ctx, x - 18, y - 20, 36, 26, 8); ctx.fill(); ctx.beginPath(); ctx.moveTo(x - 8, y + 5); ctx.lineTo(x - 2, y + 14); ctx.lineTo(x + 4, y + 5); ctx.closePath(); ctx.fill() },
     plus: (x, y) => { ctx.fillRect(x - 3, y - 18, 6, 36); ctx.fillRect(x - 18, y - 3, 36, 6) } }
   const pill = (x, label, col, ic) => { roundedPath(ctx, x, 0, 290, 96, 48); ctx.fillStyle = col; ctx.fill(); ctx.fillStyle = NIGHT; icon[ic](x + 46, 48); ctx.font = TALE_FONT(lang, 38); ctx.fillText(label, x + 165, 62) }
-  pill(20, labels.like, GOLD, 'heart'); pill(335, labels.comment, GREEN, 'bubble'); pill(650, labels.follow, CREAM, 'plus')
+  // Mehdi, 2026-09-13: Meta demotes explicit like / comment asks (engagement bait) — only the follow pill stays.
+  pill(335, labels.follow, GOLD, 'plus')
   ctx.fillStyle = 'rgba(243,239,230,0.85)'; ctx.font = TALE_MONO(lang, 34); ctx.fillText(labels.full, 480, 190)
   roundedPath(ctx, 130, 240, 700, 120, 30); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); ctx.strokeStyle = 'rgba(217,181,74,0.6)'; ctx.lineWidth = 2; ctx.stroke()
   ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 30); ctx.fillText(labels.weekly, 480, 312); return c }
