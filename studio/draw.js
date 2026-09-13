@@ -571,6 +571,16 @@ function taleKicker(text, lang) { const c = createCanvas(960, 80); const ctx = c
 // Coloured subtitles (Mehdi, 2026-09-10): key words pop in the accent colour —
 // *marked* words, ALL-CAPS words, numbers / scores / times — with a soft
 // highlight behind them, so the eye catches the important word first.
+// Words as drawn: no *markers*, no emoji (the studio has no colour-emoji font — a
+// 👇 came out as a tofu box on 2026-09-13), and in Arabic a trailing neutral mark
+// (. , : ! …) moves to the front of the word: node-canvas lays the isolated word
+// out left-to-right, so that is the only way the mark lands at the END of the
+// word for a right-to-left reader ("سجل .مدهش" seen on the Adema preview).
+const taleWord = (w, rtl) => {
+  let t = w.replace(/\*/g, '').replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').trim()
+  if (rtl) t = t.replace(/^(.+?)([.,:;!…]+)$/u, '$2$1')
+  return t
+}
 function taleCaption(text, lang, size, hotColor) {
   const m = ctx2d(createCanvas(10, 10)); m.font = TALE_FONT(lang, size)
   const lines = []
@@ -579,12 +589,11 @@ function taleCaption(text, lang, size, hotColor) {
   const c = createCanvas(1000, Math.min(760, Math.round(lines.length * lh + 30))); const ctx = ctx2d(c)
   ctx.font = TALE_FONT(lang, size)
   const isHot = (w) => /^\*.+\*[^\w]*$/.test(w) || /^[A-ZÀ-ÜÉÈÊ][A-ZÀ-ÜÉÈÊ'’-]{2,}[!?.,…:]*$/.test(w) || /\d+[–\-:]\d+|^\d{2,4}[!?.,:]*$|^[£$€]\s?\d|^\d+\s?[£$€%]|^×\d/.test(w)
-  const clean = (w) => w.replace(/\*/g, '')
   const rtl = lang === 'ar'
   lines.forEach((l, i) => {
     const y = size + i * lh
     const words = l.split(' ').filter(Boolean)
-    const widths = words.map((w) => ctx.measureText(clean(w)).width)
+    const widths = words.map((w) => ctx.measureText(taleWord(w, rtl)).width)
     const space = ctx.measureText(' ').width
     const total = widths.reduce((s, w) => s + w, 0) + space * (words.length - 1)
     // right-to-left languages: lay the words out from the right edge
@@ -596,7 +605,7 @@ function taleCaption(text, lang, size, hotColor) {
       if (hot) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = hotColor === GOLD ? 'rgba(217,181,74,0.18)' : 'rgba(65,201,124,0.18)'; roundedPath(ctx, wx - 10, y - size * 0.86, ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
       ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6
       ctx.fillStyle = hot ? hotColor : CREAM
-      ctx.fillText(clean(w), wx, y)
+      ctx.fillText(taleWord(w, rtl), wx, y)
       x = rtl ? wx - space : x + ww + space
     })
   })
@@ -663,18 +672,17 @@ function taleCaptionFrames(text, lang, size, hotColor) {
   const lh = size * (lang === 'ar' ? 1.3 : 1.12)
   const H = Math.min(760, Math.round(lines.length * lh + 30))
   const isHot = (w) => /^\*.+\*[^\w]*$/.test(w) || /^[A-ZÀ-ÜÉÈÊ][A-ZÀ-ÜÉÈÊ'’-]{2,}[!?.,…:]*$/.test(w) || /\d+[–\-:]\d+|^\d{2,4}[!?.,:]*$|^[£$€]\s?\d|^\d+\s?[£$€%]|^×\d/.test(w)
-  const clean = (w) => w.replace(/\*/g, '')
   const rtl = lang === 'ar'
   // layout pass
   const placed = []
   lines.forEach((l, i) => {
     const y = size + i * lh
     const words = l.split(' ').filter(Boolean)
-    const widths = words.map((w) => m.measureText(clean(w)).width)
+    const widths = words.map((w) => m.measureText(taleWord(w, rtl)).width)
     const space = m.measureText(' ').width
     const total = widths.reduce((s, w) => s + w, 0) + space * (words.length - 1)
     let x = rtl ? 500 + total / 2 : 500 - total / 2
-    words.forEach((w, k) => { const ww = widths[k]; const wx = rtl ? x - ww : x; placed.push({ w: clean(w), hot: isHot(w), x: wx, y, ww }); x = rtl ? wx - space : x + ww + space })
+    words.forEach((w, k) => { const ww = widths[k]; const wx = rtl ? x - ww : x; placed.push({ w: taleWord(w, rtl), hot: isHot(w), x: wx, y, ww }); x = rtl ? wx - space : x + ww + space })
   })
   const frames = []
   // ≤ 8 frames per caption: group words when the caption is long (memory on the 512 MB studio)
