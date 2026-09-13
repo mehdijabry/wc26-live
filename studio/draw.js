@@ -533,14 +533,17 @@ export async function drawGoalAnimSpec(g) {
   const r = L.rest
   return {
     layers: { bg: L.bg, flash: L.flash, goal: L.goal, home: L.home, away: L.away, score: L.score, scorer: L.scorer, minute: L.minute },
+    // Audit 2026-09-13: 80-85 % of viewers leave before 3 s and the scorer used to
+    // appear at 1.9 s — the whole payoff (GOAL, teams, score, scorer, minute) is
+    // now on screen within half a second, the motion is only an accent.
     anims: [
-      { layer: 'flash', x: 0, y: 0, fade: { st: 0.25, d: 0.08 }, out: { st: 0.38, d: 0.7 } },
-      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 3.2, st: 0.25, d: 0.45 }, fade: { st: 0.25, d: 0.15 } },
-      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -460, dy: 0, st: 0.7, d: 0.6 }, fade: { st: 0.7, d: 0.25 } },
-      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 460, dy: 0, st: 0.7, d: 0.6 }, fade: { st: 0.7, d: 0.25 } },
-      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 70, st: 1.2, d: 0.5 }, fade: { st: 1.2, d: 0.3 } },
-      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], slide: { dx: 0, dy: 120, st: 1.9, d: 0.55 }, fade: { st: 1.9, d: 0.3 } },
-      { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 2.3, d: 0.3 } },
+      { layer: 'flash', x: 0, y: 0, fade: { st: 0, d: 0.06 }, out: { st: 0.12, d: 0.6 } },
+      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 2.2, st: 0, d: 0.35 }, fade: { st: 0, d: 0.1 } },
+      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -260, dy: 0, st: 0.05, d: 0.4 }, fade: { st: 0.05, d: 0.15 } },
+      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 260, dy: 0, st: 0.05, d: 0.4 }, fade: { st: 0.05, d: 0.15 } },
+      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 50, st: 0.1, d: 0.35 }, fade: { st: 0.1, d: 0.2 } },
+      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], slide: { dx: 0, dy: 80, st: 0.15, d: 0.4 }, fade: { st: 0.15, d: 0.2 } },
+      { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 0.2, d: 0.25 } },
     ],
   }
 }
