@@ -164,7 +164,8 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
     fc.push(`[${cur}]format=yuv420p[sl]`)
     fc.push(`[base][sl]overlay=x='if(lt(t,0.3),W*pow(1-t/0.3,3),if(gt(t,${T}-0.22),-W*(1-pow(1-(t-(${T}-0.22))/0.22,3)),0))':y=0:eval=frame:format=yuv420,format=yuv420p,setsar=1${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
   } else {
-    fc.push(`[${cur}]format=yuv420p,setsar=1,fade=t=in:st=0:d=${fadeIn},fade=t=out:st=${Math.max(0, total - fadeOut).toFixed(2)}:d=${fadeOut}${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
+    // fadeIn 0 = no fade-in at all: frame 0 is the reel thumbnail on Facebook (2026-09-14, it used to be black)
+    fc.push(`[${cur}]format=yuv420p,setsar=1${fadeIn > 0 ? `,fade=t=in:st=0:d=${fadeIn}` : ''},fade=t=out:st=${Math.max(0, total - fadeOut).toFixed(2)}:d=${fadeOut}${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
   }
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
     // ultrafast (veryfast OOM-killed the 512 MB instance on 2026-09-10) + stillimage tune + crf 19;
@@ -183,8 +184,9 @@ export async function renderAnimatedReel({ slides, voice, music, musicGain, seco
   const segs = []
   for (let i = 0; i < n; i++) {
     const seg = path.join(dir, `aseg${i}.mp4`)
-    try { await animSlide({ spec: slides[i], seconds: per, fps, out: seg }) }
-    catch (e) { console.log('[anim] 1080p slide failed, retrying at 720p:', String(e).slice(0, 160)); await animSlide({ spec: slides[i], seconds: per, fps, out: seg, small: true }) }
+    const fadeIn = i === 0 ? 0 : 0.25   // first slide: visible from frame 0 (thumbnail)
+    try { await animSlide({ spec: slides[i], seconds: per, fps, out: seg, fadeIn }) }
+    catch (e) { console.log('[anim] 1080p slide failed, retrying at 720p:', String(e).slice(0, 160)); await animSlide({ spec: slides[i], seconds: per, fps, out: seg, small: true, fadeIn }) }
     segs.push(seg)
   }
   const list = path.join(dir, 'asegs.txt')
@@ -216,8 +218,8 @@ export async function renderTaleReel({ beats, music, out, buildSpec }) {
     const spec = await buildSpec(i, { from: t / total, to: (t + d) / total, dur: d }, { dur: d, voiceDur })
     const seg = path.join(dir, `tseg${i}.mp4`)
     const push = i > 0
-    try { await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0.2 : 0.15, fadeOut: 0.2, push }) }
-    catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: 0.15, fadeOut: 0.2, small: true, push }) }
+    try { await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0 : 0.15, fadeOut: 0.2, push }) }
+    catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0 : 0.15, fadeOut: 0.2, small: true, push }) }
     segs.push(seg)
     const aud = path.join(dir, `taud${i}.m4a`)
     if (beats[i].voice) await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', beats[i].voice, '-af', `adelay=150|150,apad=whole_dur=${d.toFixed(3)}`, '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2', aud])
