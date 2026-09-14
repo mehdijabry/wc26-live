@@ -247,7 +247,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         for (let i = 0; i < specs.length; i++) {
           const layers = {}
           for (const [k, buf] of Object.entries(specs[i].layers)) { layers[k] = path.join(dir, `s${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
-          slides.push({ layers, anims: specs[i].anims })
+          slides.push({ layers, anims: specs[i].anims, bgVideo: specs[i].bgVideo })   // bgVideo: Barça special (was dropped here → black background, 2026-09-14)
         }
         let voice = null
         if (voiceUrl) { const r = await fetch(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
