@@ -556,7 +556,7 @@ export async function drawMatchLayers(m, idx, total, heading, lang) {
     else if (m.time) { ctx.fillStyle = GOLD; roundedPath(ctx, 30, 0, 340, 90, 45); ctx.fill(); ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(m.time, 200, 60) } }
   return {
     bgVideo: ft && m.bgVideo ? m.bgVideo : undefined,
-    layers: { bg: PNG(bg), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill) },
+    layers: { bg: PNG(bg), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill), cover: PNG(coverBand(idx === 0 ? m.cover : null)) },
     // First slide: everything readable from the first frame (audit: viewers leave within 3 s), later slides animate in.
     anims: idx === 0 ? [
       { layer: 'head', x: 90, y: 352, w: 900, h: 70, fade: { st: 0, d: 0.1 } },
@@ -564,6 +564,7 @@ export async function drawMatchLayers(m, idx, total, heading, lang) {
       { layer: 'away', x: 630, y: 700, fade: { st: 0, d: 0.1 } },
       { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 1.6, st: 0.05, d: 0.3 }, fade: { st: 0, d: 0.1 } },
       { layer: 'pill', x: 340, y: 1380, fade: { st: 0.2, d: 0.2 } },
+      { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0.05 }, out: { st: 2.6, d: 0.4 } },
     ] : [
       { layer: 'head', x: 90, y: 352, w: 900, h: 70, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
       { layer: 'home', x: 90, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
@@ -638,7 +639,7 @@ export async function drawGoalAnimSpec(g) {
   const r = L.rest
   return {
     bgVideo: g.bgVideo || undefined,
-    layers: { bg: L.bg, flash: L.flash, goal: L.goal, home: L.home, away: L.away, score: L.score, scorer: L.scorer, minute: L.minute },
+    layers: { bg: L.bg, flash: L.flash, goal: L.goal, home: L.home, away: L.away, score: L.score, scorer: L.scorer, minute: L.minute, cover: coverBand(g.cover).toBuffer('image/png') },
     // Audit 2026-09-13: 80-85 % of viewers leave before 3 s and the scorer used to
     // appear at 1.9 s — the whole payoff (GOAL, teams, score, scorer, minute) is
     // now on screen within half a second, the motion is only an accent.
@@ -650,6 +651,8 @@ export async function drawGoalAnimSpec(g) {
       { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 50, st: 0.1, d: 0.35 }, fade: { st: 0.1, d: 0.2 } },
       { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], slide: { dx: 0, dy: 80, st: 0.15, d: 0.4 }, fade: { st: 0.15, d: 0.2 } },
       { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 0.2, d: 0.25 } },
+      // thumbnail line: on the first frame, gone after 2.6 s so the card breathes
+      { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0.05 }, out: { st: 2.6, d: 0.4 } },
     ],
   }
 }
@@ -924,6 +927,21 @@ export async function drawTaleCover(d) {
 // Same look as drawGoalSlide, split into transparent PNG layers that
 // video.js animates with ffmpeg expressions (slam, slide-ins, pulse).
 // Every layer comes with its resting position on the 1080×1920 canvas.
+// Cover band (Mehdi, 2026-09-14: « miniatures avec des textes clairs, colorés selon la catégorie, qui créent du
+// suspense »): Facebook takes the first frame as the reel thumbnail, so the first ~2.5 s carry a bold coloured
+// line derived from the real match context (equaliser, late goal, Barça day…). Tones = category colours.
+const COVER_TONES = { goal: () => [GREEN, NIGHT], barca: () => ['#F2C230', NIGHT], ft: () => [GOLD, NIGHT], matchday: () => ['#004D98', CREAM], results: () => ['#A50044', CREAM], story: () => [GOLD, NIGHT] }
+export function coverBand(cover) {
+  const c = createCanvas(1000, 110); const ctx = ctx2d(c)
+  if (!cover || !cover.text) return c
+  const [bg, fg] = (COVER_TONES[cover.tone] || COVER_TONES.goal)()
+  ctx.font = 'bold 58px Tajawal'; ctx.textAlign = 'center'
+  const w = Math.min(980, ctx.measureText(cover.text).width + 90)
+  ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 22; ctx.shadowOffsetY = 8
+  roundedPath(ctx, 500 - w / 2, 4, w, 100, 50); ctx.fillStyle = bg; ctx.fill()
+  ctx.shadowColor = 'transparent'; ctx.fillStyle = fg; ctx.fillText(cover.text, 500, 74)
+  return c
+}
 export async function drawGoalLayers(g) {
   registerBrandFonts()
   const W = 1080, H = 1920
