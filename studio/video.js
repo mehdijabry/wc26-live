@@ -125,7 +125,7 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
   spec.anims.forEach((an, k) => {
     const i = k + 1 + off
     const chain = [still(i)]
-    if (an.fade) chain.push(`fade=t=in:st=${an.fade.st}:d=${an.fade.d}:alpha=1`)
+    if (an.fade && an.fade.d > 0) chain.push(`fade=t=in:st=${an.fade.st}:d=${an.fade.d}:alpha=1`)   // d = 0 → visible from frame 0 (thumbnail)
     if (an.out) chain.push(`fade=t=out:st=${an.out.st}:d=${an.out.d}:alpha=1`)
     // scale LAST in the layer chain (filters after a per-frame scale fail on size changes)
     const sc = []

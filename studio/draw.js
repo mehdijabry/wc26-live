@@ -559,12 +559,12 @@ export async function drawMatchLayers(m, idx, total, heading, lang) {
     layers: { bg: PNG(bg), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill), cover: PNG(coverBand(idx === 0 ? m.cover : null)) },
     // First slide: everything readable from the first frame (audit: viewers leave within 3 s), later slides animate in.
     anims: idx === 0 ? [
-      { layer: 'head', x: 90, y: 352, w: 900, h: 70, fade: { st: 0, d: 0.1 } },
-      { layer: 'home', x: 90, y: 700, fade: { st: 0, d: 0.1 } },
-      { layer: 'away', x: 630, y: 700, fade: { st: 0, d: 0.1 } },
-      { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 1.6, st: 0.05, d: 0.3 }, fade: { st: 0, d: 0.1 } },
-      { layer: 'pill', x: 340, y: 1380, fade: { st: 0.2, d: 0.2 } },
-      { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0.05 }, out: { st: 2.6, d: 0.4 } },
+      { layer: 'head', x: 90, y: 352, w: 900, h: 70, fade: { st: 0, d: 0 } },
+      { layer: 'home', x: 90, y: 700, fade: { st: 0, d: 0 } },
+      { layer: 'away', x: 630, y: 700, fade: { st: 0, d: 0 } },
+      { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 1.3, st: 0, d: 0.3 }, fade: { st: 0, d: 0 } },
+      { layer: 'pill', x: 340, y: 1380, fade: { st: 0, d: 0 } },
+      { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } },
     ] : [
       { layer: 'head', x: 90, y: 352, w: 900, h: 70, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
       { layer: 'home', x: 90, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
@@ -644,15 +644,16 @@ export async function drawGoalAnimSpec(g) {
     // appear at 1.9 s — the whole payoff (GOAL, teams, score, scorer, minute) is
     // now on screen within half a second, the motion is only an accent.
     anims: [
+      // Frame 0 is the Facebook thumbnail (2026-09-14): no fade-in on the card layers, only a little motion.
       { layer: 'flash', x: 0, y: 0, fade: { st: 0, d: 0.06 }, out: { st: 0.12, d: 0.6 } },
-      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 2.2, st: 0, d: 0.35 }, fade: { st: 0, d: 0.1 } },
-      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -260, dy: 0, st: 0.05, d: 0.4 }, fade: { st: 0.05, d: 0.15 } },
-      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 260, dy: 0, st: 0.05, d: 0.4 }, fade: { st: 0.05, d: 0.15 } },
-      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 50, st: 0.1, d: 0.35 }, fade: { st: 0.1, d: 0.2 } },
-      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], slide: { dx: 0, dy: 80, st: 0.15, d: 0.4 }, fade: { st: 0.15, d: 0.2 } },
-      { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 0.2, d: 0.25 } },
+      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 1.3, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
+      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -120, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 120, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 30, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
+      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], slide: { dx: 0, dy: 40, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 0, d: 0 } },
       // thumbnail line: on the first frame, gone after 2.6 s so the card breathes
-      { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0.05 }, out: { st: 2.6, d: 0.4 } },
+      { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } },
     ],
   }
 }
@@ -852,9 +853,9 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
     const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
     layers.line = PNGb(line)
     const anims = [
-      { layer: 'photo', x: -110, y: 0, drift: { dx: 110, dy: 0, dur: Math.max(4, dur) }, fade: { st: 0, d: first ? 0.05 : 0.35 } },
+      { layer: 'photo', x: -110, y: 0, drift: { dx: 110, dy: 0, dur: Math.max(4, dur) }, fade: { st: 0, d: first ? 0 : 0.35 } },
       { layer: 'kicker', x: 60, y: 1150, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.1, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: 0.1 } },
-      { layer: 'line', x: 380, y: 1222, grow: { st: first ? 0.05 : 0.35, d: 0.45 } },
+      { layer: 'line', x: 380, y: 1222, grow: { st: first ? 0 : 0.35, d: 0.45 } },
     ]
     const capFrames = taleCaptionFrames(beat.caption || '', lang, Math.min(beat.capSize || 76, 76), hot).frames
     const frames = first ? [capFrames[capFrames.length - 1]] : capFrames
@@ -878,7 +879,7 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
   const anims = [
     { layer: 'glow', x: -160, y: 100, drift: { dx: 400, dy: 260, dur: Math.max(4, dur) } },
     { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.05, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: 0.1 } },
-    { layer: 'line', x: 380, y: 372, grow: { st: first ? 0.05 : 0.3, d: 0.45 } },
+    { layer: 'line', x: 380, y: 372, grow: { st: first ? 0 : 0.3, d: 0.45 } },
   ]
   // word-by-word caption: words land across the first ~65 % of the voice; the hook beat shows the whole claim at once
   const allFrames = taleCaptionFrames(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot).frames
