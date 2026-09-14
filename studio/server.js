@@ -221,11 +221,12 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         }
         const music = await musicPath('tale')
         const out = path.join(dir, 'reel.mp4')
+        const calm = data.special === 'barca' ? await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh.mp4') : null   // Barça stories (2026-09-14)
         const { seconds: len } = await renderTaleReel({ beats, music, out, buildSpec: async (i, progress, timing) => {
-          const L = await drawTaleBeatLayers({ ...beatsIn[i], first: i === 0 }, lang, labels, progress, timing)
+          const L = await drawTaleBeatLayers({ ...beatsIn[i], first: i === 0 }, lang, labels, progress, timing, { bgVideo: calm })
           const layers = {}
           for (const [k, buf] of Object.entries(L.layers)) { layers[k] = path.join(dir, `t${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
-          return { layers, anims: L.anims }
+          return { layers, anims: L.anims, bgVideo: L.bgVideo }
         } })
         const buf = await fs.readFile(out)
         const url = await upload(`reel-tale-${lang}-${stamp()}.mp4`, buf, 'video/mp4')

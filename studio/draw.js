@@ -658,10 +658,10 @@ export async function drawGoalAnimSpec(g) {
 // true, strange football story in 10 animated beats, EN / FR / AR. ──────────
 const TALE_FONT = (lang, size, bold = true) => lang === 'ar' ? `${bold ? 'bold ' : ''}${size}px Tajawal` : `${size}px Anton`
 const TALE_MONO = (lang, size) => lang === 'ar' ? `500 ${size}px Tajawal` : `${size}px "IBM Plex Mono"`
-function taleBg(glow) {
+function taleBg(glow, transparent = false) {
   const W = 1080, H = 1920
   const c = createCanvas(W, H); const ctx = ctx2d(c)
-  ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+  if (!transparent) { ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H) }
   const g = ctx.createRadialGradient(W / 2, 700, 0, W / 2, 700, 1000)
   g.addColorStop(0, glow === 'gold' ? gold(0.16) : accent(0.16)); g.addColorStop(1, 'rgba(0,0,0,0)')
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
@@ -833,8 +833,10 @@ async function talePhoto(url, credit) {
   return c
 }
 /** One story beat → animated layer spec (+ progress bar layer). timing = { dur, voiceDur }. */
-export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = {}) {
+export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = {}, opts = {}) {
   registerBrandFonts()
+  // opts.bgVideo (Barça stories, 2026-09-14): beats without a photo sit on the bokeh loop — the ground becomes a transparent vignette + brand.
+  const onVideo = !!opts.bgVideo && !beat.imageUrl
   const PNGb = (c) => c.toBuffer('image/png')
   const glow = beat.glow || 'green'
   const hot = glow === 'gold' ? GOLD : GREEN
@@ -867,7 +869,7 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
     if (progress) { const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 1080, 10); layers.bar = PNGb(bar); anims.push({ layer: 'bar', x: 0, y: 1910, progress }) }
     return { layers, anims }
   }
-  const layers = { bg: PNGb(taleBg(glow)), glow: PNGb(taleGlowBlob(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
+  const layers = { bg: PNGb(taleBg(glow, onVideo)), glow: PNGb(taleGlowBlob(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
   const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
   layers.line = PNGb(line)
   const anims = [
@@ -896,7 +898,7 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
     layers.bar = PNGb(bar)
     anims.push({ layer: 'bar', x: 0, y: 1910, progress })   // {from, to, dur} handled by animSlide
   }
-  return { layers, anims }
+  return { layers, anims, bgVideo: onVideo ? opts.bgVideo : undefined }
 }
 /** Story cover 1200×675 (site hero / og:image). */
 export async function drawTaleCover(d) {
