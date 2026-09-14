@@ -91,6 +91,20 @@ app.get('/raw', async (req, res) => {
 })
 
 // Match summary (key events: goals with scorer/minute) — site.web.api works from here.
+// Scorer nationality (Mehdi, 2026-09-14: goal reels only for Barça matches and Moroccan scorers) — ESPN athlete profile, cached per id.
+const athleteCache = new Map()
+async function citizenship(id) {
+  if (!id) return ''
+  if (athleteCache.has(id)) return athleteCache.get(id)
+  let c = ''
+  try {
+    const r = await fetch(`https://site.web.api.espn.com/apis/common/v3/sports/soccer/athletes/${encodeURIComponent(id)}`, { headers: { 'user-agent': UA, accept: 'application/json', referer: 'https://www.espn.com/' }, signal: AbortSignal.timeout(6000) })
+    if (r.ok) { const j = await r.json(); c = String((j.athlete || j).citizenship || '') }
+  } catch { /* unknown */ }
+  if (athleteCache.size > 2000) athleteCache.clear()
+  athleteCache.set(id, c)
+  return c
+}
 app.get('/espn/summary', async (req, res) => {
   if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
   const league = String(req.query.league || ''); const event = String(req.query.event || '').replace(/[^0-9]/g, '')
@@ -101,9 +115,10 @@ app.get('/espn/summary', async (req, res) => {
     const j = await r.json()
     const goals = (j.keyEvents || []).filter((k) => k.scoringPlay || /goal/i.test(k.type?.text || '')).map((k) => ({
       minute: k.clock?.displayValue || '', type: k.type?.text || '', team: k.team?.displayName || '', teamId: k.team?.id || '',
-      scorer: (k.participants || [])[0]?.athlete?.displayName || '', assist: (k.participants || [])[1]?.athlete?.displayName || '',
+      scorer: (k.participants || [])[0]?.athlete?.displayName || '', scorerId: (k.participants || [])[0]?.athlete?.id || '', assist: (k.participants || [])[1]?.athlete?.displayName || '',
       text: (k.text || '').slice(0, 220), ownGoal: /own goal/i.test(k.type?.text || '') || /own goal/i.test(k.text || ''), penalty: /penalty/i.test(k.type?.text || ''),
     }))
+    for (const g of goals) g.nationality = await citizenship(g.scorerId)
     // Lineups + venue for the editorial posts (2026-09-14): starters with ESPN position codes + formation per side.
     const rosters = (j.rosters || []).map((r) => ({
       side: r.homeAway, team: r.team?.displayName || '', abbr: r.team?.abbreviation || '', formation: r.formation || '',
