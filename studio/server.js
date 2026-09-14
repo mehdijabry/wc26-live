@@ -174,9 +174,9 @@ app.post('/render/image', async (req, res) => {
       let canvas
       switch (type) {
         case 'score': canvas = await drawScoreCard(data); break
-        case 'matchday-post': canvas = await drawMatchdayPost(data.matches, data.dateLabel); break
+        case 'matchday-post': canvas = await drawMatchdayPost(data.matches, data.dateLabel, { featured: !!data.featured }); break
         case 'tale-cover': canvas = await drawTaleCover(data); break
-        case 'matchday-story': canvas = await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1); break
+        case 'matchday-story': canvas = await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1, { featured: !!data.featured }); break
         case 'article-post': canvas = await drawArticlePost(data); break
         case 'article-story': canvas = await drawArticleStory(data); break
         default: throw new Error('unknown image type')
@@ -194,6 +194,7 @@ app.post('/render/image', async (req, res) => {
 const BARCA_ASSETS = {
   confetti: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-confetti-loop.mp4',
   roar: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/sfx-goal-roar.mp3',
+  calm: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-bokeh-loop.mp4',
 }
 async function cachedAsset(url, name) {
   const p = path.join(os.tmpdir(), name)
@@ -234,7 +235,11 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []
-        if (type === 'matchday') { const ms = (data.matches || []).slice(0, 10); for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang)) }
+        if (type === 'matchday') {
+          const ms = (data.matches || []).slice(0, 10)
+          if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh.mp4')   // « يوم برشلونة » slide
+          for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang))
+        }
         else if (type === 'goal') {
           // Barça special (2026-09-14): looping confetti video under the card + stadium roar at t=0
           if (data.special === 'barca') { data.bgVideo = await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti.mp4') }
@@ -302,7 +307,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         // Video story: one still (the story card) with Ken Burns + the
         // stories jingle, 12 s by default. Posted through /video_stories.
         const c = type === 'story-match'
-          ? await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1)
+          ? await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1, { featured: !!data.featured })
           : await drawArticleStory(data)
         const p = path.join(dir, 's0.png')
         await fs.writeFile(p, c.toBuffer('image/png'))

@@ -279,7 +279,31 @@ export async function drawScoreCard(m) {
 }
 
 // ─── 2. Match-day post 1080×1350 (list, ≤6 rows) ───────────────────
-export async function drawMatchdayPost(matches, dateLabel) {
+// « يوم برشلونة » (Mehdi, 2026-09-14): on a Barça day the first match gets a featured panel —
+// blaugrana glow, both crests large (Barça with a gold halo), gold kick-off pill.
+async function paintFeatured(ctx, m, x, y, w, h) {
+  roundedPath(ctx, x, y, w, h, 34); ctx.save(); ctx.clip()
+  const g = ctx.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, 'rgba(165,0,68,0.55)'); g.addColorStop(0.5, 'rgba(11,31,75,0.9)'); g.addColorStop(1, 'rgba(0,77,152,0.55)')
+  ctx.fillStyle = g; ctx.fillRect(x, y, w, h)
+  const sh = ctx.createRadialGradient(x + w / 2, y + h * 0.45, 0, x + w / 2, y + h * 0.45, w * 0.55); sh.addColorStop(0, 'rgba(242,194,48,0.16)'); sh.addColorStop(1, 'rgba(0,0,0,0)')
+  ctx.fillStyle = sh; ctx.fillRect(x, y, w, h)
+  ctx.restore()
+  roundedPath(ctx, x, y, w, h, 34); ctx.strokeStyle = 'rgba(242,194,48,0.7)'; ctx.lineWidth = 3; ctx.stroke()
+  const cr = Math.round(h * 0.5)
+  const [hi, ai] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
+  const isB = (n) => /barcelona|barça/i.test(String(n || ''))
+  const drawCrest = (img, cx, cy, big) => { ctx.save(); if (big) { ctx.shadowColor = 'rgba(242,194,48,0.6)'; ctx.shadowBlur = 36 } const s = big ? cr * 1.12 : cr; ctx.drawImage(img, cx - s / 2, cy - s / 2, s, s); ctx.restore() }
+  const cy = y + h * 0.42
+  drawCrest(hi, x + w * 0.2, cy, isB(m.home)); drawCrest(ai, x + w * 0.8, cy, isB(m.away))
+  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = `${Math.round(h * 0.11)}px Anton`
+  ctx.fillText(fitLine(ctx, m.home, w * 0.3, 'Anton', Math.round(h * 0.11), 22), x + w * 0.2, y + h * 0.82)
+  ctx.fillText(fitLine(ctx, m.away, w * 0.3, 'Anton', Math.round(h * 0.11), 22), x + w * 0.8, y + h * 0.82)
+  ctx.font = `${Math.round(h * 0.2)}px Anton`; ctx.lineJoin = 'round'; ctx.lineWidth = 8; ctx.strokeStyle = '#A50044'; ctx.strokeText('VS', x + w / 2, cy + h * 0.07); ctx.fillStyle = '#F2C230'; ctx.fillText('VS', x + w / 2, cy + h * 0.07)
+  const label = m.time || ''
+  if (label) { ctx.font = `${Math.round(h * 0.1)}px "IBM Plex Mono"`; const pw = ctx.measureText(label).width + 50; roundedPath(ctx, x + w / 2 - pw / 2, y + h * 0.62, pw, h * 0.16, h * 0.08); ctx.fillStyle = '#F2C230'; ctx.fill(); ctx.fillStyle = NIGHT; ctx.fillText(label, x + w / 2, y + h * 0.735) }
+  ctx.fillStyle = 'rgba(243,239,230,0.6)'; ctx.font = `${Math.round(h * 0.07)}px "IBM Plex Mono"`; ctx.fillText(wrapLines(ctx, m.league || '', w * 0.5, 1)[0], x + w / 2, y + h * 0.93)
+}
+export async function drawMatchdayPost(matches, dateLabel, opts = {}) {
   registerBrandFonts()
   const W = 1080, H = 1350
   const c = createCanvas(W, H)
@@ -287,12 +311,19 @@ export async function drawMatchdayPost(matches, dateLabel) {
   paintGround(ctx, W, H)
   await paintBrandRow(ctx, 60, 60, 96)
   ctx.textAlign = 'center'
-  ctx.fillStyle = GOLD; ctx.font = '72px Anton'
-  ctx.fillText("TODAY'S MATCHES", W / 2, 290)
-  ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '28px "IBM Plex Mono"'
-  ctx.fillText(dateLabel || '', W / 2, 340)
-  const top = 380, rowH = 138, cr = 84
-  const rows = matches.slice(0, 6)
+  const featured = opts.featured && matches[0]
+  if (featured) {
+    ctx.fillStyle = GOLD; ctx.font = 'bold 72px Tajawal'; ctx.fillText('يوم برشلونة', W / 2, 282)
+    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '26px "IBM Plex Mono"'; ctx.fillText(`BARÇA DAY · ${dateLabel || ''}`, W / 2, 324)
+    await paintFeatured(ctx, matches[0], 48, 350, W - 96, 330)
+  } else {
+    ctx.fillStyle = GOLD; ctx.font = '72px Anton'
+    ctx.fillText("TODAY'S MATCHES", W / 2, 290)
+    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '28px "IBM Plex Mono"'
+    ctx.fillText(dateLabel || '', W / 2, 340)
+  }
+  const top = featured ? 712 : 380, rowH = featured ? 128 : 138, cr = featured ? 76 : 84
+  const rows = featured ? matches.slice(1, 5) : matches.slice(0, 6)
   for (let i = 0; i < rows.length; i++) {
     const m = rows[i]; const y = top + i * rowH; const cy = y + (rowH - 18) / 2
     roundedPath(ctx, 48, y, W - 96, rowH - 18, 24)
@@ -320,7 +351,7 @@ export async function drawMatchdayPost(matches, dateLabel) {
 }
 
 // ─── 3. Match-day story page 1080×1920 (≤6 rows) ───────────────────
-export async function drawMatchStory(matches, dateLabel, page, pages) {
+export async function drawMatchStory(matches, dateLabel, page, pages, opts = {}) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const c = createCanvas(W, H)
@@ -329,11 +360,19 @@ export async function drawMatchStory(matches, dateLabel, page, pages) {
   await paintBrandRow(ctx, 60, 70, 96)
   if (pages > 1) { ctx.textAlign = 'right'; ctx.fillStyle = GOLD; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(`${page} / ${pages}`, W - 60, 130) }
   ctx.textAlign = 'center'
-  ctx.fillStyle = GOLD; ctx.font = '78px Anton'; ctx.fillText("TODAY'S MATCHES", W / 2, 330)
-  ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(dateLabel || '', W / 2, 392)
-  const top = 470, rowH = 190, cr = 96
-  for (let i = 0; i < matches.length; i++) {
-    const m = matches[i]; const y = top + i * rowH; const cy = y + (rowH - 22) / 2
+  const featured = opts.featured && page === 1 && matches[0]
+  if (featured) {
+    ctx.fillStyle = GOLD; ctx.font = 'bold 80px Tajawal'; ctx.fillText('يوم برشلونة', W / 2, 322)
+    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText(`BARÇA DAY · ${dateLabel || ''}`, W / 2, 372)
+    await paintFeatured(ctx, matches[0], 48, 410, W - 96, 380)
+  } else {
+    ctx.fillStyle = GOLD; ctx.font = '78px Anton'; ctx.fillText("TODAY'S MATCHES", W / 2, 330)
+    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(dateLabel || '', W / 2, 392)
+  }
+  const top = featured ? 830 : 470, rowH = featured ? 160 : 190, cr = featured ? 84 : 96
+  const list = featured ? matches.slice(1, 6) : matches
+  for (let i = 0; i < list.length; i++) {
+    const m = list[i]; const y = top + i * rowH; const cy = y + (rowH - 22) / 2
     roundedPath(ctx, 48, y, W - 96, rowH - 22, 28)
     ctx.fillStyle = 'rgba(13,44,75,0.85)'; ctx.fill()
     ctx.strokeStyle = m.live ? 'rgba(255,77,94,0.55)' : 'rgba(243,239,230,0.10)'; ctx.lineWidth = 2; ctx.stroke()
@@ -351,7 +390,7 @@ export async function drawMatchStory(matches, dateLabel, page, pages) {
     ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '22px "IBM Plex Mono"'
     ctx.fillText(wrapLines(ctx, m.league || '', 420, 1)[0], W / 2, cy + 66)
   }
-  const footY = Math.max(top + matches.length * rowH + 30, 1620)
+  const footY = Math.max(top + list.length * rowH + 30, 1620)
   await drawQR(ctx, `${SITE}/today?ref=fb-story`, W - 60 - 180, footY, 180)
   ctx.fillStyle = GOLD; roundedPath(ctx, 60, footY + 20, 360, 60, 30); ctx.fill()
   ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', 240, footY + 60)
@@ -483,33 +522,40 @@ const PNG = (c) => c.toBuffer('image/png')
 export async function drawMatchLayers(m, idx, total, heading, lang) {
   registerBrandFonts()
   const W = 1080, H = 1920
+  const ft = !!m.feature   // « يوم برشلونة » slide (2026-09-14): bokeh video behind, big crests, gold VS
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
-    ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-    const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
-    g1.addColorStop(0, gold(0.14)); g1.addColorStop(1, gold(0))
-    ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
+    if (ft && m.bgVideo) { const v = ctx.createRadialGradient(W / 2, H / 2, 420, W / 2, H / 2, 1250); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.65)'); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H) }
+    else {
+      ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+      const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
+      g1.addColorStop(0, ft ? 'rgba(165,0,68,0.35)' : gold(0.14)); g1.addColorStop(1, gold(0))
+      ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
+    }
     paintLogo(ctx, W / 2 - 55, 120, 110)
     ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
     ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(m.league || '', W / 2, 560)
     ctx.fillStyle = 'rgba(243,239,230,0.5)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('pressing90.live', W / 2, 1700)
     ctx.fillStyle = GOLD; ctx.font = '26px "IBM Plex Mono"'; ctx.fillText(`${idx + 1} / ${total}`, W / 2, 1760) }
   const head = createCanvas(900, 70); { const ctx = ctx2d(head)
-    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = lang === 'ar' ? 'bold 46px Tajawal' : '44px "IBM Plex Mono"'; ctx.fillText(heading || "TODAY'S MATCHES", 450, 52) }
+    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = ft ? 'bold 58px Tajawal' : lang === 'ar' ? 'bold 46px Tajawal' : '44px "IBM Plex Mono"'; ctx.fillText(ft ? 'يوم برشلونة' : (heading || "TODAY'S MATCHES"), 450, ft ? 58 : 52) }
   const size = 300
   const [hImg, aImg] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
   const team = (img, name) => { const c = createCanvas(360, 440); const ctx = ctx2d(c)
-    ctx.drawImage(img, 30, 0, size, size)
+    if (ft && /barcelona|barça/i.test(String(name || ''))) { ctx.save(); ctx.shadowColor = 'rgba(242,194,48,0.6)'; ctx.shadowBlur = 40; ctx.drawImage(img, 10, -20, 340, 340); ctx.restore() }
+    else ctx.drawImage(img, 30, 0, size, size)
     ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'
     wrapLines(ctx, name, 380, 2).forEach((l, i) => ctx.fillText(l, 180, size + 80 + i * 52)); return c }
   const home = team(hImg, m.home), away = team(aImg, m.away)
   const score = createCanvas(500, 200); { const ctx = ctx2d(score)
-    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '90px Anton'
+    ctx.textAlign = 'center'; ctx.fillStyle = ft ? '#F2C230' : GOLD; ctx.font = ft ? '120px Anton' : '90px Anton'
     ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6
+    if (ft) { ctx.lineJoin = 'round'; ctx.lineWidth = 12; ctx.strokeStyle = '#A50044'; ctx.strokeText(m.score ?? 'VS', 250, 150) }
     ctx.fillText(m.score ?? 'VS', 250, 150) }
   const pill = createCanvas(400, 100); { const ctx = ctx2d(pill); ctx.textAlign = 'center'
     if (m.live) { ctx.fillStyle = RED; roundedPath(ctx, 60, 0, 280, 90, 45); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '48px Anton'; ctx.fillText('LIVE', 200, 62) }
     else if (m.time) { ctx.fillStyle = GOLD; roundedPath(ctx, 30, 0, 340, 90, 45); ctx.fill(); ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(m.time, 200, 60) } }
   return {
+    bgVideo: ft && m.bgVideo ? m.bgVideo : undefined,
     layers: { bg: PNG(bg), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill) },
     // First slide: everything readable from the first frame (audit: viewers leave within 3 s), later slides animate in.
     anims: idx === 0 ? [
