@@ -623,8 +623,15 @@ export async function drawArticleLayers(a, heading, lang) {
     ctx.fillStyle = GOLD; roundedPath(ctx, tx, 232, 340, 56, 28); ctx.fill()
     ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', tx + 170, 270) }
   return {
-    layers: { bg: PNG(bg), kicker: PNG(kicker), photo: PNG(photo), title: PNG(title), card: PNG(card) },
-    anims: [
+    layers: { bg: PNG(bg), kicker: PNG(kicker), photo: PNG(photo), title: PNG(title), card: PNG(card), ...(a.cover ? { cover: PNG(coverBand(a.cover)) } : {}) },
+    anims: a.first ? [
+      // first slide = thumbnail: everything visible from frame 0 (2026-09-14)
+      { layer: 'photo', x: 60, y: 340, slide: { dx: 0, dy: 24, st: 0, d: 0.6 }, fade: { st: 0, d: 0 } },
+      { layer: 'kicker', x: 64, y: 250, w: 900, h: 70, fade: { st: 0, d: 0 } },
+      { layer: 'title', x: 60, y: 1132, fade: { st: 0, d: 0 } },
+      { layer: 'card', x: 60, y: 1500, fade: { st: 0, d: 0 } },
+      ...(a.cover ? [{ layer: 'cover', x: 40, y: 980, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
+    ] : [
       { layer: 'photo', x: 60, y: 340, slide: { dx: 0, dy: 70, st: 0.1, d: 0.7 }, fade: { st: 0.1, d: 0.45 } },
       { layer: 'kicker', x: 64, y: 250, w: 900, h: 70, pop: { from: 1.8, st: 0.55, d: 0.35 }, fade: { st: 0.55, d: 0.15 } },
       { layer: 'title', x: 60, y: 1132, slide: { dx: -90, dy: 0, st: 0.85, d: 0.5 }, fade: { st: 0.85, d: 0.3 } },
@@ -850,12 +857,14 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
   if (photo) {
     // Reportage layout: photo on top (slow pan), kicker + caption in the lower third, visual only if it is a scoreboard.
     const layers = { bg: PNGb(taleBg(glow)), photo: PNGb(photo), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
+    if (beat.cover) layers.cover = PNGb(coverBand(beat.cover))   // thumbnail line (all reel types, 2026-09-14)
     const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
     layers.line = PNGb(line)
     const anims = [
       { layer: 'photo', x: -110, y: 0, drift: { dx: 110, dy: 0, dur: Math.max(4, dur) }, fade: { st: 0, d: first ? 0 : 0.35 } },
-      { layer: 'kicker', x: 60, y: 1150, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.1, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: 0.1 } },
+      { layer: 'kicker', x: 60, y: 1150, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.1, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: first ? 0 : 0.1 } },
       { layer: 'line', x: 380, y: 1222, grow: { st: first ? 0 : 0.35, d: 0.45 } },
+      ...(beat.cover ? [{ layer: 'cover', x: 40, y: 230, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
     ]
     const capFrames = taleCaptionFrames(beat.caption || '', lang, Math.min(beat.capSize || 76, 76), hot).frames
     const frames = first ? [capFrames[capFrames.length - 1]] : capFrames
@@ -874,12 +883,14 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
     return { layers, anims }
   }
   const layers = { bg: PNGb(taleBg(glow, onVideo)), glow: PNGb(taleGlowBlob(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
+  if (beat.cover) layers.cover = PNGb(coverBand(beat.cover))
   const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
   layers.line = PNGb(line)
   const anims = [
     { layer: 'glow', x: -160, y: 100, drift: { dx: 400, dy: 260, dur: Math.max(4, dur) } },
-    { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.05, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: 0.1 } },
+    { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.05, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: first ? 0 : 0.1 } },
     { layer: 'line', x: 380, y: 372, grow: { st: first ? 0 : 0.3, d: 0.45 } },
+    ...(beat.cover ? [{ layer: 'cover', x: 40, y: 1560, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
   ]
   // word-by-word caption: words land across the first ~65 % of the voice; the hook beat shows the whole claim at once
   const allFrames = taleCaptionFrames(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot).frames
