@@ -190,6 +190,18 @@ app.post('/render/image', async (req, res) => {
 })
 
 /** Full reel render (scenes → ffmpeg → upload). Shared by sync + async modes. */
+// Generated assets for the Barça special (rendered locally, hosted on Supabase; cached on disk per boot).
+const BARCA_ASSETS = {
+  confetti: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-confetti-loop.mp4',
+  roar: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/sfx-goal-roar.mp3',
+}
+async function cachedAsset(url, name) {
+  const p = path.join(os.tmpdir(), name)
+  try { const st = await fs.stat(p); if (st.size > 1000) return p } catch { /* download */ }
+  const r = await fetch(url); if (!r.ok) throw new Error(`asset ${name} fetch failed ${r.status}`)
+  await fs.writeFile(p, Buffer.from(await r.arrayBuffer()))
+  return p
+}
 async function buildReel({ type, data, voiceUrl, seconds, theme }) {
   setTheme(theme || (data && data.theme) || process.env.P90_THEME || 'barca')
       registerBrandFonts()
@@ -223,7 +235,11 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []
         if (type === 'matchday') { const ms = (data.matches || []).slice(0, 10); for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang)) }
-        else if (type === 'goal') specs.push(await drawGoalAnimSpec(data))
+        else if (type === 'goal') {
+          // Barça special (2026-09-14): looping confetti video under the card + stadium roar at t=0
+          if (data.special === 'barca') { data.bgVideo = await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti.mp4') }
+          specs.push(await drawGoalAnimSpec(data))
+        }
         else if (type === 'article') specs.push(await drawArticleLayers(data))
         else for (const art of (data.articles || []).slice(0, 4)) specs.push(await drawArticleLayers(art, data.heading, data.lang))
         if (specs.length === 0) throw new Error('no scenes')
@@ -238,7 +254,8 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const music = await musicPath(type === 'matchday' || type === 'goal' ? 'matchday' : 'article')
         const out = path.join(dir, 'reel.mp4')
         const dflt = type === 'goal' ? 9 : type === 'article' ? 12 : type === 'articles' ? 10 * slides.length : 4 * slides.length
-        const { seconds: len } = await renderAnimatedReel({ slides, voice, music, musicGain: voice ? 0.22 : 0.9, seconds: seconds || dflt, out })
+        const sfx = type === 'goal' && data.special === 'barca' && data.sfx !== false ? await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3') : null
+        const { seconds: len } = await renderAnimatedReel({ slides, voice, music, musicGain: voice ? 0.22 : sfx ? 0.55 : 0.9, seconds: seconds || dflt, out, sfx })
         const buf = await fs.readFile(out)
         const url = await upload(`reel-${type}-${stamp()}.mp4`, buf, 'video/mp4')
         await fs.rm(dir, { recursive: true, force: true })

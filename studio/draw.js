@@ -591,6 +591,7 @@ export async function drawGoalAnimSpec(g) {
   const L = await drawGoalLayers(g)
   const r = L.rest
   return {
+    bgVideo: g.bgVideo || undefined,
     layers: { bg: L.bg, flash: L.flash, goal: L.goal, home: L.home, away: L.away, score: L.score, scorer: L.scorer, minute: L.minute },
     // Audit 2026-09-13: 80-85 % of viewers leave before 3 s and the scorer used to
     // appear at 1.9 s — the whole payoff (GOAL, teams, score, scorer, minute) is
@@ -879,12 +880,18 @@ export async function drawGoalLayers(g) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const png = (c) => c.toBuffer('image/png')
-  // bg: night + glow + brand + league + footer (opaque)
+  // Barça special (Mehdi, 2026-09-14): the card sits on a looping confetti video (server.js),
+  // so the ground stays transparent (vignette only), the Barça crest is bigger, the title is
+  // gold with a garnet outline and the scorer pill is gold.
+  const sp = g.special === 'barca'
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
-    ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-    const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
-    glow.addColorStop(0, accent(0.22)); glow.addColorStop(1, accent(0))
-    ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+    if (sp) { const v = ctx.createRadialGradient(W / 2, H / 2, 420, W / 2, H / 2, 1250); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.7)'); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H) }
+    else {
+      ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
+      const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
+      glow.addColorStop(0, accent(0.22)); glow.addColorStop(1, accent(0))
+      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
+    }
     paintLogo(ctx, W / 2 - 55, 110, 110)
     ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
     ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '32px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.league || '', 900, 1)[0], W / 2, 370)
@@ -899,14 +906,18 @@ export async function drawGoalLayers(g) {
     ctx.textAlign = 'center'; ctx.fillStyle = GREEN
     ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8
     // g.title overrides "GOAL!" (Barça full-time card, 2026-09-13: 'نهاية المباراة' in Tajawal)
-    if (g.title && g.titleLang === 'ar') { ctx.font = 'bold 150px Tajawal'; ctx.fillText(g.title, 500, 235) }
-    else { ctx.font = '210px Anton'; ctx.fillText(g.title || 'GOAL!', 500, 250) } }
+    if (sp) { ctx.lineJoin = 'round'; ctx.lineWidth = 16; ctx.strokeStyle = '#A50044'; ctx.fillStyle = '#F2C230' }
+    if (g.title && g.titleLang === 'ar') { ctx.font = 'bold 150px Tajawal'; if (sp) ctx.strokeText(g.title, 500, 235); ctx.fillText(g.title, 500, 235) }
+    else { ctx.font = '210px Anton'; if (sp) ctx.strokeText(g.title || 'GOAL!', 500, 250); ctx.fillText(g.title || 'GOAL!', 500, 250) } }
   // crests + names 360×420 each (crest 260 at (50,0), names below)
   const size = 260
   const [hImg, aImg] = await Promise.all([crest(g.homeLogo, g.home), crest(g.awayLogo, g.away)])
   const dim = (side) => (g.scoringSide && g.scoringSide !== side ? 0.45 : 1)
+  const isBarcaName = (n) => /barcelona|barça/i.test(String(n || ''))
   const team = (img, name, side) => { const c = createCanvas(360, 420); const ctx = ctx2d(c)
-    ctx.globalAlpha = dim(side); ctx.drawImage(img, 50, 0, size, size); ctx.globalAlpha = 1
+    const big = sp && isBarcaName(name)   // Barça crest 320 px with a soft gold halo
+    if (big) { ctx.save(); ctx.shadowColor = 'rgba(242,194,48,0.55)'; ctx.shadowBlur = 40; ctx.globalAlpha = dim(side); ctx.drawImage(img, 20, -30, 320, 320); ctx.restore(); ctx.globalAlpha = 1 }
+    else { ctx.globalAlpha = dim(side); ctx.drawImage(img, 50, 0, size, size); ctx.globalAlpha = 1 }
     ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '40px Anton'
     wrapLines(ctx, name, 330, 2).forEach((l, i) => ctx.fillText(l, 180, size + 62 + i * 46)); return c }
   const home = team(hImg, g.home, 'home'), away = team(aImg, g.away, 'away')
@@ -921,7 +932,8 @@ export async function drawGoalLayers(g) {
   const scorer = createCanvas(1000, 200); { const ctx = ctx2d(scorer)
     ctx.textAlign = 'center'; ctx.font = '60px Anton'
     const pw = Math.min(980, Math.max(420, ctx.measureText(label).width + 120))
-    roundedPath(ctx, 500 - pw / 2, 0, pw, 110, 55); ctx.fillStyle = GREEN; ctx.fill()
+    roundedPath(ctx, 500 - pw / 2, 0, pw, 110, 55); ctx.fillStyle = sp ? '#F2C230' : GREEN; ctx.fill()
+    if (sp) { ctx.lineWidth = 4; ctx.strokeStyle = '#A50044'; ctx.stroke() }
     ctx.fillStyle = NIGHT; ctx.fillText(wrapLines(ctx, label, pw - 80, 1)[0], 500, 77)
     if (g.assist) { ctx.fillStyle = 'rgba(243,239,230,0.8)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.assistLabel === '' ? g.assist : `${g.assistLabel || 'Assist'} · ${g.assist}`, 900, 1)[0], 500, 170) } }
   // minute 400×90, baseline 70 → rests at (340, 1450)

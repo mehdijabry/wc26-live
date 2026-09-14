@@ -80,13 +80,17 @@ export async function renderReel({ scenes, voice, music, musicGain, seconds, out
 }
 
 /** Last pass: music (looped, faded) + optional voice under the finished video (video copied). */
-async function muxAudio({ video, music, musicGain, voice, total, out }) {
+async function muxAudio({ video, music, musicGain, voice, sfx, total, out }) {
   const fadeOutStart = Math.max(0, total - 1.5).toFixed(2)
   const args = ['-y', '-loglevel', 'error', '-threads', '1', '-i', video, '-stream_loop', '-1', '-i', music]
   if (voice) args.push('-i', voice)
+  if (sfx) args.push('-i', sfx)   // one-shot effect at t=0 (Barça goal: stadium roar, 2026-09-14)
   const fc = [`[1:a]volume=${musicGain},afade=t=in:st=0:d=0.8,afade=t=out:st=${fadeOutStart}:d=1.5[m]`]
   let alast = 'm'
-  if (voice) { fc.push('[2:a]volume=1.0[vo]', '[vo][m]amix=inputs=2:duration=longest:dropout_transition=0[mix]'); alast = 'mix' }
+  const mixIns = ['m']
+  if (voice) { fc.push('[2:a]volume=1.0[vo]'); mixIns.unshift('vo') }
+  if (sfx) { fc.push(`[${voice ? 3 : 2}:a]volume=0.9,afade=t=out:st=3.2:d=1.6[fx]`); mixIns.push('fx') }
+  if (mixIns.length > 1) { fc.push(`${mixIns.map((x) => `[${x}]`).join('')}amix=inputs=${mixIns.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]`); alast = 'mix' }
   args.push('-filter_complex', fc.join(';'), '-map', '0:v', '-map', `[${alast}]`, '-t', total.toFixed(2),
     '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out)
   await run('ffmpeg', args)
@@ -105,13 +109,21 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
   const frames = Math.max(1, Math.round(total * fps))
   const names = ['bg', ...spec.anims.map((x) => x.layer)]
   const inputs = []
+  // spec.bgVideo (2026-09-14, Barça goals): a looping video sits under the PNG layers; the 'bg' PNG
+  // is then a transparent overlay (vignette + brand) instead of the opaque ground.
+  if (spec.bgVideo) inputs.push('-stream_loop', '-1', '-i', spec.bgVideo)
   for (const n of names) inputs.push('-i', spec.layers[n])
+  const off = spec.bgVideo ? 1 : 0
   const ease = (t0, d) => `pow(1-min(1,max(0,(t-${t0})/${d})),3)`
   const still = (i) => `[${i}:v]format=${i === 0 ? 'yuv420p' : 'yuva420p'},loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${total.toFixed(3)}`
-  const fc = [`${still(0)}[v0]`]
+  const fc = []
+  if (spec.bgVideo) {
+    fc.push(`[0:v]trim=duration=${total.toFixed(3)},setpts=PTS-STARTPTS,scale=1080:1920,setsar=1,format=yuv420p[vb]`)
+    fc.push(`${still(1)}[b1]`, `[vb][b1]overlay=0:0:format=yuv420[v0]`)
+  } else fc.push(`${still(0)}[v0]`)
   let cur = 'v0'
   spec.anims.forEach((an, k) => {
-    const i = k + 1
+    const i = k + 1 + off
     const chain = [still(i)]
     if (an.fade) chain.push(`fade=t=in:st=${an.fade.st}:d=${an.fade.d}:alpha=1`)
     if (an.out) chain.push(`fade=t=out:st=${an.out.st}:d=${an.out.d}:alpha=1`)
@@ -162,7 +174,7 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
 }
 
 /** Animated reel: n animated slides → concat (stream copy) → music/voice pass. */
-export async function renderAnimatedReel({ slides, voice, music, musicGain, seconds, out }) {
+export async function renderAnimatedReel({ slides, voice, music, musicGain, seconds, out, sfx }) {
   const fps = 25
   const total = voice ? Math.max(seconds || 0, (await probeDuration(voice)) + 1.2) : seconds
   const n = slides.length
@@ -179,7 +191,7 @@ export async function renderAnimatedReel({ slides, voice, music, musicGain, seco
   await fs.writeFile(list, segs.map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
   const video = path.join(dir, 'video.mp4')
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', list, '-c', 'copy', video])
-  await muxAudio({ video, music, musicGain, voice, total, out })
+  await muxAudio({ video, music, musicGain, voice, sfx, total, out })
   for (const s of segs) fs.rm(s, { force: true }).catch(() => {})
   return { out, seconds: Math.round(total) }
 }
