@@ -646,11 +646,11 @@ export async function drawGoalAnimSpec(g) {
     anims: [
       // Frame 0 is the Facebook thumbnail (2026-09-14): no fade-in on the card layers, only a little motion.
       { layer: 'flash', x: 0, y: 0, fade: { st: 0, d: 0.06 }, out: { st: 0.12, d: 0.6 } },
-      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 1.3, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
-      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -120, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
-      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 120, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
-      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 30, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
-      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], slide: { dx: 0, dy: 40, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 1000, h: 320, pop: { from: 1.22, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
+      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -50, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 50, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 18, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
+      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], fade: { st: 0, d: 0 } },
       { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 0, d: 0 } },
       // thumbnail line: on the first frame, gone after 2.6 s so the card breathes
       { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } },
