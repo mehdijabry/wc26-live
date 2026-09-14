@@ -4,6 +4,7 @@
 // Automation is ENGLISH ONLY (Mehdi's rule) — `lang` kept for parity.
 import { createCanvas, loadImage, registerFont } from 'canvas'
 import QRCode from 'qrcode'
+import * as ed from './editorial.js'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -57,6 +58,7 @@ export function registerBrandFonts() {
   f('Tajawal-Bold.ttf', { family: 'Tajawal', weight: 'bold' })
   f('Tajawal-Medium.ttf', { family: 'Tajawal', weight: '500' })
   f('IBMPlexMono.ttf', { family: 'IBM Plex Mono' })
+  ed.registerEditorialFonts()
   fontsReady = true
 }
 
@@ -136,7 +138,7 @@ export function wrapLines(ctx, text, maxWidth, maxLines) {
     while (l.length > 1 && ctx.measureText(l + '…').width > maxWidth) l = l.slice(0, -1).trimEnd()
     return l + '…'
   }
-  if (overflow) lines[lines.length - 1] = ellipsize(cur ? lines[lines.length - 1] : lines[lines.length - 1])
+  if (overflow) { if (lines.length === 0) lines.push(ellipsize(cur)); else lines[lines.length - 1] = ellipsize(lines[lines.length - 1]) }   // maxLines 1 + a wide first word used to crash (2026-09-14)
   // A single word wider than the box (rare, e.g. very long club names) still gets clipped cleanly.
   return lines.map((l) => (ctx.measureText(l).width > maxWidth ? ellipsize(l) : l))
 }
@@ -223,291 +225,280 @@ async function drawQR(ctx, text, x, y, size) {
   ctx.fillStyle = '#FFFFFF'; ctx.fill()
   ctx.drawImage(qr, x + 10, y + 10, size - 20, size - 20)
 }
+/** Page mark (editorial): Senyera logo with PRESSING 90’ under it, right-aligned at x. mode 'light' on photos. */
+/** One clipped line measured with an explicit font (spaced labels add tracking → measure at ~70 % of the box). */
+function oneLine(ctx, text, maxW, font) { ctx.font = font; return wrapLines(ctx, String(text ?? ''), maxW, 1)[0] || '' }
+/** Display title: Arabic → Aref Ruqaa, Latin → Playfair; shrinks to maxW; garnet→blue ink gradient (+ optional outline). */
+function displayTitle(ctx, txt, x, y, { size = 100, maxW = 900, align = 'center', stroke = null } = {}) {
+  const ar = /[؀-ۿ]/.test(txt); let sz = size
+  for (;;) { ctx.font = ar ? `bold ${sz}px Aref` : `900 ${sz}px Playfair`; if (ctx.measureText(txt).width <= maxW || sz <= 30) break; sz -= 4 }
+  ctx.textAlign = align; ctx.textBaseline = 'alphabetic'
+  const w = ctx.measureText(txt).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x
+  if (stroke) { ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(6, sz * 0.08); ctx.strokeStyle = stroke; ctx.strokeText(txt, x, y) }
+  ctx.fillStyle = ed.inkGradient(ctx, x0, w); ctx.fillText(txt, x, y)
+}
+/** Small label: Latin → spaced caps (Cairo), Arabic → Tajawal (letter-spacing would break the joins). */
+function labelText(ctx, text, x, y, { size = 18, align = 'left', color = ed.E.NAVY, tracking = 0.3 } = {}) {
+  const t = String(text ?? '')
+  if (/[؀-ۿ]/.test(t)) { ctx.font = `bold ${Math.round(size * 1.5)}px Tajawal`; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = color; ctx.fillText(t, x, y); return }
+  ed.spaced(ctx, t, x, y, { size, align, color, tracking })
+}
+async function pageMark(ctx, x, y, mode = 'dark') { paintLogo(ctx, x - 72, y, 72); ctx.fillStyle = mode === 'light' ? ed.E.CREAM : ed.E.NAVY; ctx.font = '22px Anton'; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText('PRESSING 90’', x, y + 100) }
 
-// ─── 1. Final score post 1080×1350 ─────────────────────────────────
-// m: {home, away, homeLogo, awayLogo, homeScore, awayScore, league, venue?, status?: 'FT'|'AET'|'PEN'}
+// ─── 1. Full-time poster 1080×1350 (editorial, 2026-09-14) ─────────────────
+// m: {home, away, homeLogo, awayLogo, homeScore, awayScore, league, venue?, status?, dateLabel?, lang?,
+//     goals?: [{side:'home'|'away', scorer, minute, penalty?, ownGoal?}], player?: cutout key | playerNames?: [...]}
+const LEAGUE_LOGO = { 'LaLiga': 15, 'Premier League': 23, 'UEFA Champions League': 2, 'Serie A': 12, 'Bundesliga': 10, 'Ligue 1': 9 }
+async function leagueMark(ctx, league, x, y, size, align = 'left') {
+  const id = LEAGUE_LOGO[league]
+  const img = id ? await loadImg(`https://a.espncdn.com/i/leaguelogos/soccer/500/${id}.png`) : null
+  if (img) { ed.crestAt(ctx, img, align === 'right' ? x - size / 2 : x + size / 2, y + size / 2, size); return }
+  ed.spaced(ctx, String(league || '').toUpperCase(), x, y + size * 0.6, { size: 15, align, tracking: 0.42 })
+}
+function scorerLine(g) { const who = String(g.scorer || 'Goal').split(' ').slice(-1)[0]; return { label: `${who.toUpperCase()}  ${String(g.minute || '').replace(/'/g, '')}'${g.penalty ? ' (P)' : ''}${g.ownGoal ? ' (OG)' : ''}`, n: who.length } }
+function scorerList(ctx, goals, x, y, align = 'center', size = 19) {
+  goals.slice(0, 5).forEach((g, i) => { const { label, n } = scorerLine(g); ed.spaced(ctx, label, x, y + i * (size + 15), { size, align, tracking: 0.28, fills: [...label].map((_, j) => (j > n ? ed.E.GRANA : ed.E.NAVY)) }) })
+}
 export async function drawScoreCard(m) {
   registerBrandFonts()
   const W = 1080, H = 1350
-  const c = createCanvas(W, H)
-  const ctx = ctx2d(c)
-  paintGround(ctx, W, H)
-  await paintBrandRow(ctx)
-  ctx.textAlign = 'right'
-  ctx.fillStyle = GOLD
-  ctx.font = '30px "IBM Plex Mono"'
-  ctx.fillText('F U L L   T I M E', W - 60, 130)
-  // League
-  ctx.textAlign = 'center'
-  ctx.fillStyle = 'rgba(243,239,230,0.7)'
-  ctx.font = '34px "IBM Plex Mono"'
-  ctx.fillText(m.league || '', W / 2, 300)
-  // Crests + score
-  const size = 300
-  const cy = 620
-  const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
-  ctx.drawImage(h, 90, cy - size / 2, size, size)
-  ctx.drawImage(a, W - 90 - size, cy - size / 2, size, size)
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  const ar = m.lang !== 'en'
+  const goals = Array.isArray(m.goals) ? m.goals : []
+  const player = m.player || ed.pickCutout(m.playerNames || goals.filter((g) => !g.ownGoal).map((g) => g.scorer))
+  ed.backdrop(ctx, W, H, { stripe: true })
+  await ed.stadium(ctx, W, H, { top: H - 330 })
+  const [hImg, aImg] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
   const hs = Number(m.homeScore ?? 0), as = Number(m.awayScore ?? 0)
-  const hCol = hs === as ? CREAM : hs > as ? GREEN : LOSER
-  const aCol = hs === as ? CREAM : as > hs ? GREEN : LOSER
-  ctx.font = '190px Anton'
-  ctx.textAlign = 'center'
-  ctx.fillStyle = hCol; ctx.fillText(String(hs), W / 2 - 120, cy + 68)
-  ctx.fillStyle = GOLD; ctx.font = '110px Anton'; ctx.fillText('–', W / 2, cy + 50)
-  ctx.font = '190px Anton'; ctx.fillStyle = aCol; ctx.fillText(String(as), W / 2 + 120, cy + 68)
-  if (m.status && m.status !== 'FT') {
-    ctx.fillStyle = GOLD; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText(m.status, W / 2, cy + 120)
+  const hCol = hs >= as ? ed.E.NAVY : ed.E.GRANA, aCol = as > hs ? ed.E.GRANA : as === hs ? ed.E.NAVY : ed.E.NAVY
+  if (player) {
+    await leagueMark(ctx, m.league, 60, 34, 74)
+    ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 150, { size: 15 })
+    ed.spaced(ctx, `${m.home} V ${m.away}`.toUpperCase().slice(0, 26), 48, 290, { size: 22, tracking: 0.42 })
+    if (ar) ed.titleAr(ctx, 'نهاية', 'المباراة', 48, 440, 150, { align: 'left', lat: m.status && m.status !== 'FT' ? m.status : 'FULL TIME' })
+    else ed.titleLat(ctx, 'FULL', 'TIME', 48, 440, 150, { align: 'left' })
+    const cx1 = 135, cx2 = 355, cy = 690
+    ed.crestAt(ctx, hImg, cx1, cy, 130); ed.crestAt(ctx, aImg, cx2, cy, 124); ctx.fillStyle = ed.navy(0.25); ctx.fillRect(245, cy - 60, 2, 120)
+    ed.spaced(ctx, fitLine(ctx, m.home, 200, 'Cairo', 20, 14).toUpperCase(), cx1, cy + 118, { size: 18, align: 'center', tracking: 0.3 }); ed.spaced(ctx, fitLine(ctx, m.away, 200, 'Cairo', 20, 14).toUpperCase(), cx2, cy + 118, { size: 18, align: 'center', tracking: 0.3 })
+    ed.digits(ctx, hs, cx1, 985, 190, hCol); ed.digits(ctx, as, cx2, 985, 190, aCol); ctx.fillStyle = ed.navy(0.25); ctx.fillRect(245, 840, 2, 150)
+    scorerList(ctx, goals.filter((g) => g.side === 'home'), cx1, 1040); scorerList(ctx, goals.filter((g) => g.side === 'away'), cx2, 1040)
+    await ed.bust(ctx, player, { cx: 800, crownY: 110, headPx: 270, W, H })
+  } else {
+    await leagueMark(ctx, m.league, W / 2 - 37, 34, 74)
+    ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 62, { size: 15 })
+    if (ar) ed.titleAr(ctx, 'نهاية', 'المباراة', W / 2, 330, 150, { lat: m.status && m.status !== 'FT' ? m.status : 'FULL TIME' })
+    else ed.titleLat(ctx, 'FULL', 'TIME', W / 2, 330, 150)
+    const cy = 700, cx1 = 270, cx2 = W - 270
+    ed.crestAt(ctx, hImg, cx1, cy, 250); ed.crestAt(ctx, aImg, cx2, cy, 250)
+    ed.spaced(ctx, fitLine(ctx, m.home, 360, 'Cairo', 24, 16).toUpperCase(), cx1, cy + 180, { size: 22, align: 'center', tracking: 0.3 }); ed.spaced(ctx, fitLine(ctx, m.away, 360, 'Cairo', 24, 16).toUpperCase(), cx2, cy + 180, { size: 22, align: 'center', tracking: 0.3 })
+    ed.digits(ctx, hs, W / 2 - 110, cy + 80, 230, hCol); ed.digits(ctx, as, W / 2 + 110, cy + 80, 230, aCol); ctx.fillStyle = ed.navy(0.25); ctx.fillRect(W / 2 - 1, cy - 90, 2, 190)
+    scorerList(ctx, goals.filter((g) => g.side === 'home'), cx1, 940); scorerList(ctx, goals.filter((g) => g.side === 'away'), cx2, 940)
+    if (m.homePens && m.awayPens) ed.spaced(ctx, `PENS ${m.homePens} – ${m.awayPens}`, W / 2, 1170, { size: 20, align: 'center', color: ed.E.GRANA, tracking: 0.42 })
   }
-  // Names
-  ctx.fillStyle = CREAM
-  ctx.font = '46px Anton'
-  wrapLines(ctx, m.home, 320, 2).forEach((l, i) => ctx.fillText(l, 90 + size / 2, cy + size / 2 + 70 + i * 52))
-  wrapLines(ctx, m.away, 320, 2).forEach((l, i) => ctx.fillText(l, W - 90 - size / 2, cy + size / 2 + 70 + i * 52))
-  // Venue
-  if (m.venue) {
-    ctx.fillStyle = 'rgba(243,239,230,0.5)'
-    ctx.font = '26px "IBM Plex Mono"'
-    ctx.fillText(wrapLines(ctx, m.venue, 900, 1)[0], W / 2, 1120)
-  }
-  // Footer pill
-  ctx.fillStyle = GOLD
-  roundedPath(ctx, W / 2 - 180, H - 110, 360, 60, 30); ctx.fill()
-  ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'
-  ctx.fillText('pressing90.live', W / 2, H - 69)
+  await pageMark(ctx, W - 48, 44)
+  if (m.venue) { ctx.save(); ctx.translate(70, 1300); ctx.rotate(-0.16); ed.spaced(ctx, oneLine(ctx, String(m.venue).toUpperCase(), 520, 'bold 22px Cairo'), 0, 0, { size: 22, color: 'rgba(244,239,230,0.9)', tracking: 0.42 }); ctx.restore() }
+  ed.grain(ctx, W, H)
   return c
 }
 
-// ─── 2. Match-day post 1080×1350 (list, ≤6 rows) ───────────────────
-// « يوم برشلونة » (Mehdi, 2026-09-14): on a Barça day the first match gets a featured panel —
-// blaugrana glow, both crests large (Barça with a gold halo), gold kick-off pill.
+// ─── 1b. Lineup post 1080×1350 (predicted / confirmed) ────────────────────
+// d: {home, away, homeLogo, awayLogo, league, venue?, dateLabel?, matchday?, team:'home'|'away', formation, players:[{name, jersey, pos, place}], predicted?, kit?:'home'|'away'}
+export async function drawLineupPost(d) {
+  registerBrandFonts()
+  const W = 1080, H = 1350
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ed.backdrop(ctx, W, H)
+  await ed.stadium(ctx, W, H, { top: H - 420, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.75, fadeTo: 0.6 })
+  ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 62, { size: 15 })
+  const h = String(d.home || ''), a = String(d.away || '')
+  ed.stack(ctx, [fitLine(ctx, h, 300, 'Cairo', 20, 14).toUpperCase(), `v ${fitLine(ctx, a, 280, 'Cairo', 20, 14).toUpperCase()}`], 48, 208, { size: 20, gap: 28 })
+  if (d.venue) ed.spaced(ctx, oneLine(ctx, String(d.venue).toUpperCase(), 300, 'bold 13px Cairo'), 48, 284, { size: 13, tracking: 0.42 })
+  if (d.dateLabel) ed.spaced(ctx, String(d.dateLabel).toUpperCase(), 48, 308, { size: 13, tracking: 0.42 })
+  await pageMark(ctx, W - 48, 44)
+  ctx.textAlign = 'right'; ctx.fillStyle = ed.E.NAVY; ctx.font = 'bold 30px Tajawal'
+  ctx.fillText(d.matchdayAr || `${d.leagueAr || d.league || ''}`, W - 48, 240)
+  if (d.matchday) ed.spaced(ctx, String(d.matchday).toUpperCase(), W - 48, 268, { size: 14, align: 'right', tracking: 0.42 })
+  ed.bar(ctx, W - 108, 280)
+  await leagueMark(ctx, d.league, W / 2 - 37, 34, 74)
+  const [hImg, aImg] = await Promise.all([crest(d.homeLogo, d.home), crest(d.awayLogo, d.away)])
+  ed.crestAt(ctx, hImg, W / 2 - 100, 190, 110); ed.crestAt(ctx, aImg, W / 2 + 100, 190, 104); ed.spaced(ctx, 'v', W / 2, 200, { size: 26, align: 'center' })
+  const predicted = d.predicted !== false
+  ed.titleAr(ctx, 'التشكيلة', predicted ? 'المتوقعة' : 'الرسمية', W / 2, 425, 148, { lat: predicted ? 'PREDICTED LINEUP' : 'CONFIRMED LINEUP' })
+  ed.vtext(ctx, String(d.teamLabel || 'FC BARCELONA'), 46, 760); ed.vtext(ctx, String(d.season || '2026 / 27'), W - 46, 760, { dir: 1 })
+  const X = ed.pitch(ctx, 120, 665, 840, 585, { topW: 0.88 })
+  const rows = ed.lineupRows(d.players || [], d.formation)
+  const ys = [1165, 1015, 868, 722].slice(0, rows.length)
+  rows.forEach((row, ri) => {
+    const n = row.length, sp = n === 1 ? 0 : Math.min(230, 700 / (n - 1))
+    row.forEach((p, i) => { const u = 0.5 + ((i - (n - 1) / 2) * sp) / 840; ed.jersey(ctx, X(u, ys[ri]), ys[ri] - 90, 128, { kind: ri === 0 ? 'gk' : (d.kit || 'home'), number: p.jersey || '', name: fitLine(ctx, ed.surname(p.name), 200, 'Cairo', 22, 15) }) })
+  })
+  ed.stack(ctx, ['VISCA', 'BARÇA'], 48, 1270, { size: 15 })
+  ctx.textAlign = 'right'; ctx.fillStyle = ed.E.NAVY; ctx.font = 'bold 26px Tajawal'; ctx.fillText('برشلونة أولاً · pressing90.live', W - 48, 1300)
+  ed.grain(ctx, W, H)
+  return c
+}
+
+// ─── 2. Match-day post 1080×1350 (editorial) ───────────────────────────────
 async function paintFeatured(ctx, m, x, y, w, h) {
-  roundedPath(ctx, x, y, w, h, 34); ctx.save(); ctx.clip()
-  const g = ctx.createLinearGradient(x, y, x + w, y + h); g.addColorStop(0, 'rgba(165,0,68,0.55)'); g.addColorStop(0.5, 'rgba(11,31,75,0.9)'); g.addColorStop(1, 'rgba(0,77,152,0.55)')
-  ctx.fillStyle = g; ctx.fillRect(x, y, w, h)
-  const sh = ctx.createRadialGradient(x + w / 2, y + h * 0.45, 0, x + w / 2, y + h * 0.45, w * 0.55); sh.addColorStop(0, 'rgba(242,194,48,0.16)'); sh.addColorStop(1, 'rgba(0,0,0,0)')
-  ctx.fillStyle = sh; ctx.fillRect(x, y, w, h)
-  ctx.restore()
-  roundedPath(ctx, x, y, w, h, 34); ctx.strokeStyle = 'rgba(242,194,48,0.7)'; ctx.lineWidth = 3; ctx.stroke()
-  const cr = Math.round(h * 0.5)
   const [hi, ai] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
-  const isB = (n) => /barcelona|barça/i.test(String(n || ''))
-  const drawCrest = (img, cx, cy, big) => { ctx.save(); if (big) { ctx.shadowColor = 'rgba(242,194,48,0.6)'; ctx.shadowBlur = 36 } const s = big ? cr * 1.12 : cr; ctx.drawImage(img, cx - s / 2, cy - s / 2, s, s); ctx.restore() }
-  const cy = y + h * 0.42
-  drawCrest(hi, x + w * 0.2, cy, isB(m.home)); drawCrest(ai, x + w * 0.8, cy, isB(m.away))
-  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = `${Math.round(h * 0.11)}px Anton`
-  ctx.fillText(fitLine(ctx, m.home, w * 0.3, 'Anton', Math.round(h * 0.11), 22), x + w * 0.2, y + h * 0.82)
-  ctx.fillText(fitLine(ctx, m.away, w * 0.3, 'Anton', Math.round(h * 0.11), 22), x + w * 0.8, y + h * 0.82)
-  ctx.font = `${Math.round(h * 0.2)}px Anton`; ctx.lineJoin = 'round'; ctx.lineWidth = 8; ctx.strokeStyle = '#A50044'; ctx.strokeText('VS', x + w / 2, cy + h * 0.07); ctx.fillStyle = '#F2C230'; ctx.fillText('VS', x + w / 2, cy + h * 0.07)
-  const label = m.time || ''
-  if (label) { ctx.font = `${Math.round(h * 0.1)}px "IBM Plex Mono"`; const pw = ctx.measureText(label).width + 50; roundedPath(ctx, x + w / 2 - pw / 2, y + h * 0.62, pw, h * 0.16, h * 0.08); ctx.fillStyle = '#F2C230'; ctx.fill(); ctx.fillStyle = NIGHT; ctx.fillText(label, x + w / 2, y + h * 0.735) }
-  ctx.fillStyle = 'rgba(243,239,230,0.6)'; ctx.font = `${Math.round(h * 0.07)}px "IBM Plex Mono"`; ctx.fillText(wrapLines(ctx, m.league || '', w * 0.5, 1)[0], x + w / 2, y + h * 0.93)
+  const cy = y + h * 0.42, cr = Math.round(h * 0.55)
+  ed.crestAt(ctx, hi, x + w * 0.22, cy, cr); ed.crestAt(ctx, ai, x + w * 0.78, cy, cr)
+  ed.spaced(ctx, fitLine(ctx, m.home, w * 0.34, 'Cairo', 22, 14).toUpperCase(), x + w * 0.22, y + h * 0.86, { size: 20, align: 'center', tracking: 0.3 })
+  ed.spaced(ctx, fitLine(ctx, m.away, w * 0.34, 'Cairo', 22, 14).toUpperCase(), x + w * 0.78, y + h * 0.86, { size: 20, align: 'center', tracking: 0.3 })
+  ctx.textAlign = 'center'
+  if (m.score) ed.digits(ctx, m.score.replace('–', ' – '), x + w / 2, cy + h * 0.13, Math.round(h * 0.3), m.live ? ed.E.GRANA : ed.E.NAVY)
+  else { ctx.font = `900 ${Math.round(h * 0.22)}px Playfair`; ctx.fillStyle = ed.inkGradient(ctx, x + w / 2 - 60, 120); ctx.fillText('VS', x + w / 2, cy + h * 0.1) }
+  const label = m.live ? 'LIVE' : (m.time || '')
+  if (label) { ctx.font = 'bold 22px Cairo'; const pw = ctx.measureText(label).width + 56; roundedPath(ctx, x + w / 2 - pw / 2, cy + h * 0.2, pw, 44, 22); ctx.fillStyle = m.live ? ed.E.GRANA : ed.E.NAVY; ctx.fill(); ctx.fillStyle = ed.E.CREAM; ctx.fillText(label, x + w / 2, cy + h * 0.2 + 31) }
+  ed.spaced(ctx, oneLine(ctx, String(m.league || '').toUpperCase(), w * 0.36, 'bold 13px Cairo'), x + w / 2, y + h * 0.98, { size: 13, align: 'center', color: ed.E.MUTED, tracking: 0.42 })
+}
+function matchRow(ctx, m, x, y, w, h, hi, ai) {
+  roundedPath(ctx, x, y, w, h, 18); ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.fill(); ctx.strokeStyle = ed.E.LINE; ctx.lineWidth = 2; ctx.stroke()
+  const cr = Math.round(h * 0.62), cy = y + h / 2
+  ed.crestAt(ctx, hi, x + 24 + cr / 2, cy, cr); ed.crestAt(ctx, ai, x + w - 24 - cr / 2, cy, cr)
+  ctx.fillStyle = ed.E.NAVY; ctx.textAlign = 'left'; ctx.fillText(fitLine(ctx, m.home, w * 0.26, 'Cairo', 28, 18), x + 24 + cr + 16, cy + 10)
+  ctx.textAlign = 'right'; ctx.fillText(fitLine(ctx, m.away, w * 0.26, 'Cairo', 28, 18), x + w - 24 - cr - 16, cy + 10)
+  ctx.textAlign = 'center'
+  if (m.score) ed.digits(ctx, m.score.replace('–', ' – '), x + w / 2, cy + 16, 44, m.live ? ed.E.GRANA : ed.E.NAVY)
+  else { const label = m.time || 'VS'; ctx.font = 'bold 20px Cairo'; const pw = Math.max(110, ctx.measureText(label).width + 40); roundedPath(ctx, x + w / 2 - pw / 2, cy - 21, pw, 42, 21); ctx.fillStyle = ed.E.NAVY; ctx.fill(); ctx.fillStyle = ed.E.CREAM; ctx.fillText(label, x + w / 2, cy + 8) }
+  ed.spaced(ctx, oneLine(ctx, String(m.league || '').toUpperCase(), 220, 'bold 11px Cairo'), x + w / 2, y + h - 10, { size: 11, align: 'center', color: ed.E.MUTED, tracking: 0.36 })
 }
 export async function drawMatchdayPost(matches, dateLabel, opts = {}) {
   registerBrandFonts()
   const W = 1080, H = 1350
-  const c = createCanvas(W, H)
-  const ctx = ctx2d(c)
-  paintGround(ctx, W, H)
-  await paintBrandRow(ctx, 60, 60, 96)
-  ctx.textAlign = 'center'
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ed.backdrop(ctx, W, H)
+  await ed.stadium(ctx, W, H, { top: H - 360, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 })
+  ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 62, { size: 15 })
+  await pageMark(ctx, W - 48, 44)
+  if (dateLabel) ed.spaced(ctx, String(dateLabel).toUpperCase(), 48, 150, { size: 13, tracking: 0.42 })
   const featured = opts.featured && matches[0]
-  if (featured) {
-    ctx.fillStyle = GOLD; ctx.font = 'bold 72px Tajawal'; ctx.fillText('يوم برشلونة', W / 2, 282)
-    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '26px "IBM Plex Mono"'; ctx.fillText(`BARÇA DAY · ${dateLabel || ''}`, W / 2, 324)
-    await paintFeatured(ctx, matches[0], 48, 350, W - 96, 330)
-  } else {
-    ctx.fillStyle = GOLD; ctx.font = '72px Anton'
-    ctx.fillText("TODAY'S MATCHES", W / 2, 290)
-    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '28px "IBM Plex Mono"'
-    ctx.fillText(dateLabel || '', W / 2, 340)
-  }
-  const top = featured ? 712 : 380, rowH = featured ? 128 : 138, cr = featured ? 76 : 84
+  const results = !!opts.results
+  if (featured) ed.titleAr(ctx, 'يوم', 'برشلونة', W / 2, 250, 130, { lat: 'BARÇA DAY' })
+  else if (results) ed.titleAr(ctx, 'نتائج', opts.yesterday ? 'الأمس' : 'اليوم', W / 2, 250, 130, { lat: opts.yesterday ? "YESTERDAY'S RESULTS" : "TODAY'S RESULTS" })
+  else ed.titleAr(ctx, 'مباريات', 'اليوم', W / 2, 250, 130, { lat: "TODAY'S MATCHES" })
+  let top = 460
+  if (featured) { await paintFeatured(ctx, matches[0], 48, 430, W - 96, 300); top = 770 }
   const rows = featured ? matches.slice(1, 5) : matches.slice(0, 6)
-  for (let i = 0; i < rows.length; i++) {
-    const m = rows[i]; const y = top + i * rowH; const cy = y + (rowH - 18) / 2
-    roundedPath(ctx, 48, y, W - 96, rowH - 18, 24)
-    ctx.fillStyle = 'rgba(13,44,75,0.85)'; ctx.fill()
-    ctx.strokeStyle = 'rgba(243,239,230,0.10)'; ctx.lineWidth = 2; ctx.stroke()
-    const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
-    ctx.drawImage(h, 76, cy - cr / 2 - 6, cr, cr)
-    ctx.drawImage(a, W - 76 - cr, cy - cr / 2 - 6, cr, cr)
-    ctx.fillStyle = CREAM
-    ctx.textAlign = 'left'; ctx.fillText(fitLine(ctx, m.home, 270, 'Anton', 34, 24), 76 + cr + 16, cy + 4)
-    ctx.textAlign = 'right'; ctx.fillText(fitLine(ctx, m.away, 270, 'Anton', 34, 24), W - 76 - cr - 16, cy + 4)
-    const label = m.time || 'VS'
-    ctx.font = '26px "IBM Plex Mono"'
-    const pw = Math.max(140, ctx.measureText(label).width + 44)
-    roundedPath(ctx, W / 2 - pw / 2, cy - 34, pw, 54, 27); ctx.fillStyle = GOLD; ctx.fill()
-    ctx.fillStyle = NIGHT; ctx.textAlign = 'center'; ctx.fillText(label, W / 2, cy + 6)
-    ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '20px "IBM Plex Mono"'
-    ctx.fillText(wrapLines(ctx, m.league || '', 400, 1)[0], W / 2, cy + 52)
-  }
-  ctx.fillStyle = GOLD
-  roundedPath(ctx, W / 2 - 180, H - 100, 360, 58, 29); ctx.fill()
-  ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'
-  ctx.fillText('pressing90.live', W / 2, H - 61)
+  const rowH = featured ? 118 : 128, gap = 12
+  const imgs = await Promise.all(rows.map((m) => Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])))
+  rows.forEach((m, i) => matchRow(ctx, m, 48, top + i * (rowH + gap), W - 96, rowH, imgs[i][0], imgs[i][1]))
+  ed.stack(ctx, ['VISCA', 'BARÇA'], 48, 1270, { size: 15 })
+  ctx.textAlign = 'right'; ctx.fillStyle = ed.E.NAVY; ctx.font = 'bold 26px Tajawal'; ctx.fillText('برشلونة أولاً · pressing90.live', W - 48, 1300)
+  ed.grain(ctx, W, H)
   return c
 }
 
-// ─── 3. Match-day story page 1080×1920 (≤6 rows) ───────────────────
+// ─── 3. Match-day story page 1080×1920 (editorial) ─────────────────────────
 export async function drawMatchStory(matches, dateLabel, page, pages, opts = {}) {
   registerBrandFonts()
   const W = 1080, H = 1920
-  const c = createCanvas(W, H)
-  const ctx = ctx2d(c)
-  paintGround(ctx, W, H)
-  await paintBrandRow(ctx, 60, 70, 96)
-  if (pages > 1) { ctx.textAlign = 'right'; ctx.fillStyle = GOLD; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(`${page} / ${pages}`, W - 60, 130) }
-  ctx.textAlign = 'center'
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ed.backdrop(ctx, W, H)
+  await ed.stadium(ctx, W, H, { top: H - 520, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 })
+  ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 92, { size: 15 })
+  await pageMark(ctx, W - 48, 70)
+  if (pages > 1) ed.spaced(ctx, `${page} / ${pages}`, W - 48, 220, { size: 14, align: 'right', tracking: 0.42 })
+  if (dateLabel) ed.spaced(ctx, String(dateLabel).toUpperCase(), 48, 180, { size: 13, tracking: 0.42 })
   const featured = opts.featured && page === 1 && matches[0]
-  if (featured) {
-    ctx.fillStyle = GOLD; ctx.font = 'bold 80px Tajawal'; ctx.fillText('يوم برشلونة', W / 2, 322)
-    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText(`BARÇA DAY · ${dateLabel || ''}`, W / 2, 372)
-    await paintFeatured(ctx, matches[0], 48, 410, W - 96, 380)
-  } else {
-    ctx.fillStyle = GOLD; ctx.font = '78px Anton'; ctx.fillText("TODAY'S MATCHES", W / 2, 330)
-    ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(dateLabel || '', W / 2, 392)
-  }
-  const top = featured ? 830 : 470, rowH = featured ? 160 : 190, cr = featured ? 84 : 96
-  const list = featured ? matches.slice(1, 6) : matches
-  for (let i = 0; i < list.length; i++) {
-    const m = list[i]; const y = top + i * rowH; const cy = y + (rowH - 22) / 2
-    roundedPath(ctx, 48, y, W - 96, rowH - 22, 28)
-    ctx.fillStyle = 'rgba(13,44,75,0.85)'; ctx.fill()
-    ctx.strokeStyle = m.live ? 'rgba(255,77,94,0.55)' : 'rgba(243,239,230,0.10)'; ctx.lineWidth = 2; ctx.stroke()
-    const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
-    ctx.drawImage(h, 78, cy - cr / 2 - 8, cr, cr)
-    ctx.drawImage(a, W - 78 - cr, cy - cr / 2 - 8, cr, cr)
-    ctx.fillStyle = CREAM
-    ctx.textAlign = 'left'; ctx.fillText(fitLine(ctx, m.home, 265, 'Anton', 38, 26), 78 + cr + 18, cy + 4)
-    ctx.textAlign = 'right'; ctx.fillText(fitLine(ctx, m.away, 265, 'Anton', 38, 26), W - 78 - cr - 18, cy + 4)
-    const label = m.score ?? m.time ?? 'VS'
-    ctx.font = m.score ? '44px Anton' : '30px "IBM Plex Mono"'
-    const pw = Math.max(150, ctx.measureText(label).width + 48)
-    roundedPath(ctx, W / 2 - pw / 2, cy - 40, pw, 62, 31); ctx.fillStyle = m.live ? RED : GOLD; ctx.fill()
-    ctx.fillStyle = m.live ? '#FFFFFF' : NIGHT; ctx.textAlign = 'center'; ctx.fillText(label, W / 2, cy + (m.score ? 12 : 10))
-    ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '22px "IBM Plex Mono"'
-    ctx.fillText(wrapLines(ctx, m.league || '', 420, 1)[0], W / 2, cy + 66)
-  }
-  const footY = Math.max(top + list.length * rowH + 30, 1620)
-  await drawQR(ctx, `${SITE}/today?ref=fb-story`, W - 60 - 180, footY, 180)
-  ctx.fillStyle = GOLD; roundedPath(ctx, 60, footY + 20, 360, 60, 30); ctx.fill()
-  ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', 240, footY + 60)
-  ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.textAlign = 'left'; ctx.font = 'bold 26px Archivo'
-  wrapLines(ctx, 'Live scores: scan or visit our profile', 520, 2).forEach((l, i) => ctx.fillText(l, 60, footY + 128 + i * 36))
+  if (featured) ed.titleAr(ctx, 'يوم', 'برشلونة', W / 2, 380, 150, { lat: 'BARÇA DAY' })
+  else ed.titleAr(ctx, 'مباريات', 'اليوم', W / 2, 380, 150, { lat: "TODAY'S MATCHES" })
+  let top = 640
+  if (featured) { await paintFeatured(ctx, matches[0], 48, 610, W - 96, 340); top = 990 }
+  const list = featured ? matches.slice(1, 6) : matches.slice(0, 6)
+  const rowH = 132, gap = 14
+  const imgs = await Promise.all(list.map((m) => Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])))
+  list.forEach((m, i) => matchRow(ctx, m, 48, top + i * (rowH + gap), W - 96, rowH, imgs[i][0], imgs[i][1]))
+  const footY = 1660
+  await drawQR(ctx, `${SITE}/today?ref=fb-story`, W - 60 - 170, footY, 170)
+  ed.stack(ctx, ['VISCA', 'BARÇA'], 48, footY + 20, { size: 15 })
+  ctx.textAlign = 'left'; ctx.fillStyle = ed.E.NAVY; ctx.font = 'bold 30px Tajawal'; ctx.fillText('النتائج مباشرة · pressing90.live', 48, footY + 130)
+  ed.grain(ctx, W, H)
   return c
 }
 
-// ─── 4. Reel slide 1080×1920 (one match) ───────────────────────────
+// ─── 4. Reel slide 1080×1920 (legacy single-frame slide, editorial) ────────
 export async function drawMatchSlide(m, idx, total, heading) {
   registerBrandFonts()
   const W = 1080, H = 1920
-  const c = createCanvas(W, H)
-  const ctx = ctx2d(c)
-  ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-  const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
-  g1.addColorStop(0, gold(0.14)); g1.addColorStop(1, gold(0))
-  ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
-  paintLogo(ctx, W / 2 - 55, 120, 110)
-  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
-  ctx.fillStyle = GOLD; ctx.font = '44px "IBM Plex Mono"'; ctx.fillText(heading || "TODAY'S MATCHES", W / 2, 400)
-  ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(m.league || '', W / 2, 560)
-  const size = 300, cy = 850
-  const [h, a] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
-  ctx.drawImage(h, 120, cy - size / 2, size, size)
-  ctx.drawImage(a, W - 120 - size, cy - size / 2, size, size)
-  ctx.fillStyle = GOLD; ctx.font = '90px Anton'; ctx.fillText(m.score ?? 'VS', W / 2, cy + 30)
-  ctx.fillStyle = CREAM; ctx.font = '44px Anton'
-  wrapLines(ctx, m.home, 380, 2).forEach((l, i) => ctx.fillText(l, 120 + size / 2, cy + size / 2 + 80 + i * 52))
-  wrapLines(ctx, m.away, 380, 2).forEach((l, i) => ctx.fillText(l, W - 120 - size / 2, cy + size / 2 + 80 + i * 52))
-  if (m.live) {
-    ctx.fillStyle = RED; roundedPath(ctx, W / 2 - 140, 1380, 280, 90, 45); ctx.fill()
-    ctx.fillStyle = '#fff'; ctx.font = '48px Anton'; ctx.fillText('LIVE', W / 2, 1442)
-  } else if (m.time) {
-    ctx.fillStyle = GOLD; roundedPath(ctx, W / 2 - 170, 1380, 340, 90, 45); ctx.fill()
-    ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(m.time, W / 2, 1440)
-  }
-  ctx.fillStyle = 'rgba(243,239,230,0.5)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('pressing90.live', W / 2, 1700)
-  ctx.fillStyle = GOLD; ctx.font = '26px "IBM Plex Mono"'; ctx.fillText(`${idx + 1} / ${total}`, W / 2, 1760)
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ed.backdrop(ctx, W, H)
+  await ed.stadium(ctx, W, H, { top: H - 520, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 })
+  await pageMark(ctx, W - 48, 70); ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 92, { size: 15 })
+  ed.titleAr(ctx, '', heading || 'مباريات اليوم', W / 2, 420, 110)
+  await paintFeatured(ctx, m, 48, 620, W - 96, 480)
+  ed.spaced(ctx, `${idx + 1} / ${total}`, W / 2, 1760, { size: 14, align: 'center', tracking: 0.42 })
+  ed.grain(ctx, W, H)
   return c
 }
 
-// ─── 5. Article post 1080×1350 (split: photo + generated panel + QR) ─
+// ─── 5. Article post 1080×1350 (editorial: photo + paper panel + QR) ───────
 export async function drawArticlePost(a) {
   registerBrandFonts()
-  const W = 1080, H = 1350, PHOTO_H = 700
-  const c = createCanvas(W, H)
-  const ctx = ctx2d(c)
-  paintGround(ctx, W, H)
+  const W = 1080, H = 1350, PHOTO_H = 720
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ed.backdrop(ctx, W, H)
   const img = await loadImg(a.image_url)
   if (img) {
-    const s = Math.max(W / img.width, PHOTO_H / img.height)
-    const dw = img.width * s, dh = img.height * s
+    const s = Math.max(W / img.width, PHOTO_H / img.height), dw = img.width * s, dh = img.height * s
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, PHOTO_H); ctx.clip()
     ctx.drawImage(img, (W - dw) / 2, (PHOTO_H - dh) / 2, dw, dh); ctx.restore()
-    const fade = ctx.createLinearGradient(0, PHOTO_H - 240, 0, PHOTO_H)
-    fade.addColorStop(0, night(0)); fade.addColorStop(1, night(1))
-    ctx.fillStyle = fade; ctx.fillRect(0, PHOTO_H - 240, W, 240)
+    const fade = ctx.createLinearGradient(0, PHOTO_H - 220, 0, PHOTO_H); fade.addColorStop(0, 'rgba(244,239,230,0)'); fade.addColorStop(1, ed.E.CREAM); ctx.fillStyle = fade; ctx.fillRect(0, PHOTO_H - 220, W, 220)
+    const top = ctx.createLinearGradient(0, 0, 0, 200); top.addColorStop(0, 'rgba(17,28,79,0.45)'); top.addColorStop(1, 'rgba(17,28,79,0)'); ctx.fillStyle = top; ctx.fillRect(0, 0, W, 200)
   }
-  await paintBrandRow(ctx, 60, 728, 78)
-  ctx.fillStyle = GOLD; ctx.textAlign = 'right'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('N E W   A R T I C L E', W - 64, 782)
-  const titleTop = 910
-  if (a.lang === 'ar') {
-    // Arabic headline: Tajawal, right-aligned, gold bar on the right
-    ctx.fillStyle = GOLD; ctx.fillRect(W - 70, titleTop - 50, 10, 168)
-    ctx.fillStyle = CREAM; ctx.font = 'bold 60px Tajawal'; ctx.textAlign = 'right'
-    wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, W - 104, titleTop + i * 80))
-    ctx.textAlign = 'left'
+  ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 62, { size: 15, color: img ? ed.E.CREAM : ed.E.NAVY })
+  await pageMark(ctx, W - 48, 44, img ? 'light' : 'dark')
+  const ar = a.lang === 'ar'
+  const kicker = a.kicker || (ar ? 'خبر جديد' : 'NEW ARTICLE')
+  if (ar) { ctx.textAlign = 'right'; ctx.font = 'bold 54px Aref'; ctx.fillStyle = ed.inkGradient(ctx, W - 48 - ctx.measureText(kicker).width, ctx.measureText(kicker).width); ctx.fillText(kicker, W - 48, 800); ed.bar(ctx, W - 108, 818) }
+  else { ed.titleLat(ctx, '', kicker, 48, 800, 54, { align: 'left' }); ed.bar(ctx, 48, 818) }
+  const titleTop = 900
+  if (ar) {
+    ctx.fillStyle = ed.E.NAVY; ctx.font = '900 56px Cairo'; ctx.textAlign = 'right'
+    wrapLines(ctx, a.title, W - 130, 3).forEach((l, i) => ctx.fillText(l, W - 48, titleTop + i * 78))
   } else {
-    ctx.fillStyle = GOLD; ctx.fillRect(60, titleTop - 50, 10, 168)
-    ctx.fillStyle = CREAM; ctx.font = '62px Anton'; ctx.textAlign = 'left'
-    wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 104, titleTop + i * 80))
+    ctx.fillStyle = ed.E.NAVY; ctx.font = '900 58px Playfair'; ctx.textAlign = 'left'
+    wrapLines(ctx, a.title, W - 130, 3).forEach((l, i) => ctx.fillText(l, 48, titleTop + i * 74))
   }
-  const qrCard = 190, qrX = W - 60 - qrCard, qrY = H - 60 - qrCard
-  await drawQR(ctx, `${SITE}/news/${a.slug}?ref=fb-post`, qrX, qrY, qrCard)
-  ctx.fillStyle = GOLD; roundedPath(ctx, 60, qrY + 30, 340, 58, 29); ctx.fill()
-  ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', 230, qrY + 68)
-  ctx.fillStyle = 'rgba(243,239,230,0.6)'; ctx.font = '24px "IBM Plex Mono"'; ctx.textAlign = 'left'
-  ctx.fillText('full article → link in post · or scan', 60, qrY + 140)
+  const qr = 150, qrX = W - 48 - qr, qrY = H - 48 - qr
+  await drawQR(ctx, `${SITE}/news/${a.slug}?${ar ? 'lang=ar&' : ''}ref=fb-post`, qrX, qrY, qr)
+  ed.stack(ctx, ['VISCA', 'BARÇA'], 48, qrY + 30, { size: 15 })
+  ctx.textAlign = 'left'; ctx.fillStyle = ed.E.NAVY; ctx.font = 'bold 26px Tajawal'; ctx.fillText(ar ? 'المقال كاملاً: الرابط في التعليق · pressing90.live' : 'Full article: link in the comments · pressing90.live', 48, qrY + 140)
+  ed.grain(ctx, W, H)
   return c
 }
 
-// ─── 6. Article story 1080×1920 (QR + visit our profile) ────────────
+// ─── 6. Article story 1080×1920 (editorial, QR card) ───────────────────────
 export async function drawArticleStory(a) {
   registerBrandFonts()
   const W = 1080, H = 1920
-  const c = createCanvas(W, H)
-  const ctx = ctx2d(c)
-  paintGround(ctx, W, H)
-  await paintBrandRow(ctx)
-  ctx.textAlign = 'left'; ctx.fillStyle = GOLD; ctx.font = '36px "IBM Plex Mono"'; ctx.fillText('N E W   A R T I C L E', 64, 300)
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ed.backdrop(ctx, W, H)
+  await ed.stadium(ctx, W, H, { top: H - 420, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.6, fadeTo: 0.6 })
+  ed.stack(ctx, ['BARÇA', 'FIRST'], 48, 92, { size: 15 }); await pageMark(ctx, W - 48, 70)
+  const ar = a.lang === 'ar'
+  const kicker = a.kicker || (ar ? 'خبر جديد' : 'NEW ARTICLE')
+  if (ar) { ctx.textAlign = 'right'; ctx.font = 'bold 60px Aref'; const kw = ctx.measureText(kicker).width; ctx.fillStyle = ed.inkGradient(ctx, W - 48 - kw, kw); ctx.fillText(kicker, W - 48, 300); ed.bar(ctx, W - 108, 318) }
+  else { ed.titleLat(ctx, '', kicker, 48, 300, 60, { align: 'left' }); ed.bar(ctx, 48, 318) }
   const img = await loadImg(a.image_url)
-  if (img) {
-    const y = 340, h = 760
-    roundedPath(ctx, 60, y, W - 120, h, 36); ctx.save(); ctx.clip()
-    const s = Math.max((W - 120) / img.width, h / img.height)
-    const dw = img.width * s, dh = img.height * s
-    ctx.drawImage(img, 60 + ((W - 120) - dw) / 2, y + (h - dh) / 2, dw, dh)
-    const fade = ctx.createLinearGradient(0, y + h - 260, 0, y + h)
-    fade.addColorStop(0, night(0)); fade.addColorStop(1, night(0.92))
-    ctx.fillStyle = fade; ctx.fillRect(60, y, W - 120, h); ctx.restore()
-  }
-  const titleTop = 1190
-  ctx.fillStyle = GOLD; ctx.fillRect(60, titleTop - 58, 10, 190)
-  ctx.fillStyle = CREAM; ctx.font = '72px Anton'; ctx.textAlign = 'left'
-  wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 104, titleTop + i * 92))
-  const cardY = 1500, cardH = 320
-  roundedPath(ctx, 60, cardY, W - 120, cardH, 36); ctx.fillStyle = '#FFFFFF'; ctx.fill()
+  const y = 370, h = 760
+  roundedPath(ctx, 60, y, W - 120, h, 24); ctx.save(); ctx.clip()
+  if (img) { const s = Math.max((W - 120) / img.width, h / img.height); const dw = img.width * s, dh = img.height * s; ctx.drawImage(img, 60 + ((W - 120) - dw) / 2, y + (h - dh) / 2, dw, dh) }
+  else { ctx.fillStyle = ed.E.PAPER_DARK; ctx.fillRect(60, y, W - 120, h) }
+  ctx.restore(); roundedPath(ctx, 60, y, W - 120, h, 24); ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 4; ctx.stroke()
+  const titleTop = 1230
+  ctx.fillStyle = ed.E.NAVY
+  if (ar) { ctx.font = '900 60px Cairo'; ctx.textAlign = 'right'; wrapLines(ctx, a.title, W - 130, 3).forEach((l, i) => ctx.fillText(l, W - 48, titleTop + i * 84)) }
+  else { ctx.font = '900 62px Playfair'; ctx.textAlign = 'left'; wrapLines(ctx, a.title, W - 130, 3).forEach((l, i) => ctx.fillText(l, 48, titleTop + i * 78)) }
+  const cardY = 1530, cardH = 300
+  roundedPath(ctx, 60, cardY, W - 120, cardH, 24); ctx.fillStyle = 'rgba(255,255,255,0.7)'; ctx.fill(); ctx.strokeStyle = ed.E.LINE; ctx.lineWidth = 2; ctx.stroke()
   const qr = createCanvas(480, 480)
-  await QRCode.toCanvas(qr, `${SITE}/news/${a.slug}?ref=fb-story`, { width: 480, margin: 1, color: { dark: NIGHT, light: '#FFFFFF' } })
-  ctx.drawImage(qr, 96, cardY + 35, 250, 250)
-  const tx = 96 + 250 + 44
-  ctx.fillStyle = NIGHT; ctx.font = '52px Anton'; ctx.textAlign = 'left'; ctx.fillText('Scan the QR code', tx, cardY + 105)
-  ctx.fillStyle = '#3A4C63'; ctx.font = 'bold 34px Archivo'
-  wrapLines(ctx, 'or visit our profile to read the full article', (W - 96) - tx, 2).forEach((l, i) => ctx.fillText(l, tx, cardY + 170 + i * 46))
-  ctx.fillStyle = GOLD; roundedPath(ctx, tx, cardY + 232, 340, 56, 28); ctx.fill()
-  ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', tx + 170, cardY + 270)
+  await QRCode.toCanvas(qr, `${SITE}/news/${a.slug}?${ar ? 'lang=ar&' : ''}ref=fb-story`, { width: 480, margin: 1, color: { dark: ed.E.NAVY, light: '#FFFFFF' } })
+  ctx.drawImage(qr, 90, cardY + 30, 240, 240)
+  if (ar) { ctx.fillStyle = ed.E.NAVY; ctx.font = 'bold 44px Tajawal'; ctx.textAlign = 'right'; ctx.fillText('امسح الرمز', W - 90, cardY + 110); ctx.fillStyle = ed.E.INK; ctx.font = '500 30px Tajawal'; wrapLines(ctx, 'أو ادخل إلى موقعنا لقراءة الخبر كاملاً', 560, 2).forEach((l, i) => ctx.fillText(l, W - 90, cardY + 170 + i * 42)) }
+  else { ctx.fillStyle = ed.E.NAVY; ctx.font = '900 40px Playfair'; ctx.textAlign = 'left'; ctx.fillText('Scan the QR code', 370, cardY + 105); ctx.fillStyle = ed.E.INK; ctx.font = 'bold 28px Cairo'; wrapLines(ctx, 'or visit our profile to read the full article', 560, 2).forEach((l, i) => ctx.fillText(l, 370, cardY + 165 + i * 40)) }
+  ed.spaced(ctx, 'PRESSING90.LIVE', ar ? W - 90 : 370, cardY + 262, { size: 16, align: ar ? 'right' : 'left', tracking: 0.42, color: ed.E.GRANA })
+  ed.grain(ctx, W, H)
   return c
 }
 
@@ -517,56 +508,51 @@ export async function drawArticleStory(a) {
 // Each builder returns transparent PNG layers + an `anims` timeline that
 // video.js turns into an ffmpeg graph (see animSlide). Timings in seconds.
 const PNG = (c) => c.toBuffer('image/png')
+/** Reel ground 1080×1920 (editorial): paper + stadium + furniture. `transparent` = furniture only (a paper loop video sits underneath). */
+async function paperReel(ctx, { stripe = false, tone = 'paper', dark = false, transparent = false, footer = 'PRESSING90.LIVE', label = ['BARÇA', 'FIRST'] } = {}) {
+  const W = 1080, H = 1920
+  if (!transparent) { ed.backdrop(ctx, W, H, { stripe, tone }); await ed.stadium(ctx, W, H, dark ? { top: H - 520, alpha: 0.95, fadeTo: 0.55 } : { top: H - 520, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 }) }
+  await pageMark(ctx, W - 48, 70); ed.stack(ctx, label, 48, 92, { size: 15 })
+  labelText(ctx, footer, W / 2, 1800, { size: 16, align: 'center', color: dark && !transparent ? ed.E.CREAM : ed.E.NAVY })
+}
 
 /** Match slide (matchday / results): bg + home + away + score + pill. */
 export async function drawMatchLayers(m, idx, total, heading, lang) {
   registerBrandFonts()
   const W = 1080, H = 1920
-  const ft = !!m.feature   // « يوم برشلونة » slide (2026-09-14): bokeh video behind, big crests, gold VS
+  const ft = !!m.feature   // « يوم برشلونة » slide: paper bokeh loop behind (server.js), bigger crests
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
-    if (ft && m.bgVideo) { const v = ctx.createRadialGradient(W / 2, H / 2, 420, W / 2, H / 2, 1250); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.65)'); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H) }
-    else {
-      ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-      const g1 = ctx.createRadialGradient(W / 2, 500, 0, W / 2, 500, 1100)
-      g1.addColorStop(0, ft ? 'rgba(165,0,68,0.35)' : gold(0.14)); g1.addColorStop(1, gold(0))
-      ctx.fillStyle = g1; ctx.fillRect(0, 0, W, H)
-    }
-    paintLogo(ctx, W / 2 - 55, 120, 110)
-    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '58px Anton'; ctx.fillText('Pressing 90’', W / 2, 310)
-    ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(m.league || '', W / 2, 560)
-    ctx.fillStyle = 'rgba(243,239,230,0.5)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('pressing90.live', W / 2, 1700)
-    ctx.fillStyle = GOLD; ctx.font = '26px "IBM Plex Mono"'; ctx.fillText(`${idx + 1} / ${total}`, W / 2, 1760) }
-  const head = createCanvas(900, 70); { const ctx = ctx2d(head)
-    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = ft ? 'bold 58px Tajawal' : lang === 'ar' ? 'bold 46px Tajawal' : '44px "IBM Plex Mono"'; ctx.fillText(ft ? 'يوم برشلونة' : (heading || "TODAY'S MATCHES"), 450, ft ? 58 : 52) }
+    await paperReel(ctx, { transparent: !!(ft && m.bgVideo), tone: ft ? 'blue' : 'paper' })
+    ed.spaced(ctx, `${idx + 1} / ${total}`, W / 2, 1760, { size: 14, align: 'center', tracking: 0.42 })
+    ed.spaced(ctx, oneLine(ctx, String(m.league || '').toUpperCase(), 480, 'bold 16px Cairo'), W / 2, 600, { size: 16, align: 'center', tracking: 0.42, color: ed.E.MUTED }) }
+  const head = createCanvas(900, 200); { const ctx = ctx2d(head)
+    const txt = ft ? 'يوم برشلونة' : (heading || (lang === 'ar' ? 'مباريات اليوم' : "TODAY'S MATCHES"))
+    displayTitle(ctx, txt, 450, 130, { size: /[؀-ۿ]/.test(txt) ? 100 : 78, maxW: 880 }) }
   const size = 300
   const [hImg, aImg] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
   const team = (img, name) => { const c = createCanvas(360, 440); const ctx = ctx2d(c)
-    if (ft && /barcelona|barça/i.test(String(name || ''))) { ctx.save(); ctx.shadowColor = 'rgba(242,194,48,0.6)'; ctx.shadowBlur = 40; ctx.drawImage(img, 10, -20, 340, 340); ctx.restore() }
-    else ctx.drawImage(img, 30, 0, size, size)
-    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'
-    wrapLines(ctx, name, 380, 2).forEach((l, i) => ctx.fillText(l, 180, size + 80 + i * 52)); return c }
+    ed.crestAt(ctx, img, 180, 160, ft ? 320 : size)
+    labelText(ctx, fitLine(ctx, name, 330, 'Cairo', 24, 15).toUpperCase(), 180, size + 90, { size: 22, align: 'center' }); return c }
   const home = team(hImg, m.home), away = team(aImg, m.away)
   const score = createCanvas(500, 200); { const ctx = ctx2d(score)
-    ctx.textAlign = 'center'; ctx.fillStyle = ft ? '#F2C230' : GOLD; ctx.font = ft ? '120px Anton' : '90px Anton'
-    ctx.shadowColor = 'rgba(0,0,0,0.4)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6
-    if (ft) { ctx.lineJoin = 'round'; ctx.lineWidth = 12; ctx.strokeStyle = '#A50044'; ctx.strokeText(m.score ?? 'VS', 250, 150) }
-    ctx.fillText(m.score ?? 'VS', 250, 150) }
+    if (m.score) ed.digits(ctx, String(m.score).replace('–', ' – '), 250, 150, ft ? 130 : 100, m.live ? ed.E.GRANA : ed.E.NAVY)
+    else { ctx.textAlign = 'center'; ctx.font = `900 ${ft ? 120 : 96}px Playfair`; ctx.fillStyle = ed.inkGradient(ctx, 160, 180); ctx.fillText('VS', 250, 150) } }
   const pill = createCanvas(400, 100); { const ctx = ctx2d(pill); ctx.textAlign = 'center'
-    if (m.live) { ctx.fillStyle = RED; roundedPath(ctx, 60, 0, 280, 90, 45); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = '48px Anton'; ctx.fillText('LIVE', 200, 62) }
-    else if (m.time) { ctx.fillStyle = GOLD; roundedPath(ctx, 30, 0, 340, 90, 45); ctx.fill(); ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.fillText(m.time, 200, 60) } }
+    if (m.live) { roundedPath(ctx, 90, 10, 220, 76, 38); ctx.fillStyle = ed.E.GRANA; ctx.fill(); ctx.fillStyle = ed.E.CREAM; ctx.font = 'bold 34px Cairo'; ctx.fillText('LIVE', 200, 60) }
+    else if (m.time) { ctx.font = 'bold 30px Cairo'; const pw = Math.max(200, ctx.measureText(m.time).width + 70); roundedPath(ctx, 200 - pw / 2, 10, pw, 76, 38); ctx.fillStyle = ed.E.NAVY; ctx.fill(); ctx.fillStyle = ed.E.CREAM; ctx.fillText(m.time, 200, 59) } }
   return {
     bgVideo: ft && m.bgVideo ? m.bgVideo : undefined,
     layers: { bg: PNG(bg), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill), cover: PNG(coverBand(idx === 0 ? m.cover : null)) },
     // First slide: everything readable from the first frame (audit: viewers leave within 3 s), later slides animate in.
     anims: idx === 0 ? [
-      { layer: 'head', x: 90, y: 352, w: 900, h: 70, fade: { st: 0, d: 0 } },
+      { layer: 'head', x: 90, y: 280, w: 900, h: 200, fade: { st: 0, d: 0 } },
       { layer: 'home', x: 90, y: 700, fade: { st: 0, d: 0 } },
       { layer: 'away', x: 630, y: 700, fade: { st: 0, d: 0 } },
       { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 1.3, st: 0, d: 0.3 }, fade: { st: 0, d: 0 } },
       { layer: 'pill', x: 340, y: 1380, fade: { st: 0, d: 0 } },
       { layer: 'cover', x: 40, y: 1160, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } },
     ] : [
-      { layer: 'head', x: 90, y: 352, w: 900, h: 70, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
+      { layer: 'head', x: 90, y: 280, w: 900, h: 200, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
       { layer: 'home', x: 90, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
       { layer: 'away', x: 630, y: 700, slide: { dx: 460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
       { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 2.4, st: 0.6, d: 0.4 }, fade: { st: 0.6, d: 0.15 } },
@@ -582,58 +568,50 @@ export async function drawArticleLayers(a, heading, lang) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const ar = lang === 'ar'
-  const bg = createCanvas(W, H); { const ctx = ctx2d(bg); paintGround(ctx, W, H); await paintBrandRow(ctx) }
-  const kicker = createCanvas(900, 70); { const ctx = ctx2d(kicker)
-    if (ar) { ctx.textAlign = 'right'; ctx.fillStyle = GOLD; ctx.font = 'bold 44px Tajawal'; ctx.fillText(heading || 'خبر جديد', 900, 54) }
-    else { ctx.textAlign = 'left'; ctx.fillStyle = GOLD; ctx.font = '36px "IBM Plex Mono"'; ctx.fillText(heading || 'N E W   A R T I C L E', 0, 50) } }
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg); await paperReel(ctx) }
+  const kicker = createCanvas(900, 100); { const ctx = ctx2d(kicker)
+    const txt = heading || (ar ? 'خبر جديد' : 'NEW ARTICLE')
+    displayTitle(ctx, txt, ar ? 900 : 0, 68, { size: ar ? 56 : 40, maxW: 880, align: ar ? 'right' : 'left' }) }
   const pw = W - 120, ph = 760
   const photo = createCanvas(pw, ph); { const ctx = ctx2d(photo)
     const img = await loadImg(a.image_url)
-    roundedPath(ctx, 0, 0, pw, ph, 36); ctx.save(); ctx.clip()
+    roundedPath(ctx, 0, 0, pw, ph, 24); ctx.save(); ctx.clip()
     if (img) { const s = Math.max(pw / img.width, ph / img.height); const dw = img.width * s, dh = img.height * s; ctx.drawImage(img, (pw - dw) / 2, (ph - dh) / 2, dw, dh) }
-    else { ctx.fillStyle = PHOTO; ctx.fillRect(0, 0, pw, ph) }
-    const fade = ctx.createLinearGradient(0, ph - 260, 0, ph)
-    fade.addColorStop(0, night(0)); fade.addColorStop(1, night(0.92))
-    ctx.fillStyle = fade; ctx.fillRect(0, 0, pw, ph); ctx.restore() }
+    else { ctx.fillStyle = ed.E.PAPER_DARK; ctx.fillRect(0, 0, pw, ph) }
+    ctx.restore(); roundedPath(ctx, 0, 0, pw, ph, 24); ctx.strokeStyle = 'rgba(255,255,255,0.75)'; ctx.lineWidth = 4; ctx.stroke() }
   const title = createCanvas(960, 340); { const ctx = ctx2d(title)
-    if (ar) {
-      ctx.fillStyle = GOLD; ctx.fillRect(950, 0, 10, 190)
-      ctx.fillStyle = CREAM; ctx.font = 'bold 64px Tajawal'; ctx.textAlign = 'right'
-      wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 916, 62 + i * 92))
-    } else {
-      ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 10, 190)
-      ctx.fillStyle = CREAM; ctx.font = '72px Anton'; ctx.textAlign = 'left'
-      wrapLines(ctx, a.title, W - 220, 3).forEach((l, i) => ctx.fillText(l, 44, 58 + i * 92))
-    } }
+    ctx.fillStyle = ed.E.NAVY
+    if (ar) { ctx.font = '900 58px Cairo'; ctx.textAlign = 'right'; wrapLines(ctx, a.title, 940, 3).forEach((l, i) => ctx.fillText(l, 950, 62 + i * 84)) }
+    else { ctx.font = '900 60px Playfair'; ctx.textAlign = 'left'; wrapLines(ctx, a.title, 940, 3).forEach((l, i) => ctx.fillText(l, 10, 58 + i * 78)) } }
   const card = createCanvas(960, 320); { const ctx = ctx2d(card)
-    roundedPath(ctx, 0, 0, 960, 320, 36); ctx.fillStyle = '#FFFFFF'; ctx.fill()
+    roundedPath(ctx, 0, 0, 960, 320, 24); ctx.fillStyle = 'rgba(255,255,255,0.72)'; ctx.fill(); ctx.strokeStyle = ed.E.LINE; ctx.lineWidth = 2; ctx.stroke()
     const qr = createCanvas(480, 480)
-    await QRCode.toCanvas(qr, `${SITE}/news/${a.slug}?${ar ? 'lang=ar&' : ''}ref=fb-story`, { width: 480, margin: 1, color: { dark: NIGHT, light: '#FFFFFF' } })
+    await QRCode.toCanvas(qr, `${SITE}/news/${a.slug}?${ar ? 'lang=ar&' : ''}ref=fb-story`, { width: 480, margin: 1, color: { dark: ed.E.NAVY, light: '#FFFFFF' } })
     ctx.drawImage(qr, 36, 35, 250, 250)
     const tx = 36 + 250 + 44
     if (ar) {
-      ctx.fillStyle = NIGHT; ctx.font = 'bold 50px Tajawal'; ctx.textAlign = 'right'; ctx.fillText('امسح الرمز', 924, 100)   // no Latin inside the Arabic line (bidi flips it)
-      ctx.fillStyle = '#3A4C63'; ctx.font = '500 34px Tajawal'
-      wrapLines(ctx, 'أو ادخل إلى موقعنا لقراءة الخبر كاملاً', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, 924, 165 + i * 46))
+      ctx.fillStyle = ed.E.NAVY; ctx.font = 'bold 46px Tajawal'; ctx.textAlign = 'right'; ctx.fillText('امسح الرمز', 924, 100)   // no Latin inside the Arabic line (bidi flips it)
+      ctx.fillStyle = ed.E.INK; ctx.font = '500 32px Tajawal'
+      wrapLines(ctx, 'أو ادخل إلى موقعنا لقراءة الخبر كاملاً', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, 924, 165 + i * 44))
+      ed.spaced(ctx, 'PRESSING90.LIVE', 924, 275, { size: 16, align: 'right', tracking: 0.42, color: ed.E.GRANA })
     } else {
-      ctx.fillStyle = NIGHT; ctx.font = '52px Anton'; ctx.textAlign = 'left'; ctx.fillText('Scan the QR code', tx, 105)
-      ctx.fillStyle = '#3A4C63'; ctx.font = 'bold 34px Archivo'
-      wrapLines(ctx, 'or visit our profile to read the full article', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, tx, 170 + i * 46))
-    }
-    ctx.fillStyle = GOLD; roundedPath(ctx, tx, 232, 340, 56, 28); ctx.fill()
-    ctx.fillStyle = NIGHT; ctx.font = '30px "IBM Plex Mono"'; ctx.textAlign = 'center'; ctx.fillText('pressing90.live', tx + 170, 270) }
+      ctx.fillStyle = ed.E.NAVY; ctx.font = '900 42px Playfair'; ctx.textAlign = 'left'; ctx.fillText('Scan the QR code', tx, 105)
+      ctx.fillStyle = ed.E.INK; ctx.font = 'bold 28px Cairo'
+      wrapLines(ctx, 'or visit our profile to read the full article', 960 - 36 - tx, 2).forEach((l, i) => ctx.fillText(l, tx, 165 + i * 40))
+      ed.spaced(ctx, 'PRESSING90.LIVE', tx, 275, { size: 16, tracking: 0.42, color: ed.E.GRANA })
+    } }
   return {
     layers: { bg: PNG(bg), kicker: PNG(kicker), photo: PNG(photo), title: PNG(title), card: PNG(card), ...(a.cover ? { cover: PNG(coverBand(a.cover)) } : {}) },
     anims: a.first ? [
       // first slide = thumbnail: everything visible from frame 0 (2026-09-14)
       { layer: 'photo', x: 60, y: 340, slide: { dx: 0, dy: 24, st: 0, d: 0.6 }, fade: { st: 0, d: 0 } },
-      { layer: 'kicker', x: 64, y: 250, w: 900, h: 70, fade: { st: 0, d: 0 } },
+      { layer: 'kicker', x: 64, y: 220, w: 900, h: 100, fade: { st: 0, d: 0 } },
       { layer: 'title', x: 60, y: 1132, fade: { st: 0, d: 0 } },
       { layer: 'card', x: 60, y: 1500, fade: { st: 0, d: 0 } },
       ...(a.cover ? [{ layer: 'cover', x: 40, y: 980, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
     ] : [
       { layer: 'photo', x: 60, y: 340, slide: { dx: 0, dy: 70, st: 0.1, d: 0.7 }, fade: { st: 0.1, d: 0.45 } },
-      { layer: 'kicker', x: 64, y: 250, w: 900, h: 70, pop: { from: 1.8, st: 0.55, d: 0.35 }, fade: { st: 0.55, d: 0.15 } },
+      { layer: 'kicker', x: 64, y: 220, w: 900, h: 100, pop: { from: 1.8, st: 0.55, d: 0.35 }, fade: { st: 0.55, d: 0.15 } },
       { layer: 'title', x: 60, y: 1132, slide: { dx: -90, dy: 0, st: 0.85, d: 0.5 }, fade: { st: 0.85, d: 0.3 } },
       { layer: 'card', x: 60, y: 1500, slide: { dx: 0, dy: 130, st: 1.35, d: 0.5 }, fade: { st: 1.35, d: 0.3 } },
     ],
@@ -667,24 +645,17 @@ export async function drawGoalAnimSpec(g) {
 
 // ─── FOOTBALL STORIES ("tale") — Mehdi, 2026-09-10: retention reels telling a
 // true, strange football story in 10 animated beats, EN / FR / AR. ──────────
-const TALE_FONT = (lang, size, bold = true) => lang === 'ar' ? `${bold ? 'bold ' : ''}${size}px Tajawal` : `${size}px Anton`
-const TALE_MONO = (lang, size) => lang === 'ar' ? `500 ${size}px Tajawal` : `${size}px "IBM Plex Mono"`
-function taleBg(glow, transparent = false) {
+const TALE_FONT = (lang, size, bold = true) => lang === 'ar' ? `${bold ? 'bold ' : ''}${size}px Tajawal` : `900 ${Math.round(size * 0.86)}px Playfair`
+const TALE_MONO = (lang, size) => lang === 'ar' ? `500 ${size}px Tajawal` : `bold ${Math.round(size * 0.9)}px Cairo`
+async function taleBg(glow, transparent = false) {
   const W = 1080, H = 1920
   const c = createCanvas(W, H); const ctx = ctx2d(c)
-  if (!transparent) { ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H) }
-  const g = ctx.createRadialGradient(W / 2, 700, 0, W / 2, 700, 1000)
-  g.addColorStop(0, glow === 'gold' ? gold(0.16) : accent(0.16)); g.addColorStop(1, 'rgba(0,0,0,0)')
-  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
-  const v = ctx.createRadialGradient(W / 2, H / 2, 500, W / 2, H / 2, 1300); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.55)')
-  ctx.fillStyle = v; ctx.fillRect(0, 0, W, H)
-  paintLogo(ctx, 60, 100, 84)
-  ctx.textAlign = 'left'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'; ctx.fillText('Pressing 90’', 164, 158)
-  ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '24px "IBM Plex Mono"'; ctx.fillText('F O O T B A L L   S T O R I E S', 164, 194)
-  ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(243,239,230,0.45)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('pressing90.live', W / 2, 1800)
+  if (!transparent) { ed.backdrop(ctx, W, H, { tone: glow === 'gold' ? 'grana' : 'blue' }); await ed.stadium(ctx, W, H, { top: H - 520, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 }) }
+  await pageMark(ctx, W - 48, 70); ed.stack(ctx, ['FOOTBALL', 'STORIES'], 48, 92, { size: 15 })
+  ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1800, { size: 16, align: 'center', tracking: 0.42 })
   return c
 }
-function taleKicker(text, lang) { const c = createCanvas(960, 80); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, lang === 'ar' ? 44 : 40); ctx.fillText(text, 480, 56); return c }
+function taleKicker(text, lang) { const c = createCanvas(960, 100); const ctx = ctx2d(c); displayTitle(ctx, String(text || ''), 480, lang === 'ar' ? 72 : 64, { size: lang === 'ar' ? 56 : 40, maxW: 940 }); return c }
 // Coloured subtitles (Mehdi, 2026-09-10): key words pop in the accent colour —
 // *marked* words, ALL-CAPS words, numbers / scores / times — with a soft
 // highlight behind them, so the eye catches the important word first.
@@ -719,9 +690,9 @@ function taleCaption(text, lang, size, hotColor) {
       const hot = isHot(w)
       const ww = widths[k]
       const wx = rtl ? x - ww : x
-      if (hot) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = hotColor === GOLD ? gold(0.18) : accent(0.18); roundedPath(ctx, wx - 10, y - size * 0.86, ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
-      ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6
-      ctx.fillStyle = hot ? hotColor : CREAM
+      if (hot) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = hotColor === ed.E.GRANA ? 'rgba(177,17,63,0.14)' : 'rgba(43,75,201,0.14)'; roundedPath(ctx, wx - 10, y - size * 0.86, ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
+      ctx.textAlign = 'left'; ctx.shadowColor = 'rgba(17,28,79,0.12)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3
+      ctx.fillStyle = hot ? hotColor : ed.E.NAVY
       ctx.fillText(taleWord(w, rtl), wx, y)
       x = rtl ? wx - space : x + ww + space
     })
@@ -731,43 +702,39 @@ function taleCaption(text, lang, size, hotColor) {
 function taleBadge(code, colors) { const c = createCanvas(220, 220); const ctx = ctx2d(c); const cx = 110, cy = 110
   ctx.beginPath(); ctx.arc(cx, cy, 104, 0, Math.PI * 2); ctx.fillStyle = colors[0]; ctx.fill()
   ctx.beginPath(); ctx.arc(cx, cy, 104, -Math.PI / 2, Math.PI / 2); ctx.lineTo(cx, cy); ctx.closePath(); ctx.fillStyle = colors[1]; ctx.fill()
-  ctx.beginPath(); ctx.arc(cx, cy, 104, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,0.85)'; ctx.stroke()
-  ctx.beginPath(); ctx.arc(cx, cy, 62, 0, Math.PI * 2); ctx.fillStyle = NIGHT; ctx.fill()
-  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '44px Anton'; ctx.fillText(code, cx, cy + 16); return c }
+  ctx.beginPath(); ctx.arc(cx, cy, 104, 0, Math.PI * 2); ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.stroke()
+  ctx.beginPath(); ctx.arc(cx, cy, 62, 0, Math.PI * 2); ctx.fillStyle = ed.E.NAVY; ctx.fill()
+  ctx.textAlign = 'center'; ctx.fillStyle = ed.E.CREAM; ctx.font = '900 40px Cairo'; ctx.fillText(code, cx, cy + 14); return c }
 function taleScoreboard(v, lang) { const c = createCanvas(960, 300); const ctx = ctx2d(c)
-  roundedPath(ctx, 0, 20, 960, 260, 40); ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = gold(0.5); ctx.stroke()
+  roundedPath(ctx, 0, 20, 960, 260, 28); ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fill(); ctx.lineWidth = 2; ctx.strokeStyle = ed.E.LINE; ctx.stroke()
   ctx.drawImage(taleBadge(v.hCode, v.hColors), 50, 40, 190, 190); ctx.drawImage(taleBadge(v.aCode, v.aColors), 720, 40, 190, 190)
-  ctx.textAlign = 'center'; ctx.font = String(v.h).length > 2 || String(v.a).length > 2 ? '110px Anton' : '150px Anton'
-  ctx.fillStyle = v.hl === 'h' ? GREEN : CREAM; ctx.fillText(String(v.h), 390, 200)
-  ctx.fillStyle = GOLD; ctx.font = '90px Anton'; ctx.fillText('–', 480, 185)
-  ctx.font = String(v.h).length > 2 || String(v.a).length > 2 ? '110px Anton' : '150px Anton'; ctx.fillStyle = v.hl === 'a' ? GREEN : CREAM; ctx.fillText(String(v.a), 570, 200)
-  ctx.fillStyle = 'rgba(243,239,230,0.7)'; ctx.font = TALE_MONO(lang, 26); ctx.fillText(v.home, 145, 268); ctx.fillText(v.away, 815, 268)
-  if (v.tag) { ctx.fillStyle = RED; roundedPath(ctx, 380, 0, 200, 44, 22); ctx.fill(); ctx.fillStyle = '#fff'; ctx.font = TALE_FONT(lang, 26); ctx.fillText(v.tag, 480, 31) }
+  const big = String(v.h).length > 2 || String(v.a).length > 2 ? 100 : 140
+  ed.digits(ctx, v.h, 390, 195, big, v.hl === 'h' ? ed.E.GRANA : ed.E.NAVY); ed.digits(ctx, v.a, 570, 195, big, v.hl === 'a' ? ed.E.GRANA : ed.E.NAVY)
+  ctx.fillStyle = ed.navy(0.25); ctx.fillRect(479, 80, 2, 130)
+  labelText(ctx, v.home, 145, 268, { size: 18, align: 'center', color: ed.E.MUTED }); labelText(ctx, v.away, 815, 268, { size: 18, align: 'center', color: ed.E.MUTED })
+  if (v.tag) { ctx.fillStyle = ed.E.GRANA; roundedPath(ctx, 380, 0, 200, 44, 22); ctx.fill(); ctx.fillStyle = ed.E.CREAM; ctx.textAlign = 'center'; ctx.font = TALE_FONT(lang, 26); ctx.fillText(v.tag, 480, 31) }
   return c }
-function taleMark(text, color) { const size = text.length > 4 ? 260 : text.length > 2 ? 340 : 420; const c = createCanvas(960, 520); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = color === 'gold' ? GOLD : GREEN; ctx.font = `${size}px Anton`; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 30; ctx.fillText(text, 480, 260 + size * 0.38); return c }
+function taleMark(text, color) { const t = String(text); const ar = /[؀-ۿ]/.test(t); const size = t.length > 4 ? 240 : t.length > 2 ? 320 : 400; const c = createCanvas(960, 520); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.font = ar ? `bold ${size}px Aref` : `900 ${size}px Playfair`; const tw = Math.min(940, ctx.measureText(t).width); const col = color === 'gold' ? ed.E.GOLD : color === 'red' ? ed.E.GRANA : color === 'green' ? ed.E.BLUE : color === 'navy' ? ed.E.NAVY : null; ctx.fillStyle = col || ed.inkGradient(ctx, 480 - tw / 2, tw); ctx.fillText(t, 480, ar ? 380 : 400); return c }
 function talePitch(v, lang) { const c = createCanvas(960, 560); const ctx = ctx2d(c)
-  roundedPath(ctx, 30, 30, 900, 500, 24); ctx.fillStyle = accent(0.10); ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = 'rgba(243,239,230,0.6)'; ctx.stroke()
+  roundedPath(ctx, 30, 30, 900, 500, 24); ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fill(); ctx.lineWidth = 4; ctx.strokeStyle = ed.E.LINE; ctx.stroke()
   ctx.beginPath(); ctx.moveTo(480, 30); ctx.lineTo(480, 530); ctx.stroke(); ctx.beginPath(); ctx.arc(480, 280, 90, 0, Math.PI * 2); ctx.stroke()
   ctx.strokeRect(30, 150, 120, 260); ctx.strokeRect(810, 150, 120, 260)
-  ctx.fillStyle = GOLD; ctx.fillRect(18, 220, 12, 120); ctx.fillRect(930, 220, 12, 120)
-  const arrow = (x1, y1, x2, y2, col) => { ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 12; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); const ang = Math.atan2(y2 - y1, x2 - x1); ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - 34 * Math.cos(ang - 0.5), y2 - 34 * Math.sin(ang - 0.5)); ctx.lineTo(x2 - 34 * Math.cos(ang + 0.5), y2 - 34 * Math.sin(ang + 0.5)); ctx.closePath(); ctx.fill() }
-  if (v.mode === 'both') { arrow(480, 280, 190, 280, RED); arrow(480, 280, 770, 280, RED) }
-  else if (v.mode === 'one') { arrow(480, 280, 770, 280, RED) }
-  else if (v.mode === 'empty') { ctx.fillStyle = 'rgba(243,239,230,0.35)'; ctx.font = '120px Anton'; ctx.textAlign = 'center'; ctx.fillText('?', 700, 320) }
-  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = TALE_MONO(lang, 30); if (v.bottom) ctx.fillText(v.bottom, 480, 480)
-  ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 24); if (v.top) ctx.fillText(v.top, 480, 90)
+  ctx.fillStyle = ed.E.NAVY; ctx.fillRect(18, 220, 12, 120); ctx.fillRect(930, 220, 12, 120)
+  const arrow = (x1, y1, x2, y2, col) => { ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 12; ctx.lineCap = 'round'; ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke(); const ang = Math.atan2(y2 - y1, x2 - x1); ctx.beginPath(); ctx.moveTo(x2, y2); ctx.lineTo(x2 - 34 * Math.cos(ang - 0.5), y2 - 34 * Math.sin(ang - 0.5)); ctx.lineTo(x2 - 34 * Math.cos(ang + 0.5), y2 - 34 * Math.sin(ang + 0.5)); ctx.closePath(); ctx.fill() }
+  if (v.mode === 'both') { arrow(480, 280, 190, 280, ed.E.GRANA); arrow(480, 280, 770, 280, ed.E.GRANA) }
+  else if (v.mode === 'one') { arrow(480, 280, 770, 280, ed.E.GRANA) }
+  else if (v.mode === 'empty') { ctx.fillStyle = ed.navy(0.35); ctx.font = '900 120px Playfair'; ctx.textAlign = 'center'; ctx.fillText('?', 700, 320) }
+  if (v.bottom) labelText(ctx, v.bottom, 480, 480, { size: 22, align: 'center' })
+  if (v.top) labelText(ctx, v.top, 480, 90, { size: 18, align: 'center', color: ed.E.GRANA })
   return c }
-function taleQuote() { const c = createCanvas(960, 520); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '420px Anton'; ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 30; ctx.fillText('”', 480, 430); return c }
+function taleQuote() { const c = createCanvas(960, 520); const ctx = ctx2d(c); ctx.textAlign = 'center'; ctx.fillStyle = ed.navy(0.14); ctx.font = '900 460px Playfair'; ctx.fillText('“', 480, 520); return c }
 function taleCta(labels, lang) { const c = createCanvas(960, 420); const ctx = ctx2d(c); ctx.textAlign = 'center'
-  const icon = { heart: (x, y) => { ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.bezierCurveTo(x - 22, y - 14, x - 2, y - 26, x, y - 10); ctx.bezierCurveTo(x + 2, y - 26, x + 22, y - 14, x, y + 8); ctx.closePath(); ctx.fill() },
-    bubble: (x, y) => { roundedPath(ctx, x - 18, y - 20, 36, 26, 8); ctx.fill(); ctx.beginPath(); ctx.moveTo(x - 8, y + 5); ctx.lineTo(x - 2, y + 14); ctx.lineTo(x + 4, y + 5); ctx.closePath(); ctx.fill() },
-    plus: (x, y) => { ctx.fillRect(x - 3, y - 18, 6, 36); ctx.fillRect(x - 18, y - 3, 36, 6) } }
-  const pill = (x, label, col, ic) => { roundedPath(ctx, x, 0, 290, 96, 48); ctx.fillStyle = col; ctx.fill(); ctx.fillStyle = NIGHT; icon[ic](x + 46, 48); ctx.font = TALE_FONT(lang, 38); ctx.fillText(label, x + 165, 62) }
+  const plus = (x, y) => { ctx.fillRect(x - 3, y - 18, 6, 36); ctx.fillRect(x - 18, y - 3, 36, 6) }
   // Mehdi, 2026-09-13: Meta demotes explicit like / comment asks (engagement bait) — only the follow pill stays.
-  pill(335, labels.follow, GOLD, 'plus')
-  ctx.fillStyle = 'rgba(243,239,230,0.85)'; ctx.font = TALE_MONO(lang, 34); ctx.fillText(labels.full, 480, 190)
-  roundedPath(ctx, 130, 240, 700, 120, 30); ctx.fillStyle = 'rgba(255,255,255,0.08)'; ctx.fill(); ctx.strokeStyle = gold(0.6); ctx.lineWidth = 2; ctx.stroke()
-  ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 30); ctx.fillText(labels.weekly, 480, 312); return c }
+  roundedPath(ctx, 335, 0, 290, 96, 48); ctx.fillStyle = ed.E.NAVY; ctx.fill(); ctx.fillStyle = ed.E.CREAM; plus(381, 48); ctx.font = TALE_FONT(lang, 36); ctx.fillText(labels.follow, 500, 60)
+  ctx.fillStyle = ed.E.NAVY; ctx.font = TALE_MONO(lang, 32); ctx.fillText(labels.full, 480, 190)
+  roundedPath(ctx, 130, 240, 700, 120, 24); ctx.fillStyle = 'rgba(255,255,255,0.65)'; ctx.fill(); ctx.strokeStyle = ed.E.LINE; ctx.lineWidth = 2; ctx.stroke()
+  ctx.fillStyle = ed.E.GRANA; ctx.font = TALE_MONO(lang, 30); ctx.fillText(labels.weekly, 480, 312); return c }
 function taleVisual(v, lang, labels) {
   if (!v) return null
   if (v.type === 'scoreboard') return { c: taleScoreboard(v, lang), pos: [60, 960], w: 960, h: 300 }
@@ -811,17 +778,17 @@ function taleCaptionFrames(text, lang, size, hotColor) {
     const c = createCanvas(1000, H); const ctx = ctx2d(c); ctx.font = TALE_FONT(lang, size); ctx.textAlign = 'left'
     for (let k = 0; k < n; k++) {
       const p = placed[k]; const newest = k === n - 1
-      if (p.hot || newest) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = (p.hot ? hotColor : CREAM) === GOLD ? gold(0.18) : (p.hot ? accent(0.18) : 'rgba(243,239,230,0.12)'); roundedPath(ctx, p.x - 10, p.y - size * 0.86, p.ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
-      ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 20; ctx.shadowOffsetY = 6
-      ctx.fillStyle = p.hot ? hotColor : (newest ? '#FFFFFF' : CREAM)
+      if (p.hot || newest) { ctx.save(); ctx.shadowColor = 'transparent'; ctx.fillStyle = p.hot ? (hotColor === ed.E.GRANA ? 'rgba(177,17,63,0.14)' : 'rgba(43,75,201,0.14)') : 'rgba(17,28,79,0.08)'; roundedPath(ctx, p.x - 10, p.y - size * 0.86, p.ww + 20, size * 1.08, 14); ctx.fill(); ctx.restore() }
+      ctx.shadowColor = 'rgba(17,28,79,0.12)'; ctx.shadowBlur = 8; ctx.shadowOffsetY = 3
+      ctx.fillStyle = p.hot ? hotColor : (newest ? ed.E.BLUE : ed.E.NAVY)
       ctx.fillText(p.w, p.x, p.y)
     }
     frames.push(c.toBuffer('image/png'))
   }
   return { frames, H }
 }
-function taleGlowBlob(color) { const c = createCanvas(1400, 1400); const ctx = ctx2d(c); const g = ctx.createRadialGradient(700, 700, 0, 700, 700, 700); g.addColorStop(0, color === 'gold' ? gold(0.22) : accent(0.22)); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, 1400, 1400); return c }
-function taleFlash() { const c = createCanvas(900, 900); const ctx = ctx2d(c); const f = ctx.createRadialGradient(450, 450, 0, 450, 450, 450); f.addColorStop(0, 'rgba(255,255,255,0.55)'); f.addColorStop(0.4, 'rgba(120,255,180,0.18)'); f.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = f; ctx.fillRect(0, 0, 900, 900); return c }
+function taleGlowBlob(color) { const c = createCanvas(1400, 1400); const ctx = ctx2d(c); const col = color === 'gold' ? ed.E.GRANA : ed.E.BLUE; const g = ctx.createRadialGradient(700, 700, 0, 700, 700, 700); g.addColorStop(0, col + '2A'); g.addColorStop(1, col + '00'); ctx.fillStyle = g; ctx.fillRect(0, 0, 1400, 1400); return c }
+function taleFlash() { const c = createCanvas(900, 900); const ctx = ctx2d(c); const f = ctx.createRadialGradient(450, 450, 0, 450, 450, 450); f.addColorStop(0, 'rgba(255,255,255,0.7)'); f.addColorStop(0.5, 'rgba(232,194,90,0.2)'); f.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = f; ctx.fillRect(0, 0, 900, 900); return c }
 // "Mini-reportage" photo layer (Mehdi, 2026-09-11): a real, free-licensed
 // photo (Wikimedia Commons) fills the top of the frame, darkened towards
 // the bottom so the caption reads, with the credit line. 1300 px wide so
@@ -835,12 +802,12 @@ async function talePhoto(url, credit) {
   const dw = img.width * s, dh = img.height * s
   ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2 - Math.min(0, (dh - H) / 4), dw, dh)
   const fade = ctx.createLinearGradient(0, H - 420, 0, H)
-  fade.addColorStop(0, night(0)); fade.addColorStop(1, night(1))
+  fade.addColorStop(0, 'rgba(244,239,230,0)'); fade.addColorStop(1, ed.E.CREAM)
   ctx.fillStyle = fade; ctx.fillRect(0, 0, W, H)
   const top = ctx.createLinearGradient(0, 0, 0, 260)
-  top.addColorStop(0, night(0.85)); top.addColorStop(1, night(0))
+  top.addColorStop(0, 'rgba(17,28,79,0.55)'); top.addColorStop(1, 'rgba(17,28,79,0)')
   ctx.fillStyle = top; ctx.fillRect(0, 0, W, 260)
-  if (credit) { ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '20px "IBM Plex Mono"'; ctx.fillText(String(credit).slice(0, 90), 120, H - 24) }
+  if (credit) { ctx.textAlign = 'left'; ctx.fillStyle = ed.E.MUTED; ctx.font = 'bold 18px Cairo'; ctx.fillText(String(credit).slice(0, 90), 120, H - 24) }
   return c
 }
 /** One story beat → animated layer spec (+ progress bar layer). timing = { dur, voiceDur }. */
@@ -850,19 +817,19 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
   const onVideo = !!opts.bgVideo && !beat.imageUrl
   const PNGb = (c) => c.toBuffer('image/png')
   const glow = beat.glow || 'green'
-  const hot = glow === 'gold' ? GOLD : GREEN
+  const hot = glow === 'gold' ? ed.E.GRANA : ed.E.BLUE
   const dur = timing.dur || 6
   const photo = beat.imageUrl ? await talePhoto(beat.imageUrl, beat.credit).catch(() => null) : null
   const first = !!beat.first   // hook beat: the claim must be readable at frame 0 (average play time was 3 s)
   if (photo) {
     // Reportage layout: photo on top (slow pan), kicker + caption in the lower third, visual only if it is a scoreboard.
-    const layers = { bg: PNGb(taleBg(glow)), photo: PNGb(photo), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
+    const layers = { bg: PNGb(await taleBg(glow)), photo: PNGb(photo), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
     if (beat.cover) layers.cover = PNGb(coverBand(beat.cover))   // thumbnail line (all reel types, 2026-09-14)
-    const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
+    const line = createCanvas(320, 6); { const ctx = ctx2d(line); ed.bar(ctx, 0, 0, 320, 6) }
     layers.line = PNGb(line)
     const anims = [
       { layer: 'photo', x: -110, y: 0, drift: { dx: 110, dy: 0, dur: Math.max(4, dur) }, fade: { st: 0, d: first ? 0 : 0.35 } },
-      { layer: 'kicker', x: 60, y: 1150, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.1, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: first ? 0 : 0.1 } },
+      { layer: 'kicker', x: 60, y: 1150, w: 960, h: 100, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.1, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: first ? 0 : 0.1 } },
       { layer: 'line', x: 380, y: 1222, grow: { st: first ? 0 : 0.35, d: 0.45 } },
       ...(beat.cover ? [{ layer: 'cover', x: 40, y: 230, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
     ]
@@ -879,16 +846,16 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
       const vis = taleVisual(beat.visual, lang, labels)
       layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: 60, y: 860, w: 960, h: 300, pop: { from: 1.6, st: 0.8, d: 0.4 }, fade: { st: 0.8, d: 0.2 } })
     }
-    if (progress) { const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 1080, 10); layers.bar = PNGb(bar); anims.push({ layer: 'bar', x: 0, y: 1910, progress }) }
+    if (progress) { const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = ed.E.GRANA; ctx.fillRect(0, 0, 1080, 10); layers.bar = PNGb(bar); anims.push({ layer: 'bar', x: 0, y: 1910, progress }) }
     return { layers, anims }
   }
-  const layers = { bg: PNGb(taleBg(glow, onVideo)), glow: PNGb(taleGlowBlob(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
+  const layers = { bg: PNGb(await taleBg(glow, onVideo)), glow: PNGb(taleGlowBlob(glow)), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
   if (beat.cover) layers.cover = PNGb(coverBand(beat.cover))
-  const line = createCanvas(320, 6); { const ctx = ctx2d(line); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 320, 6) }
+  const line = createCanvas(320, 6); { const ctx = ctx2d(line); ed.bar(ctx, 0, 0, 320, 6) }
   layers.line = PNGb(line)
   const anims = [
     { layer: 'glow', x: -160, y: 100, drift: { dx: 400, dy: 260, dur: Math.max(4, dur) } },
-    { layer: 'kicker', x: 60, y: 300, w: 960, h: 80, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.05, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: first ? 0 : 0.1 } },
+    { layer: 'kicker', x: 60, y: 300, w: 960, h: 100, pop: { from: first ? 1.15 : 1.7, st: first ? 0 : 0.05, d: first ? 0.2 : 0.35 }, fade: { st: 0, d: first ? 0 : 0.1 } },
     { layer: 'line', x: 380, y: 372, grow: { st: first ? 0 : 0.3, d: 0.45 } },
     ...(beat.cover ? [{ layer: 'cover', x: 40, y: 1560, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
   ]
@@ -909,7 +876,7 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
     layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: vis.pos[0], y: vis.pos[1], w: vis.w, h: vis.h, pop: { from: 1.9, st: 0.75, d: 0.45 }, fade: { st: 0.75, d: 0.2 } })
   }
   if (progress) {
-    const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = GOLD; ctx.fillRect(0, 0, 1080, 10)
+    const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = ed.E.GRANA; ctx.fillRect(0, 0, 1080, 10)
     layers.bar = PNGb(bar)
     anims.push({ layer: 'bar', x: 0, y: 1910, progress })   // {from, to, dur} handled by animSlide
   }
@@ -920,18 +887,17 @@ export async function drawTaleCover(d) {
   registerBrandFonts()
   const W = 1200, H = 675
   const c = createCanvas(W, H); const ctx = ctx2d(c)
-  ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-  const g = ctx.createRadialGradient(W * 0.3, H * 0.5, 0, W * 0.3, H * 0.5, 800); g.addColorStop(0, accent(0.18)); g.addColorStop(1, 'rgba(0,0,0,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H)
-  paintLogo(ctx, 60, 50, 70)
-  ctx.textAlign = 'left'; ctx.fillStyle = CREAM; ctx.font = '36px Anton'; ctx.fillText('Pressing 90’', 146, 96)
-  ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '20px "IBM Plex Mono"'; ctx.fillText('F O O T B A L L   S T O R I E S', 146, 126)
-  const lang = d.lang || 'en'
-  ctx.fillStyle = GOLD; ctx.font = TALE_MONO(lang, 30); ctx.textAlign = lang === 'ar' ? 'right' : 'left'; ctx.fillText(d.kicker || '', lang === 'ar' ? W - 60 : 60, 230)
-  ctx.fillStyle = CREAM; ctx.font = TALE_FONT(lang, 64)
-  const lines = wrapLines(ctx, String(d.hook || ''), 760, 4)
-  lines.forEach((l, i) => ctx.fillText(l, lang === 'ar' ? W - 60 : 60, 310 + i * 76))
-  if (d.year) { ctx.textAlign = 'right'; ctx.fillStyle = gold(0.25); ctx.font = '220px Anton'; ctx.fillText(String(d.year), W - 40, H - 40) }
-  ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(243,239,230,0.45)'; ctx.font = '22px "IBM Plex Mono"'; ctx.fillText('pressing90.live', 60, H - 40)
+  ed.backdrop(ctx, W, H, { stripe: true })
+  await ed.stadium(ctx, W, H, { top: H - 260, alpha: 0.85, fadeTo: 0.6 })
+  await pageMark(ctx, W - 48, 36)
+  ed.stack(ctx, ['FOOTBALL', 'STORIES'], 48, 62, { size: 14 })
+  const lang = d.lang || 'en', ar = lang === 'ar'
+  if (d.kicker) { ctx.textAlign = ar ? 'right' : 'left'; ctx.font = ar ? 'bold 40px Aref' : '900 34px Playfair'; const kw = ctx.measureText(d.kicker).width; ctx.fillStyle = ed.inkGradient(ctx, ar ? W - 60 - kw : 60, kw); ctx.fillText(d.kicker, ar ? W - 60 : 60, 190) }
+  ctx.fillStyle = ed.E.NAVY; ctx.font = ar ? '900 54px Cairo' : '900 54px Playfair'; ctx.textAlign = ar ? 'right' : 'left'
+  wrapLines(ctx, String(d.hook || ''), 760, 4).forEach((l, i) => ctx.fillText(l, ar ? W - 60 : 60, 270 + i * 68))
+  if (d.year) { ctx.textAlign = 'right'; ctx.fillStyle = ed.navy(0.12); ctx.font = '900 200px Playfair'; ctx.fillText(String(d.year), W - 30, H - 30) }
+  ed.spaced(ctx, 'PRESSING90.LIVE', 60, H - 40, { size: 14, color: ed.E.CREAM, tracking: 0.42 })
+  ed.grain(ctx, W, H)
   return c
 }
 
@@ -942,7 +908,7 @@ export async function drawTaleCover(d) {
 // Cover band (Mehdi, 2026-09-14: « miniatures avec des textes clairs, colorés selon la catégorie, qui créent du
 // suspense »): Facebook takes the first frame as the reel thumbnail, so the first ~2.5 s carry a bold coloured
 // line derived from the real match context (equaliser, late goal, Barça day…). Tones = category colours.
-const COVER_TONES = { goal: () => [GREEN, NIGHT], barca: () => ['#F2C230', NIGHT], ft: () => [GOLD, NIGHT], matchday: () => ['#004D98', CREAM], results: () => ['#A50044', CREAM], story: () => [GOLD, NIGHT] }
+const COVER_TONES = { goal: () => [ed.E.NAVY, ed.E.CREAM], barca: () => [ed.E.GOLD, ed.E.NAVY], ft: () => [ed.E.GRANA, ed.E.CREAM], matchday: () => [ed.E.BLUE, ed.E.CREAM], results: () => [ed.E.GRANA, ed.E.CREAM], story: () => [ed.E.NAVY, ed.E.CREAM] }
 export function coverBand(cover) {
   const c = createCanvas(1000, 110); const ctx = ctx2d(c)
   if (!cover || !cover.text) return c
@@ -958,65 +924,43 @@ export async function drawGoalLayers(g) {
   registerBrandFonts()
   const W = 1080, H = 1920
   const png = (c) => c.toBuffer('image/png')
-  // Barça special (Mehdi, 2026-09-14): the card sits on a looping confetti video (server.js),
-  // so the ground stays transparent (vignette only), the Barça crest is bigger, the title is
-  // gold with a garnet outline and the scorer pill is gold.
+  // Barça special: the card sits on the paper confetti loop (server.js) → ground = furniture only; gold outline on the title, gold scorer pill.
   const sp = g.special === 'barca'
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
-    if (sp) { const v = ctx.createRadialGradient(W / 2, H / 2, 420, W / 2, H / 2, 1250); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,0.7)'); ctx.fillStyle = v; ctx.fillRect(0, 0, W, H) }
-    else {
-      ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-      const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
-      glow.addColorStop(0, accent(0.22)); glow.addColorStop(1, accent(0))
-      ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
-    }
-    paintLogo(ctx, W / 2 - 55, 110, 110)
-    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
-    ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '32px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.league || '', 900, 1)[0], W / 2, 370)
-    ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText(g.footer || 'LIVE on pressing90.live', W / 2, 1740) }
-  // flash: white radial burst behind GOAL! (faded in/out by ffmpeg)
+    await paperReel(ctx, { transparent: sp && !!g.bgVideo, stripe: true, dark: true, footer: g.footer || 'LIVE ON PRESSING90.LIVE' })
+    ed.spaced(ctx, oneLine(ctx, String(g.league || '').toUpperCase(), 480, 'bold 16px Cairo'), W / 2, 330, { size: 16, align: 'center', tracking: 0.42, color: ed.E.MUTED }) }
   const flash = createCanvas(W, H); { const ctx = ctx2d(flash)
     const f = ctx.createRadialGradient(W / 2, 540, 0, W / 2, 540, 700)
-    f.addColorStop(0, 'rgba(255,255,255,0.85)'); f.addColorStop(0.35, flashTint(0.35)); f.addColorStop(1, 'rgba(255,255,255,0)')
+    f.addColorStop(0, 'rgba(255,255,255,0.9)'); f.addColorStop(0.4, 'rgba(232,194,90,0.3)'); f.addColorStop(1, 'rgba(255,255,255,0)')
     ctx.fillStyle = f; ctx.fillRect(0, 0, W, H) }
-  // goal: "GOAL!" 1000×320, baseline 250 → rests at (40, 370)
+  // goal: title 1000×320 → rests at (40, 370). g.title overrides "GOAL!" (Barça full-time card: 'نهاية المباراة')
   const goal = createCanvas(1000, 320); { const ctx = ctx2d(goal)
-    ctx.textAlign = 'center'; ctx.fillStyle = GREEN
-    ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8
-    // g.title overrides "GOAL!" (Barça full-time card, 2026-09-13: 'نهاية المباراة' in Tajawal)
-    if (sp) { ctx.lineJoin = 'round'; ctx.lineWidth = 16; ctx.strokeStyle = '#A50044'; ctx.fillStyle = '#F2C230' }
-    if (g.title && g.titleLang === 'ar') { ctx.font = 'bold 150px Tajawal'; if (sp) ctx.strokeText(g.title, 500, 235); ctx.fillText(g.title, 500, 235) }
-    else { ctx.font = '210px Anton'; if (sp) ctx.strokeText(g.title || 'GOAL!', 500, 250); ctx.fillText(g.title || 'GOAL!', 500, 250) } }
-  // crests + names 360×420 each (crest 260 at (50,0), names below)
+    const ar = g.titleLang === 'ar' || /[؀-ۿ]/.test(g.title || '')
+    const txt = g.title || (ar ? 'هدف!' : 'GOAL!')
+    displayTitle(ctx, txt, 500, ar ? 235 : 250, { size: ar ? 170 : 190, maxW: 960, stroke: sp ? ed.E.GOLD : null }) }
   const size = 260
   const [hImg, aImg] = await Promise.all([crest(g.homeLogo, g.home), crest(g.awayLogo, g.away)])
   const dim = (side) => (g.scoringSide && g.scoringSide !== side ? 0.45 : 1)
   const isBarcaName = (n) => /barcelona|barça/i.test(String(n || ''))
   const team = (img, name, side) => { const c = createCanvas(360, 420); const ctx = ctx2d(c)
-    const big = sp && isBarcaName(name)   // Barça crest 320 px with a soft gold halo
-    if (big) { ctx.save(); ctx.shadowColor = 'rgba(242,194,48,0.55)'; ctx.shadowBlur = 40; ctx.globalAlpha = dim(side); ctx.drawImage(img, 20, -30, 320, 320); ctx.restore(); ctx.globalAlpha = 1 }
-    else { ctx.globalAlpha = dim(side); ctx.drawImage(img, 50, 0, size, size); ctx.globalAlpha = 1 }
-    ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '40px Anton'
-    wrapLines(ctx, name, 330, 2).forEach((l, i) => ctx.fillText(l, 180, size + 62 + i * 46)); return c }
+    const big = sp && isBarcaName(name)
+    ctx.globalAlpha = dim(side); ed.crestAt(ctx, img, 180, 140, big ? 300 : size); ctx.globalAlpha = 1
+    labelText(ctx, fitLine(ctx, name, 330, 'Cairo', 22, 14).toUpperCase(), 180, size + 70, { size: 20, align: 'center', color: dim(side) < 1 ? ed.E.MUTED : ed.E.NAVY }); return c }
   const home = team(hImg, g.home, 'home'), away = team(aImg, g.away, 'away')
-  // score 500×200, baseline 150 → rests at (290, 805)
+  // score 500×200 → rests at (290, 805)
   const score = createCanvas(500, 200); { const ctx = ctx2d(score)
-    ctx.textAlign = 'center'; ctx.font = '150px Anton'
-    ctx.fillStyle = g.scoringSide === 'home' ? GREEN : CREAM; ctx.fillText(String(g.homeScore ?? 0), 250 - 95, 150)
-    ctx.fillStyle = GOLD; ctx.font = '90px Anton'; ctx.fillText('–', 250, 135)
-    ctx.font = '150px Anton'; ctx.fillStyle = g.scoringSide === 'away' ? GREEN : CREAM; ctx.fillText(String(g.awayScore ?? 0), 250 + 95, 150) }
+    ed.digits(ctx, g.homeScore ?? 0, 155, 150, 150, g.scoringSide === 'home' ? ed.E.GRANA : ed.E.NAVY); ed.digits(ctx, g.awayScore ?? 0, 345, 150, 150, g.scoringSide === 'away' ? ed.E.GRANA : ed.E.NAVY)
+    ctx.fillStyle = ed.navy(0.25); ctx.fillRect(249, 30, 2, 130) }
   // scorer pill (+ assist line) 1000×200 → rests at (40, 1290)
   const label = `${g.scorer || 'Goal'}${g.ownGoal ? ' (OG)' : ''}${g.penalty ? ' (pen)' : ''}`
   const scorer = createCanvas(1000, 200); { const ctx = ctx2d(scorer)
-    ctx.textAlign = 'center'; ctx.font = '60px Anton'
+    ctx.textAlign = 'center'; ctx.font = 'bold 48px Cairo'
     const pw = Math.min(980, Math.max(420, ctx.measureText(label).width + 120))
-    roundedPath(ctx, 500 - pw / 2, 0, pw, 110, 55); ctx.fillStyle = sp ? '#F2C230' : GREEN; ctx.fill()
-    if (sp) { ctx.lineWidth = 4; ctx.strokeStyle = '#A50044'; ctx.stroke() }
-    ctx.fillStyle = NIGHT; ctx.fillText(wrapLines(ctx, label, pw - 80, 1)[0], 500, 77)
-    if (g.assist) { ctx.fillStyle = 'rgba(243,239,230,0.8)'; ctx.font = '34px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.assistLabel === '' ? g.assist : `${g.assistLabel || 'Assist'} · ${g.assist}`, 900, 1)[0], 500, 170) } }
-  // minute 400×90, baseline 70 → rests at (340, 1450)
-  const minute = createCanvas(400, 90); { const ctx = ctx2d(minute)
-    ctx.textAlign = 'center'; ctx.fillStyle = GOLD; ctx.font = '64px "IBM Plex Mono"'; ctx.fillText(g.minute ? `${g.minute}` : '', 200, 70) }
+    roundedPath(ctx, 500 - pw / 2, 0, pw, 110, 55); ctx.fillStyle = sp ? ed.E.GOLD : ed.E.NAVY; ctx.fill()
+    ctx.fillStyle = sp ? ed.E.NAVY : ed.E.CREAM; ctx.fillText(wrapLines(ctx, label, pw - 80, 1)[0], 500, 72)
+    if (g.assist) labelText(ctx, g.assistLabel === '' ? g.assist : `${g.assistLabel || 'Assist'} · ${g.assist}`, 500, 168, { size: 22, align: 'center', color: ed.E.MUTED }) }
+  // minute 400×90 → rests at (340, 1450)
+  const minute = createCanvas(400, 90); { const ctx = ctx2d(minute); ed.digits(ctx, g.minute ? `${g.minute}` : '', 200, 70, 60, ed.E.GRANA) }
   return {
     bg: png(bg), flash: png(flash), goal: png(goal), home: png(home), away: png(away), score: png(score), scorer: png(scorer), minute: png(minute),
     rest: { goal: [40, 370], home: [60, 770], away: [660, 770], score: [290, 805], scorer: [40, 1290], minute: [340, 1450] },
@@ -1024,40 +968,9 @@ export async function drawGoalLayers(g) {
 }
 
 export async function drawGoalSlide(g) {
-  registerBrandFonts()
-  const W = 1080, H = 1920
-  const c = createCanvas(W, H)
-  const ctx = ctx2d(c)
-  ctx.fillStyle = NIGHT; ctx.fillRect(0, 0, W, H)
-  const glow = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 900)
-  glow.addColorStop(0, accent(0.22)); glow.addColorStop(1, accent(0))
-  ctx.fillStyle = glow; ctx.fillRect(0, 0, W, H)
-  paintLogo(ctx, W / 2 - 55, 110, 110)
-  ctx.textAlign = 'center'; ctx.fillStyle = CREAM; ctx.font = '52px Anton'; ctx.fillText('Pressing 90’', W / 2, 290)
-  ctx.fillStyle = 'rgba(243,239,230,0.65)'; ctx.font = '32px "IBM Plex Mono"'; ctx.fillText(wrapLines(ctx, g.league || '', 900, 1)[0], W / 2, 370)
-  // GOAL!
-  ctx.fillStyle = GREEN; ctx.font = '210px Anton'; ctx.fillText('GOAL!', W / 2, 620)
-  // crests + score, scoring side highlighted
-  const size = 260, cy = 900
-  const [h, a] = await Promise.all([crest(g.homeLogo, g.home), crest(g.awayLogo, g.away)])
-  const dim = (side) => (g.scoringSide && g.scoringSide !== side ? 0.45 : 1)
-  ctx.globalAlpha = dim('home'); ctx.drawImage(h, 110, cy - size / 2, size, size)
-  ctx.globalAlpha = dim('away'); ctx.drawImage(a, W - 110 - size, cy - size / 2, size, size)
-  ctx.globalAlpha = 1
-  ctx.font = '150px Anton'
-  ctx.fillStyle = g.scoringSide === 'home' ? GREEN : CREAM; ctx.fillText(String(g.homeScore ?? 0), W / 2 - 95, cy + 55)
-  ctx.fillStyle = GOLD; ctx.font = '90px Anton'; ctx.fillText('–', W / 2, cy + 40)
-  ctx.font = '150px Anton'; ctx.fillStyle = g.scoringSide === 'away' ? GREEN : CREAM; ctx.fillText(String(g.awayScore ?? 0), W / 2 + 95, cy + 55)
-  ctx.fillStyle = CREAM; ctx.font = '40px Anton'
-  wrapLines(ctx, g.home, 330, 2).forEach((l, i) => ctx.fillText(l, 110 + size / 2, cy + size / 2 + 62 + i * 46))
-  wrapLines(ctx, g.away, 330, 2).forEach((l, i) => ctx.fillText(l, W - 110 - size / 2, cy + size / 2 + 62 + i * 46))
-  // scorer pill
-  const label = `${g.scorer || 'Goal'}${g.ownGoal ? ' (OG)' : ''}${g.penalty ? ' (pen)' : ''}`
-  ctx.font = '60px Anton'
-  const pw = Math.min(980, Math.max(420, ctx.measureText(label).width + 120))
-  roundedPath(ctx, W / 2 - pw / 2, 1290, pw, 110, 55); ctx.fillStyle = GREEN; ctx.fill()
-  ctx.fillStyle = NIGHT; ctx.fillText(wrapLines(ctx, label, pw - 80, 1)[0], W / 2, 1367)
-  ctx.fillStyle = GOLD; ctx.font = '64px "IBM Plex Mono"'; ctx.fillText(g.minute ? `${g.minute}` : '', W / 2, 1500)
-  ctx.fillStyle = 'rgba(243,239,230,0.55)'; ctx.font = '28px "IBM Plex Mono"'; ctx.fillText('LIVE on pressing90.live', W / 2, 1740)
+  const L = await drawGoalLayers(g)
+  const c = createCanvas(1080, 1920); const ctx = ctx2d(c)
+  ctx.drawImage(await loadImage(L.bg), 0, 0)
+  for (const k of ['goal', 'home', 'away', 'score', 'scorer', 'minute']) ctx.drawImage(await loadImage(L[k]), L.rest[k][0], L.rest[k][1])
   return c
 }

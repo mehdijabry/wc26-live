@@ -8,7 +8,7 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, registerBrandFonts, setTheme } from './draw.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
 import edgePkg from 'msedge-tts'
 const { MsEdgeTTS, OUTPUT_FORMAT } = edgePkg
@@ -104,7 +104,14 @@ app.get('/espn/summary', async (req, res) => {
       scorer: (k.participants || [])[0]?.athlete?.displayName || '', assist: (k.participants || [])[1]?.athlete?.displayName || '',
       text: (k.text || '').slice(0, 220), ownGoal: /own goal/i.test(k.type?.text || '') || /own goal/i.test(k.text || ''), penalty: /penalty/i.test(k.type?.text || ''),
     }))
-    res.json({ status: 200, goals })
+    // Lineups + venue for the editorial posts (2026-09-14): starters with ESPN position codes + formation per side.
+    const rosters = (j.rosters || []).map((r) => ({
+      side: r.homeAway, team: r.team?.displayName || '', abbr: r.team?.abbreviation || '', formation: r.formation || '',
+      players: (r.roster || []).filter((p) => p.starter).map((p) => ({ name: p.athlete?.shortName || p.athlete?.displayName || '', full: p.athlete?.displayName || '', jersey: p.jersey || '', pos: p.position?.abbreviation || '', place: p.formationPlace || 0 })),
+    }))
+    const comp = j.header?.competitions?.[0]
+    const teams = (comp?.competitors || []).map((t) => ({ side: t.homeAway, id: t.id, name: t.team?.displayName, abbr: t.team?.abbreviation, logo: t.team?.logos?.[0]?.href, score: t.score }))
+    res.json({ status: 200, goals, rosters, teams, venue: j.gameInfo?.venue?.fullName || '', attendance: j.gameInfo?.attendance || 0, date: comp?.date || '', state: comp?.status?.type?.state || '' })
   } catch (e) { res.json({ status: 0, goals: [], error: String(e.message || e) }) }
 })
 
@@ -179,6 +186,8 @@ app.post('/render/image', async (req, res) => {
         case 'matchday-story': canvas = await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1, { featured: !!data.featured }); break
         case 'article-post': canvas = await drawArticlePost(data); break
         case 'article-story': canvas = await drawArticleStory(data); break
+        case 'lineup-post': canvas = await drawLineupPost(data); break          // editorial lineup (2026-09-14)
+        case 'fulltime-post': canvas = await drawScoreCard(data); break         // editorial full-time poster (scorers + player bust)
         default: throw new Error('unknown image type')
       }
       return upload(`${type}-${stamp()}.png`, canvas.toBuffer('image/png'), 'image/png')
@@ -192,9 +201,9 @@ app.post('/render/image', async (req, res) => {
 /** Full reel render (scenes → ffmpeg → upload). Shared by sync + async modes. */
 // Generated assets for the Barça special (rendered locally, hosted on Supabase; cached on disk per boot).
 const BARCA_ASSETS = {
-  confetti: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-confetti-loop.mp4',
+  confetti: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-confetti-paper.mp4',   // paper-toned loops (editorial redesign, 2026-09-14)
   roar: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/sfx-goal-roar.mp3',
-  calm: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-bokeh-loop.mp4',
+  calm: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-bokeh-paper.mp4',
 }
 async function cachedAsset(url, name) {
   const p = path.join(os.tmpdir(), name)
@@ -221,7 +230,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         }
         const music = await musicPath('tale')
         const out = path.join(dir, 'reel.mp4')
-        const calm = data.special === 'barca' ? await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh.mp4') : null   // Barça stories (2026-09-14)
+        const calm = data.special === 'barca' ? await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4') : null   // Barça stories (2026-09-14)
         const { seconds: len } = await renderTaleReel({ beats, music, out, buildSpec: async (i, progress, timing) => {
           const L = await drawTaleBeatLayers({ ...beatsIn[i], first: i === 0 }, lang, labels, progress, timing, { bgVideo: calm })
           const layers = {}
@@ -238,12 +247,12 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const specs = []
         if (type === 'matchday') {
           const ms = (data.matches || []).slice(0, 10)
-          if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh.mp4')   // « يوم برشلونة » slide
+          if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4')   // « يوم برشلونة » slide
           for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang))
         }
         else if (type === 'goal') {
           // Barça special (2026-09-14): looping confetti video under the card + stadium roar at t=0
-          if (data.special === 'barca') { data.bgVideo = await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti.mp4') }
+          if (data.special === 'barca') { data.bgVideo = await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti-paper.mp4') }
           specs.push(await drawGoalAnimSpec(data))
         }
         else if (type === 'article') specs.push(await drawArticleLayers(data))

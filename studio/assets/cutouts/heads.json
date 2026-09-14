@@ -1,0 +1,62 @@
+{
+ "cubarsi": {
+  "crown": 5,
+  "headW": 121,
+  "headH": 144,
+  "neck": 149,
+  "cx": 248,
+  "h": 1037,
+  "w": 561,
+  "size": 148
+ },
+ "pedri": {
+  "crown": 54,
+  "headW": 197,
+  "headH": 213,
+  "neck": 267,
+  "cx": 278,
+  "h": 832,
+  "w": 860,
+  "size": 230
+ },
+ "yamal": {
+  "crown": 11,
+  "headW": 126,
+  "headH": 146,
+  "neck": 157,
+  "cx": 514,
+  "h": 1144,
+  "w": 816,
+  "size": 152
+ },
+ "raphinha": {
+  "crown": 4,
+  "headW": 197,
+  "headH": 258,
+  "neck": 262,
+  "cx": 329,
+  "h": 1055,
+  "w": 588,
+  "size": 252
+ },
+ "olmo": {
+  "crown": 103,
+  "headW": 244,
+  "headH": 284,
+  "neck": 387,
+  "cx": 411,
+  "h": 1248,
+  "w": 832,
+  "size": 294
+ },
+ "gavi": {
+  "crown": 41,
+  "headW": 356,
+  "headH": 355,
+  "neck": 396,
+  "cx": 364,
+  "h": 1280,
+  "w": 800,
+  "size": 400
+ }
+}
