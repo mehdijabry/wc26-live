@@ -684,7 +684,7 @@ function taleKicker(text, lang) { const c = createCanvas(960, 80); const ctx = c
 // word for a right-to-left reader ("سجل .مدهش" seen on the Adema preview).
 const taleWord = (w, rtl) => {
   let t = w.replace(/\*/g, '').replace(/[\p{Extended_Pictographic}\uFE0F\u200D]/gu, '').trim()
-  if (rtl) t = t.replace(/^(.+?)([.,:;!…]+)$/u, '$2$1')
+  if (rtl) t = t.replace(/^(.+?)([.,:;!…،؛]+)$/u, '$2$1')   // Arabic comma / semicolon too (« 16 سنة، » showed the comma on the wrong side)
   return t
 }
 function taleCaption(text, lang, size, hotColor) {
