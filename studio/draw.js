@@ -243,7 +243,13 @@ function labelText(ctx, text, x, y, { size = 18, align = 'left', color = ed.E.NA
   if (/[؀-ۿ]/.test(t)) { ctx.font = `bold ${Math.round(size * 1.5)}px Tajawal`; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = color; ctx.fillText(t, x, y); return }
   ed.spaced(ctx, t, x, y, { size, align, color, tracking })
 }
-async function pageMark(ctx, x, y, mode = 'dark') { paintLogo(ctx, x - 72, y, 72); ctx.fillStyle = mode === 'light' ? ed.E.CREAM : ed.E.NAVY; ctx.font = '22px Anton'; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText('PRESSING 90’', x, y + 100) }
+let pageLogoImg = null
+/** Page mark (Mehdi, 2026-09-16: « mets le nouveau logo sur les reels ») = the page's profile logo (navy circle, crest, PRESSING 90’), right-aligned at x. Falls back to the Senyera mark. */
+async function pageMark(ctx, x, y, mode = 'dark') {
+  if (pageLogoImg === null) { try { pageLogoImg = await loadImage(path.join(__dirname, 'assets', 'logo-page.png')) } catch { pageLogoImg = false } }
+  if (pageLogoImg) { const s = 104; ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6; ctx.drawImage(pageLogoImg, x - s, y - 8, s, s); ctx.restore(); return }
+  paintLogo(ctx, x - 72, y, 72); ctx.fillStyle = mode === 'light' ? ed.E.CREAM : ed.E.NAVY; ctx.font = '22px Anton'; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText('PRESSING 90’', x, y + 100)
+}
 
 // ─── 1. Full-time poster 1080×1350 (editorial, 2026-09-14) ─────────────────
 // m: {home, away, homeLogo, awayLogo, homeScore, awayScore, league, venue?, status?, dateLabel?, lang?,
