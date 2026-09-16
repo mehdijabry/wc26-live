@@ -247,7 +247,12 @@ let pageLogoImg = null
 /** Page mark (Mehdi, 2026-09-16: « mets le nouveau logo sur les reels ») = the page's profile logo (navy circle, crest, PRESSING 90’), right-aligned at x. Falls back to the Senyera mark. */
 async function pageMark(ctx, x, y, mode = 'dark') {
   if (pageLogoImg === null) { try { pageLogoImg = await loadImage(path.join(__dirname, 'assets', 'logo-page.png')) } catch { pageLogoImg = false } }
-  if (pageLogoImg) { const s = 104; ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6; ctx.drawImage(pageLogoImg, x - s, y - 8, s, s); ctx.restore(); return }
+  if (pageLogoImg) {
+    const s = 104, cx = x - s / 2, cy = y - 8 + s / 2
+    ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6; ctx.fillStyle = '#0B1F4B'; ctx.beginPath(); ctx.arc(cx, cy, s / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore()
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, s / 2, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(pageLogoImg, x - s, y - 8, s, s); ctx.restore()   // the profile PNG is square: shown as the round badge
+    return
+  }
   paintLogo(ctx, x - 72, y, 72); ctx.fillStyle = mode === 'light' ? ed.E.CREAM : ed.E.NAVY; ctx.font = '22px Anton'; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText('PRESSING 90’', x, y + 100)
 }
 
