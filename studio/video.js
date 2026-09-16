@@ -160,7 +160,7 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
   if (push) {
     // push transition: the whole slide flies in from the right (0.3 s) and out to the left (0.22 s)
     const T = total.toFixed(3)
-    fc.push(`color=c=0x071B30:s=1080x1920:r=${fps}:d=${T}[base]`)
+    fc.push(`color=c=0xF4EFE6:s=1080x1920:r=${fps}:d=${T}[base]`)   // paper behind the push (was night navy — a dark flash between illustrated panels, 2026-09-16)
     fc.push(`[${cur}]format=yuv420p[sl]`)
     fc.push(`[base][sl]overlay=x='if(lt(t,0.3),W*pow(1-t/0.3,3),if(gt(t,${T}-0.22),-W*(1-pow(1-(t-(${T}-0.22))/0.22,3)),0))':y=0:eval=frame:format=yuv420,format=yuv420p,setsar=1${small ? ',scale=720:1280:flags=bicubic' : ''}[v]`)
   } else {
@@ -170,7 +170,7 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1', ...inputs, '-filter_complex', fc.join(';'), '-map', '[v]',
     // ultrafast (veryfast OOM-killed the 512 MB instance on 2026-09-10) + stillimage tune + crf 19;
     // the "trembling" came from the per-frame pulse rescales, now removed.
-    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'ultrafast', '-tune', 'stillimage', '-crf', '19', '-an', '-movflags', '+faststart', out])
+    '-r', String(fps), '-t', total.toFixed(2), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23', '-maxrate', '6M', '-bufsize', '12M', '-an', '-movflags', '+faststart', out])   // capped bitrate (2026-09-16): the paper grain + panel zoom hit 19 Mbps / 117 MB per story at crf 19
   return out
 }
 
@@ -218,8 +218,8 @@ export async function renderTaleReel({ beats, music, out, buildSpec, covers = []
     const spec = await buildSpec(i, { from: t / total, to: (t + d) / total, dur: d }, { dur: d, voiceDur })
     const seg = path.join(dir, `tseg${i}.mp4`)
     const push = i > 0
-    try { await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0 : 0.15, fadeOut: 0.2, push }) }
-    catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0 : 0.15, fadeOut: 0.2, small: true, push }) }
+    try { await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0 : 0.15, fadeOut: 0, push }) }   // no fade to black: the next beat pushes in over paper
+    catch (e) { console.log('[tale] 1080p beat failed, 720p retry:', String(e).slice(0, 160)); await animSlide({ spec, seconds: d, fps, out: seg, fadeIn: i === 0 ? 0 : 0.15, fadeOut: 0, small: true, push }) }
     segs.push(seg)
     const aud = path.join(dir, `taud${i}.m4a`)
     if (beats[i].voice) await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', beats[i].voice, '-af', `adelay=150|150,apad=whole_dur=${d.toFixed(3)}`, '-t', d.toFixed(3), '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2', aud])
