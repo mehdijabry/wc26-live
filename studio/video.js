@@ -204,7 +204,7 @@ export async function renderAnimatedReel({ slides, voice, music, musicGain, seco
  * concatenation, music bed under it, loudness normalised to -16 LUFS.
  * beats: [{ spec (layers+anims), voice: path|null, min }]
  */
-export async function renderTaleReel({ beats, music, out, buildSpec }) {
+export async function renderTaleReel({ beats, music, out, buildSpec, covers = [] }) {
   const fps = 25
   const dir = path.resolve(path.dirname(out))
   const durs = []
@@ -233,12 +233,31 @@ export async function renderTaleReel({ beats, music, out, buildSpec }) {
   const video = path.join(dir, 'tvideo.mp4'), voice = path.join(dir, 'tvoice.m4a')
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', vlist, '-c', 'copy', video])
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', alist, '-c', 'copy', voice])
+  // Cover variants (Mehdi, 2026-09-16): the same body behind N different 2.2 s covers (= N thumbnails), one file each.
+  const COVER = 2.2
+  const outs = []
+  for (let k = 0; k < covers.length; k++) {
+    const cseg = path.join(dir, `tcover${k}.mp4`)
+    await animSlide({ spec: { layers: { bg: covers[k], c: covers[k] }, anims: [{ layer: 'c', x: 0, y: 0, w: 1080, h: 1920, pop: { from: 1.04, st: 0, d: COVER }, fade: { st: 0, d: 0 } }] }, seconds: COVER, fps, out: cseg, fadeIn: 0, fadeOut: 0 })   // bg = the cover itself (animSlide needs a bg input), c = the same image with a slow zoom
+    const clist = path.join(dir, `tcov${k}.txt`), vk = path.join(dir, `tvideo${k}.mp4`), ak = path.join(dir, `tvoice${k}.m4a`), sil = path.join(dir, 'tsil.m4a'), aklist = path.join(dir, `tcova${k}.txt`)
+    await fs.writeFile(clist, [cseg, video].map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', clist, '-c', 'copy', vk])
+    if (k === 0) await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=44100:cl=stereo', '-t', COVER.toFixed(3), '-c:a', 'aac', '-b:a', '160k', sil])
+    await fs.writeFile(aklist, [sil, voice].map((s) => `file '${s.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', aklist, '-c', 'copy', ak])
+    const ok = out.replace(/\.mp4$/, `-v${k}.mp4`), tot = total + COVER
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-i', vk, '-stream_loop', '-1', '-i', music, '-i', ak,
+      '-filter_complex', `[1:a]volume=0.13,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, tot - 2).toFixed(2)}:d=2[m];[2:a]volume=1.7,alimiter=limit=0.92:level=false[vo];[vo][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]`,
+      '-map', '0:v', '-map', '[a]', '-t', tot.toFixed(2), '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', ok])
+    outs.push(ok)
+    for (const f of [cseg, vk, ak]) fs.rm(f, { force: true }).catch(() => {})
+  }
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-i', video, '-stream_loop', '-1', '-i', music, '-i', voice,
     // Static gains (no loudnorm: it pumped the bed up between sentences → "background noise"): voice ≈ -16 LUFS, bed well under it.
     '-filter_complex', `[1:a]volume=0.13,afade=t=in:st=0:d=1.5,afade=t=out:st=${Math.max(0, total - 2).toFixed(2)}:d=2[m];[2:a]volume=1.7,alimiter=limit=0.92:level=false[vo];[vo][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[a]`,
     '-map', '0:v', '-map', '[a]', '-t', total.toFixed(2), '-c:v', 'copy', '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart', out])
   for (const s of [...segs, ...auds]) fs.rm(s, { force: true }).catch(() => {})
-  return { out, seconds: Math.round(total) }
+  return { out, outs, seconds: Math.round(total + (covers.length ? 2.2 : 0)) }
 }
 
 /**

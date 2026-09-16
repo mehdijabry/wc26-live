@@ -810,6 +810,55 @@ async function talePhoto(url, credit) {
   if (credit) { ctx.textAlign = 'left'; ctx.fillStyle = ed.E.MUTED; ctx.font = 'bold 18px Cairo'; ctx.fillText(String(credit).slice(0, 90), 120, H - 24) }
   return c
 }
+// ─── Comic stories (Mehdi, 2026-09-16: « reel genre bande dessinée ») ─────────
+// Illustrations generated per beat (Gemini, house style: flat vector, navy / garnet / cream / gold) sit in a paper
+// frame with a slow zoom; the cover (first 2.2 s = the Facebook thumbnail) carries 1-3 bold coloured hook lines.
+const isArabic = (t) => /[؀-ۿ]/.test(String(t || ''))
+function hookPill(ctx, W, text, y, { size = 118, bg = ed.E.GRANA, fg = ed.E.CREAM, rotate = -0.03 } = {}) {
+  const ar = isArabic(text)
+  ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+  let sz = ar ? size : Math.round(size * 0.72)
+  const font = (z) => ar ? `bold ${z}px Aref` : `900 ${z}px Playfair`
+  ctx.font = font(sz); while (ctx.measureText(text).width > 940 && sz > 44) { sz -= 6; ctx.font = font(sz) }
+  const w = ctx.measureText(text).width + 90, h = ar ? sz * 1.32 : sz * 1.42
+  ctx.translate(W / 2, y); ctx.rotate(rotate)
+  ctx.fillStyle = 'rgba(17,28,79,0.55)'; roundedPath(ctx, -w / 2 + 10, -h * 0.74 + 12, w, h, 18); ctx.fill()
+  ctx.fillStyle = bg; roundedPath(ctx, -w / 2, -h * 0.74, w, h, 18); ctx.fill()
+  ctx.fillStyle = fg; ctx.fillText(text, 0, ar ? 0 : sz * 0.08); ctx.restore()
+  return y + h + 10
+}
+/** Illustration in a white paper frame (1000×960, shadow included) — null when the image cannot be loaded. */
+async function comicPanel(url) {
+  const img = await loadImg(url); if (!img) return null
+  const c = createCanvas(1000, 960); const ctx = ctx2d(c)
+  const fx = 20, fy = 10, fw = 960, fh = 900
+  ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.35)'; ctx.shadowBlur = 40; ctx.shadowOffsetY = 18; ctx.fillStyle = '#fff'; roundedPath(ctx, fx, fy, fw, fh, 28); ctx.fill(); ctx.restore()
+  ctx.save(); roundedPath(ctx, fx + 14, fy + 14, fw - 28, fh - 28, 20); ctx.clip()
+  const s = Math.max((fw - 28) / img.width, (fh - 28) / img.height); const dw = img.width * s, dh = img.height * s
+  ctx.drawImage(img, fx + 14 + ((fw - 28) - dw) / 2, fy + 14 + ((fh - 28) - dh) / 2, dw, dh); ctx.restore()
+  return c
+}
+/** Story cover 1080×1920: illustration + coloured hook lines, everything inside the 3:4 grid crop (y 240-1680). */
+export async function drawStoryCover(d) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  ed.backdrop(ctx, W, H, { stripe: true, tone: 'blue' })
+  await ed.stadium(ctx, W, H, { top: H - 420, alpha: 0.9, fadeTo: 0.6 })
+  const panel = d.img ? await comicPanel(d.img) : null
+  if (panel) ctx.drawImage(panel, 40, 240)
+  const tag = d.tag || (d.lang === 'ar' ? 'قصة لا تُصدق' : 'INCREDIBLE STORY')
+  ctx.save(); ctx.translate(90, 244); ctx.rotate(-0.06); ctx.font = isArabic(tag) ? 'bold 34px Tajawal' : 'bold 26px Cairo'; const tw = ctx.measureText(tag).width + 50
+  ctx.fillStyle = ed.E.GOLD; roundedPath(ctx, 0, -46, tw, 62, 12); ctx.fill(); ctx.fillStyle = ed.E.NAVY; ctx.textAlign = 'left'; ctx.fillText(tag, 25, isArabic(tag) ? 0 : -4); ctx.restore()
+  let y = 1300
+  if (d.l1) y = hookPill(ctx, W, d.l1, y, { size: 150, bg: ed.E.NAVY, fg: ed.E.GOLD, rotate: -0.03 })
+  if (d.l2) y = hookPill(ctx, W, d.l2, y + 30, { size: 104, bg: ed.E.GRANA, fg: ed.E.CREAM, rotate: 0.02 })
+  if (d.l3) y = hookPill(ctx, W, d.l3, y + 24, { size: 72, bg: ed.E.CREAM, fg: ed.E.NAVY, rotate: -0.015 })
+  await pageMark(ctx, W - 48, 70); ed.stack(ctx, ['FOOTBALL', 'STORIES'], 48, 92, { size: 15 })
+  ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1830, { size: 16, align: 'center', tracking: 0.42, color: ed.E.CREAM })
+  ed.grain(ctx, W, H)
+  return c
+}
 /** One story beat → animated layer spec (+ progress bar layer). timing = { dur, voiceDur }. */
 export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = {}, opts = {}) {
   registerBrandFonts()
@@ -819,6 +868,36 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
   const glow = beat.glow || 'green'
   const hot = glow === 'gold' ? ed.E.GRANA : ed.E.BLUE
   const dur = timing.dur || 6
+  const first0 = !!beat.first
+  if (beat.comic && beat.imageUrl) {
+    // Comic layout: kicker, illustration panel (slow zoom), word-by-word caption under it, scoreboard / CTA below.
+    const panel = await comicPanel(beat.imageUrl).catch(() => null)
+    if (panel) {
+      const layers = { bg: PNGb(await taleBg(glow, onVideo)), panel: PNGb(panel), kicker: PNGb(taleKicker(beat.kicker || '', lang)) }
+      if (beat.cover) layers.cover = PNGb(coverBand(beat.cover))
+      const anims = [
+        { layer: 'panel', x: 40, y: 200, w: 1000, h: 960, pop: { from: 1.06, st: 0, d: Math.max(3, dur) }, fade: { st: 0, d: first0 ? 0 : 0.2 } },
+        { layer: 'kicker', x: 60, y: 96, w: 960, h: 100, pop: { from: first0 ? 1.1 : 1.5, st: 0, d: first0 ? 0.2 : 0.3 }, fade: { st: 0, d: first0 ? 0 : 0.1 } },
+        ...(beat.cover ? [{ layer: 'cover', x: 40, y: 1080, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
+      ]
+      const capFrames = taleCaptionFrames(beat.caption || '', lang, Math.min(beat.capSize || (lang === 'ar' ? 62 : 66), 66), hot).frames
+      const frames = first0 ? [capFrames[capFrames.length - 1]] : capFrames
+      const span = Math.min(Math.max(1.2, (timing.voiceDur || dur * 0.7) * 0.65), 6)
+      frames.forEach((buf, k) => {
+        layers[`w${k}`] = buf
+        const st = first0 ? 0 : 0.3 + (k / Math.max(1, frames.length - 1)) * span
+        const en = k < frames.length - 1 ? 0.3 + ((k + 1) / Math.max(1, frames.length - 1)) * span : undefined
+        anims.push({ layer: `w${k}`, x: 40, y: 1200, show: { st: +st.toFixed(3), en: en != null ? +en.toFixed(3) : undefined } })
+      })
+      if (beat.visual && (beat.visual.type === 'scoreboard' || beat.visual.type === 'cta')) {
+        const vis = taleVisual(beat.visual, lang, labels)
+        const vy = beat.visual.type === 'cta' ? 1470 : 1560
+        layers.vis = PNGb(vis.c); anims.push({ layer: 'vis', x: 60, y: vy, w: vis.w, h: vis.h, pop: { from: 1.5, st: 0.7, d: 0.4 }, fade: { st: 0.7, d: 0.2 } })
+      }
+      if (progress) { const bar = createCanvas(1080, 10); const ctx = ctx2d(bar); ctx.fillStyle = ed.E.GRANA; ctx.fillRect(0, 0, 1080, 10); layers.bar = PNGb(bar); anims.push({ layer: 'bar', x: 0, y: 1910, progress }) }
+      return { layers, anims, bgVideo: onVideo ? opts.bgVideo : undefined }
+    }
+  }
   const photo = beat.imageUrl ? await talePhoto(beat.imageUrl, beat.credit).catch(() => null) : null
   const first = !!beat.first   // hook beat: the claim must be readable at frame 0 (average play time was 3 s)
   if (photo) {

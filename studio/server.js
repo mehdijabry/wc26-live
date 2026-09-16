@@ -8,7 +8,7 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, registerBrandFonts, setTheme } from './draw.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
 import edgePkg from 'msedge-tts'
 const { MsEdgeTTS, OUTPUT_FORMAT } = edgePkg
@@ -246,16 +246,19 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const music = await musicPath('tale')
         const out = path.join(dir, 'reel.mp4')
         const calm = data.special === 'barca' ? await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4') : null   // Barça stories (2026-09-14)
-        const { seconds: len } = await renderTaleReel({ beats, music, out, buildSpec: async (i, progress, timing) => {
+        // Cover variants (2026-09-16): N thumbnails for the same reel body → N files (urls[])
+        const coverPngs = []
+        for (const [k, cv] of ((data.covers || []).slice(0, 6)).entries()) { const c = await drawStoryCover({ ...cv, lang }); const p = path.join(dir, `cover${k}.png`); await fs.writeFile(p, c.toBuffer('image/png')); coverPngs.push(p) }
+        const { seconds: len, outs } = await renderTaleReel({ beats, music, out, covers: coverPngs, buildSpec: async (i, progress, timing) => {
           const L = await drawTaleBeatLayers({ ...beatsIn[i], first: i === 0 }, lang, labels, progress, timing, { bgVideo: calm })
           const layers = {}
           for (const [k, buf] of Object.entries(L.layers)) { layers[k] = path.join(dir, `t${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
           return { layers, anims: L.anims, bgVideo: L.bgVideo }
         } })
-        const buf = await fs.readFile(out)
-        const url = await upload(`reel-tale-${lang}-${stamp()}.mp4`, buf, 'video/mp4')
+        const urls = []
+        for (const f of (outs && outs.length ? outs : [out])) urls.push(await upload(`reel-tale-${lang}-${stamp()}.mp4`, await fs.readFile(f), 'video/mp4'))
         await fs.rm(dir, { recursive: true, force: true })
-        return { url, seconds: len }
+        return { url: urls[0], urls, seconds: len }
       }
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
