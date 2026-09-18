@@ -26,7 +26,7 @@ const isBarcaName = (n: string) => /barcelona|barça|barca/i.test(n)
 // ─── queue ──────────────────────────────────────────────────────────────────
 export async function goalAnimQueue(env: Env, date: string): Promise<GoalAnimItem[]> { try { return JSON.parse((await env.CACHE.get(QKEY(date))) ?? '[]') as GoalAnimItem[] } catch { return [] } }
 export async function enqueueGoalAnim(env: Env, date: string, item: GoalAnimItem): Promise<boolean> {
-  if (!item.force && (await env.CACHE.get(DONE(item.id)))) return false
+  if (!item.force && (await env.CACHE.get(DONE(item.id)))) { await log(env, date, 'goal-anim', true, `${item.home} v ${item.away}: already produced — skipped`); return false }
   const q = await goalAnimQueue(env, date)
   if (q.some((x) => x.id === item.id)) return false
   q.push(item)
@@ -46,7 +46,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
       if (job.stage === 'texts') {
         const sum = await matchSummary(env, job.item, true)
         const goal = pickBestGoal(sum, job.item, job.item.goalId)
-        if (!goal) { await env.CACHE.delete(JKEY); await env.CACHE.put(DONE(job.item.id), '1', { expirationTtl: 3 * 86400 }); await log(env, date, 'goal-anim', false, `${job.item.home} v ${job.item.away}: no usable goal (coordinates missing?)`); return 'no goal' }
+        if (!goal) { await env.CACHE.delete(JKEY); if (!job.item.preview) await env.CACHE.put(DONE(job.item.id), '1', { expirationTtl: 3 * 86400 }); await log(env, date, 'goal-anim', false, `${job.item.home} v ${job.item.away}: no usable goal (coordinates missing?)`); return 'no goal' }
         const scene = buildScene(job.item, sum, goal)
         let texts: Texts
         try { texts = await goalTexts(env, scene) } catch (e) { await log(env, date, 'goal-anim', false, `LLM texts failed (${String(e).slice(0, 120)}) → template texts`); texts = templateTexts(scene.meta) }
@@ -65,6 +65,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
         return 'voices'
       }
       if (job.stage === 'render') {
+        // TikTok refuses videos under 23 fps (frame_rate_check_failed, 2026-09-18) → 25 fps whenever TikTok posting is on.
         // Guard against a stale KV read (a manual tick right before the cron tick sent the same render twice on 2026-09-18): one send per item per hour.
         const sentKey = `auto:goalanim:sent:${job.item.id}`
         if (await env.CACHE.get(sentKey)) { job.stage = 'wait'; await saveJob(env, job); return 'already sent' }
@@ -76,7 +77,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
         const description = `${chk.text}\n\n${MUSIC_CREDIT}`
         const comment = pinnedComment(`تحليل هدف ${texts.scorerAr || meta.scorer} في مباراة ${meta.scoreLine} (${meta.league}): ${meta.template === 'solo' ? 'انطلاقة فردية' : `صناعة ${texts.assistAr || meta.assist}`}، تسديدة من ${meta.distance} متراً.`, 'أجمل هدف في المباراة: نعم أم لا؟ 👇', `كل تحليلات الأهداف على ${SITE}/today?lang=ar&ref=fb-goal`)
         await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'goal-anim', date, label: 'goal-anim', description, comment, title: texts.title, preview: !!job.item.preview, item: job.item, meta }), { expirationTtl: 6 * 3600 })
-        await studio(env, '/render/reel', { type: 'goal-anim', data: { spec, voiceUrls: job.voiceUrls, fps: job.item.fps ?? s.goalAnimFps ?? 20, scale: job.item.scale ?? s.goalAnimScale ?? 1 }, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+        await studio(env, '/render/reel', { type: 'goal-anim', data: { spec, voiceUrls: job.voiceUrls, fps: Math.max(job.item.fps ?? s.goalAnimFps ?? 20, s.tiktok ? 25 : 0), scale: job.item.scale ?? s.goalAnimScale ?? 1 }, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
         job.jobId = jobId; job.stage = 'wait'; job.stageAt = Date.now()
         await saveJob(env, job)
         await log(env, date, 'goal-anim', true, `${meta.scorer} ${meta.minute}: render job ${jobId} sent to the studio (${(job.voiceUrls ?? []).length} voices)`)
@@ -84,7 +85,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
       }
       return 'waiting'
     } catch (e) {
-      await env.CACHE.delete(JKEY); await env.CACHE.put(DONE(job.item.id), '1', { expirationTtl: 3 * 86400 })
+      await env.CACHE.delete(JKEY); if (!job.item.preview) await env.CACHE.put(DONE(job.item.id), '1', { expirationTtl: 3 * 86400 })
       await log(env, date, 'goal-anim', false, `${job.item.home} v ${job.item.away} failed at ${job.stage}: ${String(e).slice(0, 160)}`)
       return 'failed'
     }
@@ -94,6 +95,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
   const next = q[0]
   if (!force && !next.preview && (await getCount(env, date, 'goalanim')) >= (s.goalAnimPerDay ?? 4)) return 'cap'
   q.shift(); await env.CACHE.put(QKEY(date), JSON.stringify(q), { expirationTtl: 36 * 3600 })
+  await env.CACHE.delete(`auto:goalanim:sent:${next.id}`)   // a new job for this match may send its own render (the guard only protects one job against a double tick)
   await saveJob(env, { stage: 'texts', item: next, startedAt: Date.now(), stageAt: Date.now() })
   return `started ${next.home} v ${next.away}`
 }
@@ -102,7 +104,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
 export async function goalAnimCallback(env: Env, job: { date: string; description?: string; comment?: string; title?: string; preview?: boolean; item?: GoalAnimItem; meta?: Meta }, body: { ok?: boolean; url?: string; seconds?: number; error?: string; qa?: { visual?: Record<string, unknown>; audio?: { issues?: string[]; loudness?: number; loudnessAfter?: number } } }): Promise<void> {
   await env.CACHE.delete(JKEY)
   const id = job.item?.id ?? ''
-  if (id) await env.CACHE.put(DONE(id), '1', { expirationTtl: 3 * 86400 })
+  if (id && !job.preview) await env.CACHE.put(DONE(id), '1', { expirationTtl: 3 * 86400 })   // previews never block the automatic production (Bayern, 2026-09-18)
   const who = job.meta ? `${job.meta.scorer} ${job.meta.minute}` : 'goal'
   if (!body.ok || !body.url) { await log(env, job.date, 'goal-anim', false, `${who}: render failed: ${body.error ?? 'unknown'}`); return }
   const issues = body.qa?.audio?.issues ?? []
