@@ -11,6 +11,7 @@ import path from 'node:path'
 import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
 import edgePkg from 'msedge-tts'
+import { renderGoalRecreation } from './goalanim.js'
 const { MsEdgeTTS, OUTPUT_FORMAT } = edgePkg
 
 const PORT = process.env.PORT || 10000
@@ -117,16 +118,21 @@ app.get('/espn/summary', async (req, res) => {
       minute: k.clock?.displayValue || '', type: k.type?.text || '', team: k.team?.displayName || '', teamId: k.team?.id || '',
       scorer: (k.participants || [])[0]?.athlete?.displayName || '', scorerId: (k.participants || [])[0]?.athlete?.id || '', assist: (k.participants || [])[1]?.athlete?.displayName || '',
       text: (k.text || '').slice(0, 220), ownGoal: /own goal/i.test(k.type?.text || '') || /own goal/i.test(k.text || ''), penalty: /penalty/i.test(k.type?.text || ''),
+      // ESPN play coordinates (2026-09-18, goal recreations): X 0→100 towards the opponent goal, Y 0→100 right→left (attacker's view), Y2 = where it crossed the line.
+      x: k.fieldPositionX ?? null, y: k.fieldPositionY ?? null, x2: k.fieldPosition2X ?? null, y2: k.fieldPosition2Y ?? null, playId: k.id || '',
     }))
+    // Compact play-by-play with coordinates (the goal recreation reads the plays before the goal: rebounds, blocks, corners).
+    const plays = (j.commentary || []).map((c) => { const p = c.play || {}; return { t: c.time?.displayValue || '', type: p.type?.text || '', id: p.id || '', team: p.team?.displayName || '', text: (c.text || '').slice(0, 200), x: p.fieldPositionX ?? null, y: p.fieldPositionY ?? null, x2: p.fieldPosition2X ?? null, y2: p.fieldPosition2Y ?? null } }).filter((p) => p.type)
     for (const g of goals) g.nationality = await citizenship(g.scorerId)
     // Lineups + venue for the editorial posts (2026-09-14): starters with ESPN position codes + formation per side.
     const rosters = (j.rosters || []).map((r) => ({
       side: r.homeAway, team: r.team?.displayName || '', abbr: r.team?.abbreviation || '', formation: r.formation || '',
       players: (r.roster || []).filter((p) => p.starter).map((p) => ({ name: p.athlete?.shortName || p.athlete?.displayName || '', full: p.athlete?.displayName || '', jersey: p.jersey || '', pos: p.position?.abbreviation || '', place: p.formationPlace || 0 })),
+      bench: (r.roster || []).filter((p) => !p.starter).map((p) => ({ name: p.athlete?.shortName || p.athlete?.displayName || '', full: p.athlete?.displayName || '', jersey: p.jersey || '', pos: p.position?.abbreviation || '', in: !!p.subbedIn })),
     }))
     const comp = j.header?.competitions?.[0]
-    const teams = (comp?.competitors || []).map((t) => ({ side: t.homeAway, id: t.id, name: t.team?.displayName, abbr: t.team?.abbreviation, logo: t.team?.logos?.[0]?.href, score: t.score }))
-    res.json({ status: 200, goals, rosters, teams, venue: j.gameInfo?.venue?.fullName || '', attendance: j.gameInfo?.attendance || 0, date: comp?.date || '', state: comp?.status?.type?.state || '' })
+    const teams = (comp?.competitors || []).map((t) => ({ side: t.homeAway, id: t.id, name: t.team?.displayName, abbr: t.team?.abbreviation, logo: t.team?.logos?.[0]?.href, score: t.score, color: t.team?.color || '', altColor: t.team?.alternateColor || '' }))
+    res.json({ status: 200, goals, plays: String(req.query.plays || '') === '1' ? plays : undefined, rosters, teams, venue: j.gameInfo?.venue?.fullName || '', attendance: j.gameInfo?.attendance || 0, date: comp?.date || '', state: comp?.status?.type?.state || '' })
   } catch (e) { res.json({ status: 0, goals: [], error: String(e.message || e) }) }
 })
 
@@ -215,6 +221,9 @@ app.post('/render/image', async (req, res) => {
 
 /** Full reel render (scenes → ffmpeg → upload). Shared by sync + async modes. */
 // Generated assets for the Barça special (rendered locally, hosted on Supabase; cached on disk per boot).
+const GOAL_ASSETS = {
+  music: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/music-quake-aavirall.mp3',   // « Quake » (aavirall, Uppbeat) — credit line required in every caption (see worker)
+}
 const BARCA_ASSETS = {
   confetti: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-confetti-paper.mp4',   // paper-toned loops (editorial redesign, 2026-09-14)
   roar: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/sfx-goal-roar.mp3',
@@ -231,6 +240,24 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
   setTheme(theme || (data && data.theme) || process.env.P90_THEME || 'barca')
       registerBrandFonts()
       const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'reel-'))
+      // ── Goal recreation « كيف جاء الهدف » (2026-09-18): scene spec + one voice clip per beat ──
+      if (type === 'goal-anim') {
+        const spec = data.spec
+        if (!spec || !Array.isArray(spec.actors || null) && typeof spec.actors !== 'object') throw new Error('goal-anim: spec required')
+        const urls = data.voiceUrls || []
+        if (!urls.length) throw new Error('goal-anim: voiceUrls required')
+        const voices = []
+        for (let i = 0; i < urls.length; i++) { const r = await fetch(urls[i]); if (!r.ok) throw new Error(`voice ${i} fetch failed ${r.status}`); const p = path.join(dir, `v${i}.mp3`); await fs.writeFile(p, Buffer.from(await r.arrayBuffer())); voices.push(p) }
+        const music = await cachedAsset(GOAL_ASSETS.music, 'p90-music-quake.mp3')
+        const roar = data.roar === false ? null : await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3')
+        const confetti = spec.card && spec.card.special === 'barca' ? await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti-paper.mp4') : null
+        const out = path.join(dir, 'reel.mp4')
+        const { seconds: len, qa } = await renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20 })
+        const buf = await fs.readFile(out)
+        const url = await upload(`reel-goalanim-${(spec.id || 'goal').replace(/[^a-z0-9-]/gi, '').slice(0, 40)}-${stamp()}.mp4`, buf, 'video/mp4')
+        await fs.rm(dir, { recursive: true, force: true })
+        return { url, seconds: len, qa }
+      }
       // ── Football Stories (Mehdi, 2026-09-10): beats with their own voice clips ──
       if (type === 'tale') {
         const lang = data.lang || 'en'
@@ -245,7 +272,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         }
         const music = await musicPath('tale')
         const out = path.join(dir, 'reel.mp4')
-        const calm = data.special === 'barca' ? await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4') : null   // Barça stories (2026-09-14)
+        const calm = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4')   // paper bokeh loop behind every text beat (2026-09-16: kinetic text when there is no photo)
         // Cover variants (2026-09-16): N thumbnails for the same reel body → N files (urls[])
         const coverPngs = []
         for (const [k, cv] of ((data.covers || []).slice(0, 6)).entries()) { const c = await drawStoryCover({ ...cv, lang }); const p = path.join(dir, `cover${k}.png`); await fs.writeFile(p, c.toBuffer('image/png')); coverPngs.push(p) }
