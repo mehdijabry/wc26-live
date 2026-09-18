@@ -1,7 +1,7 @@
 {
-  "name": "WC26 Live · Pressing 90'",
-  "short_name": "WC26 Live",
-  "description": "World Cup 2026 — live scores, brackets, predictions, every team & stadium.",
+  "name": "Pressing 90’",
+  "short_name": "Pressing 90’",
+  "description": "Live football scores from every major competition, news briefings, and the full World Cup 2026 archive.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -41,5 +41,9 @@
       "purpose": "any"
     }
   ],
-  "categories": ["sports", "news", "entertainment"]
+  "categories": [
+    "sports",
+    "news",
+    "entertainment"
+  ]
 }

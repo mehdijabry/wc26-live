@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react'
  */
 export function Contact() {
   useEffect(() => {
-    document.title = 'Contact · WC26 Live'
+    document.title = 'Contact · Pressing 90’'
   }, [])
   const [copied, setCopied] = useState<string | null>(null)
   const copy = (value: string) => {
@@ -22,7 +22,7 @@ export function Contact() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Contact · Pressing 90'
         </div>
-        <h1 className="font-display font-bold text-4xl sm:text-5xl text-marine-950 tracking-tight">
+        <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight">
           Reach out. We{' '}
           <span className="text-accent-gold">read everything</span>.
         </h1>
@@ -41,7 +41,7 @@ export function Contact() {
           </div>
           <a
             href="mailto:info@pressing90.live?subject=WC26%20Live%20%E2%80%93%20"
-            className="font-display font-bold text-2xl sm:text-3xl text-marine-950 hover:text-accent-gold transition-colors break-all"
+            className="font-display font-bold text-2xl sm:text-3xl text-slate-900 hover:text-accent-gold transition-colors break-all"
           >
             info@pressing90.live
           </a>
@@ -66,14 +66,14 @@ export function Contact() {
 
         {/* What to write about */}
         <div className="rounded-2xl border border-slate-200 p-8">
-          <h2 className="font-display font-bold text-xl text-marine-950 mb-4">
+          <h2 className="font-display font-bold text-xl text-slate-900 mb-4">
             What you can write about
           </h2>
           <ul className="space-y-3 text-slate-700">
             <li className="flex gap-3">
               <span className="text-accent-gold font-bold">→</span>
               <span>
-                <strong className="text-marine-950">Press & media:</strong>{' '}
+                <strong className="text-slate-900">Press & media:</strong>{' '}
                 interviews, podcast invites, feature requests for editorial
                 content.
               </span>
@@ -81,7 +81,7 @@ export function Contact() {
             <li className="flex gap-3">
               <span className="text-accent-gold font-bold">→</span>
               <span>
-                <strong className="text-marine-950">Sponsorship & ads:</strong>{' '}
+                <strong className="text-slate-900">Sponsorship & ads:</strong>{' '}
                 direct sponsorship spots, in-content placements, branded
                 bracket campaigns.
               </span>
@@ -89,7 +89,7 @@ export function Contact() {
             <li className="flex gap-3">
               <span className="text-accent-gold font-bold">→</span>
               <span>
-                <strong className="text-marine-950">Bug reports:</strong>{' '}
+                <strong className="text-slate-900">Bug reports:</strong>{' '}
                 broken scores, wrong logos, layout glitches, broadcast
                 listings that are off — include the match URL + your
                 browser/device.
@@ -98,14 +98,14 @@ export function Contact() {
             <li className="flex gap-3">
               <span className="text-accent-gold font-bold">→</span>
               <span>
-                <strong className="text-marine-950">Feature requests:</strong>{' '}
+                <strong className="text-slate-900">Feature requests:</strong>{' '}
                 what's missing? What would make you bookmark the site?
               </span>
             </li>
             <li className="flex gap-3">
               <span className="text-accent-gold font-bold">→</span>
               <span>
-                <strong className="text-marine-950">Data & licensing:</strong>{' '}
+                <strong className="text-slate-900">Data & licensing:</strong>{' '}
                 if you run a paper / app and want to embed our bracket
                 widget, we can talk.
               </span>
@@ -113,7 +113,7 @@ export function Contact() {
             <li className="flex gap-3">
               <span className="text-accent-gold font-bold">→</span>
               <span>
-                <strong className="text-marine-950">Legal & DMCA:</strong>{' '}
+                <strong className="text-slate-900">Legal & DMCA:</strong>{' '}
                 rights holders → see{' '}
                 <a href="/terms" className="text-accent-gold underline">terms</a>{' '}
                 for the takedown process.
@@ -124,7 +124,7 @@ export function Contact() {
 
         {/* Studio link */}
         <div className="rounded-2xl border border-slate-200 p-8">
-          <h2 className="font-display font-bold text-xl text-marine-950 mb-3">
+          <h2 className="font-display font-bold text-xl text-slate-900 mb-3">
             Other links
           </h2>
           <div className="space-y-2 font-mono text-sm">
@@ -155,7 +155,7 @@ export function Contact() {
       </section>
 
       <footer className="mt-16 pt-8 border-t border-slate-200 font-mono text-xs text-slate-500">
-        WC26 Live · Pressing 90' · pressing90.live
+        Pressing 90’ · Pressing 90' · pressing90.live
       </footer>
     </div>
   )

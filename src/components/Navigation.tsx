@@ -2,24 +2,29 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { UserMenu } from './UserMenu'
+import { useSiteSettings } from '../store/siteSettings'
+import { useLang, useT } from '../lib/i18n'
 
 // Real route-based navigation now — each link is its own page, no more
 // anchor-jump that breaks when a section is still inside a lazy Suspense.
-const links: Array<{ label: string; to: string }> = [
+// Post-tournament rebrand (2026-08): the site is Pressing 90' — a
+// general live-scores + news site. All WC26 pages remain reachable
+// under the single "WC26 Archive" entry (→ /wc26, which links out to
+// bracket / predictions / stadiums / rules) instead of five WC tabs.
+const BASE_LINKS: Array<{ label: string; to: string }> = [
   { label: 'Home', to: '/' },
-  // User reorg 2026-06-09: the standalone /squads page (per-player WC26
-  // Live Score grid) was deleted. The /wc26 page (groups + schedule +
-  // bracket) gets renamed 'WC26 Squads' in the nav so the WC tab still
-  // implies team-level information without the noisy player grid.
-  { label: 'WC26 Squads', to: '/wc26' },
-  { label: 'WC26 Prediction', to: '/predictions' },
-  { label: 'Today', to: '/today' },
+  { label: 'Matches', to: '/today' },
   { label: 'News', to: '/news' },
-  { label: 'Board', to: '/board' },
-  { label: "WC26's Stadiums", to: '/stadiums' },
 ]
+const WC26_LINK = { label: 'WC26 Archive', to: '/wc26' }
 
 export function Navigation() {
+  // WC26 archive entry is admin-toggled (site settings → wc26Visible).
+  const wc26Visible = useSiteSettings((s) => s.wc26Visible)
+  const links = wc26Visible ? [...BASE_LINKS, WC26_LINK] : BASE_LINKS
+  const t = useT()
+  const lang = useLang((s) => s.lang)
+  const setLang = useLang((s) => s.setLang)
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -62,17 +67,18 @@ export function Navigation() {
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group">
             <img
-              src="/wc26-emblem.svg"
-              alt="WC26"
-              className="w-8 h-8 group-hover:scale-110 transition-transform shrink-0"
+              src="/p90-logo.svg"
+              alt="Pressing 90’"
+              className="w-8 h-8 rounded-lg group-hover:scale-110 transition-transform shrink-0"
             />
-            <div className="leading-tight">
+            {/* dir=ltr — the Latin wordmark must not reorder in RTL mode
+                (the trailing ’ jumps to the left side otherwise) */}
+            <div className="leading-tight" dir="ltr">
               <div className="font-display font-bold tracking-tight text-base sm:text-lg whitespace-nowrap">
-                WC<span className="text-accent-gold">26</span> Live
+                Pressing <span className="text-accent-gold">90’</span>
               </div>
-              <div className="text-[9px] uppercase tracking-[0.2em] font-mono whitespace-nowrap mt-0.5">
-                <span className="text-slate-900">Pressing</span>{' '}
-                <span className="text-accent-red font-semibold">90′</span>
+              <div className="text-[9px] uppercase tracking-[0.2em] font-mono whitespace-nowrap mt-0.5 text-slate-500">
+                {t('live football scores')}
               </div>
             </div>
           </Link>
@@ -91,9 +97,21 @@ export function Navigation() {
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100')
                 }
               >
-                {l.label}
+                {t(l.label)}
               </NavLink>
             ))}
+            {/* EN / FR / عربي toggle */}
+            <div className="ms-2 inline-flex rounded-full border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Language">
+              {([['en', 'EN'], ['fr', 'FR'], ['ar', 'عربي']] as const).map(([code, label]) => (
+                <button
+                  key={code}
+                  onClick={() => setLang(code)}
+                  className={'px-2.5 py-1 rounded-full text-[11px] font-mono transition-colors ' + (lang === code ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-500 hover:text-slate-900')}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </nav>
 
           <div className="flex items-center gap-2">
@@ -140,14 +158,13 @@ export function Navigation() {
             >
               <div className="flex items-center justify-between mb-8">
                 <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2.5">
-                  <img src="/wc26-emblem.svg" alt="" className="w-7 h-7" />
-                  <div className="leading-tight">
+                  <img src="/p90-logo.svg" alt="" className="w-7 h-7 rounded-md" />
+                  <div className="leading-tight" dir="ltr">
                     <div className="font-display font-bold tracking-tight text-sm">
-                      WC<span className="text-accent-gold">26</span> Live
+                      Pressing <span className="text-accent-gold">90’</span>
                     </div>
-                    <div className="text-[8px] uppercase tracking-[0.2em] font-mono mt-0.5">
-                      <span className="text-slate-900">Pressing</span>{' '}
-                      <span className="text-accent-red font-semibold">90′</span>
+                    <div className="text-[8px] uppercase tracking-[0.2em] font-mono mt-0.5 text-slate-500">
+                      live football scores
                     </div>
                   </div>
                 </Link>
@@ -174,9 +191,20 @@ export function Navigation() {
                         : 'hover:bg-slate-100 text-slate-800 hover:text-slate-900')
                     }
                   >
-                    {l.label}
+                    {t(l.label)}
                   </NavLink>
                 ))}
+                <div className="pt-3 flex gap-2">
+                  {([['en', 'English'], ['fr', 'Français'], ['ar', 'عربي']] as const).map(([code, label]) => (
+                    <button
+                      key={code}
+                      onClick={() => setLang(code)}
+                      className={'flex-1 px-2 py-2 rounded-xl text-sm font-mono transition-colors ' + (lang === code ? 'bg-accent-gold text-ink-900 font-semibold' : 'bg-slate-100 text-slate-600')}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </nav>
 
               <div className="mt-10 pt-6 border-t border-slate-200/70 text-[10px] uppercase tracking-widest text-slate-600 font-mono">

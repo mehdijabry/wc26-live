@@ -48,7 +48,7 @@ export function ExplainedTopic() {
   if (!entry) {
     return (
       <div className="container max-w-3xl mx-auto px-6 pt-6 pb-16 text-center">
-        <h1 className="font-display text-3xl font-bold text-ink-900">
+        <h1 className="font-display text-3xl font-bold text-slate-900">
           Question not found
         </h1>
         <p className="mt-3 text-slate-600">
@@ -77,7 +77,7 @@ export function ExplainedTopic() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           {entry.tags.map((t) => t.toUpperCase()).join(' · ')}
         </div>
-        <h1 className="font-display font-bold text-3xl sm:text-4xl text-ink-900 tracking-tight leading-[1.15]">
+        <h1 className="font-display font-bold text-3xl sm:text-4xl text-slate-900 tracking-tight leading-[1.15]">
           {entry.question}
         </h1>
       </header>
@@ -86,7 +86,7 @@ export function ExplainedTopic() {
         <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">
           Short answer
         </div>
-        <p className="font-display text-base sm:text-lg leading-relaxed text-ink-900">
+        <p className="font-display text-base sm:text-lg leading-relaxed text-slate-900">
           {entry.short}
         </p>
       </section>
@@ -102,7 +102,7 @@ export function ExplainedTopic() {
 
       {relatedEntries.length > 0 && (
         <section className="mb-12">
-          <h2 className="font-display font-bold text-xl text-ink-900 mb-4">
+          <h2 className="font-display font-bold text-xl text-slate-900 mb-4">
             Related questions
           </h2>
           <ul className="space-y-3">
@@ -112,7 +112,7 @@ export function ExplainedTopic() {
                   to={`/explained/${rel.slug}`}
                   className="group block rounded-xl border border-slate-200 bg-white p-4 hover:border-accent-gold transition-colors"
                 >
-                  <div className="font-display font-semibold text-base text-ink-900 group-hover:text-accent-gold">
+                  <div className="font-display font-semibold text-base text-slate-900 group-hover:text-accent-gold">
                     {rel.question}
                   </div>
                   <div className="mt-1 text-sm text-slate-600 line-clamp-2">{rel.short}</div>

@@ -950,14 +950,32 @@ export async function drawTaleBeatLayers(beat, lang, labels, progress, timing = 
     ...(beat.cover ? [{ layer: 'cover', x: 40, y: 1560, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
   ]
   // word-by-word caption: words land across the first ~65 % of the voice; the hook beat shows the whole claim at once
-  const allFrames = taleCaptionFrames(beat.caption || '', lang, beat.capSize || (lang === 'ar' ? 76 : 84), hot).frames
+  // Kinetic text (Mehdi, 2026-09-16: « quand pas d'images on remplace par des textes animés »): a beat with neither
+  // photo nor visual gets the caption big in the middle, a pulse on every landing word and the beat's key number
+  // drifting as a watermark behind it.
+  const kinetic = !beat.visual && !beat.imageUrl
+  const capSize = kinetic ? (lang === 'ar' ? 96 : 88) : (beat.capSize || (lang === 'ar' ? 76 : 84))
+  const capFr = taleCaptionFrames(beat.caption || '', lang, capSize, hot)
+  const allFrames = capFr.frames
   const frames = first ? [allFrames[allFrames.length - 1]] : allFrames
   const span = Math.min(Math.max(1.2, (timing.voiceDur || dur * 0.7) * 0.65), 6)
+  const capY = kinetic ? Math.round(700 - capFr.H / 2) : 430
+  if (kinetic) {
+    const num = (beat.kicker || '').match(/\d[\d:.]*\d/)?.[0]
+    if (num) {
+      const wm = createCanvas(1000, 520); const wctx = ctx2d(wm); wctx.textAlign = 'center'; wctx.textBaseline = 'alphabetic'
+      let sz = 420; wctx.font = `900 ${sz}px Playfair`; while (wctx.measureText(num).width > 980 && sz > 120) { sz -= 20; wctx.font = `900 ${sz}px Playfair` }
+      wctx.fillStyle = 'rgba(17,28,79,0.09)'; wctx.fillText(num, 500, 400)
+      layers.wm = PNGb(wm); anims.push({ layer: 'wm', x: 40, y: capY - 120, drift: { dx: 50, dy: -36, dur: Math.max(4, dur) }, fade: { st: 0, d: first ? 0 : 0.3 } })
+    }
+  }
   frames.forEach((buf, k) => {
     layers[`w${k}`] = buf
     const st = first ? 0 : 0.35 + (k / Math.max(1, frames.length - 1)) * span
     const en = k < frames.length - 1 ? 0.35 + ((k + 1) / Math.max(1, frames.length - 1)) * span : undefined
-    anims.push({ layer: `w${k}`, x: 40, y: 430, show: { st: +st.toFixed(3), en: en != null ? +en.toFixed(3) : undefined } })
+    const a = { layer: `w${k}`, x: 40, y: capY, show: { st: +st.toFixed(3), en: en != null ? +en.toFixed(3) : undefined } }
+    if (kinetic && !first) Object.assign(a, { w: 1000, h: capFr.H, pop: { from: 1.1, st: +st.toFixed(3), d: 0.22 } })   // pulse on each landing word
+    anims.push(a)
   })
   const vis = taleVisual(beat.visual, lang, labels)
   if (vis) {

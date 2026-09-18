@@ -7,7 +7,7 @@ import { useEffect } from 'react'
  */
 export function Privacy() {
   useEffect(() => {
-    document.title = 'Privacy Policy · WC26 Live'
+    document.title = 'Privacy Policy · Pressing 90’'
   }, [])
 
   return (
@@ -16,7 +16,7 @@ export function Privacy() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Privacy Policy
         </div>
-        <h1 className="font-display font-bold text-4xl sm:text-5xl text-marine-950 tracking-tight">
+        <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight">
           Your data, in <span className="text-accent-gold">plain English</span>.
         </h1>
         <p className="mt-4 font-mono text-xs text-slate-500">
@@ -26,7 +26,7 @@ export function Privacy() {
 
       <section className="prose prose-slate prose-lg max-w-none space-y-6 text-slate-700 leading-relaxed">
         <p>
-          WC26 Live (operated by mehdijabry.dev studio, "<strong>we</strong>",
+          Pressing 90’ (operated by mehdijabry.dev studio, "<strong>we</strong>",
           "<strong>us</strong>", "<strong>our</strong>") respects your
           privacy. This page explains what we collect, why, who we share it
           with, and what rights you have. If anything here is unclear, write
@@ -34,7 +34,7 @@ export function Privacy() {
           we'll fix the language.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           1. What we collect
         </h2>
 
@@ -88,7 +88,7 @@ export function Privacy() {
           <li>Microphone, camera, or device sensors.</li>
         </ul>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           2. Why we collect it
         </h2>
         <ul className="space-y-1 list-disc list-inside ml-2">
@@ -99,7 +99,7 @@ export function Privacy() {
           <li>To run ads (see §4) so the site stays free.</li>
         </ul>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           3. Who we share it with
         </h2>
         <p>We use third-party services to run the site. Each gets only what they need:</p>
@@ -151,7 +151,7 @@ export function Privacy() {
           not listed above except when forced by law.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           4. Advertising
         </h2>
         <p>
@@ -172,7 +172,7 @@ export function Privacy() {
           there take precedence over anything else on this page.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           5. Cookies
         </h2>
         <p>
@@ -189,7 +189,7 @@ export function Privacy() {
           you do, parts of the site (sign-in, saved brackets) may break.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           6. Your rights (GDPR, CCPA, PIPEDA)
         </h2>
         <p>
@@ -210,16 +210,16 @@ export function Privacy() {
           from the address tied to your account. We'll respond inside 30 days.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           7. Children
         </h2>
         <p>
-          WC26 Live is not directed at children under 13. We don't knowingly
+          Pressing 90’ is not directed at children under 13. We don't knowingly
           collect their data. If you believe a child has signed up, write to
           us and we'll delete the account.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           8. Security
         </h2>
         <p>
@@ -233,7 +233,7 @@ export function Privacy() {
           — we'll respond quickly and credit you (if you want) in the fix.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           9. Changes to this policy
         </h2>
         <p>
@@ -242,7 +242,7 @@ export function Privacy() {
           notice on the home page for at least 30 days.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           10. Contact
         </h2>
         <p>
@@ -255,7 +255,7 @@ export function Privacy() {
       </section>
 
       <footer className="mt-16 pt-8 border-t border-slate-200 font-mono text-xs text-slate-500">
-        WC26 Live · Pressing 90' · pressing90.live
+        Pressing 90’ · Pressing 90' · pressing90.live
       </footer>
     </div>
   )

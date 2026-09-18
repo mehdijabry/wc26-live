@@ -416,7 +416,7 @@ function InfosTab({
           <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
             The story so far
           </div>
-          <p className="text-sm sm:text-[15px] leading-relaxed text-ink-900">
+          <p className="text-sm sm:text-[15px] leading-relaxed text-slate-900">
             {narrative}
           </p>
           <Link

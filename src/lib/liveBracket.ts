@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { useTournament, deriveLiveGroups } from '../store/tournament'
+import { useTournament, deriveLiveGroups, deriveGroupStandings } from '../store/tournament'
 import { teamBadgeFallback } from './utils'
 import type { GroupLetter } from '../store/bracket'
 
@@ -18,6 +18,11 @@ export type LiveTeam = {
 
 export type LiveBracketData = {
   liveGroups: Record<GroupLetter, string[]>   // letter -> 4 team codes (ordered alphabetically)
+  // Same 12 groups, but ordered by CURRENT standing (pts → GD → GF) so
+  // index 0 is the 1st-placed team, index 3 the 4th. Only populated once
+  // all six group matches per group have gone 'post'; before that a group
+  // entry is either undefined or partial and shouldn't be used for sync.
+  liveGroupStandings: Partial<Record<GroupLetter, string[]>>
   lookup: (code: string | undefined | null) => LiveTeam | undefined
   ready: boolean       // true once all 12 groups are known
 }
@@ -71,10 +76,23 @@ export function useLiveBracketData(): LiveBracketData {
       }
     }
 
+    // Compute live standings (pts → GD → GF) — the ordering the bracket
+    // needs to project actual current group winners into the R32 slots.
+    // Only groups with a fully-settled matchday 3 get an entry, so callers
+    // can safely trust the value length as "4 = confirmed final order".
+    const standings = deriveGroupStandings(events, groupsArr)
+    const liveGroupStandings: Partial<Record<GroupLetter, string[]>> = {}
+    for (const s of standings) {
+      const allSettled = s.rows.every((r) => r.record.played === 3)
+      if (!allSettled) continue
+      liveGroupStandings[s.letter as GroupLetter] = s.rows.map((r) => r.abbr)
+    }
+
     const ready = GROUPS.every((g) => liveGroups[g].length === 4)
 
     return {
       liveGroups,
+      liveGroupStandings,
       lookup: (code) => (code ? lookup.get(code.toUpperCase()) : undefined),
       ready,
     }

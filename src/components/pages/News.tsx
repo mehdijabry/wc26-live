@@ -3,6 +3,8 @@ import { Link, useParams, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { supabase } from '../../lib/supabase'
 import { Ad, ADSTERRA_SMARTLINK_URL } from '../AdSlot'
+import { useSiteSettings } from '../../store/siteSettings'
+import { useT } from '../../lib/i18n'
 
 /**
  * Public news pages — list + detail.
@@ -39,9 +41,15 @@ interface Article {
   source_attribution: string | null
   published_at: string | null
   created_at: string
+  // Arabic translation (nullable — only present when the admin's
+  // "Arabic articles" switch was on at publish time, or after a manual
+  // translate-ar action).
+  title_ar?: string | null
+  excerpt_ar?: string | null
+  body_ar?: string | null
 }
 
-const SELECT = 'id,slug,title,excerpt,body,image_url,source_url,source_name,source_attribution,published_at,created_at'
+const SELECT = 'id,slug,title,excerpt,body,image_url,source_url,source_name,source_attribution,published_at,created_at,title_ar,excerpt_ar,body_ar'
 const SITE = 'https://pressing90.live'
 
 // ─── Interstitial throttle ─────────────────────────────────────────
@@ -75,14 +83,15 @@ function markInterstitialShown() {
 // ─── List page · /news ──────────────────────────────────────────────
 
 export function NewsListPage() {
+  const t = useT()
   const [items, setItems] = useState<Article[] | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    document.title = 'WC26 News · Daily World Cup 2026 briefing · Pressing 90'
-    setMeta('description', 'Daily World Cup 2026 news briefing — original takes on the stories that matter, drawn from ESPN, BBC, Sky Sports and more.')
-    setMeta('og:title', 'WC26 News · Pressing 90′', true)
-    setMeta('og:description', 'Daily World Cup 2026 briefing from the Pressing 90′ desk.', true)
+    document.title = 'Football News · Daily briefing · Pressing 90'
+    setMeta('description', 'Daily football news briefing — original takes on the stories that matter, drawn from ESPN, BBC, Sky Sports and more.')
+    setMeta('og:title', 'Football News · Pressing 90′', true)
+    setMeta('og:description', 'The daily football briefing from the Pressing 90′ desk.', true)
     setMeta('og:type', 'website', true)
     setMeta('og:url', `${SITE}/news`, true)
 
@@ -103,14 +112,13 @@ export function NewsListPage() {
     <section className="container max-w-5xl mx-auto px-6 py-8 sm:py-12">
       <div className="mb-8">
         <div className="text-xs uppercase tracking-widest font-mono text-accent-gold mb-2">
-          Pressing 90′ · the briefing
+          {t('Pressing 90′ · the briefing')}
         </div>
         <h1 className="font-display font-bold text-3xl sm:text-4xl text-slate-900">
-          WC26 News
+          {t('Football News')}
         </h1>
         <p className="text-slate-600 mt-2 max-w-2xl text-sm">
-          Daily picks from the World Cup beat — quick takes on the stories that
-          actually matter, with original commentary and links to the full source.
+          {t('Quick takes on the football stories that actually matter, with original commentary and links to the full source.')}
         </p>
       </div>
 
@@ -187,7 +195,7 @@ function ArticleCard({ article }: { article: Article }) {
               · {formatDate(article.published_at ?? article.created_at)}
             </span>
           </div>
-          <h2 className="font-display font-bold text-slate-900 leading-tight mb-2 group-hover:text-accent-gold transition-colors text-base sm:text-lg">
+          <h2 className="font-sans font-bold text-slate-900 leading-tight mb-2 group-hover:text-accent-gold transition-colors text-base sm:text-lg">
             {article.title}
           </h2>
           {article.excerpt && (
@@ -204,9 +212,30 @@ function ArticleCard({ article }: { article: Article }) {
 
 // ─── Detail page · /news/:slug ──────────────────────────────────────
 
+const LANG_LS_KEY = 'p90.articleLang'
+type ArticleLang = 'en' | 'ar'
+function initialLang(): ArticleLang {
+  if (typeof window === 'undefined') return 'en'
+  // ?lang=ar (Facebook Arabic post link) wins over the remembered choice.
+  const q = new URLSearchParams(window.location.search).get('lang')
+  if (q === 'ar' || q === 'en') return q
+  try {
+    if (localStorage.getItem(LANG_LS_KEY) === 'ar') return 'ar'
+    // fall back to the site-wide language (nav toggle / auto-detect)
+    if (localStorage.getItem('p90.lang') === 'ar') return 'ar'
+  } catch { /* ignore */ }
+  return 'en'
+}
+
 export function NewsArticlePage() {
   const { slug } = useParams<{ slug: string }>()
   const [article, setArticle] = useState<Article | null | undefined>(undefined)
+  const arabicEnabled = useSiteSettings((s) => s.arabicArticles)
+  const [lang, setLangState] = useState<ArticleLang>(initialLang)
+  const setLang = (l: ArticleLang) => {
+    setLangState(l)
+    try { localStorage.setItem(LANG_LS_KEY, l) } catch { /* ignore */ }
+  }
   // Throttle the gate to once per 5 minutes per visitor (localStorage,
   // cross-tab). EXCEPT when '?ad=ok' is on the URL — that means this
   // tab is the foreground of a popunder swap (firePopunderOnce opened
@@ -271,7 +300,16 @@ export function NewsArticlePage() {
         </div>
       )}
 
-      {article && (
+      {article && (() => {
+        // Arabic view is available only when the flag is on AND this
+        // article carries a translation. Everything else on the page
+        // (nav, ads, footer) stays LTR — only the article block flips.
+        const hasAr = arabicEnabled && !!article.title_ar && !!article.body_ar
+        const showAr = hasAr && lang === 'ar'
+        const title = showAr ? article.title_ar! : article.title
+        const excerpt = showAr ? article.excerpt_ar : article.excerpt
+        const body = showAr ? article.body_ar! : article.body
+        return (
         <>
           {/* JSON-LD NewsArticle — Google News + Discover eligibility.
               Embedded inline so the bot picks it up on the same paint. */}
@@ -280,19 +318,38 @@ export function NewsArticlePage() {
             dangerouslySetInnerHTML={{ __html: JSON.stringify(buildJsonLd(article)) }}
           />
 
-          <div className="flex items-center gap-2 mb-3">
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
             <span className="text-xs uppercase tracking-widest font-mono text-accent-gold">
               {article.source_name}
             </span>
             <span className="text-xs text-slate-400 font-mono">
               · {formatDate(article.published_at ?? article.created_at)}
             </span>
+            {hasAr && (
+              <div className="ml-auto inline-flex rounded-full border border-slate-200 bg-slate-50 p-0.5 text-[11px] font-mono" role="group" aria-label="Article language">
+                <button
+                  type="button"
+                  onClick={() => setLang('en')}
+                  className={'px-2.5 py-1 rounded-full transition-colors ' + (!showAr ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900')}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLang('ar')}
+                  className={'px-2.5 py-1 rounded-full transition-colors ' + (showAr ? 'bg-slate-900 text-white' : 'text-slate-600 hover:text-slate-900')}
+                >
+                  عربي
+                </button>
+              </div>
+            )}
           </div>
-          <h1 className="font-display font-bold text-3xl sm:text-4xl text-slate-900 leading-tight mb-4">
-            {article.title}
+          <div dir={showAr ? 'rtl' : 'ltr'} lang={showAr ? 'ar' : 'en'} className={showAr ? 'text-right' : ''}>
+          <h1 className="font-sans font-extrabold text-3xl sm:text-4xl text-slate-900 leading-tight mb-4">
+            {title}
           </h1>
-          {article.excerpt && (
-            <p className="text-lg text-slate-600 mb-6 italic">{article.excerpt}</p>
+          {excerpt && (
+            <p className="text-lg text-slate-600 mb-6 italic">{excerpt}</p>
           )}
 
           <Ad slot="news-article-top" className="my-4" />
@@ -309,7 +366,8 @@ export function NewsArticlePage() {
           )}
 
           <div className="prose prose-slate prose-sm sm:prose-base max-w-none text-slate-800 whitespace-pre-wrap leading-relaxed">
-            {article.body}
+            {body}
+          </div>
           </div>
 
           <Ad slot="news-article-mid" className="my-6" />
@@ -330,7 +388,8 @@ export function NewsArticlePage() {
 
           <Ad slot="news-article-footer" className="mt-8" />
         </>
-      )}
+        )
+      })()}
     </article>
   )
 }
@@ -339,13 +398,13 @@ export function NewsArticlePage() {
  * Article-open interstitial — full-screen white modal stacked with six
  * Adsterra ad placements (2× NativeBanner, 2× banners, 2× SocialBar)
  * arranged in a scrollable column. Close button (×) sits top-right; it
- * stays disabled & grey with a visible countdown for 5 seconds, then
+ * stays disabled & grey with a visible countdown for 1 second, then
  * unlocks. Closes on click or on Escape after the countdown.
  *
  * Body scroll is locked while open so the focus stays on the ads.
  */
 function Interstitial({ onClose }: { onClose: () => void }) {
-  const [secsLeft, setSecsLeft] = useState(5)
+  const [secsLeft, setSecsLeft] = useState(1)
   const [popunderFired, setPopunderFired] = useState(false)
 
   useEffect(() => {
@@ -437,7 +496,7 @@ function Interstitial({ onClose }: { onClose: () => void }) {
 
         <div className="text-3xl mb-3" aria-hidden>📰</div>
 
-        <div className="font-display font-bold text-lg text-slate-900 mb-1.5">
+        <div className="font-sans font-bold text-lg text-slate-900 mb-1.5">
           Continuing to your article…
         </div>
         <div className="text-xs text-slate-600 mb-5 leading-relaxed">
@@ -494,10 +553,10 @@ function setMeta(name: string, content: string, property = false) {
 }
 
 function hydrateMetaTags(a: Article) {
-  document.title = `${a.title} · WC26 News · Pressing 90′`
+  document.title = `${a.title} · Football News · Pressing 90′`
   const desc = a.excerpt ?? a.body.slice(0, 200)
   const url = `${SITE}/news/${a.slug}`
-  const img = a.image_url ?? `${SITE}/wc26-emblem.svg`
+  const img = a.image_url ?? `${SITE}/p90-logo.svg`
   setMeta('description', desc)
   setMeta('og:title', a.title, true)
   setMeta('og:description', desc, true)
@@ -532,7 +591,7 @@ function buildJsonLd(a: Article) {
     publisher: {
       '@type': 'Organization',
       name: 'Pressing 90′',
-      logo: { '@type': 'ImageObject', url: `${SITE}/wc26-emblem.svg` },
+      logo: { '@type': 'ImageObject', url: `${SITE}/p90-logo.svg` },
     },
     mainEntityOfPage: { '@type': 'WebPage', '@id': `${SITE}/news/${a.slug}` },
     isBasedOn: a.source_url,

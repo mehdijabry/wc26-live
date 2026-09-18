@@ -68,7 +68,7 @@ export function PublicProfile({ slug }: { slug: string }) {
           The user <code className="text-accent-gold">{slug}</code> hasn&apos;t published their bracket yet.
         </div>
         <Link to="/" className="mt-6 px-5 py-2 rounded-full bg-accent-gold text-ink-900 text-sm font-semibold">
-          ← Back to WC26 Live
+          ← Back to Pressing 90’
         </Link>
       </div>
     )
@@ -87,7 +87,7 @@ export function PublicProfile({ slug }: { slug: string }) {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="min-h-svh pb-12">
-      {/* Sub-bar — page-specific actions only. The WC26 Live brand link
+      {/* Sub-bar — page-specific actions only. The Pressing 90’ brand link
           used to live here too but it duplicated the global Navigation
           and on mobile the two stacked on top of each other (notch +
           PWA standalone made it worse). Brand stays in <Navigation />. */}

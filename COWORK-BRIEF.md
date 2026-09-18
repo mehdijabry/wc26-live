@@ -61,7 +61,11 @@ ou à lire en début de session. Ne contient aucun secret.
 - Worker `worker/src/goalanim.ts` (file `auto:goalanim:queue:<date>`, un job à la fois, étapes textes → voix →
   rendu → callback → publication ; pas de publication si le QA audio du studio signale un problème). Studio
   `studio/goalanim.js`, type `goal-anim` (~30 min de rendu à 20 fps sur 0,1 CPU).
-- Réglages : `goalAnim true`, `goalAnimPerDay 4`, `goalAnimScope 'all'`, `goalAnimFps 20` (panneau admin).
+- Réglages : `goalAnim`, `goalAnimPerDay 4`, `goalAnimScope 'all'`, `goalAnimFps 20` (panneau admin).
+- **En pause depuis le 18/09 au soir** : `goalAnim false` et `tiktok false` — les trois reels publiés ce soir-là étaient
+  muets (bug `spec.voices`, corrigé) et ont été supprimés. Reprise uniquement sur demande explicite de Mehdi.
+- Rendu Render (0.1 CPU) : le processus enfant tourne en `nice -n 19`, sinon `/health` dépasse les 5 s et Render
+  redémarre l'instance en plein rendu.
 - Ops : `goal-anim {event, slug, preview?, fps?}` (file + aperçu), `goal-anim-tick`, `goal-anim-status`,
   `goal-anim-reset`, `goal-anim-scene {event, slug}` (chorégraphie sans rendu), `reel-publish {url, description, title}`.
 - Les positions des autres joueurs et l'enchaînement avant le tir sont une interprétation (mention « رسم توضيحي »).

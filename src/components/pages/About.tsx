@@ -1,13 +1,13 @@
 import { useEffect } from 'react'
 
 /**
- * About page — explains what WC26 Live is, who built it, what makes it
+ * About page — explains what Pressing 90’ is, who built it, what makes it
  * different. Required for AdSense approval ('clear identity and purpose')
  * and useful editorial signal for trust + SEO.
  */
 export function About() {
   useEffect(() => {
-    document.title = 'About · WC26 Live'
+    document.title = 'About · Pressing 90’'
   }, [])
 
   return (
@@ -16,7 +16,7 @@ export function About() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           About · Pressing 90'
         </div>
-        <h1 className="font-display font-bold text-4xl sm:text-5xl text-marine-950 tracking-tight">
+        <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight">
           We're building the cleanest place to follow{' '}
           <span className="text-accent-gold">WC2026</span>.
         </h1>
@@ -24,7 +24,7 @@ export function About() {
 
       <section className="prose prose-slate prose-lg max-w-none space-y-6 text-slate-700 leading-relaxed">
         <p>
-          <strong>WC26 Live</strong> is an independent fan project built
+          <strong>Pressing 90’</strong> is an independent fan project built
           around the 2026 FIFA World Cup — the first tournament across 48
           nations and 16 host cities in the US, Canada and Mexico. We surface
           live scores, brackets, predictions, and per-country broadcaster
@@ -32,7 +32,7 @@ export function About() {
           attention.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           What you'll find here
         </h2>
         <ul className="space-y-2 list-disc list-inside">
@@ -57,7 +57,7 @@ export function About() {
           </li>
         </ul>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           Why we built it
         </h2>
         <p>
@@ -69,7 +69,7 @@ export function About() {
           from that brief.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           How we get our data
         </h2>
         <p>
@@ -81,11 +81,11 @@ export function About() {
           Logos and trademarks belong to their respective owners.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           Who's behind this
         </h2>
         <p>
-          WC26 Live is designed and built by{' '}
+          Pressing 90’ is designed and built by{' '}
           <a
             href="https://mehdijabry.dev"
             className="text-accent-gold underline underline-offset-2 decoration-2 hover:text-yellow-600"
@@ -99,7 +99,7 @@ export function About() {
           tech showcase.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           Get in touch
         </h2>
         <p>
@@ -116,7 +116,7 @@ export function About() {
       </section>
 
       <footer className="mt-16 pt-8 border-t border-slate-200 font-mono text-xs text-slate-500">
-        Last updated: June 2026 · WC26 Live · Pressing 90' · pressing90.live
+        Last updated: June 2026 · Pressing 90’ · Pressing 90' · pressing90.live
       </footer>
     </div>
   )

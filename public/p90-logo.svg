@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Pressing 90' brand mark — navy tile, gold "90'" with a pitch line -->
+  <rect width="512" height="512" rx="96" fill="#0a2540"/>
+  <text x="256" y="300" text-anchor="middle" font-family="'Archivo Black','Arial Black',system-ui,sans-serif" font-weight="900" font-size="200" fill="#d4af37" letter-spacing="-8">90&#8217;</text>
+  <rect x="96" y="368" width="320" height="10" rx="5" fill="#d4af37" opacity="0.55"/>
+  <circle cx="256" cy="373" r="16" fill="none" stroke="#d4af37" stroke-width="8" opacity="0.55"/>
+</svg>

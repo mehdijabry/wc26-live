@@ -92,7 +92,28 @@ const ESPN_ABBR_TO_ISO2: Record<string, string> = {
  * let the caller render a placeholder. Better to show nothing than a
  * broken-image icon.
  */
-export function teamBadgeFallback(primary: string | undefined, abbr: string | undefined): string | undefined {
+/**
+ * Deterministic monogram badge for clubs ESPN has NO crest for (their
+ * CDN 404s even on the /i/teamlogos/soccer/500/{id}.png path — verified
+ * ~19 teams/day in minor leagues). Club initials on a colour derived
+ * from the name, as an inline SVG data URI: always renders, zero
+ * network, and looks designed instead of the old ⚽ emoji placeholder.
+ */
+export function monogramBadge(label: string): string {
+  const clean = (label || '?').trim()
+  const initials = clean.split(/\s+/).map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase() || '?'
+  let h = 0
+  for (let i = 0; i < clean.length; i++) h = (h * 31 + clean.charCodeAt(i)) % 360
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">` +
+    `<circle cx="32" cy="32" r="30" fill="hsl(${h},42%,36%)"/>` +
+    `<circle cx="32" cy="32" r="30" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="2"/>` +
+    `<text x="32" y="41" text-anchor="middle" font-family="system-ui,-apple-system,sans-serif" font-weight="700" font-size="${initials.length > 1 ? 24 : 28}" fill="#fff">${initials}</text>` +
+    `</svg>`
+  return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
+}
+
+export function teamBadgeFallback(primary: string | undefined, abbr: string | undefined, name?: string): string | undefined {
   // Filter out ESPN's "no logo" placeholder URLs — they encode a generic
   // shield, not a flag. Detected by the magic substring 'soccer-ball-default'
   // or 'default-team-logo' that ESPN uses for unsupported teams.
@@ -100,8 +121,10 @@ export function teamBadgeFallback(primary: string | undefined, abbr: string | un
     ? primary
     : undefined
   if (primaryClean) return primaryClean
-  if (!abbr) return undefined
-  const iso = ESPN_ABBR_TO_ISO2[abbr.toUpperCase()]
-  if (!iso) return undefined
-  return `https://flagcdn.com/w80/${iso}.png`
+  // National teams → country flag.
+  const iso = abbr ? ESPN_ABBR_TO_ISO2[abbr.toUpperCase()] : undefined
+  if (iso) return `https://flagcdn.com/w80/${iso}.png`
+  // Clubs with no ESPN crest at all → generated monogram (never empty).
+  const label = name ?? abbr
+  return label ? monogramBadge(label) : undefined
 }

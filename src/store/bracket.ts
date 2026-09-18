@@ -23,6 +23,7 @@ export type BracketState = {
 
   // mutations
   setGroupRank: (letter: GroupLetter, ordering: string[]) => void
+  syncFromLive: (liveOrder: Partial<Record<GroupLetter, string[]>>) => void
   toggleThirdAdvancing: (code: string) => void
   setKoWinner: (matchId: string, code: string) => void
   setThirdPlaceWinner: (code: string | null) => void
@@ -53,6 +54,19 @@ export const useBracket = create<BracketState>()(
 
       setGroupRank: (letter, ordering) =>
         set((s) => ({ groupStandings: { ...s.groupStandings, [letter]: ordering } })),
+
+      // Overwrite EVERY letter's standings with the passed-in live order.
+      // Called from the wizard's "Sync from ESPN" button once the group
+      // stage is settled — otherwise a stale prediction (e.g. MEX ranked
+      // 2nd of Group A back in June) keeps flowing through the bracket
+      // even though ESPN now says MEX finished 1st. Also clears the
+      // third-place selection: the 4 best 3rds change with the new order.
+      syncFromLive: (liveOrder) =>
+        set(() => ({
+          groupStandings: { ...liveOrder },
+          thirdPlaceAdvancing: [],
+          koWinners: {},
+        })),
 
       toggleThirdAdvancing: (code) =>
         set((s) => {

@@ -33,20 +33,40 @@ if ('serviceWorker' in navigator) {
 
 // Stale-chunk recovery. When we redeploy, the main bundle the user
 // already has cached references lazy chunks (e.g. AdminPanel-OLD.js)
-// that no longer exist on the CDN. The lazy import 404s, React
-// Suspense surfaces a ChunkLoadError, and the user sees a blank page.
+// that no longer exist on the CDN — or the chunk 404s for ~1 min while
+// the new deployment propagates across Cloudflare's edge. The lazy
+// import rejects, React Suspense unmounts, blank page.
 //
-// Vite 5+ emits a 'vite:preloadError' event on the window for exactly
-// this case. We reload once — sessionStorage gates it so we don't
-// pingpong if the new bundle is also broken.
+// Previous version reloaded ONCE per session — during an edge
+// propagation window that single reload landed while the chunk was
+// still 404 and the user stayed on a white page for the whole session
+// (this exactly happened on 2026-07-15). Now: time-gated retry (one
+// reload per 15s, indefinitely) + an unhandledrejection fallback for
+// chunk failures that bypass vite:preloadError.
+function recoverFromStaleChunk(reason: unknown) {
+  const msg = String((reason as { message?: unknown })?.message ?? reason ?? '')
+  if (!/dynamically imported module|Importing a module script failed|ChunkLoadError|error loading dynamically imported/i.test(msg)) return
+  let last = 0
+  try { last = Number(sessionStorage.getItem('wc26.chunkReloadAt') ?? 0) } catch { /* private mode */ }
+  if (Date.now() - last < 15_000) return // just tried — don't pingpong
+  try { sessionStorage.setItem('wc26.chunkReloadAt', String(Date.now())) } catch { /* private mode */ }
+  console.warn('[p90] stale/unreachable chunk, healing cache + reloading:', msg)
+  // The failure can be a POISONED BROWSER-CACHE ENTRY (a 404/HTML that
+  // got cached under the chunk URL during deploy propagation) — a plain
+  // reload reuses it forever. `cache: 'reload'` bypasses the cache and
+  // OVERWRITES the entry with the fresh network response, so the reload
+  // that follows imports the healthy file. Seen 2026-08-06: fetch() said
+  // 200 while import() kept failing on the same URL.
+  const urlMatch = /https?:\/\/\S+?\.js/.exec(msg)
+  const heal = urlMatch
+    ? fetch(urlMatch[0], { cache: 'reload' }).catch(() => undefined)
+    : Promise.resolve(undefined)
+  void heal.finally(() => window.location.reload())
+}
 window.addEventListener('vite:preloadError', (e) => {
-  try {
-    if (sessionStorage.getItem('wc26.chunkReloaded') === '1') return
-    sessionStorage.setItem('wc26.chunkReloaded', '1')
-  } catch { /* private mode — still try reload */ }
-  console.warn('[wc26] stale chunk detected, reloading:', (e as Event & { payload?: unknown }).payload)
-  window.location.reload()
+  recoverFromStaleChunk((e as Event & { payload?: unknown }).payload ?? 'vite:preloadError')
 })
+window.addEventListener('unhandledrejection', (e) => recoverFromStaleChunk(e.reason))
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

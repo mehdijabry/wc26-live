@@ -1,8 +1,8 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { teamBadgeFallback } from '../lib/utils'
-import { broadcastersFor, broadcastersForMatch, countryToFlag, isMatchPaused, liveClock, type Broadcaster, type LiveBroadcaster } from '../lib/api'
+import { monogramBadge, teamBadgeFallback } from '../lib/utils'
+import { isMatchPaused, liveClock } from '../lib/api'
 
 /**
  * MatchSheet — modal opened by tapping any match card on the daily
@@ -23,7 +23,9 @@ import { broadcastersFor, broadcastersForMatch, countryToFlag, isMatchPaused, li
 
 type Competitor = {
   homeAway?: 'home' | 'away'
-  team?: { id?: string; displayName?: string; shortDisplayName?: string; abbreviation?: string; logo?: string }
+  // The summary header ships `logos: [{href}]`, NOT the scoreboard's
+  // flat `logo` string — support both or the sheet shows no crests.
+  team?: { id?: string; displayName?: string; shortDisplayName?: string; abbreviation?: string; logo?: string; logos?: Array<{ href?: string }> }
   score?: string | { displayValue?: string; value?: number }
   winner?: boolean
   // ESPN encodes penalty shootout results on this field. Format is the
@@ -111,14 +113,16 @@ export function MatchSheet({
 }: {
   open: boolean
   eventId: string | undefined
-  /** Resolved by tagEvent() in the caller — used for curated broadcaster lookup. */
+  /** Resolved by tagEvent() in the caller. Currently unused (the
+      Diffusion section was removed) but kept in the contract — callers
+      all pass it and a future odds/watch deep-link will need it. */
   competitionSlug?: string
   onClose: () => void
 }) {
+  void competitionSlug
   const [data, setData] = useState<SummaryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [liveBroadcasts, setLiveBroadcasts] = useState<LiveBroadcaster[]>([])
   const [fetchedAt, setFetchedAt] = useState<number>(0)
   // 1-second ticker — drives the live clock display so the minute counts
   // up even between polling intervals (we poll every 30s, that's too slow
@@ -184,22 +188,6 @@ export function MatchSheet({
   const home = comp?.competitors?.find((c) => c.homeAway === 'home')
   const away = comp?.competitors?.find((c) => c.homeAway === 'away')
 
-  // Once we have the summary, fire a parallel TheSportsDB lookup for the
-  // real per-match broadcasters. Live (per-match) data takes priority
-  // over the curated comp-level map.
-  useEffect(() => {
-    if (!open || !home?.team || !away?.team || !comp?.date) {
-      setLiveBroadcasts([])
-      return
-    }
-    let cancelled = false
-    const homeName = home.team.displayName ?? home.team.shortDisplayName ?? ''
-    const awayName = away.team.displayName ?? away.team.shortDisplayName ?? ''
-    void broadcastersForMatch(homeName, awayName, comp.date).then((rows) => {
-      if (!cancelled) setLiveBroadcasts(rows)
-    })
-    return () => { cancelled = true }
-  }, [open, home?.team?.displayName, away?.team?.displayName, comp?.date])
   const status = comp?.status
   const isLive = status?.type?.state === 'in'
   const isDone = status?.type?.completed
@@ -233,11 +221,6 @@ export function MatchSheet({
   const seasonSlug = data?.header?.season?.slug ?? ''
   const noteHead = comp?.notes?.[0]?.headline ?? comp?.notes?.[0]?.text ?? ''
   const roundLabel = deriveRoundLabel(seasonSlug, noteHead)
-
-  // Broadcasts — top-level first (more complete on summary endpoint),
-  // fall back to competition-level if missing. Dedupe by name/region.
-  const allBroadcasts: Broadcast[] = [...(data?.broadcasts ?? []), ...(comp?.broadcasts ?? [])]
-  const broadcasts = dedupeBroadcasts(allBroadcasts)
 
   const node = (
     <AnimatePresence>
@@ -365,19 +348,9 @@ export function MatchSheet({
                 </div>
               )}
 
-              {/* Diffusion — broadcasters grouped by country. Curated
-                  rights map for major competitions (UCL, top 5 leagues,
-                  WC, AFCON, etc.). For competitions outside the map
-                  (Maurice Revello / Torneo Intermedio / friendlies),
-                  we fall back to whatever ESPN exposes (US-centric).
-                  The section ALWAYS appears when there's at least one
-                  data point — no silently empty modal. */}
-              <BroadcastSection
-                competitionSlug={competitionSlug}
-                espnBroadcasts={broadcasts}
-                liveBroadcasts={liveBroadcasts}
-              />
-
+              {/* Diffusion section removed (2026-08-29, user request —
+                  it dominated the sheet). The curated rights map lives
+                  on in api.ts for the /watch pages. */}
 
               {/* Events timeline — Footmercato-style row:
                     74' [ball] 3-1   M. Olise (PD M. Gusto)
@@ -523,7 +496,10 @@ function ScoreNumber({ c, other }: { c?: Competitor; other?: Competitor }) {
 
 function TeamColumn({ c, align }: { c: Competitor | undefined; align: 'left' | 'right' }) {
   if (!c) return <div />
-  const logo = teamBadgeFallback(c.team?.logo, c.team?.abbreviation)
+  const name = c.team?.shortDisplayName ?? c.team?.displayName
+  const logo =
+    teamBadgeFallback(c.team?.logo ?? c.team?.logos?.[0]?.href, c.team?.abbreviation, name) ??
+    monogramBadge(name ?? '?')
   return (
     <div className={'flex flex-col items-center gap-2 ' + (align === 'right' ? 'sm:items-end' : 'sm:items-start')}>
       {logo ? (
@@ -734,147 +710,6 @@ function legSuffix(head: string): string | null {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Broadcasters section — curated 'Diffusion' card                            */
-/* -------------------------------------------------------------------------- */
-
-function BroadcastSection({
-  competitionSlug,
-  espnBroadcasts,
-  liveBroadcasts,
-}: {
-  competitionSlug: string | undefined
-  espnBroadcasts: Broadcast[]
-  liveBroadcasts: LiveBroadcaster[]
-}) {
-  const curated = competitionSlug ? broadcastersFor(competitionSlug) : null
-
-  // Merge live TheSportsDB per-match data with curated comp-level data.
-  // Per-country: take ALL live broadcasters (most accurate, this match);
-  // then add curated broadcasters for countries the live feed didn't cover.
-  const liveByCountry: Record<string, LiveBroadcaster[]> = {}
-  for (const lb of liveBroadcasts) {
-    if (!liveByCountry[lb.country]) liveByCountry[lb.country] = []
-    liveByCountry[lb.country].push(lb)
-  }
-  const haveLive = liveBroadcasts.length > 0
-  const haveCurated = curated && curated.length > 0
-  if (!haveLive && !haveCurated && espnBroadcasts.length === 0) return null
-
-  // Build the unified row set
-  type Row =
-    | { source: 'live'; country: string; flag: string; name: string; items: LiveBroadcaster[] }
-    | { source: 'curated'; country: string; flag: string; name: string; items: Broadcaster[] }
-  const rows: Row[] = []
-  const seenCountries = new Set<string>()
-
-  // Live first (most accurate)
-  for (const country of Object.keys(liveByCountry)) {
-    rows.push({
-      source: 'live',
-      country,
-      flag: countryToFlag(country),
-      name: country,
-      items: liveByCountry[country],
-    })
-    seenCountries.add(country.toLowerCase())
-  }
-  // Curated rows for countries not yet covered by live data
-  if (curated) {
-    for (const r of curated) {
-      if (seenCountries.has(r.name.toLowerCase())) continue
-      rows.push({
-        source: 'curated',
-        country: r.country,
-        flag: r.flag,
-        name: r.name,
-        items: r.broadcasters,
-      })
-    }
-  }
-
-  return (
-    <Section title="Diffusion · Where to watch">
-      {rows.length > 0 ? (
-        <div className="space-y-3">
-          {rows.map((row, i) => (
-            <div key={i} className="flex items-start gap-3">
-              <div className="flex items-center gap-1.5 w-32 shrink-0">
-                <span className="text-base leading-none">{row.flag}</span>
-                <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500 truncate">
-                  {row.name}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 flex-1">
-                {row.source === 'live'
-                  ? row.items.map((lb, j) => <LiveChannelPill key={j} b={lb} />)
-                  : row.items.map((b, j) => <BroadcasterPill key={j} b={b} />)}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        // Last-resort ESPN feed when neither live nor curated has data
-        <div className="flex flex-wrap gap-2">
-          {espnBroadcasts.map((b, i) => (
-            <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-slate-200/70">
-              <span className="text-[9px] font-mono uppercase tracking-wider text-slate-400">
-                {b.type?.shortName ?? 'TV'}
-              </span>
-              <span className="text-sm font-semibold text-slate-900">
-                {b.media?.shortName ?? b.media?.name ?? '—'}
-              </span>
-              {b.region && <span className="text-[9px] font-mono uppercase text-slate-400">{b.region}</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="text-[10px] font-mono text-slate-400 mt-3 leading-relaxed">
-        {haveLive
-          ? 'Live broadcast data via TheSportsDB. Local listings may still vary by provider.'
-          : haveCurated
-          ? '2025-26 rights — verify your provider for local listings.'
-          : 'Provided by ESPN — local listings may vary.'}
-      </div>
-    </Section>
-  )
-}
-
-function LiveChannelPill({ b }: { b: LiveBroadcaster }) {
-  return (
-    <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-white border border-slate-200/70">
-      {b.logo && (
-        <img
-          src={b.logo}
-          alt=""
-          className="w-4 h-4 object-contain shrink-0"
-          onError={(e) => (e.currentTarget.style.display = 'none')}
-        />
-      )}
-      <span className="font-semibold text-slate-900">{b.channel}</span>
-    </div>
-  )
-}
-
-function BroadcasterPill({ b }: { b: Broadcaster }) {
-  return (
-    <div className={
-      'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border ' +
-      (b.free
-        ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'
-        : b.type === 'streaming'
-          ? 'bg-accent-gold/10 border-accent-gold/30 text-marine-900'
-          : 'bg-white border-slate-200/70 text-slate-900')
-    }>
-      <span className="text-[8px] font-mono uppercase tracking-wider opacity-60">
-        {b.free ? 'FREE' : b.type === 'streaming' ? 'STREAM' : 'TV'}
-      </span>
-      <span className="font-semibold">{b.name}</span>
-    </div>
-  )
-}
-
-/* -------------------------------------------------------------------------- */
 /* Team stats — pretty labels, ordered, grouped                               */
 /* -------------------------------------------------------------------------- */
 
@@ -959,15 +794,3 @@ function formatPct(v: string | undefined): string {
   return `${Math.round(n)}%`
 }
 
-/** De-duplicate broadcasts by media+region so we don't show 'Paramount+ Paramount+'. */
-function dedupeBroadcasts(list: Broadcast[]): Broadcast[] {
-  const seen = new Set<string>()
-  const out: Broadcast[] = []
-  for (const b of list) {
-    const key = (b.media?.shortName ?? b.media?.name ?? '') + ':' + (b.region ?? '')
-    if (key === ':' || seen.has(key)) continue
-    seen.add(key)
-    out.push(b)
-  }
-  return out
-}

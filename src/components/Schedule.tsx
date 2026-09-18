@@ -180,7 +180,7 @@ function MatchRow({ ev }: { ev: EspnEvent }) {
         <div className="flex items-center gap-2 justify-end text-right min-w-0">
           <span className="truncate text-sm">{home?.team?.shortDisplayName ?? home?.team?.displayName ?? '—'}</span>
           {(() => {
-            const logo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation)
+            const logo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation, home?.team?.shortDisplayName ?? home?.team?.displayName)
             return logo ? (
               <img src={logo} alt="" loading="lazy" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
             ) : null
@@ -196,7 +196,7 @@ function MatchRow({ ev }: { ev: EspnEvent }) {
         <div className="flex items-center gap-2 min-w-0">
           {s.finished && <span className="font-display font-bold text-lg tabular-nums w-6">{away?.score ?? '0'}</span>}
           {(() => {
-            const logo = teamBadgeFallback(away?.team?.logo, away?.team?.abbreviation)
+            const logo = teamBadgeFallback(away?.team?.logo, away?.team?.abbreviation, away?.team?.shortDisplayName ?? away?.team?.displayName)
             return logo ? (
               <img src={logo} alt="" loading="lazy" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
             ) : null

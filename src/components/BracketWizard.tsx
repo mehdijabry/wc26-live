@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { toPng } from 'html-to-image'
 import { useBracket, koMatchIds, type GroupLetter } from '../store/bracket'
 import { useAuth } from '../store/auth'
@@ -13,6 +14,7 @@ import {
   solveThirdPlaceAssignment,
   buildThirdGroupMap,
 } from '../lib/fifaBracket'
+import { resultForPair, useTournament, deriveBracket } from '../store/tournament'
 import { SectionHeader } from './Groups'
 import { LottieLoader } from './LottieLoader'
 import { BracketPoster } from './BracketPoster'
@@ -57,9 +59,36 @@ const STEP_LABEL: Record<Step, string> = {
 
 const GROUPS: GroupLetter[] = ['A','B','C','D','E','F','G','H','I','J','K','L']
 
+// Map the ?phase= URL param (used by the PhasePickerHub cards) to a wizard
+// step. Kept close to the STEP_ORDER declaration so it's obvious when a
+// new step is added and this table needs a new row.
+const PHASE_PARAM_TO_STEP: Record<string, Step> = {
+  groups: 'groups',
+  thirds: 'thirds',
+  r32: 'r32',
+  r16: 'r16',
+  qf: 'qf',
+  sf: 'sf',
+  final: 'final',
+}
+
 export function BracketWizard() {
-  const [step, setStep] = useState<Step>('groups')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const initialStep = PHASE_PARAM_TO_STEP[searchParams.get('phase') ?? ''] ?? 'groups'
+  const [step, setStep] = useState<Step>(initialStep)
   const stepIdx = STEP_ORDER.indexOf(step)
+
+  // Consume the ?phase= param once so back-navigation doesn't keep
+  // forcing the same step. Only strips 'phase', leaves other params.
+  useEffect(() => {
+    if (!searchParams.has('phase')) return
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.delete('phase')
+      return next
+    }, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const { user } = useAuth()
   const bracket = useBracket()
   const groupStandings = bracket.groupStandings
@@ -90,6 +119,53 @@ export function BracketWizard() {
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, groupStandings, thirdPlaceAdvancing, koWinners, finalWinner, thirdPlaceWinner])
+
+  // Auto-sync once ESPN has settled all 12 groups. The KO bracket derives
+  // its slots from groupStandings, so any user prediction that diverges
+  // from reality after the group stage ends (wrong first-placed team,
+  // wrong 3rd, wrong order, or a team from the previous group-labelling
+  // bug) would surface bogus matchups like "Morocco vs Canada". Rather
+  // than trying to distinguish "wrong team" from "wrong order", we force
+  // the store to match ESPN once the truth is knowable, and let the user
+  // re-predict from a clean slate. Fires once per session.
+  const { liveGroups, liveGroupStandings, ready } = useLiveBracketData()
+  const purgedRef = useRef(false)
+  useEffect(() => {
+    if (purgedRef.current) return
+    if (!ready) return  // liveGroups must have all 12 groups from ESPN
+    let didPurge = false
+
+    // Strategy 1: full sync if all 12 standings are settled (all 6 matches post)
+    const allStandingsSettled = GROUPS.every((g) => liveGroupStandings[g]?.length === 4)
+    if (allStandingsSettled) {
+      let divergent = false
+      for (const letter of GROUPS) {
+        const picks = groupStandings[letter]
+        const live = liveGroupStandings[letter]!
+        if (!picks || picks.length !== 4) { divergent = true; break }
+        for (let i = 0; i < 4; i++) {
+          if (picks[i] !== live[i]) { divergent = true; break }
+        }
+        if (divergent) break
+      }
+      if (divergent) { bracket.syncFromLive(liveGroupStandings); didPurge = true }
+    } else {
+      // Strategy 2: validate team membership from liveGroups even if standings
+      // aren't fully computed. Clears any group where the user has a team code
+      // that doesn't belong to that group (stale from the old C/D G/H swap bug).
+      for (const letter of GROUPS) {
+        const picks = groupStandings[letter]
+        if (!picks || picks.length !== 4) continue
+        const validSet = new Set(liveGroups[letter])
+        if (picks.some((c) => !validSet.has(c))) {
+          bracket.setGroupRank(letter, [])
+          didPurge = true
+        }
+      }
+    }
+    if (didPurge) purgedRef.current = true
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liveGroupStandings, groupStandings, liveGroups, ready])
 
   return (
     <section id="bracket-predict" className="py-20 sm:py-28 border-t border-slate-200/70">
@@ -167,9 +243,26 @@ export function BracketWizard() {
 /* -------------------------------------------------------------------------- */
 
 function StepGroups() {
-  const { groupStandings, setGroupRank } = useBracket()
-  const { liveGroups, lookup, ready } = useLiveBracketData()
+  const { groupStandings, setGroupRank, syncFromLive } = useBracket()
+  const { liveGroups, liveGroupStandings, lookup, ready } = useLiveBracketData()
   const filled = GROUPS.filter((g) => (groupStandings[g]?.length ?? 0) === 4).length
+
+  // Detect divergence between the user's predicted standings and the live
+  // ESPN order — once the group stage is settled, this is what makes the
+  // bracket read "wrong": e.g. MEX ranked 2A in a pre-tournament
+  // pronostic keeps flowing MEX into the R32-1 slot even though ESPN now
+  // says MEX finished 1A. The banner and Sync button only surface when
+  // there IS a divergence AND ESPN has settled standings to sync FROM.
+  const divergent = useMemo(() => {
+    if (!liveGroupStandings) return false
+    for (const letter of GROUPS) {
+      const user = groupStandings[letter]
+      const live = liveGroupStandings[letter]
+      if (!user || user.length !== 4 || !live || live.length !== 4) continue
+      for (let i = 0; i < 4; i++) if (user[i] !== live[i]) return true
+    }
+    return false
+  }, [groupStandings, liveGroupStandings])
 
   if (!ready) {
     return (
@@ -181,9 +274,27 @@ function StepGroups() {
 
   return (
     <div>
-      <div className="text-xs text-slate-500 mb-4 font-mono">
-        {filled} / 12 groups ranked · ESPN live data
+      <div className="mb-4 flex flex-wrap items-center gap-3 justify-between">
+        <div className="text-xs text-slate-500 font-mono">
+          {filled} / 12 groups ranked · ESPN live data
+        </div>
+        {divergent && liveGroupStandings && (
+          <button
+            onClick={() => {
+              if (!confirm('Cela remplacera tes pronostics de groupes par les vrais classements ESPN. Continuer ?')) return
+              syncFromLive(liveGroupStandings)
+            }}
+            className="px-3 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors"
+          >
+            Sync avec les résultats réels ESPN →
+          </button>
+        )}
       </div>
+      {divergent && (
+        <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+          Tes classements de groupes ne correspondent plus aux vrais résultats ESPN. Le bracket ci-dessous suit <em>tes pronostics</em>, pas la réalité — utilise le bouton ci-dessus pour resynchroniser.
+        </div>
+      )}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {GROUPS.map((letter) => (
           <GroupRanker
@@ -350,6 +461,7 @@ function StepKo({ stage, titleHint }: { stage: 'R32' | 'R16' | 'QF' | 'SF'; titl
   const ids = koMatchIds(stage)
   const { koWinners, setKoWinner } = useBracket()
   const pairs = useDerivedKoPairs(stage)
+  const { events } = useTournament()
 
   return (
     <div>
@@ -358,14 +470,45 @@ function StepKo({ stage, titleHint }: { stage: 'R32' | 'R16' | 'QF' | 'SF'; titl
         {ids.map((mid, i) => {
           const [a, b] = pairs[i] ?? [null, null]
           const pick = koWinners[mid]
+          // If both sides are resolved (not TBD) AND the ESPN event has
+          // finished, look up who actually won. A KO match with the same
+          // scoreline as regulation + a `winner: true` flag on the pen
+          // scorer is treated as settled: we grade the user's pick.
+          const result = (a && b) ? resultForPair(events, a.code, b.code) : null
+          const isSettled = result?.status === 'post' && result.winner != null
+          const correctWinner = isSettled ? result!.winner!.toUpperCase() : null
+          const isCorrect = isSettled && pick != null && pick.toUpperCase() === correctWinner
+          const isWrong = isSettled && pick != null && !isCorrect
           return (
-            <div key={mid} className="glass rounded-xl p-3">
-              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
-                {stage} · M{i + 1}
+            <div
+              key={mid}
+              className={cn(
+                'glass rounded-xl p-3 border transition-colors',
+                isCorrect
+                  ? 'border-emerald-500/60 bg-emerald-50/40'
+                  : isWrong
+                    ? 'border-rose-300/50'
+                    : 'border-transparent'
+              )}
+            >
+              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2 flex items-center justify-between">
+                <span>{stage} · M{i + 1}</span>
+                {isCorrect && <span className="text-emerald-700 font-semibold tracking-widest">✓ Correct</span>}
+                {isWrong && correctWinner && <span className="text-rose-600 tracking-widest">Actual {correctWinner}</span>}
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <KoSide team={a} selected={pick === a?.code} onClick={() => a && setKoWinner(mid, a.code)} />
-                <KoSide team={b} selected={pick === b?.code} onClick={() => b && setKoWinner(mid, b.code)} />
+                <KoSide
+                  team={a}
+                  selected={pick === a?.code}
+                  isCorrect={isSettled && a?.code?.toUpperCase() === correctWinner}
+                  onClick={() => a && setKoWinner(mid, a.code)}
+                />
+                <KoSide
+                  team={b}
+                  selected={pick === b?.code}
+                  isCorrect={isSettled && b?.code?.toUpperCase() === correctWinner}
+                  onClick={() => b && setKoWinner(mid, b.code)}
+                />
               </div>
             </div>
           )
@@ -375,23 +518,31 @@ function StepKo({ stage, titleHint }: { stage: 'R32' | 'R16' | 'QF' | 'SF'; titl
   )
 }
 
-function KoSide({ team, selected, onClick }: { team: Team | null; selected: boolean; onClick: () => void }) {
+function KoSide({ team, selected, isCorrect, onClick }: { team: Team | null; selected: boolean; isCorrect?: boolean; onClick: () => void }) {
   if (!team) {
     return <div className="px-3 py-3 rounded-lg bg-slate-50 text-xs text-slate-600 font-mono">TBD</div>
   }
+  // The actual winner (as reported by ESPN) always reads green — whether
+  // or not the user picked it — so a wrong pick shows "your gold pick vs.
+  // the green truth" side-by-side. selected + isCorrect wins the styling.
   return (
     <button
       onClick={onClick}
       className={cn(
         'flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors',
-        selected
-          ? 'bg-accent-gold/15 ring-1 ring-accent-gold/40'
-          : 'bg-slate-50 hover:bg-white/[0.06]'
+        selected && isCorrect
+          ? 'bg-emerald-100 ring-1 ring-emerald-500/60'
+          : selected
+            ? 'bg-accent-gold/15 ring-1 ring-accent-gold/40'
+            : isCorrect
+              ? 'bg-emerald-50/60 ring-1 ring-emerald-500/30'
+              : 'bg-slate-50 hover:bg-white/[0.06]'
       )}
     >
       <Flag team={team} size="lg" />
-      <span className="text-sm flex-1 truncate text-left">{team.name}</span>
-      {selected && <span className="text-accent-gold text-xs">✓</span>}
+      <span className={cn('text-sm flex-1 truncate text-left', isCorrect && 'text-emerald-800 font-semibold')}>{team.name}</span>
+      {selected && isCorrect && <span className="text-emerald-700 text-xs">✓</span>}
+      {selected && !isCorrect && <span className="text-accent-gold text-xs">✓</span>}
     </button>
   )
 }
@@ -419,18 +570,29 @@ function KoSide({ team, selected, onClick }: { team: Team | null; selected: bool
 function useDerivedKoPairs(stage: 'R32' | 'R16' | 'QF' | 'SF'): Array<[Team | null, Team | null]> {
   const { groupStandings, thirdPlaceAdvancing, koWinners } = useBracket()
   const { lookup } = useLiveBracketData()
+  const { events } = useTournament()
 
   return useMemo(() => {
     if (stage === 'R32') {
-      // Map each 3rd-placed team code → its group letter
-      const thirdGroupMap = buildThirdGroupMap(groupStandings)
-      // Solve which advancing 3rd goes to which R32 slot
-      const thirdAssignment = solveThirdPlaceAssignment(
-        thirdPlaceAdvancing,
-        (code) => thirdGroupMap.get(code)
-      )
-      // Walk the 16 R32 slots in template order
-      return R32_TEMPLATE.map<[Team | null, Team | null]>((slot) => {
+      // Primary: use ESPN's actual R32 matchups (populated once group stage ends).
+      // This bypasses groupStandings entirely — the WHO-plays-WHO comes straight
+      // from reality; the user only picks WHO WINS. Avoids every TBD/wrong-team
+      // symptom caused by stale localStorage picks or incomplete standings.
+      const r32Live = deriveBracket(events)['round-of-32'] // sorted by date
+      return R32_TEMPLATE.map<[Team | null, Team | null]>((slot, i) => {
+        const live = r32Live[i]
+        if (live?.home && !live.home.isPlaceholder && live?.away && !live.away.isPlaceholder) {
+          return [
+            lookup(live.home.abbr) ?? null,
+            lookup(live.away.abbr) ?? null,
+          ]
+        }
+        // Fallback: derive from user groupStandings (pre-tournament mode)
+        const thirdGroupMap = buildThirdGroupMap(groupStandings)
+        const thirdAssignment = solveThirdPlaceAssignment(
+          thirdPlaceAdvancing,
+          (code) => thirdGroupMap.get(code)
+        )
         const homeCode = resolveSlot(slot.home, groupStandings, thirdAssignment, slot.id)
         const awayCode = resolveSlot(slot.away, groupStandings, thirdAssignment, slot.id)
         return [
@@ -455,7 +617,7 @@ function useDerivedKoPairs(stage: 'R32' | 'R16' | 'QF' | 'SF'): Array<[Team | nu
         wb ? lookup(wb) ?? null : null,
       ]
     })
-  }, [stage, groupStandings, thirdPlaceAdvancing, koWinners, lookup])
+  }, [stage, groupStandings, thirdPlaceAdvancing, koWinners, lookup, events])
 }
 
 /* -------------------------------------------------------------------------- */

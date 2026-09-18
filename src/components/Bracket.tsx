@@ -30,7 +30,7 @@ import {
 export function Bracket() {
   const { events, fetchedAt, loading } = useTournament()
 
-  const { groups, qualified, stages, orderedStages, koLeft, totalKo } = useMemo(() => {
+  const { groups, qualified, orderedStages, koLeft, totalKo } = useMemo(() => {
     const groups = deriveLiveGroups(events)
     const standings = deriveGroupStandings(events, groups)
     const qualified = deriveQualified(standings)
@@ -80,9 +80,9 @@ export function Bracket() {
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-2">
             Bracket · Round of 32 → Final
           </div>
-          <h2 className="font-display font-bold text-3xl sm:text-4xl text-ink-900 tracking-tight">
-            Who plays <span className="text-accent-gold">whom</span> on the road to MetLife
-          </h2>
+          <h1 className="font-display font-bold text-3xl sm:text-4xl text-slate-900 tracking-tight">
+            World Cup 2026 <span className="text-accent-gold">bracket</span> — who plays whom on the road to MetLife
+          </h1>
           <p className="mt-3 text-sm text-slate-600 max-w-2xl leading-relaxed">
             Live from ESPN. Every winner cascades into its slot in the next round automatically — no waiting on a manual update.
           </p>
@@ -174,7 +174,7 @@ function StatCard({ label, value, suffix }: { label: string; value: string; suff
   return (
     <div className="rounded-xl bg-slate-100/70 px-4 py-3">
       <div className="text-[10px] font-mono uppercase tracking-[0.14em] text-slate-500">{label}</div>
-      <div className="mt-1 font-display text-2xl sm:text-3xl text-ink-900 tracking-tight tabular-nums">
+      <div className="mt-1 font-display text-2xl sm:text-3xl text-slate-900 tracking-tight tabular-nums">
         {value}
         {suffix && <span className="text-xs sm:text-sm text-slate-400 font-normal ml-1">{suffix}</span>}
       </div>
@@ -284,8 +284,8 @@ function RoundHead({ title, meta, statusBadge, hasLive, isFocus }: { title: stri
           ? { text: 'Upcoming', cls: 'bg-blue-50 text-blue-800 border-blue-200' }
           : { text: 'Completed', cls: 'bg-slate-100 text-slate-600 border-slate-200' }
   const titleCls = isFocus
-    ? 'font-display font-bold text-xl sm:text-2xl text-ink-900 tracking-tight'
-    : 'font-display font-bold text-sm text-ink-900 tracking-wider uppercase'
+    ? 'font-display font-bold text-xl sm:text-2xl text-slate-900 tracking-tight'
+    : 'font-display font-bold text-sm text-slate-900 tracking-wider uppercase'
   return (
     <div className={'flex items-center justify-between gap-2 flex-wrap px-0.5 ' + (isFocus ? 'mb-4' : 'mb-2')}>
       <div className="flex items-center gap-2 min-w-0">
@@ -340,25 +340,42 @@ function TeamCell({ side, team, winner }: { side: 'home' | 'away'; team: Bracket
   const isPlaceholder = team.isPlaceholder
   const label = isPlaceholder ? team.name : team.abbr
   const showScore = team.score != null && !isPlaceholder
+  // Show "(X tab)" next to the score when ESPN reports a penalty shootout
+  // — that's the only honest way to read "1 — MAR 1" and still know MAR
+  // went through. shootoutScore is a number, not a string, so we render
+  // it directly. The winning side's shootoutScore reads green like its
+  // team code, the losing side stays neutral.
+  const showPens = typeof team.shootoutScore === 'number' && !isPlaceholder
+  const scoreBlock = (
+    <span className="font-mono tabular-nums text-xs flex items-center gap-1">
+      {showScore && <span className="text-slate-700">{team.score}</span>}
+      {showPens && (
+        <span
+          className={
+            'text-[10px] ' +
+            (winner ? 'text-emerald-700 font-semibold' : 'text-slate-500')
+          }
+        >
+          ({team.shootoutScore} tab)
+        </span>
+      )}
+    </span>
+  )
   return (
     <span className={'flex items-center gap-1.5 ' + align}>
-      {side === 'home' && showScore && (
-        <span className="font-mono tabular-nums text-slate-700 text-xs">{team.score}</span>
-      )}
+      {side === 'home' && (showScore || showPens) && scoreBlock}
       <span
         className={
           (isPlaceholder
             ? 'text-slate-400 italic font-normal text-[11px]'
             : winner
               ? 'text-emerald-700 font-semibold tracking-wide'
-              : 'text-ink-900 font-semibold tracking-wide')
+              : 'text-slate-900 font-semibold tracking-wide')
         }
       >
         {label}
       </span>
-      {side === 'away' && showScore && (
-        <span className="font-mono tabular-nums text-slate-700 text-xs">{team.score}</span>
-      )}
+      {side === 'away' && (showScore || showPens) && scoreBlock}
     </span>
   )
 }

@@ -159,7 +159,7 @@ export function WatchCountry() {
   if (!country) {
     return (
       <div className="container max-w-3xl mx-auto px-6 pt-6 pb-16 text-center">
-        <h1 className="font-display text-3xl font-bold text-ink-900">
+        <h1 className="font-display text-3xl font-bold text-slate-900">
           Country not found
         </h1>
         <p className="mt-3 text-slate-600">
@@ -184,7 +184,7 @@ export function WatchCountry() {
         <div className="mt-3 font-mono text-xs uppercase tracking-[0.22em] text-slate-500">
           Where to watch
         </div>
-        <h1 className="mt-2 font-display font-bold text-4xl sm:text-5xl text-ink-900 tracking-tight leading-[1.1]">
+        <h1 className="mt-2 font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight leading-[1.1]">
           FIFA <span className="text-accent-gold">World Cup 2026</span> in {country.name}
         </h1>
         <p className="mt-4 text-lg text-slate-700 leading-relaxed">
@@ -195,7 +195,7 @@ export function WatchCountry() {
       </header>
 
       <section className="mb-12">
-        <h2 className="font-display font-bold text-2xl text-ink-900 mb-4">
+        <h2 className="font-display font-bold text-2xl text-slate-900 mb-4">
           📺 Broadcasters in {country.name}
         </h2>
         {wcRights.length === 0 ? (
@@ -218,17 +218,17 @@ export function WatchCountry() {
       </section>
 
       <section className="mb-12">
-        <h2 className="font-display font-bold text-2xl text-ink-900 mb-4">
+        <h2 className="font-display font-bold text-2xl text-slate-900 mb-4">
           🕐 Local kickoff times
         </h2>
         <div className="rounded-2xl border border-slate-200 bg-paper-elev p-6 space-y-3 text-slate-700">
           <div>
             <span className="text-xs font-mono uppercase tracking-[0.18em] text-slate-500 block">Opening match</span>
-            <span className="font-display text-lg font-semibold text-ink-900">{localKickoff}</span>
+            <span className="font-display text-lg font-semibold text-slate-900">{localKickoff}</span>
           </div>
           <div>
             <span className="text-xs font-mono uppercase tracking-[0.18em] text-slate-500 block">Final</span>
-            <span className="font-display text-lg font-semibold text-ink-900">
+            <span className="font-display text-lg font-semibold text-slate-900">
               {formatLocal('2026-07-19T20:00:00Z', country.timezone)}
             </span>
           </div>
@@ -242,7 +242,7 @@ export function WatchCountry() {
 
       {others.length > 0 && (
         <section className="mb-12">
-          <h2 className="font-display font-bold text-2xl text-ink-900 mb-4">
+          <h2 className="font-display font-bold text-2xl text-slate-900 mb-4">
             ⚽ What else is on in {country.name}
           </h2>
           <p className="text-slate-600 mb-4 leading-relaxed">
@@ -252,7 +252,7 @@ export function WatchCountry() {
           <div className="space-y-3">
             {others.map((c) => (
               <div key={c.slug} className="rounded-xl border border-slate-200 bg-white p-4">
-                <div className="font-display font-semibold text-ink-900">
+                <div className="font-display font-semibold text-slate-900">
                   {competitionLabel(c.slug)}
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2">

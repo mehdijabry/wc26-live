@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0a2540" />
-    <link rel="icon" type="image/svg+xml" href="/wc26-emblem.svg" />
+    <link rel="icon" type="image/svg+xml" href="/p90-logo.svg" />
     <link rel="canonical" href="https://pressing90.live/" />
 
     <!-- PWA manifest + iOS "Add to Home Screen" support.
@@ -14,10 +14,10 @@
     <link rel="manifest" href="/manifest.json" id="pwa-manifest" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="WC26 Live" id="pwa-apple-title" />
+    <meta name="apple-mobile-web-app-title" content="Pressing 90’" id="pwa-apple-title" />
     <meta name="mobile-web-app-capable" content="yes" />
-    <link rel="apple-touch-icon" href="/wc26-emblem.svg" id="pwa-apple-icon" />
-    <link rel="apple-touch-icon" sizes="180x180" href="/wc26-emblem.svg" id="pwa-apple-icon-180" />
+    <link rel="apple-touch-icon" href="/icon-180.png" id="pwa-apple-icon" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icon-180.png" id="pwa-apple-icon-180" />
 
     <!-- Admin PWA swap. iOS Safari reads the manifest + apple-* tags
          EAGERLY at page-parse time, before the React bundle finishes
@@ -56,15 +56,18 @@
     <!-- Google Search Console verification -->
     <meta name="google-site-verification" content="ooSl9AUG8WbW5zaA8Ezq6-JSe4jtxn_L4Ch4z2vhskY" />
 
+    <!-- Gambling Affiliation site verification -->
+    <meta name="ga-site-verification" content="aTZziRL_U4b1UEzXgLq_BwvB" />
+
     <!-- Primary SEO -->
-    <title>WC26 Live · Pressing 90′ — World Cup 2026 scores, brackets & predictions</title>
+    <title>Pressing 90’ — Live Football Scores, Results & News</title>
     <meta
       name="description"
-      content="WC26 Live by Pressing 90′ — every FIFA World Cup 2026 match, group, stadium and prediction. 48 nations across USA, Mexico and Canada. Live scores, full bracket simulator, leaderboard. June 11 → July 19, 2026."
+      content="Pressing 90’ — live football scores from every major competition, breaking news and briefings, plus the complete FIFA World Cup 2026 archive: final bracket, results and stats."
     />
     <meta
       name="keywords"
-      content="World Cup 2026, WC26, FIFA World Cup, coupe du monde 2026, football, foot, soccer, brackets, predictions, pronostics, scores, leaderboard, Atlas Lions, Morocco, Maroc, Mexico, USA, Canada, Pressing 90, news foot, foot live, live scores, Premier League, LaLiga, Champions League, UCL"
+      content="Pressing 90, live scores, football, soccer, foot live, news foot, résultats, Premier League, LaLiga, Serie A, Bundesliga, Ligue 1, Champions League, UCL, World Cup 2026 archive, coupe du monde 2026"
     />
     <meta name="author" content="mehdijabry.dev" />
     <meta name="robots" content="index, follow, max-image-preview:large" />
@@ -73,15 +76,15 @@
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="WC26 Live · Pressing 90′" />
-    <meta property="og:title" content="WC26 Live — World Cup 2026 hub, scores, brackets, predictions" />
+    <meta property="og:site_name" content="Pressing 90’" />
+    <meta property="og:title" content="Pressing 90’ — Live Football Scores, Results & News" />
     <meta
       property="og:description"
-      content="48 nations · 16 host cities · 104 matches. Predict every score, every starter, every card. Publish your bracket, climb the leaderboard."
+      content="Live football scores from every major competition, news briefings, and the full World Cup 2026 archive."
     />
     <meta property="og:url" content="https://pressing90.live/" />
     <meta property="og:image" content="https://pressing90.live/og.png" />
-    <meta property="og:image:alt" content="WC26 Live — FIFA World Cup 2026 hub" />
+    <meta property="og:image:alt" content="Pressing 90’ — live football scores" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:locale" content="en_US" />
@@ -89,13 +92,13 @@
 
     <!-- Twitter / X -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="WC26 Live · Pressing 90′" />
+    <meta name="twitter:title" content="Pressing 90’ — Live Football Scores & News" />
     <meta
       name="twitter:description"
-      content="Every FIFA World Cup 2026 match, every group, every prediction — synced to your timezone."
+      content="Live football scores, news briefings and the full World Cup 2026 archive."
     />
     <meta name="twitter:image" content="https://pressing90.live/og.png" />
-    <meta name="twitter:image:alt" content="WC26 Live — FIFA World Cup 2026" />
+    <meta name="twitter:image:alt" content="Pressing 90’ — live football scores" />
 
     <!-- Performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -110,7 +113,7 @@
     <link rel="preload" as="fetch" crossorigin
       href="https://wc26-api.nameless-violet-5dc1.workers.dev/tournament" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@200..800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Anton&family=Archivo:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&family=Tajawal:wght@400;500;700;800&display=swap"
       rel="stylesheet"
     />
 
@@ -140,15 +143,15 @@
           {
             "@type": "Organization",
             "name": "Pressing 90'",
-            "alternateName": "WC26 Live",
+            "alternateName": "Pressing 90",
             "url": "https://pressing90.live/",
-            "logo": "https://pressing90.live/wc26-emblem.svg",
+            "logo": "https://pressing90.live/p90-logo.svg",
             "sameAs": ["https://mehdijabry.dev"],
             "description": "Football editorial — World Cup 2026 hub, live scores from every major competition, and a full-bracket prediction game."
           },
           {
             "@type": "WebSite",
-            "name": "WC26 Live",
+            "name": "Pressing 90’",
             "url": "https://pressing90.live/",
             "potentialAction": {
               "@type": "SearchAction",

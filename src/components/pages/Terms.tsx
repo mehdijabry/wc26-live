@@ -7,7 +7,7 @@ import { useEffect } from 'react'
  */
 export function Terms() {
   useEffect(() => {
-    document.title = 'Terms of Service · WC26 Live'
+    document.title = 'Terms of Service · Pressing 90’'
   }, [])
 
   return (
@@ -16,12 +16,12 @@ export function Terms() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Terms of Service
         </div>
-        <h1 className="font-display font-bold text-4xl sm:text-5xl text-marine-950 tracking-tight">
+        <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight">
           The <span className="text-accent-gold">house rules</span>, in
           readable English.
         </h1>
         <p className="mt-4 font-mono text-xs text-slate-500">
-          Effective: June 9, 2026 · Last updated: June 9, 2026
+          Effective: June 9, 2026 · Last updated: August 29, 2026
         </p>
       </header>
 
@@ -34,7 +34,7 @@ export function Terms() {
           version.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           1. Who runs this
         </h2>
         <p>
@@ -45,7 +45,7 @@ export function Terms() {
           </a>.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           2. What the Site is (and isn't)
         </h2>
         <p>
@@ -58,10 +58,29 @@ export function Terms() {
         <p>
           We provide scores, predictions, and broadcast information for
           general entertainment and editorial purposes. We do not provide
-          betting tips, professional analysis, or financial advice.
+          professional analysis or financial advice.
+        </p>
+        <p>
+          <strong>Betting odds &amp; affiliate links (18+).</strong> The Site
+          may display third-party betting odds next to upcoming matches.
+          Odds are shown <strong>for information only</strong> — they may be
+          outdated or differ from what any operator actually offers, and
+          they are not betting advice or an invitation to gamble. We are{' '}
+          <strong>not a bookmaker</strong>: we do not accept, place, broker,
+          or pay out bets. Some outbound links to betting operators may be
+          affiliate links, meaning we can earn a commission if you register
+          through them, at no extra cost to you. Betting-related content is
+          reserved for visitors aged 18+ (or the legal gambling age where
+          you live), and online betting may be restricted or unlawful in
+          your country — it is your responsibility to check your local laws.
+          See our{' '}
+          <a href="/responsible-gambling" className="text-accent-gold underline">
+            Responsible Gambling
+          </a>{' '}
+          page for risks and help resources.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           3. Accounts
         </h2>
         <p>
@@ -81,7 +100,7 @@ export function Terms() {
           or attempting to break the Site.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           4. Acceptable use
         </h2>
         <p>You agree NOT to:</p>
@@ -93,7 +112,7 @@ export function Terms() {
           <li>Frame, mirror, or republish the Site without permission.</li>
         </ul>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           5. Intellectual property
         </h2>
         <p>
@@ -119,7 +138,7 @@ export function Terms() {
           poster image you generate via the "Share bracket" feature.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           6. Predictions, leaderboards, and gameplay
         </h2>
         <p>
@@ -130,7 +149,7 @@ export function Terms() {
           (e.g. to correct a data error, kick out cheaters).
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           7. Advertising
         </h2>
         <p>
@@ -144,7 +163,7 @@ export function Terms() {
           so we can blacklist the creative.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           8. No warranty
         </h2>
         <p>
@@ -155,7 +174,7 @@ export function Terms() {
           uptime, accuracy, or fitness for any particular purpose.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           9. Liability cap
         </h2>
         <p>
@@ -171,7 +190,7 @@ export function Terms() {
           competition you ran with friends.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           10. DMCA / copyright takedowns
         </h2>
         <p>
@@ -193,7 +212,7 @@ export function Terms() {
           <strong> 5 business days</strong>.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           11. Termination
         </h2>
         <p>
@@ -202,7 +221,7 @@ export function Terms() {
           terminate access for users who break these terms.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           12. Governing law
         </h2>
         <p>
@@ -213,7 +232,7 @@ export function Terms() {
           you a different forum.
         </p>
 
-        <h2 className="text-2xl font-display font-bold text-marine-950 mt-10 mb-3">
+        <h2 className="text-2xl font-display font-bold text-slate-900 mt-10 mb-3">
           13. Contact
         </h2>
         <p>
@@ -226,7 +245,7 @@ export function Terms() {
       </section>
 
       <footer className="mt-16 pt-8 border-t border-slate-200 font-mono text-xs text-slate-500">
-        WC26 Live · Pressing 90' · pressing90.live
+        Pressing 90’ · Pressing 90' · pressing90.live
       </footer>
     </div>
   )

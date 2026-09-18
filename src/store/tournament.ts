@@ -124,21 +124,26 @@ export type LiveGroup = {
 }
 
 export function deriveLiveGroups(events: EspnEvent[]): LiveGroup[] {
-  // Sort by kickoff
-  const sorted = [...events].sort((a, b) => (a.date ?? '').localeCompare(b.date ?? ''))
+  // Read the group letter straight from ESPN's altGameNote ("FIFA World
+  // Cup, Group A"). Trying to infer it by clustering + chronological
+  // kickoff order silently swaps groups whose first match happens to
+  // land earlier than the group above them — WC26 has Group D's opener
+  // (USA vs PAR, 2026-06-13 01:00Z) before Group C's opener (BRA vs MAR,
+  // 2026-06-13 22:00Z), which was producing MAR in Group D, USA in
+  // Group C, etc. altGameNote is the authoritative source and matches
+  // the bracket template's letter conventions exactly.
 
-  // Take first 72 matches as the group stage
-  const groupStage = sorted.slice(0, 72)
-  if (groupStage.length === 0) return []
-
-  // Build adjacency map of team → set of group-mates
-  const adj = new Map<string, Set<string>>()
+  const teamsByLetter = new Map<string, Set<string>>()
   const teamData = new Map<string, { name: string; shortName: string; logo?: string; color?: string }>()
-  const teamFirstKickoff = new Map<string, string>()
+  const firstKickoffByLetter = new Map<string, string>()
 
-  for (const ev of groupStage) {
+  for (const ev of events) {
     const comp = ev.competitions?.[0]
     if (!comp) continue
+    const note = comp.altGameNote ?? ''
+    const match = /Group\s+([A-L])\b/i.exec(note)
+    if (!match) continue
+    const letter = match[1].toUpperCase()
     const competitors = comp.competitors ?? []
     if (competitors.length < 2) continue
     const a = competitors[0]?.team
@@ -146,10 +151,10 @@ export function deriveLiveGroups(events: EspnEvent[]): LiveGroup[] {
     if (!a?.abbreviation || !b?.abbreviation) continue
     const aa = a.abbreviation.toUpperCase()
     const ba = b.abbreviation.toUpperCase()
-    if (!adj.has(aa)) adj.set(aa, new Set())
-    if (!adj.has(ba)) adj.set(ba, new Set())
-    adj.get(aa)!.add(ba)
-    adj.get(ba)!.add(aa)
+    if (!teamsByLetter.has(letter)) teamsByLetter.set(letter, new Set())
+    const set = teamsByLetter.get(letter)!
+    set.add(aa)
+    set.add(ba)
     if (a.displayName && !teamData.has(aa)) {
       teamData.set(aa, {
         name: a.displayName,
@@ -167,50 +172,30 @@ export function deriveLiveGroups(events: EspnEvent[]): LiveGroup[] {
       })
     }
     const date = ev.date ?? ''
-    for (const code of [aa, ba]) {
-      const prev = teamFirstKickoff.get(code)
-      if (!prev || date < prev) teamFirstKickoff.set(code, date)
-    }
+    const prev = firstKickoffByLetter.get(letter)
+    if (!prev || (date && date < prev)) firstKickoffByLetter.set(letter, date)
   }
 
-  // Cluster connected components (DFS)
-  const visited = new Set<string>()
-  const clusters: Array<{ teams: string[]; firstKickoff: string }> = []
-  for (const team of adj.keys()) {
-    if (visited.has(team)) continue
-    const cluster: string[] = []
-    const stack = [team]
-    let firstKickoff = '9999-99-99'
-    while (stack.length) {
-      const t = stack.pop()!
-      if (visited.has(t)) continue
-      visited.add(t)
-      cluster.push(t)
-      const kickoff = teamFirstKickoff.get(t)
-      if (kickoff && kickoff < firstKickoff) firstKickoff = kickoff
-      const neighbors = adj.get(t)
-      if (neighbors) for (const n of neighbors) if (!visited.has(n)) stack.push(n)
-    }
-    // Only keep clusters of exactly 4 (proper WC26 group)
-    if (cluster.length === 4) clusters.push({ teams: cluster, firstKickoff })
-  }
-
-  // Sort clusters by first kickoff, label A→L
-  clusters.sort((a, b) => a.firstKickoff.localeCompare(b.firstKickoff))
   const letters = 'ABCDEFGHIJKL'.split('')
-  return clusters.slice(0, 12).map((c, i) => ({
-    letter: letters[i],
-    firstKickoff: c.firstKickoff,
-    teams: c.teams
-      .map((abbr) => ({
-        abbr,
-        name: teamData.get(abbr)?.name ?? abbr,
-        shortName: teamData.get(abbr)?.shortName ?? abbr,
-        logo: teamData.get(abbr)?.logo,
-        color: teamData.get(abbr)?.color,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name)),
-  }))
+  const out: LiveGroup[] = []
+  for (const letter of letters) {
+    const teamSet = teamsByLetter.get(letter)
+    if (!teamSet || teamSet.size !== 4) continue
+    out.push({
+      letter,
+      firstKickoff: firstKickoffByLetter.get(letter) ?? '',
+      teams: Array.from(teamSet)
+        .map((abbr) => ({
+          abbr,
+          name: teamData.get(abbr)?.name ?? abbr,
+          shortName: teamData.get(abbr)?.shortName ?? abbr,
+          logo: teamData.get(abbr)?.logo,
+          color: teamData.get(abbr)?.color,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    })
+  }
+  return out
 }
 
 export function relativeTime(iso: string | null): string {
@@ -275,6 +260,42 @@ export function matchesForTeam(events: EspnEvent[], abbr: string): EspnEvent[] {
     const cs = ev.competitions?.[0]?.competitors ?? []
     return cs.some((c) => c.team?.abbreviation?.toUpperCase() === A)
   })
+}
+
+// ----- Result lookup for a team pair --------------------------------------
+//
+// Finds the ESPN event where these two teams played, and returns the final
+// scoreline keyed by team code so callers don't have to worry about ESPN's
+// home/away side flipping between our internal notion and theirs. Used by
+// the Predictions page to grade user picks after full time.
+
+export type PairResult = {
+  status: 'pre' | 'in' | 'post'
+  scores: Record<string, number>   // uppercase team code → goals
+  winner: string | null            // uppercase code, or null on draw / not settled
+}
+
+export function resultForPair(events: EspnEvent[], a: string, b: string): PairResult | null {
+  const A = a.toUpperCase()
+  const B = b.toUpperCase()
+  for (const ev of events) {
+    const cs = ev.competitions?.[0]?.competitors ?? []
+    if (cs.length < 2) continue
+    const codes = cs.map((c) => c.team?.abbreviation?.toUpperCase() ?? '')
+    if (!codes.includes(A) || !codes.includes(B)) continue
+    const state = (ev.competitions?.[0]?.status?.type?.state ?? ev.status?.type?.state ?? 'pre') as 'pre' | 'in' | 'post'
+    if (state !== 'post') return { status: state, scores: {}, winner: null }
+    const scores: Record<string, number> = {}
+    let winner: string | null = null
+    for (const c of cs) {
+      const code = c.team?.abbreviation?.toUpperCase() ?? ''
+      if (!code) continue
+      scores[code] = parseInt(c.score ?? '0', 10) || 0
+      if (c.winner) winner = code
+    }
+    return { status: 'post', scores, winner }
+  }
+  return null
 }
 
 // ----- Group standings + qualifier projection ---------------------------
@@ -435,6 +456,11 @@ export type BracketMatchTeam = {
   abbr: string                // either real 3-letter code or placeholder ref ("SFW1")
   name: string
   score?: string
+  // Penalty shootout score — only set when the regular + extra-time
+  // result is a draw and the match was decided on penalties. ESPN
+  // exposes it as `competitors[].shootoutScore` and flips the right
+  // competitor's `winner: true` to the side that converted more pens.
+  shootoutScore?: number
   winner?: boolean
   isPlaceholder: boolean      // true while we're waiting on the previous round
 }
@@ -468,7 +494,7 @@ export const BRACKET_STAGES: BracketStage[] = [
   'final',
 ]
 
-function toBracketTeam(c: { team?: { abbreviation?: string; displayName?: string }; score?: string; winner?: boolean } | undefined): BracketMatchTeam | null {
+function toBracketTeam(c: { team?: { abbreviation?: string; displayName?: string }; score?: string; winner?: boolean; shootoutScore?: number } | undefined): BracketMatchTeam | null {
   if (!c) return null
   const abbr = c.team?.abbreviation ?? '?'
   const name = c.team?.displayName ?? abbr
@@ -480,6 +506,7 @@ function toBracketTeam(c: { team?: { abbreviation?: string; displayName?: string
     abbr,
     name,
     score: c.score,
+    shootoutScore: typeof c.shootoutScore === 'number' ? c.shootoutScore : undefined,
     winner: c.winner,
     isPlaceholder,
   }

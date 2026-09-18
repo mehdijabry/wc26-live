@@ -151,13 +151,13 @@ export function PushOptIn() {
           </div>
           <h2
             id="push-modal-title"
-            className="font-display font-bold text-xl text-ink-900 text-center mb-2"
+            className="font-display font-bold text-xl text-slate-900 text-center mb-2"
           >
             Stay in the loop
           </h2>
           <p className="text-sm text-slate-600 text-center mb-5 leading-relaxed">
             Get pinged the moment a match kicks off, a goal lands,
-            or a card hits the box. <strong className="text-ink-900">Live, every match.</strong>
+            or a card hits the box. <strong className="text-slate-900">Live, every match.</strong>
           </p>
           <button
             onClick={() => onEnable('modal')}
@@ -168,7 +168,7 @@ export function PushOptIn() {
           </button>
           <button
             onClick={onLater}
-            className="mt-2 w-full px-4 py-2 rounded-full text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-ink-900 transition-colors"
+            className="mt-2 w-full px-4 py-2 rounded-full text-xs font-mono uppercase tracking-widest text-slate-500 hover:text-slate-900 transition-colors"
           >
             Maybe later
           </button>
@@ -209,7 +209,7 @@ export function PushOptIn() {
         <div className="flex-1 min-w-0">
           {state.kind === 'bubble' && (
             <>
-              <div className="font-display font-bold text-sm text-ink-900 leading-tight">
+              <div className="font-display font-bold text-sm text-slate-900 leading-tight">
                 Goal & kickoff alerts
               </div>
               <div className="text-[11px] text-slate-600 mt-0.5 leading-snug">
@@ -228,7 +228,7 @@ export function PushOptIn() {
           )}
           {state.kind === 'error' && (
             <>
-              <div className="font-display font-semibold text-xs text-ink-900">Couldn't enable.</div>
+              <div className="font-display font-semibold text-xs text-slate-900">Couldn't enable.</div>
               <div className="text-[11px] text-slate-600 mt-0.5">{state.message.slice(0, 80)}</div>
               <button
                 onClick={() => onEnable(state.from)}

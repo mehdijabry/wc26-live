@@ -206,7 +206,7 @@ export function AmazonShelf({
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
             Sponsored picks · Amazon
           </div>
-          <h2 className="font-display font-bold text-xl sm:text-2xl text-ink-900 mt-1">
+          <h2 className="font-display font-bold text-xl sm:text-2xl text-slate-900 mt-1">
             {heading}
           </h2>
         </div>
@@ -244,7 +244,7 @@ export function AmazonShelf({
               <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-slate-400">
                 Amazon
               </div>
-              <div className="mt-1 text-sm font-display font-semibold text-ink-900 leading-tight line-clamp-2">
+              <div className="mt-1 text-sm font-display font-semibold text-slate-900 leading-tight line-clamp-2">
                 {p.title}
               </div>
               <div className="mt-1.5 text-xs text-slate-600 line-clamp-2 hidden sm:block">

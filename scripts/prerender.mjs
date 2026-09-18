@@ -31,7 +31,7 @@
  */
 
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, dirname } from 'node:path'
 import { createServer } from 'node:http'
 import { extname } from 'node:path'
 import { readFile } from 'node:fs/promises'
@@ -149,7 +149,13 @@ async function prerenderRoute(browser, route) {
   })
 
   const url = `http://localhost:${PORT}${route === '/' ? '' : route}`
-  await page.goto(url, { waitUntil: 'networkidle0', timeout: 30_000 })
+  // domcontentloaded is enough for React to hydrate, and it avoids the
+  // networkidle0 trap: the tournament store polls /tournament every 30s
+  // while a match is live, so the network is never idle long enough to
+  // satisfy networkidle0 inside the 30s window. Live-data routes (/wc26,
+  // /, /today, /news, /board, /predictions, /watch, /stadiums) were all
+  // timing out and falling back to the SPA shell — losing every h1.
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30_000 })
 
   // The per-page useEffect that calls document.title = ... and
   // document.head.appendChild(jsonLdScript) needs a tick to settle after
@@ -163,7 +169,7 @@ async function prerenderRoute(browser, route) {
           !t.startsWith('WC26 Live · Pressing 90′ — World Cup 2026 scores')
         )
       },
-      { timeout: 4_000 }
+      { timeout: 6_000 }
     )
   } catch {
     // Some routes legitimately use the default title (e.g. the home
@@ -174,21 +180,59 @@ async function prerenderRoute(browser, route) {
   // injection lands before we snapshot.
   await new Promise((r) => setTimeout(r, 400))
 
-  const html = await page.content()
+  let html = await page.content()
   await page.close()
+
+  // Force the canonical link to match the actual route. Many React
+  // pages don't override the default <link rel="canonical" href="/">
+  // baked into index.html, which makes Google treat them as duplicates
+  // of the home page → "Page with redirect" / "Alternate page with
+  // canonical tag" in Search Console, and ZERO indexing. We rewrite it
+  // here based on the route we're snapshotting.
+  const canonicalUrl = `https://pressing90.live${route === '/' ? '/' : route}`
+  if (/<link[^>]+rel=["']canonical["'][^>]*>/i.test(html)) {
+    html = html.replace(
+      /<link[^>]+rel=["']canonical["'][^>]*>/i,
+      `<link rel="canonical" href="${canonicalUrl}">`
+    )
+  } else {
+    html = html.replace(/<\/head>/i, `  <link rel="canonical" href="${canonicalUrl}">\n  </head>`)
+  }
+
+  // Same fix for og:url — without it, social previews and Google would
+  // pull the home URL even on subpages.
+  if (/<meta[^>]+property=["']og:url["'][^>]*>/i.test(html)) {
+    html = html.replace(
+      /<meta[^>]+property=["']og:url["'][^>]*>/i,
+      `<meta property="og:url" content="${canonicalUrl}">`
+    )
+  }
   return html
 }
 
 // ---------------------------------------------------------------------------
-// Step 4 — Write snapshot to dist/<route>/index.html
+// Step 4 — Write snapshot to dist/<route>.html (FLAT file, not a directory)
 // ---------------------------------------------------------------------------
+//
+// CRITICAL: Cloudflare Pages serves '/about' from 'about.html' with a
+// direct 200. The previous layout ('about/index.html') made Pages
+// 308-redirect /about → /about/ while the canonical tag AND the sitemap
+// said /about (no slash). Googlebot was fed, on ~100 routes: a sitemap
+// URL that redirects, whose target's canonical points back at the
+// redirecting URL. That circular signal is the main driver of the
+// "Discovered – currently not indexed" pile (80 URLs) in Search Console.
 
 function writeSnapshot(route, html) {
   // Route '/' → dist/index.html (overwrite the SPA shell with the
   // hydrated version — keeps the same script tags so React still boots).
-  const dir = route === '/' ? DIST : join(DIST, route)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'index.html'), html, 'utf8')
+  if (route === '/') {
+    writeFileSync(join(DIST, 'index.html'), html, 'utf8')
+    return
+  }
+  const rel = route.replace(/^\//, '').replace(/\/$/, '')
+  const file = join(DIST, rel + '.html')
+  mkdirSync(dirname(file), { recursive: true })
+  writeFileSync(file, html, 'utf8')
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +283,36 @@ async function main() {
 
   await browser.close()
   server.close()
+
+  // Sitemap lastmod — SELECTIVE, not blanket. The previous version
+  // stamped today's date on all 104 URLs at every deploy (often 5×/day),
+  // which teaches Google that our lastmod is meaningless noise and makes
+  // it TRUST THE SITEMAP LESS — the opposite of the intent. Now: only
+  // routes whose content genuinely changes every day get the build date;
+  // evergreen pages keep the hand-maintained baseline from
+  // public/sitemap.xml (bump those dates there when their content
+  // actually changes).
+  const LIVE_ROUTES = new Set(['/', '/wc26', '/today', '/news', '/predictions', '/board'])
+  try {
+    const today = new Date().toISOString().slice(0, 10)
+    const sitemapSrc = readFileSync(SITEMAP, 'utf8')
+    let bumped = 0
+    const refreshed = sitemapSrc.replace(
+      /(<loc>([^<]+)<\/loc>\s*)<lastmod>[^<]*<\/lastmod>/g,
+      (match, locPart, loc) => {
+        let path = '/'
+        try { path = new URL(loc).pathname.replace(/\/$/, '') || '/' } catch { /* keep '/' */ }
+        if (!LIVE_ROUTES.has(path)) return match
+        bumped++
+        return `${locPart}<lastmod>${today}</lastmod>`
+      }
+    )
+    writeFileSync(join(DIST, 'sitemap.xml'), refreshed, 'utf8')
+    const urlCount = (refreshed.match(/<loc>/g) ?? []).length
+    console.log(`[prerender] sitemap.xml → lastmod=${today} on ${bumped} live routes (${urlCount} total URLs)`)
+  } catch (e) {
+    console.error('[prerender] sitemap refresh failed:', e)
+  }
 
   console.log(`[prerender] Done. ${ok} ok, ${failed} failed.`)
   if (failures.length) {

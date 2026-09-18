@@ -12,7 +12,7 @@ account_id = "a3e85bed1717f5e4eca6988586bfc06e"
 # The scheduled() handler in src/index.ts dispatches by inspecting the
 # event.cron field.
 [triggers]
-crons = ["* * * * *", "0 */3 * * *"]
+crons = ["* * * * *", "*/30 * * * *"]
 
 # Workers AI binding for the news rewriter (Llama 3.1 8B Instruct, free
 # tier ~10k req/day). Used by src/news.ts to paraphrase + add original
@@ -28,6 +28,10 @@ id = "125829a0bacb4ab6b352991e857c95eb"
 # Public vars
 [vars]
 SUPABASE_URL = "https://ssvvojhxyotlbcdosiog.supabase.co"
+# Automation render service (studio/ on Render). Leave empty until deployed.
+STUDIO_URL = "https://p90-studio.onrender.com"
+# Meta app used for the Page token (Graph API Explorer app "pressing 90 story")
+FB_APP_ID = "810872755440769"
 
 # Secrets — set with `wrangler secret put SUPABASE_SERVICE_KEY`
 # DO NOT commit secrets here.

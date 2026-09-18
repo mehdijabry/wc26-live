@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { fetchNews, type NewsArticle } from '../lib/api'
-import { supabase } from '../lib/supabase'
+import { supabase, withTimeout } from '../lib/supabase'
 
 /**
  * Pull the 2 most-recent published articles from our Supabase 'articles'
@@ -127,19 +127,42 @@ export function NewsTicker() {
   useEffect(() => {
     let stop = false
     let timer: number | undefined
+    let fastRetries = 0
+
     async function load() {
+      // Both promises are wrapped with HARD timeouts so neither can stall
+      // the UI forever:
+      //   - Supabase: 6s. Mobile cold-start on a fresh free-tier project
+      //     can sit at 5-15s, during which the home page froze with no
+      //     articles and a grey auth button (every Supabase-dependent
+      //     read was awaiting the same idle connection). Now we fall
+      //     back to an empty list and render ESPN alone.
+      //   - ESPN: fetchNews has its own per-request AbortSignal.timeout
+      //     (4s), so this outer timeout is a belt-and-braces 8s cap.
+      const oursPromise = withTimeout(fetchInternalArticles(), 6_000, [] as NewsArticle[])
+      const espnPromise = withTimeout(fetchNews(5), 8_000, [] as NewsArticle[])
+
+      // Phase 1 — Supabase resolves first (or times out). Populate as
+      // soon as it answers, and CLEAR the loading state unconditionally
+      // — even if Supabase returned 0 articles, the carousel must un-mute
+      // so the ESPN tier can paint when it arrives.
       try {
-        // Fetch our own briefings in parallel with ESPN — keeps the
-        // first paint snappy because the slower of the two waits is
-        // capped to the slower endpoint, not summed.
-        const [ours, espn] = await Promise.all([fetchInternalArticles(), fetchNews(5)])
+        const ours = await oursPromise
         if (stop) return
-        // Our articles are pinned to positions 1+2; the rest is ESPN.
-        // De-dup against ESPN by id in case an internal slug accidentally
-        // collides (won't happen with the 'internal:' prefix, but
-        // defensive in case the shape changes).
+        if (ours.length > 0) setArticles(ours)
+        setLoading(false)
+      } catch { /* withTimeout never rejects */ }
+
+      // Phase 2 — merge ESPN. allSettled so a failed Supabase doesn't
+      // swallow a successful ESPN payload (and vice-versa).
+      let combined: NewsArticle[] = []
+      try {
+        const settled = await Promise.allSettled([oursPromise, espnPromise])
+        if (stop) return
+        const ours = settled[0].status === 'fulfilled' ? settled[0].value : []
+        const espn = settled[1].status === 'fulfilled' ? settled[1].value : []
         const seen = new Set(ours.map((a) => a.id))
-        const combined = [...ours, ...espn.filter((a) => !seen.has(a.id))]
+        combined = [...ours, ...espn.filter((a) => !seen.has(a.id))]
         setArticles(combined)
         setError(null)
       } catch (e) {
@@ -147,8 +170,19 @@ export function NewsTicker() {
       } finally {
         if (!stop) setLoading(false)
       }
-      timer = window.setTimeout(load, 300_000)
+
+      // Quick retry on empty — catches cold-start where ESPN's first
+      // batch is dropped (mobile, new IP, etc.). Cap at 2 fast retries
+      // before falling back to the 5-min cadence.
+      if (combined.length === 0 && fastRetries < 2) {
+        fastRetries++
+        timer = window.setTimeout(load, 4_000)
+      } else {
+        fastRetries = 0
+        timer = window.setTimeout(load, 300_000)
+      }
     }
+
     void load()
     return () => { stop = true; if (timer) clearTimeout(timer) }
   }, [])
@@ -328,7 +362,7 @@ export function NewsTicker() {
                 {featured?.source} · {relativeTime(featured?.publishedAt)}
               </div>
               {/* Headline = gold for max pop */}
-              <h2 className="font-display font-bold text-2xl sm:text-3xl leading-tight max-w-3xl text-accent-gold">
+              <h2 className="font-sans font-bold text-2xl sm:text-3xl leading-tight max-w-3xl text-accent-gold">
                 {featured?.headline}
               </h2>
               {/* Description = pure white */}
@@ -370,7 +404,7 @@ export function NewsTicker() {
                   <div className="text-[9px] tracking-[0.18em] uppercase font-mono text-slate-500">
                     {a.source} · {relativeTime(a.publishedAt)}
                   </div>
-                  <div className="mt-1 text-sm font-display font-semibold leading-snug line-clamp-3 text-ink-900 group-hover:text-marine-950">
+                  <div className="mt-1 text-sm font-sans font-bold leading-snug line-clamp-3 text-slate-900 group-hover:text-accent-gold">
                     {a.headline}
                   </div>
                 </div>
@@ -494,7 +528,7 @@ function WelcomeBackToast({
                     <div className="text-[9px] font-mono uppercase tracking-[0.18em] text-cream/55">
                       {a.source}
                     </div>
-                    <div className="mt-0.5 text-[13px] font-display font-semibold leading-snug line-clamp-2 group-hover:text-accent-gold transition-colors">
+                    <div className="mt-0.5 text-[13px] font-sans font-bold leading-snug line-clamp-2 group-hover:text-accent-gold transition-colors">
                       {a.headline}
                     </div>
                   </div>

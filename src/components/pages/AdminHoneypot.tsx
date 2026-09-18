@@ -57,7 +57,7 @@ export function AdminHoneypot() {
         <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-3">
           Pressing 90 · operator access
         </div>
-        <h1 className="font-display font-bold text-2xl text-ink-900 mb-3">
+        <h1 className="font-display font-bold text-2xl text-slate-900 mb-3">
           Sign in
         </h1>
 
@@ -69,12 +69,12 @@ export function AdminHoneypot() {
             </div>
             <p className="text-xs text-slate-500 font-mono leading-relaxed">
               Didn't get it? Check your spam folder or contact{' '}
-              <span className="text-ink-900">admin@pressing90.live</span>.
+              <span className="text-slate-900">admin@pressing90.live</span>.
             </p>
             <button
               type="button"
               onClick={() => { setSent(false); setEmail(''); setErr(null) }}
-              className="mt-2 text-xs font-mono uppercase tracking-widest text-slate-400 hover:text-ink-900 transition-colors"
+              className="mt-2 text-xs font-mono uppercase tracking-widest text-slate-400 hover:text-slate-900 transition-colors"
             >
               ← use a different email
             </button>

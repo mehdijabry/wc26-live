@@ -42,7 +42,30 @@ export type EspnEvent = {
   competitions?: Array<{
     status?: EspnStatus
     competitors?: EspnCompetitor[]
+    // Pre-match 1X2 betting odds (DraftKings via ESPN, American moneyline).
+    // TWO shapes coexist in the same feed: legacy homeTeamOdds/awayTeamOdds
+    // (numbers) and the newer `moneyline.{home,away,draw}.close.odds`
+    // (signed strings like '-900'). Finished/live matches come back as
+    // odds:[null] — consumers must null-check each entry, not just the array.
+    odds?: Array<{
+      provider?: { name?: string }
+      details?: string
+      homeTeamOdds?: { moneyLine?: number }
+      awayTeamOdds?: { moneyLine?: number }
+      drawOdds?: { moneyLine?: number }
+      moneyline?: {
+        home?: { close?: { odds?: string }; open?: { odds?: string } }
+        away?: { close?: { odds?: string }; open?: { odds?: string } }
+        draw?: { close?: { odds?: string }; open?: { odds?: string } }
+      }
+    } | null>
     venue?: { fullName?: string; address?: { city?: string; country?: string } }
+    // ESPN tags every WC26 group-stage event with a human-readable label
+    // like "FIFA World Cup, Group A". This is the authoritative source
+    // for the group letter — trying to infer letters by kickoff-order
+    // silently swaps groups whose first fixture lands earlier than the
+    // group before them (WC26 has Group D playing before Group C).
+    altGameNote?: string
   }>
 }
 
@@ -196,136 +219,398 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
   '2026-fifa.worldq.concacaf':        { label: 'WC Qualifiers · CONCACAF', tier: 2, slug: 'fifa.worldq.concacaf' },
 
   // Tier 3 — UEFA Nations League (annual, official stakes)
-  '2026-uefa.nations':                { label: 'UEFA Nations League',     tier: 3, slug: 'uefa.nations' },
+  '2026-uefa.nations':                { label: 'UEFA Nations League',     tier: 2, slug: 'uefa.nations' },
 
   // Tier 8 — National-team friendlies (still senior men national, so
   // above ALL club competitions — that's the user rule).
-  '2026-international-friendly':     { label: 'International friendlies', tier: 8, slug: 'fifa.friendly' },
+  '2026-international-friendly':     { label: 'International friendlies', tier: 11, slug: 'fifa.friendly' },
 
   // -- Senior men's CLUBS ---------------------------------------------
 
   // Tier 10 — Champions League (the club crown)
-  '2026-uefa.champions':             { label: 'Champions League',        tier: 10, slug: 'uefa.champions' },
+  '2026-uefa.champions':             { label: 'Champions League',        tier: 6, slug: 'uefa.champions' },
 
   // Tier 11 — Copa Libertadores
-  '2026-conmebol.libertadores':       { label: 'Copa Libertadores',       tier: 11, slug: 'conmebol.libertadores' },
+  '2026-conmebol.libertadores':       { label: 'Copa Libertadores',       tier: 7, slug: 'conmebol.libertadores' },
 
   // Tier 12-16 — Top 5 European domestic leagues
-  '2026-esp.1':                       { label: 'LaLiga',                  tier: 12, slug: 'esp.1' },
-  '2026-eng.1':                       { label: 'Premier League',          tier: 13, slug: 'eng.1' },
-  '2026-ger.1':                       { label: 'Bundesliga',              tier: 14, slug: 'ger.1' },
-  '2026-ita.1':                       { label: 'Serie A',                 tier: 15, slug: 'ita.1' },
-  '2026-fra.1':                       { label: 'Ligue 1',                 tier: 16, slug: 'fra.1' },
+  '2026-eng.1':                       { label: 'Premier League',          tier: 9, slug: 'eng.1' },
+  '2026-esp.1':                       { label: 'LaLiga',                  tier: 9, slug: 'esp.1' },
+  '2026-ita.1':                       { label: 'Serie A',                 tier: 9, slug: 'ita.1' },
+  '2026-ger.1':                       { label: 'Bundesliga',              tier: 9, slug: 'ger.1' },
+  '2026-fra.1':                       { label: 'Ligue 1',                 tier: 9, slug: 'fra.1' },
 
   // Tier 17-18 — Other UEFA club competitions
-  '2026-uefa.europa':                 { label: 'Europa League',           tier: 17, slug: 'uefa.europa' },
-  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 18, slug: 'uefa.europa.conf' },
+  '2026-uefa.europa':                 { label: 'Europa League',           tier: 7, slug: 'uefa.europa' },
+  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 8, slug: 'uefa.europa.conf' },
 
   // Tier 19 — Other big domestic leagues (Americas + Saudi)
-  '2026-sau.1':                       { label: 'Saudi Pro League',         tier: 19, slug: 'sau.1' },
-  '2026-usa.1':                       { label: 'Major League Soccer',     tier: 19, slug: 'usa.1' },
-  '2026-mex.1':                       { label: 'Liga MX',                 tier: 19, slug: 'mex.1' },
-  '2026-bra.1':                       { label: 'Brasileirão',             tier: 19, slug: 'bra.1' },
-  '2026-arg.1':                       { label: 'Primera División',         tier: 19, slug: 'arg.1' },
+  '2026-sau.1':                       { label: 'Saudi Pro League',         tier: 13, slug: 'sau.1' },
+  '2026-usa.1':                       { label: 'Major League Soccer',     tier: 13, slug: 'usa.1' },
+  '2026-mex.1':                       { label: 'Liga MX',                 tier: 13, slug: 'mex.1' },
+  '2026-bra.1':                       { label: 'Brasileirão',             tier: 13, slug: 'bra.1' },
+  '2026-arg.1':                       { label: 'Primera División',         tier: 13, slug: 'arg.1' },
 
   // Tier 20 — Smaller European top divisions
-  '2026-ned.1':                       { label: 'Eredivisie',              tier: 20, slug: 'ned.1' },
-  '2026-por.1':                       { label: 'Primeira Liga',           tier: 20, slug: 'por.1' },
-  '2026-bel.1':                       { label: 'Belgian Pro League',      tier: 20, slug: 'bel.1' },
-  '2026-tur.1':                       { label: 'Süper Lig',               tier: 20, slug: 'tur.1' },
-  '2026-sco.1':                       { label: 'Scottish Premiership',    tier: 20, slug: 'sco.1' },
+  '2026-ned.1':                       { label: 'Eredivisie',              tier: 12, slug: 'ned.1' },
+  '2026-por.1':                       { label: 'Primeira Liga',           tier: 12, slug: 'por.1' },
+  '2026-bel.1':                       { label: 'Belgian Pro League',      tier: 12, slug: 'bel.1' },
+  '2026-tur.1':                       { label: 'Süper Lig',               tier: 12, slug: 'tur.1' },
+  '2026-sco.1':                       { label: 'Scottish Premiership',    tier: 12, slug: 'sco.1' },
 
   // Tier 21 — Other CONMEBOL clubs
-  '2026-conmebol.sudamericana':       { label: 'Copa Sudamericana',       tier: 21, slug: 'conmebol.sudamericana' },
+  '2026-conmebol.sudamericana':       { label: 'Copa Sudamericana',       tier: 8, slug: 'conmebol.sudamericana' },
 
   // Tier 22 — Second tiers
-  '2026-eng.2':                       { label: 'Championship (England)',   tier: 22, slug: 'eng.2' },
-  '2026-esp.2':                       { label: 'LaLiga 2',                 tier: 22, slug: 'esp.2' },
-  '2026-ger.2':                       { label: '2. Bundesliga',            tier: 22, slug: 'ger.2' },
-  '2026-ita.2':                       { label: 'Serie B',                  tier: 22, slug: 'ita.2' },
-  '2026-fra.2':                       { label: 'Ligue 2',                  tier: 22, slug: 'fra.2' },
+  '2026-eng.2':                       { label: 'Championship (England)',   tier: 14, slug: 'eng.2' },
+  '2026-esp.2':                       { label: 'LaLiga 2',                 tier: 14, slug: 'esp.2' },
+  '2026-ger.2':                       { label: '2. Bundesliga',            tier: 14, slug: 'ger.2' },
+  '2026-ita.2':                       { label: 'Serie B',                  tier: 14, slug: 'ita.2' },
+  '2026-fra.2':                       { label: 'Ligue 2',                  tier: 14, slug: 'fra.2' },
 
   // Tier 29 — Club friendlies (bottom of the senior-men-club range)
   '2026-club-friendly':                { label: 'Club friendlies',          tier: 29, slug: 'club.friendly' },
 }
 
 /**
- * ESPN league ID → competition mapping. Each entry verified by hitting
- *   curl https://site.api.espn.com/apis/site/v2/sports/soccer/{slug}/teams
- * and reading sports[0].leagues[0].id. NEVER add an entry by guessing —
- * the previous version had IDs that were off by a wide margin (e.g.
- * '11109' was mapped to AFCON; in reality it's the Maurice Revello /
- * Toulon Tournament U20 — Canada U20 vs Ivory Coast U23 ended up
- * labelled 'AFCON' on the home page, which is obviously wrong and
- * unacceptable).
+ * ESPN league ID → competition mapping — THE authoritative ordering of
+ * the daily board. Every id/slug/name below comes from ESPN's own
+ * leagues dropdown (site.api.espn.com/apis/site/v2/leagues/dropdown
+ * ?sport=soccer, 216 entries, pulled 2026-08-15). NEVER add an entry by
+ * guessing an id.
  *
- * To add a new league:
- *   1. Find its canonical slug in ESPN docs or the URL of its teams page
- *   2. `curl '…/{slug}/teams' | jq '.sports[0].leagues[0].id'`
- *   3. Cross-check by inspecting an event from /all/scoreboard with
- *      that ID in its uid (`l:NNNN`)
+ * TIER LADDER (user rule 2026-08-15: "the big 5 leagues first, then the
+ * rest by importance"). Lower = higher on the page. Ranges are shared
+ * with tagEvent()'s category bumps (+30 youth, +50 women), so keep men's
+ * senior entries inside 0-29.
+ *
+ *    0       FIFA World Cup
+ *    1       Continental national crowns (Euro, Copa América, AFCON, Asian Cup, Gold Cup)
+ *    2       World Cup qualifiers · UEFA Nations League
+ *    3       Continental qualifiers · CONCACAF Nations League · Finalissima
+ *    5       Club World Cup · Intercontinental Cup
+ *    6       Champions League + its qualifying + UEFA Super Cup
+ *    7       Europa League + qualifying · Libertadores
+ *    8       Conference League + qualifying · Sudamericana · CAF/AFC/Concacaf CL
+ *    9       Big-5 domestic leagues — PL · LaLiga · Serie A · Bundesliga · Ligue 1\n *   10       Big-5 domestic cups · super cups · Carabao Cup
+ *   11       National-team friendlies · minor regional national tournaments
+ *   11       Strong European leagues — Eredivisie · Primeira · Belgian · Süper Lig · Scottish
+ *   12       Big Americas + Saudi — Brasileirão · Argentina · MLS · Liga MX · Saudi Pro League
+ *   13       Big-5 second divisions (Championship, LaLiga 2, 2. Bundesliga, Serie B, Ligue 2)
+ *   14       Other Europe top flights (Austria, Swiss, Greece, Russia, Denmark, Sweden, Norway…)
+ *            + Asia/Africa/Oceania majors (J.League, K League, CSL, A-League, Egypt, Morocco, RSA)
+ *   15       Leagues Cup · CONMEBOL/CONCACAF national cups · other Americas top flights (Colombia, Chile, Uruguay…)
+ *   16       Third tiers · English League One/Two · Central-America top flights · Indian Super League
+ *   17       Regional cups & minor competitions (state championships, USL, MLS Next Pro…)
+ *   29       Club friendlies
+ *   30-49    Men's youth (via category bump)  ·  50-89 Women  ·  90+ unresolved
  */
 const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }> = {
-  // ======================================================================
-  // Same TIER BUDGET as LEAGUE_META above:
-  //    0 -  9   Senior MEN national teams  (THE event + continental crowns
-  //             + qualifiers + nations league + national friendlies)
-  //   10 - 29   Senior MEN clubs  (UCL → Libertadores → top 5 → MLS …)
-  //   30 - 49   Men's youth via category bump in tagEvent()
-  //   50 - 89   Women via category bump in tagEvent() (or hardcoded)
-  //   90+      'Other competitions' catch-all
-  // ======================================================================
+  // ── 0-3 · Senior men NATIONAL TEAMS ─────────────────────────────────
+  '606':   { label: 'FIFA World Cup',                    tier: 0, slug: 'fifa.world' },
+  '781':   { label: 'UEFA Euro',                         tier: 1, slug: 'uefa.euro' },
+  '780':   { label: 'Copa América',                      tier: 1, slug: 'conmebol.america' },
+  '3908':  { label: 'Africa Cup of Nations',             tier: 1, slug: 'caf.nations' },
+  '20219': { label: 'AFC Asian Cup',                     tier: 1, slug: 'afc.asian.cup' },
+  '4004':  { label: 'Concacaf Gold Cup',                 tier: 1, slug: 'concacaf.gold' },
+  '3924':  { label: "Men's Olympic Tournament",          tier: 1, slug: 'fifa.olympics' },
+  '786':   { label: 'World Cup Qualifiers · UEFA',       tier: 2, slug: 'fifa.worldq.uefa' },
+  '787':   { label: 'World Cup Qualifiers · CONMEBOL',   tier: 2, slug: 'fifa.worldq.conmebol' },
+  '788':   { label: 'World Cup Qualifiers · Concacaf',   tier: 2, slug: 'fifa.worldq.concacaf' },
+  '789':   { label: 'World Cup Qualifiers · AFC',        tier: 2, slug: 'fifa.worldq.afc' },
+  '790':   { label: 'World Cup Qualifiers · CAF',        tier: 2, slug: 'fifa.worldq.caf' },
+  '792':   { label: 'World Cup Qualifiers · OFC',        tier: 2, slug: 'fifa.worldq.ofc' },
+  '23449': { label: 'World Cup Qualifiers · Playoffs',   tier: 2, slug: 'fifa.wcq.ply' },
+  '2395':  { label: 'UEFA Nations League',               tier: 2, slug: 'uefa.nations' },
+  '3947':  { label: 'Euro Qualifiers',                   tier: 3, slug: 'uefa.euroq' },
+  '8315':  { label: 'AFCON Qualifiers',                  tier: 3, slug: 'caf.nations_qual' },
+  '5662':  { label: 'Asian Cup Qualifiers',              tier: 3, slug: 'afc.cupq' },
+  '19778': { label: 'Gold Cup Qualifiers',               tier: 3, slug: 'concacaf.gold_qual' },
+  '19267': { label: 'Concacaf Nations League',           tier: 3, slug: 'concacaf.nations.league' },
+  '20704': { label: 'Finalissima',                       tier: 3, slug: 'global.finalissima' },
+  '23107': { label: 'Arabian Gulf Cup',                  tier: 11, slug: 'global.gulf_cup' },
+  '8365':  { label: 'African Nations Championship',      tier: 11, slug: 'caf.championship' },
+  '5672':  { label: 'ASEAN Championship',                tier: 11, slug: 'aff.championship' },
+  '18914': { label: 'SAFF Championship',                 tier: 11, slug: 'afc.saff.championship' },
+  '20220': { label: 'COSAFA Cup',                        tier: 11, slug: 'caf.cosafa' },
 
-  // -- Senior MEN national teams (tier 0-9) ---------------------------
-  '606':   { label: 'FIFA World Cup',          tier: 0,  slug: 'fifa.world' },
-  '781':   { label: 'UEFA Euro',               tier: 1,  slug: 'uefa.euro' },
-  '780':   { label: 'Copa America',            tier: 1,  slug: 'conmebol.america' },
-  '4004':  { label: 'CONCACAF Gold Cup',       tier: 1,  slug: 'concacaf.gold' },
-  '3908':  { label: 'AFCON',                   tier: 1,  slug: 'caf.nations' },
-  '2395':  { label: 'UEFA Nations League',     tier: 3,  slug: 'uefa.nations' },
+  // ── 5 · Global club ─────────────────────────────────────────────────
+  '5501':  { label: 'FIFA Club World Cup',               tier: 5, slug: 'fifa.cwc' },
+  '22902': { label: 'FIFA Intercontinental Cup',         tier: 5, slug: 'fifa.intercontinental_cup' },
 
-  // -- Senior MEN clubs (tier 10-29) ---------------------------------
-  '775':   { label: 'Champions League',        tier: 10, slug: 'uefa.champions' },
-  '783':   { label: 'Copa Libertadores',       tier: 11, slug: 'conmebol.libertadores' },
-  '740':   { label: 'LaLiga',                  tier: 12, slug: 'esp.1' },
-  '700':   { label: 'Premier League',          tier: 13, slug: 'eng.1' },
-  '720':   { label: 'Bundesliga',              tier: 14, slug: 'ger.1' },
-  '730':   { label: 'Serie A',                 tier: 15, slug: 'ita.1' },
-  '710':   { label: 'Ligue 1',                 tier: 16, slug: 'fra.1' },
-  '776':   { label: 'Europa League',           tier: 17, slug: 'uefa.europa' },
-  '20296': { label: 'Conference League',       tier: 18, slug: 'uefa.europa.conf' },
-  '770':   { label: 'Major League Soccer',     tier: 19, slug: 'usa.1' },
-  '760':   { label: 'Liga MX',                 tier: 19, slug: 'mex.1' },
+  // ── 6 · Champions League ────────────────────────────────────────────
+  '775':   { label: 'Champions League',                  tier: 6, slug: 'uefa.champions' },
 
-  // -- Youth tournaments (intrinsic — already youth, no bump needed) --
-  // Maurice Revello / Toulon Tournament is always U20. Hardcoding at
-  // tier 35 (mid men's-youth range) so it lands correctly even if
-  // detectCategory misses the U20 marker in a given event's slug.
-  '11109': { label: 'Maurice Revello Tournament', tier: 35, slug: 'maurice.revello' },
+  // ── 7 · THE BIG 5 (order inside the tier: PL → LaLiga → Serie A → Bundesliga → Ligue 1) ──
+  '700':   { label: 'Premier League',                    tier: 9, slug: 'eng.1' },
+  '740':   { label: 'LaLiga',                            tier: 9, slug: 'esp.1' },
+  '730':   { label: 'Serie A',                           tier: 9, slug: 'ita.1' },
+  '720':   { label: 'Bundesliga',                        tier: 9, slug: 'ger.1' },
+  '710':   { label: 'Ligue 1',                           tier: 9, slug: 'fra.1' },
 
-  // ⚠️ L20649 is the WOMEN'S 2027 World Cup qualifiers (UEFA). Easy to
-  // mis-tag as 2026 (men's) because ESPN's scoreboard endpoint strips the
-  // 'W' marker out of team names — only the /summary endpoint exposes
-  // 'FIFA Women's World Cup Qualifying - UEFA'. Verified 2026-06-09 by
-  // calling site.web.api.espn.com/.../summary?event=761277, which returned
-  // header.league.name = "FIFA Women's World Cup Qualifying - UEFA" and
-  // header.season.name = "2027 FIFA Women's World Cup Qualifying - UEFA,
-  // League Phase".
-  //
-  // Tier 50 ranks below every senior men's competition AND every men's
-  // youth tournament — the user wanted women's grouped at the bottom of
-  // the daily board (general football audience preference).
-  '20649': { label: "FIFA Women's WC 27 Qualifying · Europe", tier: 50, slug: 'fifa.wworldq.uefa' },
+  // ── 8 · Europa League · Libertadores · Big-5 domestic cups ─────────
+  '776':   { label: 'Europa League',                     tier: 7, slug: 'uefa.europa' },
+  '783':   { label: 'Copa Libertadores',                 tier: 7, slug: 'conmebol.libertadores' },
+  '3918':  { label: 'FA Cup',                            tier: 10, slug: 'eng.fa' },
+  '3951':  { label: 'Copa del Rey',                      tier: 10, slug: 'esp.copa_del_rey' },
+  '3956':  { label: 'Coppa Italia',                      tier: 10, slug: 'ita.coppa_italia' },
+  '3954':  { label: 'DFB-Pokal',                         tier: 10, slug: 'ger.dfb_pokal' },
+  '3952':  { label: 'Coupe de France',                   tier: 10, slug: 'fra.coupe_de_france' },
 
-  // USL minor league (USA tier 3). ESPN ships season.slug = 'group-stage' on
-  // these, which used to render as 'Group Stage' as the competition header.
-  '22059': { label: 'USL League One',              tier: 15, slug: 'usl.l1' },
+  // ── 9 · Conference League · Sudamericana · other continental club · super cups · League Cup ──
+  '20296': { label: 'Conference League',                 tier: 8, slug: 'uefa.europa.conf' },
+  '5454':  { label: 'Copa Sudamericana',                 tier: 8, slug: 'conmebol.sudamericana' },
+  '2391':  { label: 'CAF Champions League',              tier: 8, slug: 'caf.champions' },
+  '3902':  { label: 'AFC Champions League Elite',        tier: 8, slug: 'afc.champions' },
+  '5699':  { label: 'Concacaf Champions Cup',            tier: 8, slug: 'concacaf.champions' },
+  '5692':  { label: 'Concacaf Champions Cup',            tier: 8, slug: 'concacaf.champions_cup' },
+  '5462':  { label: 'UEFA Super Cup',                    tier: 6, slug: 'uefa.super_cup' },
+  '5329':  { label: 'Community Shield',                  tier: 10, slug: 'eng.charity' },
+  '8102':  { label: 'Supercopa de España',               tier: 10, slug: 'esp.super_cup' },
+  '8103':  { label: 'Supercoppa Italiana',               tier: 10, slug: 'ita.super_cup' },
+  '8101':  { label: 'DFL-Supercup',                      tier: 10, slug: 'ger.super_cup' },
+  '8357':  { label: 'Trophée des Champions',             tier: 10, slug: 'fra.super_cup' },
+  '3920':  { label: 'Carabao Cup',                       tier: 10, slug: 'eng.league_cup' },
+  '8333':  { label: 'CONMEBOL Recopa',                   tier: 8, slug: 'conmebol.recopa' },
+  '18000': { label: 'CAF Confederation Cup',             tier: 8, slug: 'caf.confed' },
+  '2466':  { label: 'AFC Champions League Two',          tier: 8, slug: 'afc.cup' },
+  '19874': { label: 'Champions League Qualifying',       tier: 6, slug: 'uefa.champions_qual' },
+  '19887': { label: 'Europa League Qualifying',          tier: 7, slug: 'uefa.europa_qual' },
+  '20221': { label: 'Conference League Qualifying',      tier: 8, slug: 'uefa.europa.conf_qual' },
+
+  // ── 10 · National-team friendlies ──────────────────────────────────
+  '3922':  { label: 'International Friendlies',          tier: 11, slug: 'fifa.friendly' },
+  '19725': { label: 'Non-FIFA Friendlies',               tier: 11, slug: 'nonfifa' },
+
+  // ── 11 · Strong European leagues ───────────────────────────────────
+  '725':   { label: 'Eredivisie',                        tier: 12, slug: 'ned.1' },
+  '715':   { label: 'Primeira Liga',                     tier: 12, slug: 'por.1' },
+  '3901':  { label: 'Belgian Pro League',                tier: 12, slug: 'bel.1' },
+  '3946':  { label: 'Süper Lig',                         tier: 12, slug: 'tur.1' },
+  '735':   { label: 'Scottish Premiership',              tier: 12, slug: 'sco.1' },
+
+  // ── 12 · Big Americas + Saudi ──────────────────────────────────────
+  '630':   { label: 'Brasileirão',                       tier: 13, slug: 'bra.1' },
+  '745':   { label: 'Liga Profesional Argentina',        tier: 13, slug: 'arg.1' },
+  '770':   { label: 'MLS',                               tier: 13, slug: 'usa.1' },
+  '760':   { label: 'Liga MX',                           tier: 13, slug: 'mex.1' },
+  '21231': { label: 'Saudi Pro League',                  tier: 13, slug: 'ksa.1' },
+
+  // ── 13 · Big-5 second divisions ────────────────────────────────────
+  '3914':  { label: 'EFL Championship',                  tier: 14, slug: 'eng.2' },
+  '3921':  { label: 'LaLiga 2',                          tier: 14, slug: 'esp.2' },
+  '3927':  { label: '2. Bundesliga',                     tier: 14, slug: 'ger.2' },
+  '3931':  { label: 'Serie B',                           tier: 14, slug: 'ita.2' },
+  '3926':  { label: 'Ligue 2',                           tier: 14, slug: 'fra.2' },
+
+  // ── 14 · Other Europe top flights + Asia/Africa/Oceania majors ─────
+  '3907':  { label: 'Austrian Bundesliga',               tier: 15, slug: 'aut.1' },
+  '3955':  { label: 'Greek Super League',                tier: 15, slug: 'gre.1' },
+  '3939':  { label: 'Russian Premier League',            tier: 15, slug: 'rus.1' },
+  '3913':  { label: 'Danish Superliga',                  tier: 15, slug: 'den.1' },
+  '3945':  { label: 'Allsvenskan',                       tier: 15, slug: 'swe.1' },
+  '3960':  { label: 'Eliteserien',                       tier: 15, slug: 'nor.1' },
+  '750':   { label: 'J.League',                          tier: 15, slug: 'jpn.1' },
+  '8376':  { label: 'Chinese Super League',              tier: 15, slug: 'chn.1' },
+  '3906':  { label: 'A-League',                          tier: 15, slug: 'aus.1' },
+  '3937':  { label: 'South African Premiership',         tier: 15, slug: 'rsa.1' },
+  '3957':  { label: 'KNVB Beker',                        tier: 15, slug: 'ned.cup' },
+  '20922': { label: 'Taça de Portugal',                  tier: 15, slug: 'por.taca.portugal' },
+  '3959':  { label: 'Scottish Cup',                      tier: 15, slug: 'sco.tennents' },
+  '5330':  { label: 'Scottish League Cup',               tier: 15, slug: 'sco.cis' },
+  '22057': { label: "Saudi King's Cup",                  tier: 15, slug: 'ksa.kings.cup' },
+  '5337':  { label: 'U.S. Open Cup',                     tier: 15, slug: 'usa.open' },
+  '8306':  { label: 'Copa do Brasil',                    tier: 15, slug: 'bra.copa_do_brazil' },
+  '8107':  { label: 'Copa Argentina',                    tier: 15, slug: 'arg.copa' },
+  '10749': { label: 'Johan Cruyff Shield',               tier: 15, slug: 'ned.supercup' },
+  '19721': { label: 'Supercopa do Brasil',               tier: 15, slug: 'bra.supercopa_do_brazil' },
+  '8346':  { label: 'Supercopa Argentina',               tier: 15, slug: 'arg.supercopa' },
+  '17893': { label: 'Campeón de Campeones',              tier: 15, slug: 'mex.campeon' },
+
+  // ── 15 · Leagues Cup · other Americas top flights · their cups ─────
+  '19425': { label: 'Leagues Cup',                       tier: 16, slug: 'concacaf.leagues.cup' },
+  '650':   { label: 'Colombian Primera A',               tier: 16, slug: 'col.1' },
+  '640':   { label: 'Chilean Primera División',          tier: 16, slug: 'chi.1' },
+  '680':   { label: 'Liga AUF Uruguaya',                 tier: 16, slug: 'uru.1' },
+  '670':   { label: 'Peruvian Liga 1',                   tier: 16, slug: 'per.1' },
+  '660':   { label: 'LigaPro Ecuador',                   tier: 16, slug: 'ecu.1' },
+  '3934':  { label: 'Paraguayan Primera División',       tier: 16, slug: 'par.1' },
+  '3949':  { label: 'Venezuelan Primera División',       tier: 16, slug: 'ven.1' },
+  '620':   { label: 'Bolivian Liga Profesional',         tier: 16, slug: 'bol.1' },
+  '8313':  { label: 'Copa Colombia',                     tier: 16, slug: 'col.copa' },
+  '8312':  { label: 'Copa Chile',                        tier: 16, slug: 'chi.copa_chi' },
+  '23284': { label: 'Copa Bolivia',                      tier: 16, slug: 'bol.copa' },
+  '19112': { label: 'Superliga Colombiana',              tier: 16, slug: 'col.superliga' },
+  '8364':  { label: 'Supercopa de Chile',                tier: 16, slug: 'chi.super_cup' },
+  '20526': { label: 'Supercopa Paraguaya',               tier: 16, slug: 'par.1.supercopa' },
+  '18771': { label: 'Campeones Cup',                     tier: 16, slug: 'campeones.cup' },
+  '22947': { label: 'Concacaf Central American Cup',     tier: 16, slug: 'concacaf.central.american.cup' },
+
+  // ── 16 · Third tiers · Central America · India · Big-5 lower ───────
+  '3915':  { label: 'League One',                        tier: 17, slug: 'eng.3' },
+  '3916':  { label: 'League Two',                        tier: 17, slug: 'eng.4' },
+  '3917':  { label: 'National League',                   tier: 17, slug: 'eng.5' },
+  '18481': { label: 'EFL Trophy',                        tier: 17, slug: 'eng.trophy' },
+  '3940':  { label: 'Scottish Championship',             tier: 17, slug: 'sco.2' },
+  '3933':  { label: 'Keuken Kampioen Divisie',           tier: 17, slug: 'ned.2' },
+  '3932':  { label: 'Liga de Expansión MX',              tier: 17, slug: 'mex.2' },
+  '4007':  { label: 'Brasileirão Série B',               tier: 17, slug: 'bra.2' },
+  '3903':  { label: 'Primera Nacional',                  tier: 17, slug: 'arg.2' },
+  '3948':  { label: 'Segunda División Uruguay',          tier: 17, slug: 'uru.2' },
+  '3929':  { label: 'Honduran Liga Nacional',            tier: 17, slug: 'hon.1' },
+  '4005':  { label: 'Costa Rican Primera División',      tier: 17, slug: 'crc.1' },
+  '3928':  { label: 'Guatemalan Liga Nacional',          tier: 17, slug: 'gua.1' },
+  '3943':  { label: 'Salvadoran Primera División',       tier: 17, slug: 'slv.1' },
+  '8316':  { label: 'Indian Super League',               tier: 17, slug: 'ind.1' },
+  '4002':  { label: 'USL Championship',                  tier: 17, slug: 'usa.usl.1' },
+
+  // ── 17 · Regional / minor ──────────────────────────────────────────
+  '19915': { label: 'USL League One',                    tier: 18, slug: 'usa.usl.l1' },
+  '22059': { label: 'USL Cup',                           tier: 18, slug: 'usa.usl.l1.cup' },
+  '3904':  { label: 'Primera B Metropolitana',           tier: 18, slug: 'arg.3' },
+  '2265':  { label: 'Campeonato Carioca',                tier: 18, slug: 'bra.camp.carioca' },
+  '8207':  { label: 'Campeonato Paulista',               tier: 18, slug: 'bra.camp.paulista' },
+  '2272':  { label: 'Campeonato Gaúcho',                 tier: 18, slug: 'bra.camp.gaucho' },
+  '10872': { label: 'Campeonato Mineiro',                tier: 18, slug: 'bra.camp.mineiro' },
+  '5487':  { label: 'NCAA Men’s Soccer',                 tier: 18, slug: 'usa.ncaa.m.1' },
+  '11109': { label: 'Maurice Revello Tournament',        tier: 35, slug: 'maurice.revello' },
+
+  // ── 29 · Club friendlies (bottom of the men's-club range) ──────────
+  '19834': { label: 'Club Friendlies',                   tier: 29, slug: 'club.friendly' },
+  '11108': { label: 'Emirates Cup',                      tier: 29, slug: 'friendly.emirates_cup' },
+  '17929': { label: 'Trofeo Joan Gamper',                tier: 29, slug: 'esp.joan_gamper' },
+  '20571': { label: 'Pinatar Cup',                       tier: 29, slug: 'global.pinatar_cup' },
+
+  // ── 50+ · Women (explicit — the scoreboard strips the W marker) ────
+  '795':   { label: "Women's World Cup",                 tier: 50, slug: 'fifa.wwc' },
+  '17915': { label: "Women's Euro",                      tier: 51, slug: 'uefa.weuro' },
+  '3925':  { label: "Women's Olympic Tournament",        tier: 51, slug: 'fifa.w.olympics' },
+  '20649': { label: "Women's World Cup Qualifiers · UEFA", tier: 52, slug: 'fifa.wworldq.uefa' },
+  '23088': { label: "Women's Nations League",            tier: 52, slug: 'uefa.w.nations' },
+  '23523': { label: "Women's Africa Cup of Nations",     tier: 52, slug: 'caf.w.nations' },
+  '20703': { label: 'Copa América Femenina',             tier: 52, slug: 'conmebol.america.femenina' },
+  '19483': { label: "Women's Champions League",          tier: 55, slug: 'uefa.wchampions' },
+  '8097':  { label: "Women's Super League",              tier: 56, slug: 'eng.w.1' },
+  '20956': { label: 'Liga F',                            tier: 56, slug: 'esp.w.1' },
+  '20955': { label: 'Première Ligue',                    tier: 56, slug: 'fra.w.1' },
+  '8301':  { label: 'NWSL',                              tier: 57, slug: 'usa.nwsl' },
+  '19945': { label: 'Vrouwen Eredivisie',                tier: 58, slug: 'ned.w.1' },
+  '18992': { label: 'A-League Women',                    tier: 58, slug: 'aus.w.1' },
+  '3923':  { label: "Women's International Friendlies",  tier: 60, slug: 'fifa.friendly.w' },
 }
 
 function leagueIdFromUid(uid?: string): string | null {
   if (!uid) return null
   const m = /l:(\d+)/.exec(uid)
   return m ? m[1] : null
+}
+
+// In-tier display order for the competitions that share a tier and have
+// a conventional order everyone expects. Anything not listed ranks after
+// the listed ones (alphabetically). Keep short — this is the ONLY place
+// that overrides the tier ladder.
+const SLUG_RANK: Record<string, number> = {
+  // Tier 6: UCL → its qualifying → UEFA Super Cup
+  'uefa.champions': 1, 'uefa.champions_qual': 2, 'uefa.super_cup': 3,
+  // Tier 7: UEL → its qualifying → Libertadores
+  'uefa.europa': 1, 'uefa.europa_qual': 2, 'conmebol.libertadores': 3,
+  // Tier 8: Conference → its qualifying → Sudamericana → continental CLs
+  'uefa.europa.conf': 1, 'uefa.europa.conf_qual': 2, 'conmebol.sudamericana': 3,
+  'caf.champions': 4, 'afc.champions': 5, 'concacaf.champions': 6, 'concacaf.champions_cup': 6,
+  // Tier 9: the Big 5, conventional order
+  'eng.1': 1, 'esp.1': 2, 'ita.1': 3, 'ger.1': 4, 'fra.1': 5,
+  // Tier 10: domestic cups then super cups then Carabao
+  'eng.fa': 1, 'esp.copa_del_rey': 2, 'ita.coppa_italia': 3, 'ger.dfb_pokal': 4, 'fra.coupe_de_france': 5,
+  'eng.league_cup': 6, 'eng.charity': 7, 'esp.super_cup': 8, 'ita.super_cup': 9, 'ger.super_cup': 10, 'fra.super_cup': 11,
+  // Tier 12
+  'ned.1': 1, 'por.1': 2, 'bel.1': 3, 'tur.1': 4, 'sco.1': 5,
+  // Tier 13
+  'bra.1': 1, 'arg.1': 2, 'usa.1': 3, 'mex.1': 4, 'ksa.1': 5, 'sau.1': 5,
+  // Tier 14
+  'eng.2': 1, 'esp.2': 2, 'ita.2': 3, 'ger.2': 4, 'fra.2': 5,
+}
+function slugRank(slug: string): number {
+  return SLUG_RANK[slug] ?? 999
+}
+
+// ─── Dynamic league-name resolution ─────────────────────────────────────
+// The static LEAGUE_META / LEAGUE_BY_ID tables can't cover every league
+// ESPN's /all scoreboard emits (Carabao Cup, Liga de Expansión MX, USL…).
+// Unresolved leagues used to render as 'Other competitions' or, worse, a
+// round marker masquerading as a name ('Apertura 2026', 'First Stage').
+// User rule: EVERY competition shows its real name. Resolution chain:
+//   1. static tables (curated labels + tiers) — unchanged
+//   2. ESPN header scoreboard (1 bulk request/session → id → name)
+//   3. per-league match summary (1 request per still-unknown league;
+//      header.league carries id + name + slug)
+// Results persist in localStorage so each league is resolved once ever.
+const DYN_LS_KEY = 'p90.dynLeagues.v2' // v2: tier ladder rewrite 2026-08-15 (old v1 entries carried tier 45)
+const dynLeagues = new Map<string, { label: string; tier: number; slug: string }>()
+try {
+  const raw = localStorage.getItem(DYN_LS_KEY)
+  if (raw) {
+    for (const [id, v] of Object.entries(JSON.parse(raw) as Record<string, { label: string; tier: number; slug: string }>)) {
+      dynLeagues.set(id, v)
+    }
+  }
+} catch { /* SSR / private mode */ }
+
+function persistDynLeagues() {
+  try { localStorage.setItem(DYN_LS_KEY, JSON.stringify(Object.fromEntries(dynLeagues))) } catch { /* full/private */ }
+}
+
+let headerFetchedThisSession = false
+
+async function ensureLeagueNames(events: EspnEvent[]): Promise<void> {
+  const unknown = new Set<string>()
+  const sampleEvent = new Map<string, string>()
+  for (const ev of events) {
+    const id = leagueIdFromUid((ev as { uid?: string }).uid)
+    if (!id || LEAGUE_BY_ID[id] || dynLeagues.has(id)) continue
+    unknown.add(id)
+    if (ev.id && !sampleEvent.has(id)) sampleEvent.set(id, ev.id)
+  }
+  if (unknown.size === 0) return
+
+  // Layer 2 — bulk header map (once per session; covers most leagues
+  // with matches today).
+  if (!headerFetchedThisSession) {
+    headerFetchedThisSession = true
+    try {
+      const r = await fetch('https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=soccer', {
+        signal: AbortSignal.timeout(5000),
+      })
+      const d = await r.json() as { sports?: Array<{ leagues?: Array<{ id?: number | string; name?: string; shortName?: string; slug?: string }> }> }
+      for (const lg of d.sports?.[0]?.leagues ?? []) {
+        const id = String(lg.id ?? '')
+        const label = lg.name ?? lg.shortName
+        if (!id || !label || dynLeagues.has(id)) continue
+        // Inherit the curated entry (label + tier) when the slug is known
+        // to LEAGUE_META; otherwise a neutral minor-league tier.
+        const meta = lg.slug ? (LEAGUE_META['2026-' + lg.slug] ?? LEAGUE_META[lg.slug]) : undefined
+        dynLeagues.set(id, meta ?? { label, tier: 20, slug: lg.slug ?? 'dyn-' + id })
+      }
+    } catch { /* header down — the summary path below still resolves */ }
+  }
+  for (const id of Array.from(unknown)) if (dynLeagues.has(id)) unknown.delete(id)
+
+  // Layer 3 — one summary call per still-unknown league (capped).
+  await Promise.all(Array.from(unknown).slice(0, 8).map(async (id) => {
+    const evId = sampleEvent.get(id)
+    if (!evId) return
+    try {
+      const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/all/summary?event=${evId}`, {
+        signal: AbortSignal.timeout(5000),
+      })
+      const d = await r.json() as { header?: { league?: { name?: string; abbreviation?: string; slug?: string } } }
+      const lg = d.header?.league
+      const label = lg?.name ?? lg?.abbreviation
+      if (!label) return
+      const meta = lg?.slug ? (LEAGUE_META['2026-' + lg.slug] ?? LEAGUE_META[lg.slug]) : undefined
+      dynLeagues.set(id, meta ?? { label, tier: 20, slug: lg?.slug ?? 'dyn-' + id })
+    } catch { /* stays unknown — slug fallback still applies */ }
+  }))
+  persistDynLeagues()
 }
 
 /**
@@ -400,6 +685,9 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
   if (!base) {
     const leagueId = leagueIdFromUid(uid)
     if (leagueId && LEAGUE_BY_ID[leagueId]) base = LEAGUE_BY_ID[leagueId]
+    // Dynamically-resolved leagues (ESPN header / summary lookups,
+    // persisted in localStorage) — see ensureLeagueNames().
+    else if (leagueId && dynLeagues.has(leagueId)) base = dynLeagues.get(leagueId)!
   }
 
   // Substring fallbacks
@@ -407,22 +695,22 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
     const bare = (baseSlug ?? '').replace(/^\d+-/, '')
     if (bare.includes('fifa.world')) {
       base = bare.includes('worldq')
-        ? { label: 'WC Qualifiers', tier: 11, slug: 'fifa.worldq' }
+        ? { label: 'World Cup Qualifiers', tier: 2, slug: 'fifa.worldq' }
         : { label: 'FIFA World Cup', tier: 0, slug: 'fifa.world' }
     } else if (bare.includes('uefa.champions')) {
-      base = { label: 'Champions League', tier: 1, slug: 'uefa.champions' }
+      base = { label: 'Champions League', tier: 6, slug: 'uefa.champions' }
     } else if (bare.includes('uefa.europa.conf')) {
-      base = { label: 'Conference League', tier: 9, slug: 'uefa.europa.conf' }
+      base = { label: 'Conference League', tier: 8, slug: 'uefa.europa.conf' }
     } else if (bare.includes('uefa.europa')) {
-      base = { label: 'Europa League', tier: 8, slug: 'uefa.europa' }
+      base = { label: 'Europa League', tier: 7, slug: 'uefa.europa' }
     } else if (bare.includes('uefa.euro')) {
-      base = { label: 'UEFA Euro', tier: 10, slug: 'uefa.euro' }
+      base = { label: 'UEFA Euro', tier: 1, slug: 'uefa.euro' }
     } else if (bare.includes('conmebol.libert')) {
-      base = { label: 'Copa Libertadores', tier: 2, slug: 'conmebol.libertadores' }
+      base = { label: 'Copa Libertadores', tier: 7, slug: 'conmebol.libertadores' }
     } else if (bare.includes('international-friendly')) {
       // National-team friendlies — senior men, so they rank above ALL
       // club competitions (user rule).
-      base = { label: 'International friendlies', tier: 8, slug: 'fifa.friendly' }
+      base = { label: 'International Friendlies', tier: 11, slug: 'fifa.friendly' }
     } else if (bare.includes('club-friendly') || bare.includes('club.friendly')) {
       base = { label: 'Club friendlies', tier: 29, slug: 'club.friendly' }
     } else {
@@ -436,16 +724,24 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
       // match belongs to. When we can't map to a real league, label the
       // group 'Other competitions' so it's at least visibly a catch-all
       // and not a fake round-as-competition string.
-      const ROUND_SLUGS = new Set([
+      // A season slug that is (or starts with) a round marker must NEVER
+      // become a section name — 'Apertura 2026', 'First Stage', 'Third
+      // Round' as competition headers was exactly the user complaint.
+      // With the dynamic resolver above this branch is a corner case;
+      // when it does fire we label the section 'Football' rather than
+      // the banned 'Other competitions' catch-all.
+      const ROUND_MARKERS = [
         'league-phase', 'group-stage', 'regular-season', 'play-off',
-        'playoffs', 'final', 'finals', 'qualifying', 'qualifiers',
-        'apertura', 'clausura', 'second-round', 'first-round',
-        'knockout-round', 'promotion-semifinals', 'promotion-final',
-      ])
-      const isRoundOnly = ROUND_SLUGS.has(bare)
-      const pretty = isRoundOnly
-        ? 'Other competitions'
-        : (bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Other competitions')
+        'playoff', 'final', 'qualifying', 'qualifier', 'apertura',
+        'clausura', 'intermedio', 'first-round', 'second-round',
+        'third-round', 'fourth-round', 'first-stage', 'second-stage',
+        'stage-', 'stage 1', 'knockout', 'promotion', 'relegation',
+        'round-of', 'torneo',
+      ]
+      const looksLikeRound = ROUND_MARKERS.some((m) => bare.startsWith(m) || bare.includes(m))
+      const pretty = looksLikeRound
+        ? 'Football'
+        : (bare.replace(/[-.]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) || 'Football')
       // Tier 90 → catch-all bucket lives below women (50-89) so the
       // daily board never floats an unidentified competition above
       // properly-tagged ones.
@@ -1555,7 +1851,27 @@ export const api = {
   fixtures: () => jgetDirect<EspnScoreboard>(
     `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=200`
   ),
-  tournament: () => jget<TournamentResponse>('/tournament'),
+  // Worker first (KV-cached), then DIRECT ESPN fallback from the
+  // browser. Post-tournament (Aug 2026) Akamai started 403-ing ESPN
+  // requests from Cloudflare Workers IPs, so /tournament came back with
+  // 0 events and the whole WC26 archive (bracket, groups, schedule)
+  // rendered as an endless "Fetching the draw…". Browser IPs pass fine
+  // and ESPN's CORS is open — same trick api.today already uses.
+  tournament: async (): Promise<TournamentResponse> => {
+    let viaWorker: TournamentResponse | null = null
+    try { viaWorker = await jget<TournamentResponse>('/tournament') } catch { /* fall through */ }
+    if (viaWorker && (viaWorker.events?.length ?? 0) > 0) return viaWorker
+    const raw = await jgetDirect<EspnScoreboard>(
+      `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=300`
+    )
+    const events = raw.events ?? []
+    return {
+      total: events.length,
+      hasLive: events.some((e) => e.status?.type?.state === 'in'),
+      events,
+      fetchedAt: new Date().toISOString(),
+    }
+  },
   standings: () => jget<unknown>('/standings'),
   match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
   team: (code: string) => jget<unknown>(`/teams/${code}`),
@@ -1570,15 +1886,56 @@ export const api = {
   // shape the UI already consumes.
   today: async (date?: string): Promise<DailyResponse> => {
     const d = date ?? ymdLocal(new Date())
+    // ── Local-day correctness ──────────────────────────────────────
+    // `d` is the visitor's LOCAL calendar day. ESPN's `dates=` param
+    // buckets matches by US Eastern time, so one bucket never maps 1:1
+    // onto the visitor's day: a 22:00 ET kickoff is TOMORROW for a
+    // visitor in Morocco and must appear under his next local day.
+    // Fix: compute the local 24h window [00:00, 24:00), fetch every
+    // ESPN bucket the window's edges touch (converted to both ET and
+    // UTC so we cover either bucketing convention — usually 2 buckets),
+    // then keep only events whose real kickoff timestamp falls inside
+    // the local window. Times were already displayed local; now the
+    // DAY grouping is local too.
+    const y = Number(d.slice(0, 4))
+    const mo = Number(d.slice(4, 6))
+    const da = Number(d.slice(6, 8))
+    const start = new Date(y, mo - 1, da)       // local midnight
+    const end = new Date(y, mo - 1, da + 1)     // next local midnight
+    const ymdInZone = (dt: Date, timeZone: string) =>
+      new Intl.DateTimeFormat('en-CA', { timeZone }).format(dt).replace(/-/g, '')
+    const edges = [start, new Date(end.getTime() - 1)]
+    const buckets = Array.from(new Set(
+      edges.flatMap((dt) => [ymdInZone(dt, 'America/New_York'), ymdInZone(dt, 'UTC')])
+    ))
     // Kick the WC group-letter cache off in parallel with the daily fetch
     // — by the time we group + render, roundContext() can look up team
     // abbreviations synchronously and label WC matches 'Group D' instead
-    // of just 'Group stage'. Both promises typically finish under 250ms.
-    const [raw] = await Promise.all([
-      jgetDirect<EspnScoreboard>(`${ESPN_ALL}?dates=${d}&limit=300`),
+    // of just 'Group stage'. All promises typically finish under 250ms.
+    const [raws] = await Promise.all([
+      Promise.all(buckets.map((b) =>
+        jgetDirect<EspnScoreboard>(`${ESPN_ALL}?dates=${b}&limit=300`)
+          .catch(() => ({ events: [] as EspnEvent[] }))
+      )),
       ensureWcGroupMap(),
     ])
-    const events = raw.events ?? []
+    const seen = new Set<string>()
+    const events: EspnEvent[] = []
+    const startMs = start.getTime()
+    const endMs = end.getTime()
+    for (const raw of raws) {
+      for (const ev of raw.events ?? []) {
+        if (!ev.id || seen.has(ev.id)) continue
+        seen.add(ev.id)
+        if (!ev.date) continue
+        const t = new Date(ev.date).getTime()
+        if (t >= startMs && t < endMs) events.push(ev)
+      }
+    }
+    // Resolve every league's real name BEFORE grouping — tagEvent reads
+    // the dynamic map synchronously. Cheap: cached leagues cost nothing,
+    // unknown ones resolve once ever (localStorage).
+    await ensureLeagueNames(events)
     // Group events by league slug
     const byLeague = new Map<string, { label: string; tier: number; events: EspnEvent[] }>()
     let hasLive = false
@@ -1609,8 +1966,13 @@ export const api = {
           return (a.date ?? '').localeCompare(b.date ?? '')
         }),
       }))
-      // Tier 0 first, then by tier, then by label
-      .sort((a, b) => a.tier - b.tier || a.label.localeCompare(b.label))
+      // Tier asc, then a fixed in-tier rank for the marquee slugs (so the
+      // Big 5 read PL → LaLiga → Serie A → Bundesliga → Ligue 1 instead of
+      // alphabetically), then label.
+      .sort((a, b) =>
+        a.tier - b.tier
+        || slugRank(a.slug) - slugRank(b.slug)
+        || a.label.localeCompare(b.label))
     return {
       date: d,
       total: events.length,
@@ -1774,4 +2136,117 @@ export function eventTeams(ev: EspnEvent): { home: EspnCompetitor | undefined; a
   const home = comp?.competitors?.find((c) => c.homeAway === 'home')
   const away = comp?.competitors?.find((c) => c.homeAway === 'away')
   return { home, away }
+}
+
+// American moneyline → European decimal odds (-120 → '1.83', +295 → '3.95').
+// Accepts the string form ('-900', '+1700') the newer feed shape uses.
+function mlToDecimal(ml: number | string | undefined): string | null {
+  const n = typeof ml === 'string' ? parseInt(ml, 10) : ml
+  if (typeof n !== 'number' || !Number.isFinite(n) || n === 0) return null
+  const dec = n > 0 ? 1 + n / 100 : 1 + 100 / Math.abs(n)
+  return dec.toFixed(2)
+}
+
+export type MatchOdds = { home: string; draw: string; away: string; provider?: string }
+
+/**
+ * Pre-match 1X2 odds in European decimal format, or null when unavailable.
+ * ESPN only prices about half of upcoming fixtures (big leagues mostly)
+ * and nulls the entry once a match kicks off, so a missing return is
+ * normal. Handles both feed shapes (see the odds type above).
+ */
+export function eventOdds(ev: EspnEvent): MatchOdds | null {
+  if (ev.status?.type?.state !== 'pre') return null
+  const o = ev.competitions?.[0]?.odds?.find(Boolean)
+  if (!o) return null
+  const side = (s?: { close?: { odds?: string }; open?: { odds?: string } }) =>
+    s?.close?.odds ?? s?.open?.odds
+  const home = mlToDecimal(o.homeTeamOdds?.moneyLine ?? side(o.moneyline?.home))
+  const draw = mlToDecimal(o.drawOdds?.moneyLine ?? side(o.moneyline?.draw))
+  const away = mlToDecimal(o.awayTeamOdds?.moneyLine ?? side(o.moneyline?.away))
+  if (!home || !draw || !away) return null
+  const res: MatchOdds = { home, draw, away, provider: o.provider?.name }
+  // Remember the latest pre-match line: ESPN nulls `odds` at kick-off, so
+  // this stored copy is the only way a finished card can still show what
+  // the market said before the game ("closing odds", greyed out).
+  rememberClosingOdds(ev.id, res)
+  return res
+}
+
+// ─── Closing odds memory (client-side) ───────────────────────────────
+// eventId → last pre-match 1X2 seen, persisted in localStorage so the
+// line survives reloads. Pruned after 7 days — the daily board never
+// looks further back than that.
+const ODDS_LS = 'p90.closingOdds.v1'
+type StoredOdds = MatchOdds & { ts: number }
+let closingStore: Record<string, StoredOdds> | null = null
+let closingFlush: number | undefined
+
+function loadClosingStore(): Record<string, StoredOdds> {
+  if (!closingStore) {
+    try { closingStore = JSON.parse(localStorage.getItem(ODDS_LS) ?? '{}') as Record<string, StoredOdds> } catch { closingStore = {} }
+    const cutoff = Date.now() - 7 * 86_400_000
+    for (const k of Object.keys(closingStore)) {
+      if ((closingStore[k]?.ts ?? 0) < cutoff) delete closingStore[k]
+    }
+  }
+  return closingStore
+}
+
+function rememberClosingOdds(evId: string, o: MatchOdds): void {
+  try {
+    const s = loadClosingStore()
+    const cur = s[evId]
+    if (cur && cur.home === o.home && cur.draw === o.draw && cur.away === o.away) return
+    s[evId] = { ...o, ts: Date.now() }
+    // Debounced write — eventOdds runs on every card render.
+    clearTimeout(closingFlush)
+    closingFlush = window.setTimeout(() => {
+      try { localStorage.setItem(ODDS_LS, JSON.stringify(s)) } catch { /* quota */ }
+    }, 1500)
+  } catch { /* SSR / storage blocked */ }
+}
+
+/** Last pre-match 1X2 this browser saw for a now-finished event, or null. */
+export function closingOdds(evId: string): MatchOdds | null {
+  try {
+    const o = loadClosingStore()[evId]
+    return o ? { home: o.home, draw: o.draw, away: o.away, provider: o.provider } : null
+  } catch { return null }
+}
+
+// ─── Live (in-play) odds ─────────────────────────────────────────────
+// The scoreboard drops odds at kick-off, but ESPN's core odds feed keeps
+// a 'DraftKings - Live Odds' entry updating through the match. Cached
+// per event for 60s so a 30s scoreboard poll doesn't double the traffic.
+const liveOddsCache = new Map<string, { odds: MatchOdds | null; at: number }>()
+
+export async function fetchLiveOdds(evId: string, leagueSlug: string): Promise<MatchOdds | null> {
+  const hit = liveOddsCache.get(evId)
+  if (hit && Date.now() - hit.at < 60_000) return hit.odds
+  let odds: MatchOdds | null = null
+  try {
+    const r = await fetch(
+      `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${leagueSlug}/events/${evId}/competitions/${evId}/odds`
+    )
+    if (r.ok) {
+      const data = (await r.json()) as {
+        items?: Array<{
+          provider?: { name?: string }
+          homeTeamOdds?: { moneyLine?: number }
+          awayTeamOdds?: { moneyLine?: number }
+          drawOdds?: { moneyLine?: number }
+        }>
+      }
+      const it = (data.items ?? []).find((i) => /live/i.test(i.provider?.name ?? ''))
+      if (it) {
+        const home = mlToDecimal(it.homeTeamOdds?.moneyLine)
+        const draw = mlToDecimal(it.drawOdds?.moneyLine)
+        const away = mlToDecimal(it.awayTeamOdds?.moneyLine)
+        if (home && draw && away) odds = { home, draw, away, provider: it.provider?.name }
+      }
+    }
+  } catch { /* ESPN hiccup or unknown slug — no live odds for this poll */ }
+  liveOddsCache.set(evId, { odds, at: Date.now() })
+  return odds
 }

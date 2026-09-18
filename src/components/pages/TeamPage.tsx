@@ -256,7 +256,7 @@ export function TeamPage() {
           <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500">
             FIFA World Cup 2026 {groupLetter && `· Group ${groupLetter}`}
           </div>
-          <h1 className="font-display font-bold text-3xl sm:text-5xl text-ink-900 tracking-tight leading-[1.1] mt-1">
+          <h1 className="font-display font-bold text-3xl sm:text-5xl text-slate-900 tracking-tight leading-[1.1] mt-1">
             {team?.displayName ?? displayNameFallback}
           </h1>
           {team?.nickname && (
@@ -276,7 +276,7 @@ export function TeamPage() {
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-3">
             The story so far
           </div>
-          <p className="font-display text-base sm:text-lg leading-relaxed text-ink-900 whitespace-pre-line">
+          <p className="font-display text-base sm:text-lg leading-relaxed text-slate-900 whitespace-pre-line">
             {narrative}
           </p>
         </section>
@@ -337,7 +337,7 @@ export function TeamPage() {
       {/* Next match */}
       {nextMatch && (
         <section className="mb-10">
-          <h2 className="font-display font-bold text-xl text-ink-900 mb-3">Next match</h2>
+          <h2 className="font-display font-bold text-xl text-slate-900 mb-3">Next match</h2>
           <NextMatchCard ev={nextMatch} />
         </section>
       )}
@@ -345,7 +345,7 @@ export function TeamPage() {
       {/* WC heritage */}
       {heritage && (
         <section className="mb-10">
-          <h2 className="font-display font-bold text-xl text-ink-900 mb-3">
+          <h2 className="font-display font-bold text-xl text-slate-900 mb-3">
             World Cup heritage
           </h2>
           <div className="rounded-2xl border border-slate-200 bg-paper-elev p-5 grid grid-cols-2 sm:grid-cols-4 gap-3 text-center">
@@ -359,7 +359,7 @@ export function TeamPage() {
 
       {/* Squad */}
       <section className="mb-10">
-        <h2 className="font-display font-bold text-xl text-ink-900 mb-3">Squad</h2>
+        <h2 className="font-display font-bold text-xl text-slate-900 mb-3">Squad</h2>
         {roster?.athletes && roster.athletes.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {roster.athletes.slice(0, 30).map((a) => (
@@ -382,7 +382,7 @@ export function TeamPage() {
       {/* Recent results */}
       {history?.events && history.events.length > 0 && (
         <section className="mb-10">
-          <h2 className="font-display font-bold text-xl text-ink-900 mb-3">Recent results</h2>
+          <h2 className="font-display font-bold text-xl text-slate-900 mb-3">Recent results</h2>
           <div className="space-y-2">
             {history.events
               .filter((ev) => {
@@ -457,7 +457,7 @@ function Kpi({ label, value, children }: { label: string; value?: React.ReactNod
       <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500">
         {label}
       </div>
-      <div className="mt-2 font-display font-bold text-xl text-ink-900">
+      <div className="mt-2 font-display font-bold text-xl text-slate-900">
         {children ?? value}
       </div>
     </div>
@@ -478,7 +478,7 @@ function NextMatchCard({ ev }: { ev: EspnEvent }) {
         <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 mb-1">
           {when} · {s.live ? 'LIVE' : s.label}
         </div>
-        <div className="font-display font-semibold text-base text-ink-900">
+        <div className="font-display font-semibold text-base text-slate-900">
           {home?.team?.displayName ?? home?.team?.abbreviation} vs {away?.team?.displayName ?? away?.team?.abbreviation}
         </div>
         {ev.competitions?.[0] && (
@@ -510,7 +510,7 @@ function PlayerRow({
         {a.jersey ?? '–'}
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-sm font-semibold text-ink-900 truncate">
+        <div className="text-sm font-semibold text-slate-900 truncate">
           {name}
         </div>
         <div className="text-[11px] text-slate-500 truncate">
@@ -542,7 +542,7 @@ function HistoryRow({ ev, teamCode }: { ev: EspnEvent; teamCode: string }) {
       </span>
       <div className="min-w-0 flex-1">
         <div className="text-xs font-mono text-slate-500">{date}</div>
-        <div className="text-sm text-ink-900 truncate">
+        <div className="text-sm text-slate-900 truncate">
           {mine?.team?.displayName} {myN} - {opN} {other?.team?.displayName}
         </div>
       </div>

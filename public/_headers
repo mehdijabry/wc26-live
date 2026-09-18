@@ -10,7 +10,7 @@
 # max-age applies in the browser.
 /*
   Cache-Control: public, max-age=0, must-revalidate
-  CDN-Cache-Control: public, s-maxage=60
+  CDN-Cache-Control: public, s-maxage=300
 
 # Vite-hashed bundles (index-abc123.js, etc.) — content changes
 # whenever the hash changes, so cache them forever. 'immutable'
@@ -28,19 +28,47 @@
   CDN-Cache-Control: public, s-maxage=31536000, immutable
 
 # Brand assets — emblem, favicons, OG card. Change manually rarely;
-# 30 days strikes a balance between cache hit ratio and update speed.
+# 30 days in browser + 30 days on CDN edge. CDN-Cache-Control is
+# required here because the catch-all /* sets s-maxage=300 and
+# Cloudflare Pages MERGES headers — without the explicit override the
+# short CDN TTL from /* would win and the 1.5 MB emblem SVG would be
+# re-fetched from origin every 5 minutes.
 /wc26-emblem.svg
   Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
 /admin-emblem.svg
   Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
 /admin-icon-180.png
   Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
 /admin-icon-192.png
   Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
 /admin-icon-512.png
   Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
 /og.png
   Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
+/favicon.svg
+  Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
+/icons.svg
+  Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
+/icon-192.png
+  Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
+/icon-512.png
+  Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
+/icon-maskable-192.png
+  Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
+/icon-maskable-512.png
+  Cache-Control: public, max-age=2592000
+  CDN-Cache-Control: public, s-maxage=2592000, immutable
 /manifest.json
   Cache-Control: public, max-age=86400
 # Admin PWA manifest — served when AdminPanel mounts on the

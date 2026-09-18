@@ -16,6 +16,9 @@ export function Stadiums() {
   return (
     <section id="stadiums" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
+        {/* SEO h1 — SectionHeader renders an h2, so without this the
+            page has no h1 and Google drops it from indexing. */}
+        <h1 className="sr-only">World Cup 2026 stadiums — 16 host venues across USA, Mexico and Canada</h1>
         <SectionHeader
           eyebrow="16 host cities"
           title="WC26's Stadiums"

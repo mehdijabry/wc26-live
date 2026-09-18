@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { QuickFinalePicker } from './QuickFinalePicker'
 import { QuickGroupsPicker } from './QuickGroupsPicker'
 
@@ -55,6 +56,7 @@ function formatUnlockDate(iso: string): string {
 
 export function PhasePickerHub({ onFullBracket }: { onFullBracket: () => void }) {
   const [openModal, setOpenModal] = useState<Phase['id'] | null>(null)
+  const [, setSearchParams] = useSearchParams()
   const now = new Date()
 
   function handleClick(phase: Phase) {
@@ -63,7 +65,22 @@ export function PhasePickerHub({ onFullBracket }: { onFullBracket: () => void })
       onFullBracket()
       return
     }
-    setOpenModal(phase.id)
+    // Only 'groups' and 'final' have dedicated quick-picker modals. The
+    // KO phases (r32, r16, qf, sf) reuse the full BracketWizard below —
+    // clicking a KO card scrolls down to the wizard and jumps it to the
+    // matching step via ?phase=<id>. Before this, clicking r32/r16/qf/sf
+    // set openModal to an id with no matching modal → the click looked
+    // dead and the phase card felt broken.
+    if (phase.id === 'groups' || phase.id === 'final') {
+      setOpenModal(phase.id)
+      return
+    }
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('phase', phase.id)
+      return next
+    })
+    onFullBracket()
   }
 
   return (

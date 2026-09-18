@@ -18,6 +18,7 @@
  */
 
 import { API_BASE } from './api'
+import { supabase } from './supabase'
 
 const VAPID_PUBLIC = import.meta.env.VITE_VAPID_PUBLIC as string | undefined
 
@@ -119,9 +120,16 @@ async function persistSubscription(sub: PushSubscription): Promise<void> {
     ua: navigator.userAgent,
     lang: navigator.language,
   }
+  // If the user is logged in, forward their Supabase access token so the
+  // Worker can validate it server-side and link the subscription to their
+  // profile (for alias display in the admin push panel).
+  const session = supabase ? (await supabase.auth.getSession()).data.session : null
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (session?.access_token) headers['authorization'] = `Bearer ${session.access_token}`
+
   const resp = await fetch(`${API_BASE}/push/subscribe`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers,
     body: JSON.stringify(payload),
   })
   if (!resp.ok) {

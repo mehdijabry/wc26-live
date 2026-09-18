@@ -2,43 +2,51 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Hash-targeted sections clear the fixed nav + countdown when scrolled-to.
-   Bottom nav is 64px so we add bottom padding on body for mobile. */
+/* ═══════════════════════════════════════════════════════════════════
+   "MATCH NIGHT" theme (2026-08 redesign)
+   Deep navy ground, gold = floodlight, red = live only. Most of the
+   flip happens in tailwind.config.js (inverted slate scale); this file
+   holds the ground, the ambient light, and the few utilities Tailwind
+   can't remap (bg-white & friends, active chips).
+   ═══════════════════════════════════════════════════════════════════ */
+
 section[id] {
   scroll-margin-top: 110px;
 }
 
 @layer base {
   :root {
-    color-scheme: light;
+    color-scheme: dark;
   }
   html {
     scroll-behavior: smooth;
   }
   body {
     @apply bg-paper text-slate-900 font-sans antialiased;
+    /* ambient stadium light — two soft gold glows on the night ground */
     background-image:
-      radial-gradient(1400px 700px at 50% -200px, rgba(212, 175, 55, 0.06), transparent 60%),
-      radial-gradient(900px 500px at 10% 80%, rgba(29, 78, 216, 0.04), transparent 60%);
+      radial-gradient(1200px 800px at 12% -200px, rgba(217, 181, 74, 0.10), transparent 60%),
+      radial-gradient(1000px 700px at 95% 110%, rgba(217, 181, 74, 0.06), transparent 62%);
     background-attachment: fixed;
     min-height: 100svh;
     padding-bottom: env(safe-area-inset-bottom);
   }
   ::selection {
-    @apply bg-accent-gold/30 text-slate-900;
+    background: rgba(217, 181, 74, 0.9);
+    color: #071b30;
   }
 }
 
 @layer components {
-  /* Editorial cards — light, crisp, clearly separated */
+  /* Night cards — elevated navy surface, faint edge, deep shadow */
   .glass {
-    @apply bg-white border border-slate-200/70 shadow-[0_1px_0_rgba(15,23,42,0.04),0_8px_24px_-12px_rgba(15,23,42,0.10)];
+    @apply bg-card border border-slate-200/60 shadow-[0_1px_0_rgba(255,255,255,0.03),0_14px_34px_-16px_rgba(0,0,0,0.6)];
   }
   .glass-hover {
-    @apply hover:border-slate-300 hover:shadow-[0_2px_0_rgba(15,23,42,0.05),0_12px_32px_-12px_rgba(15,23,42,0.15)] transition-all;
+    @apply hover:border-accent-gold/40 hover:shadow-[0_2px_0_rgba(255,255,255,0.04),0_18px_44px_-14px_rgba(0,0,0,0.65)] transition-all;
   }
   .gradient-text {
-    background: linear-gradient(120deg, #b58a1a, #d4af37, #00a651, #b58a1a);
+    background: linear-gradient(120deg, #b58a1a, #d9b54a, #e9cd7e, #b58a1a);
     background-size: 200% auto;
     -webkit-background-clip: text;
     background-clip: text;
@@ -47,15 +55,15 @@ section[id] {
   }
 
   .pill {
-    @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border border-slate-200 bg-white text-slate-700;
+    @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border border-slate-200 bg-slate-50 text-slate-700;
   }
   .ring-glow {
     box-shadow:
-      0 0 0 1px rgba(212, 175, 55, 0.25),
-      0 12px 36px -12px rgba(212, 175, 55, 0.25);
+      0 0 0 1px rgba(217, 181, 74, 0.3),
+      0 14px 44px -12px rgba(217, 181, 74, 0.28);
   }
 
-  /* Tabbed pages (TeamSheet / MatchSheet) — footmercato style */
+  /* Tabbed pages (TeamSheet / MatchSheet) */
   .tab-link {
     @apply relative px-3 py-3 text-sm font-medium text-slate-500 hover:text-slate-900 transition-colors whitespace-nowrap;
   }
@@ -64,22 +72,41 @@ section[id] {
   }
   .tab-link[aria-current="page"]::after {
     content: '';
-    @apply absolute left-3 right-3 -bottom-px h-0.5 bg-accent-blue rounded-full;
+    @apply absolute left-3 right-3 -bottom-px h-0.5 bg-accent-gold rounded-full;
   }
 }
 
-@font-face {
-  font-family: 'Bricolage Grotesque';
-  src: url('https://fonts.gstatic.com/s/bricolagegrotesque/v3/3y9c6D-1nWiOAY7p.woff2') format('woff2');
-  font-display: swap;
-  font-weight: 200 800;
+@layer utilities {
+  /* Tailwind's `white` must stay white (text-white on gold/red buttons),
+     so the light-first `bg-white` surfaces are remapped here to the
+     night card surface instead of via the config. */
+  .bg-white { background-color: #0d2c4b; }
+  .bg-white\/95 { background-color: rgba(13, 44, 75, 0.95); }
+  .bg-white\/90 { background-color: rgba(13, 44, 75, 0.9); }
+  .bg-white\/85 { background-color: rgba(13, 44, 75, 0.88); }
+  .bg-white\/80 { background-color: rgba(13, 44, 75, 0.85); }
+  .hover\:bg-white:hover { background-color: #123a5f; }
+  /* Active chips were written as bg-slate-900 + text-white (dark chip on
+     light page). With the inverted scale bg-slate-900 is now the cream
+     highlight — flip its label to night so the pair stays readable. */
+  .bg-slate-900.text-white { color: #071b30; }
 }
 
-/* Scrollbar — light theme */
+/* ─── Arabic (RTL) mode ─────────────────────────────────────────────
+   <html dir=rtl lang=ar> is set by src/lib/i18n.ts. Flex/grid mirror
+   automatically; here we swap the reading faces (Tajawal) and keep the
+   scoreboard digits + mono data LTR so times/scores read naturally. */
+html[lang="ar"] body { font-family: 'Tajawal', 'Geeza Pro', system-ui, sans-serif; }
+html[lang="ar"] .font-display { font-family: 'Tajawal', 'Geeza Pro', system-ui, sans-serif; font-weight: 800; letter-spacing: 0; }
+html[lang="ar"] .font-mono { letter-spacing: 0.02em; }
+/* numbers/clocks stay left-to-right inside RTL text */
+html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bidi: embed; }
+
+/* Scrollbar — night */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #f8fafc; }
-::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+::-webkit-scrollbar-track { background: #0a2540; }
+::-webkit-scrollbar-thumb { background: #1a4370; border-radius: 5px; }
+::-webkit-scrollbar-thumb:hover { background: #23517f; }
 
 /* Hide-scrollbar utility (used by the live ticker) */
 .no-scrollbar::-webkit-scrollbar { display: none; }

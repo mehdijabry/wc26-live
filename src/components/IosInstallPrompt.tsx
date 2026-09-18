@@ -87,11 +87,16 @@ function isStandalone() {
 }
 
 function detectPlatform(): Platform {
-  if (isIos()) {
-    return isIosSafari() ? 'ios-safari' : 'ios-other'
-  }
+  // Android takes priority: some Android UAs include "Mac OS X" tokens
+  // (Samsung Internet on certain devices) and would otherwise be misread
+  // as iOS by the maxTouchPoints check in isIos(). Checking /Android/
+  // first guarantees we never route a Samsung Galaxy through the iOS
+  // Safari guide.
   if (isAndroid()) {
     return isAndroidChromium() ? 'android-chromium' : 'android-other'
+  }
+  if (isIos()) {
+    return isIosSafari() ? 'ios-safari' : 'ios-other'
   }
   return null
 }
@@ -103,10 +108,17 @@ export function IosInstallPrompt() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
 
   useEffect(() => {
-    if (isStandalone()) return
     const p = detectPlatform()
     if (!p) return
     setPlatform(p)
+    // The "standalone" display-mode check is unreliable on Android Chrome
+    // 148+ (some Galaxy/OneUI configs report standalone=true in a regular
+    // browser tab → skipping the listener killed the install button for
+    // users who weren't actually installed). On Android we trust
+    // getInstalledRelatedApps() instead (called inside the android branch
+    // below). iOS keeps the matchMedia check since the API doesn't exist
+    // there.
+    if (p.startsWith('ios') && isStandalone()) return
 
     let cancelled = false
 
@@ -154,7 +166,7 @@ export function IosInstallPrompt() {
     if (p === 'android-chromium') {
       function onBeforeInstall(e: Event) {
         e.preventDefault()
-        if (dismissedAlready()) return
+        if (cancelled || dismissedAlready()) return
         setDeferredPrompt(e as BeforeInstallPromptEvent)
         setShow(true)
       }
@@ -164,20 +176,70 @@ export function IosInstallPrompt() {
       }
       window.addEventListener('beforeinstallprompt', onBeforeInstall)
       window.addEventListener('appinstalled', onInstalled)
-      // Fallback — if the browser is slow to fire beforeinstallprompt
-      // (engagement heuristic), surface our educational button after
-      // 12s so users still have a path. Once the event fires we swap
-      // to the proper install handler.
-      const fallback = window.setTimeout(() => {
+
+      // Skip the prompt entirely if the app is already installed.
+      // getInstalledRelatedApps() is the only reliable signal — standalone
+      // mode detection misses installs opened from a regular tab.
+      type RelatedApp = { id?: string; platform: string; url?: string }
+      const navAny = navigator as Navigator & { getInstalledRelatedApps?: () => Promise<RelatedApp[]> }
+      if (typeof navAny.getInstalledRelatedApps === 'function') {
+        navAny.getInstalledRelatedApps()
+          .then((apps: RelatedApp[]) => {
+            if (cancelled) return
+            if (Array.isArray(apps) && apps.length > 0) {
+              // Already installed — never show the install button again.
+              setShow(false)
+              cancelled = true
+            }
+          })
+          .catch(() => { /* ignore — best-effort */ })
+      }
+
+      // Chrome won't fire beforeinstallprompt until the user has
+      // interacted with the page (real engagement signal). Listening for
+      // the first scroll/click/keypress and only THEN waiting briefly
+      // for the event gets us the native one-tap prompt instead of the
+      // educational fallback every time. If still nothing after the
+      // grace period, show the menu-instructions card.
+      let educationalTimer: number | undefined
+      function armEducationalFallback() {
+        if (cancelled || educationalTimer) return
+        educationalTimer = window.setTimeout(() => {
+          if (cancelled || dismissedAlready()) return
+          // If the event already arrived, onBeforeInstall set show=true
+          // and deferredPrompt — nothing to do. Otherwise, surface the
+          // menu-instructions modal so the user has a working path.
+          setShow(true)
+        }, 4_000)
+      }
+      function onFirstInteraction() {
+        armEducationalFallback()
+        window.removeEventListener('scroll', onFirstInteraction)
+        window.removeEventListener('click', onFirstInteraction)
+        window.removeEventListener('touchstart', onFirstInteraction)
+        window.removeEventListener('keydown', onFirstInteraction)
+      }
+      window.addEventListener('scroll', onFirstInteraction, { passive: true, once: true })
+      window.addEventListener('click', onFirstInteraction, { once: true })
+      window.addEventListener('touchstart', onFirstInteraction, { passive: true, once: true })
+      window.addEventListener('keydown', onFirstInteraction, { once: true })
+      // Absolute fallback — even without any interaction, show the
+      // button after 20s so PWA-eager users still get a hint.
+      const absoluteFallback = window.setTimeout(() => {
         if (cancelled || dismissedAlready()) return
-        // Only show if we don't already have the deferred prompt
-        setShow((current) => current || false || true)
-      }, 12_000)
+        setShow(true)
+      }, 20_000)
+
       return () => {
         cancelled = true
-        clearTimeout(fallback)
+        if (educationalTimer) clearTimeout(educationalTimer)
+        clearTimeout(absoluteFallback)
         window.removeEventListener('beforeinstallprompt', onBeforeInstall)
         window.removeEventListener('appinstalled', onInstalled)
+        window.removeEventListener('scroll', onFirstInteraction)
+        window.removeEventListener('click', onFirstInteraction)
+        window.removeEventListener('touchstart', onFirstInteraction)
+        window.removeEventListener('keydown', onFirstInteraction)
       }
     }
   }, [])
@@ -194,8 +256,8 @@ export function IosInstallPrompt() {
     try {
       if (navigator.share) {
         await navigator.share({
-          title: 'WC26 Live · Pressing 90′',
-          text: 'Install WC26 Live on your iPhone home screen',
+          title: 'Pressing 90’ · Pressing 90′',
+          text: 'Install Pressing 90’ on your iPhone home screen',
           url: window.location.origin,
         })
         return
@@ -274,7 +336,7 @@ export function IosInstallPrompt() {
                 onClick={handlePrimaryAction}
                 className="flex items-center gap-2.5 pl-3.5 pr-4 py-2.5 active:bg-black/30 transition-colors min-w-0"
               >
-                <img src="/wc26-emblem.svg" alt="" className="w-7 h-7 shrink-0" />
+                <img src="/p90-logo.svg" alt="" className="w-7 h-7 shrink-0" />
                 <div className="flex flex-col text-left leading-tight min-w-0">
                   <span className="text-[9px] uppercase tracking-[0.2em] text-accent-gold font-mono">
                     {eyebrow}
@@ -337,7 +399,7 @@ function ModalHeader({ eyebrow, title, sub }: { eyebrow: string; title: React.Re
   return (
     <div className="px-6 pt-6 pb-4 bg-gradient-to-br from-marine-950 to-marine-900 text-cream">
       <div className="flex items-center gap-3">
-        <img src="/wc26-emblem.svg" alt="" className="w-12 h-12" />
+        <img src="/p90-logo.svg" alt="" className="w-12 h-12" />
         <div>
           <div className="text-[10px] tracking-[0.22em] uppercase text-accent-gold font-mono">{eyebrow}</div>
           <div className="font-display font-bold text-lg leading-tight">{title}</div>

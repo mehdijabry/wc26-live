@@ -103,7 +103,7 @@ export function Explained() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Explained
         </div>
-        <h1 className="font-display font-bold text-4xl sm:text-5xl text-ink-900 tracking-tight leading-[1.1]">
+        <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight leading-[1.1]">
           How the <span className="text-accent-gold">2026 World Cup</span>{' '}
           actually works
         </h1>
@@ -127,7 +127,7 @@ export function Explained() {
                     <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-accent-gold font-semibold mb-1.5">
                       {section.eyebrow}
                     </div>
-                    <h2 className="font-display font-bold text-2xl sm:text-3xl text-ink-900 tracking-tight">
+                    <h2 className="font-display font-bold text-2xl sm:text-3xl text-slate-900 tracking-tight">
                       {section.title}
                     </h2>
                     <p className="mt-2 text-sm text-slate-600 max-w-2xl leading-relaxed">
@@ -142,7 +142,7 @@ export function Explained() {
                         id={entry.slug}
                         className="rounded-2xl border border-slate-200 bg-paper-elev p-5 sm:p-6"
                       >
-                        <h3 className="font-display font-bold text-lg sm:text-xl text-ink-900">
+                        <h3 className="font-display font-bold text-lg sm:text-xl text-slate-900">
                           <Link
                             to={`/explained/${entry.slug}`}
                             className="hover:text-accent-gold transition-colors"

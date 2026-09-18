@@ -16,6 +16,24 @@ export const supabase: SupabaseClient | null =
 
 export const SUPABASE_CONFIGURED = supabase !== null
 
+/**
+ * Race a Supabase (or any other) promise against a timeout. Returns the
+ * fallback if the timeout fires first — never throws. Without this guard,
+ * a slow Supabase cold-start (5-15s on mobile cellular) keeps NewsTicker
+ * stuck on a loader and freezes auth.getSession() forever, both of which
+ * happen in production on Chrome Android. Use this whenever a Supabase
+ * call gates UI rendering.
+ */
+export function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise<T>((resolve) => {
+    const timer = setTimeout(() => resolve(fallback), ms)
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v) },
+      () => { clearTimeout(timer); resolve(fallback) },
+    )
+  })
+}
+
 // Public types mirroring the SQL schema
 export type Profile = {
   id: string

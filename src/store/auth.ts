@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { Session, User } from '@supabase/supabase-js'
-import { supabase, type Profile } from '../lib/supabase'
+import { supabase, withTimeout, type Profile } from '../lib/supabase'
 
 type AuthState = {
   user: User | null
@@ -131,7 +131,12 @@ export const useAuth = create<AuthState>((set, get) => ({
       const url = new URL(window.location.href)
       const code = url.searchParams.get('code')
       if (code) {
-        await supabase.auth.exchangeCodeForSession(window.location.href)
+        // 8s timeout — Supabase cold-start on mobile cellular regularly
+        // stalls the OAuth code exchange. Without the cap, the whole
+        // app hangs on `loading: true` and the auth button stays grey
+        // forever. Time out → fall through; getSession() further down
+        // handles the "no session yet" state cleanly.
+        await withTimeout(supabase.auth.exchangeCodeForSession(window.location.href), 8_000, null)
       }
     } catch (err) {
       // Surface but don't block — fall through to getSession.
@@ -139,7 +144,16 @@ export const useAuth = create<AuthState>((set, get) => ({
       console.warn('[auth] exchangeCodeForSession failed:', err)
     }
 
-    const { data } = await supabase.auth.getSession()
+    // Hard 5s timeout on getSession — same reason as above. The default
+    // session-read call sits on a network round-trip; on mobile we'd
+    // rather show "Sign in" than a frozen button. Empty session object
+    // is the safe fallback (Supabase's TS treats `data.session: null`
+    // as "anonymous" everywhere).
+    const { data } = await withTimeout(
+      supabase.auth.getSession(),
+      5_000,
+      { data: { session: null }, error: null } as Awaited<ReturnType<typeof supabase.auth.getSession>>,
+    )
     set({
       session: data.session,
       user: data.session?.user ?? null,

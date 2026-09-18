@@ -352,7 +352,7 @@ export function SectionHeader({
 }: {
   eyebrow: string
   title: string
-  sub: string
+  sub?: string
 }) {
   return (
     <motion.div
@@ -367,7 +367,7 @@ export function SectionHeader({
       <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-tight mb-3">
         {title}
       </h2>
-      <p className="text-slate-600 max-w-3xl text-base sm:text-lg leading-relaxed">{sub}</p>
+      {sub && <p className="text-slate-600 max-w-3xl text-base sm:text-lg leading-relaxed">{sub}</p>}
     </motion.div>
   )
 }

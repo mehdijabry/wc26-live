@@ -44,16 +44,25 @@ export function LiveTicker() {
         const today = ymdUtc(new Date())
         const r = await api.today(today)
         if (stop) return
-        // Flatten + cap at 20 so the strip stays light
-        const all: EspnEvent[] = (r as DailyResponse).competitions.flatMap((c) => c.events)
-        // Prioritize: live → upcoming today → finished, sorted by date
-        all.sort((a, b) => {
-          const w = (e: EspnEvent) => (e.status?.type?.state === 'in' ? 0 : e.status?.type?.state === 'pre' ? 1 : 2)
+        // Flatten KEEPING each event's competition tier — the strip must
+        // lead with the biggest competitions. Previously we sorted by
+        // live-state only, so a live 2nd-division game outranked the
+        // World Cup semifinal (user saw ATB–KLA before ENG–ARG). Order:
+        // competition prestige (tier asc) → live → upcoming → finished,
+        // then kickoff time. Minor/unknown leagues carry a high tier so
+        // they ALWAYS land at the end of the strip.
+        const flat = (r as DailyResponse).competitions.flatMap((c) =>
+          c.events.map((ev) => ({ ev, tier: c.tier }))
+        )
+        flat.sort((a, b) => {
+          if (a.tier !== b.tier) return a.tier - b.tier
+          const w = (x: { ev: EspnEvent }) =>
+            x.ev.status?.type?.state === 'in' ? 0 : x.ev.status?.type?.state === 'pre' ? 1 : 2
           const dw = w(a) - w(b)
           if (dw !== 0) return dw
-          return (a.date ?? '').localeCompare(b.date ?? '')
+          return (a.ev.date ?? '').localeCompare(b.ev.date ?? '')
         })
-        setEvents(all.slice(0, 20))
+        setEvents(flat.slice(0, 20).map((x) => x.ev))
         setFetchedAt(Date.now())
         setLoaded(true)
       } catch {
@@ -109,8 +118,8 @@ function TickerCard({
 }: { ev: EspnEvent; fetchedAt: number; onPick: () => void }) {
   const { home, away } = eventTeams(ev)
   const s = statusLabel(ev)
-  const homeLogo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation)
-  const awayLogo = teamBadgeFallback(away?.team?.logo, away?.team?.abbreviation)
+  const homeLogo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation, home?.team?.shortDisplayName ?? home?.team?.displayName)
+  const awayLogo = teamBadgeFallback(away?.team?.logo, away?.team?.abbreviation, away?.team?.shortDisplayName ?? away?.team?.displayName)
   const time = ev.date
     ? new Date(ev.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
     : ''

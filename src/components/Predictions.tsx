@@ -4,6 +4,7 @@ import { matches } from '../data/matches'
 import { teamByCode } from '../data/teams'
 import { fmtDate, cn } from '../lib/utils'
 import { usePredictions, shareLink } from '../store/predictions'
+import { resultForPair, useTournament } from '../store/tournament'
 import { SectionHeader } from './Groups'
 import { MoroccoOdds } from './AtlasLions'
 
@@ -24,6 +25,24 @@ export function Predictions() {
   const totalMatches = groupedMatches.reduce((acc, g) => acc + g.ms.length, 0)
   const [activeGroup, setActiveGroup] = useState<string>('A')
   const { alias, setAlias, picks, setPick, clear } = usePredictions()
+  const { events } = useTournament()
+
+  // Tally exact-score hits across all groups. Displayed in the header so the
+  // user has a running count of their scoring picks without scrolling.
+  const exactHits = useMemo(() => {
+    let n = 0
+    for (const m of matches) {
+      if (m.stage !== 'group') continue
+      const pick = picks[m.id]
+      if (!pick) continue
+      const r = resultForPair(events, m.home, m.away)
+      if (!r || r.status !== 'post') continue
+      if (r.scores[m.home.toUpperCase()] === pick.homeScore && r.scores[m.away.toUpperCase()] === pick.awayScore) {
+        n++
+      }
+    }
+    return n
+  }, [events, picks])
   const [shareUrl, setShareUrl] = useState<string | null>(null)
 
   function onShare() {
@@ -66,6 +85,11 @@ export function Predictions() {
             <span className="text-slate-500">
               <span className="text-slate-900 font-mono">{filled}</span> / {total} filled
             </span>
+            {exactHits > 0 && (
+              <span className="text-emerald-700 font-mono text-xs">
+                <span className="font-semibold">{exactHits}</span> exact ✓
+              </span>
+            )}
             <button
               onClick={onShare}
               disabled={filled === 0}
@@ -127,16 +151,40 @@ export function Predictions() {
             const home = teamByCode(m.home)
             const away = teamByCode(m.away)
             const pick = picks[m.id]
+            // Grade the pick against ESPN. isCorrect = exact score match on
+            // both sides (the actual scoring criterion in Predictions). We
+            // also expose isWrong so a settled-but-wrong pick reads a
+            // muted red rather than the neutral card colour, which makes it
+            // obvious what's still to play vs. what's been graded.
+            const result = resultForPair(events, m.home, m.away)
+            const isSettled = result?.status === 'post'
+            const isCorrect = isSettled && pick != null
+              && result!.scores[m.home.toUpperCase()] === pick.homeScore
+              && result!.scores[m.away.toUpperCase()] === pick.awayScore
+            const isWrong = isSettled && pick != null && !isCorrect
             return (
               <motion.div
                 key={m.id}
                 initial={{ opacity: 0, y: 10 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                className="glass glass-hover rounded-xl p-4"
+                className={cn(
+                  'glass glass-hover rounded-xl p-4 border transition-colors',
+                  isCorrect
+                    ? 'border-emerald-500/60 bg-emerald-50/40'
+                    : isWrong
+                      ? 'border-rose-300/50'
+                      : 'border-transparent'
+                )}
               >
-                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">
-                  Group {m.group} · {fmtDate(m.kickoffUTC, { hour: undefined, minute: undefined, weekday: undefined })}
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2 flex items-center justify-between">
+                  <span>Group {m.group} · {fmtDate(m.kickoffUTC, { hour: undefined, minute: undefined, weekday: undefined })}</span>
+                  {isCorrect && (
+                    <span className="text-emerald-700 font-semibold tracking-widest">✓ Exact</span>
+                  )}
+                  {isWrong && (
+                    <span className="text-rose-600 tracking-widest">Actual {result!.scores[m.home.toUpperCase()]}–{result!.scores[m.away.toUpperCase()]}</span>
+                  )}
                 </div>
                 <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center">
                   <div className="text-right">

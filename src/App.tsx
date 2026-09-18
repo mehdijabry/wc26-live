@@ -2,13 +2,14 @@ import { useEffect, useState, lazy, Suspense } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
-import { Hero } from './components/Hero'
+import { Hero, HeroScoreboard } from './components/Hero'
 import { Bracket } from './components/Bracket'
 import { Groups } from './components/Groups'
 import { Schedule } from './components/Schedule'
 import { Footer } from './components/Footer'
 import { BottomNav } from './components/BottomNav'
 import { LiveTicker } from './components/LiveTicker'
+import { NewsTicker } from './components/NewsTicker'
 import { PullToRefresh } from './components/PullToRefresh'
 import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
@@ -19,7 +20,9 @@ import { PushOptIn } from './components/PushOptIn'
 import { IosInstallPrompt } from './components/IosInstallPrompt'
 import { InstallDebugPage } from './components/pages/InstallDebug'
 import { AskAiPage } from './components/pages/AskAi'
-import { AskAiBubble } from './components/AskAiBubble'
+import { useSiteSettings } from './store/siteSettings'
+import { useT } from './lib/i18n'
+import { sendHit } from './lib/beacon'
 
 // Each section is its own page now — lazy-loaded per route so a slow
 // chunk doesn't block sibling pages. The previous design had ALL lazy
@@ -39,7 +42,9 @@ const AtlasLions = lazy(() => import('./components/AtlasLions').then((m) => ({ d
 const About = lazy(() => import('./components/pages/About').then((m) => ({ default: m.About })))
 const Contact = lazy(() => import('./components/pages/Contact').then((m) => ({ default: m.Contact })))
 const Privacy = lazy(() => import('./components/pages/Privacy').then((m) => ({ default: m.Privacy })))
+const Credits = lazy(() => import('./components/pages/Credits').then((m) => ({ default: m.Credits })))
 const Terms = lazy(() => import('./components/pages/Terms').then((m) => ({ default: m.Terms })))
+const ResponsibleGambling = lazy(() => import('./components/pages/ResponsibleGambling').then((m) => ({ default: m.ResponsibleGambling })))
 const Watch = lazy(() => import('./components/pages/Watch').then((m) => ({ default: m.Watch })))
 const WatchCountry = lazy(() => import('./components/pages/WatchCountry').then((m) => ({ default: m.WatchCountry })))
 const TeamPage = lazy(() => import('./components/pages/TeamPage').then((m) => ({ default: m.TeamPage })))
@@ -61,6 +66,13 @@ function App() {
   const syncFromCloud = usePredictions((s) => s.syncFromCloud)
   const pushLocalToCloud = usePredictions((s) => s.pushLocalToCloud)
   const location = useLocation()
+
+  // Visitor beacon — one hit per pageview (initial load + SPA
+  // navigation). Feeds the admin 'Visitors' stats: real people with
+  // country + traffic source, unlike Cloudflare's request counts.
+  useEffect(() => {
+    sendHit(location.pathname)
+  }, [location.pathname])
 
   // Intro splash — same setup as before the domain migration. React
   // motion.div, cream background matching the rest of the site,
@@ -164,7 +176,7 @@ function App() {
             className="fixed inset-0 z-[80] bg-paper flex flex-col items-center justify-center"
           >
             <motion.img
-              src="/wc26-emblem.svg"
+              src="/p90-logo.svg"
               alt=""
               initial={{ scale: 0.85, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -177,12 +189,11 @@ function App() {
               transition={{ duration: 0.45, delay: 0.25 }}
               className="mt-5 text-center"
             >
-              <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-marine-950">
-                WC<span className="text-accent-gold">26</span> Live
+              <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-slate-900">
+                Pressing <span className="text-accent-gold">90’</span>
               </div>
-              <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase">
-                <span className="text-slate-600">Pressing</span>{' '}
-                <span className="text-accent-red font-semibold">90′</span>
+              <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase text-slate-600">
+                live football scores
               </div>
             </motion.div>
           </motion.div>
@@ -222,7 +233,17 @@ function App() {
       <main
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4.5rem)' }}
       >
-        {!location.pathname.startsWith('/admin-panel-') && <LiveTicker />}
+        {/* The ticker is mobile-only (md:hidden inside the component).
+            / and /today open on the big broadcast scoreboard, so the
+            ticker chips right above it would be the same scores twice —
+            skip it there. Other routes (news, article, wc26) have no
+            scoreboard and keep it. */}
+        {!location.pathname.startsWith('/admin-panel-') &&
+          location.pathname !== '/' &&
+          location.pathname !== '/today' && <LiveTicker />}
+        {/* StickyCountdown (WC26 next-match pill) unmounted after the
+            final — the tournament store has no upcoming fixtures so it
+            rendered nothing; removing the mount also stops its 1s tick. */}
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/wc26" element={<WC26Page />} />
@@ -345,10 +366,26 @@ function App() {
             }
           />
           <Route
+            path="/credits"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading…" />}>
+                <Credits />
+              </Suspense>
+            }
+          />
+          <Route
             path="/terms"
             element={
               <Suspense fallback={<PageSkeleton caption="Loading…" />}>
                 <Terms />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/responsible-gambling"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading…" />}>
+                <ResponsibleGambling />
               </Suspense>
             }
           />
@@ -364,9 +401,8 @@ function App() {
         <>
           <Footer />
           <BottomNav />
-          {/* Discrete "Ask AI" entry point — hidden on admin / ai /
-              install-debug routes via the component's own gate. */}
-          <AskAiBubble />
+          {/* AskAiBubble removed 2026-08-25 (user request). The /ai page
+              stays reachable by URL; only the floating entry point is gone. */}
         </>
       )}
 
@@ -431,6 +467,7 @@ function PageSkeleton({ caption }: { caption?: string }) {
 }
 
 function HomePage() {
+  const t = useT()
   return (
     <>
       <Hero />
@@ -438,6 +475,11 @@ function HomePage() {
           Push AND the user hasn't dismissed it this session. Sits right
           under the hero so it's the first call to action before scores. */}
       <PushOptIn />
+      {/* Today's matches FIRST — per user request the day's scoreboard
+          now outranks the articles in reading order. */}
+      <Suspense fallback={<PageSkeleton caption="Loading today's matches…" />}>
+        <DailyMatches />
+      </Suspense>
       {/* Mid-page slot: double 300x250 banner pair instead of a single
           slot. Doubles impressions-per-pageview to compensate for the
           revenue drop we took switching away from Adsterra's native
@@ -445,14 +487,21 @@ function HomePage() {
       <div className="container max-w-6xl mx-auto px-6 my-6">
         <AdPair />
       </div>
-      <Suspense fallback={<PageSkeleton caption="Loading today's matches…" />}>
-        <DailyMatches />
-      </Suspense>
+      {/* Articles — moved out of the Hero, below the matches. The hero
+          has a "📰 Articles ↓" jump button so news readers get here in
+          one tap instead of scrolling. */}
+      <section id="articles" className="py-16 sm:py-20 border-t border-slate-200/70">
+        <div className="container max-w-6xl mx-auto px-6">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-1">{t('newsroom')}</div>
+          <h2 className="font-display font-bold text-2xl sm:text-3xl mb-6">{t('Latest articles')}</h2>
+          <NewsTicker />
+        </div>
+      </section>
       {/* Amazon affiliate shelf — editorial 'gear we like' row. Replaces
           one Adsterra footer slot. Direct CPA, no third-party creative
           review needed (we hand-pick every product). */}
       <AmazonShelf heading="Football gear we like" />
-      <WC26PromoSection />
+      <WC26PromoGate />
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="home-footer" /></div>
     </>
   )
@@ -465,6 +514,17 @@ function WC26Page() {
   // store so a single ESPN refresh updates the whole page.
   return (
     <>
+      {/* Archive banner — the tournament is over; every page below is
+          preserved as-is (final bracket, groups, squads, stadiums). */}
+      <div className="container max-w-6xl mx-auto px-6 pt-6">
+        <div className="rounded-xl border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex items-center gap-2 flex-wrap">
+          <span aria-hidden>🏆</span>
+          <span>
+            <strong>World Cup 2026 archive</strong> — the tournament ended on July 19, 2026.
+            Final bracket, results and stats below, preserved as they happened.
+          </span>
+        </div>
+      </div>
       <Bracket />
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="wc26-mid" /></div>
       <Groups />
@@ -478,48 +538,44 @@ function WC26Page() {
  * hub (groups, schedule, bracket predictor). Keeps the WC content
  * accessible without forcing it on everyone landing on /.
  */
-function WC26PromoSection() {
-  return (
-    <section className="py-16 sm:py-24 border-t border-slate-200/70 bg-gradient-to-b from-paper to-cream/50">
-      <div className="container max-w-6xl mx-auto px-6">
-        <div className="rounded-3xl bg-marine-950 text-cream p-8 sm:p-12 relative overflow-hidden">
-          {/* Background emblem */}
-          <img
-            src="/wc26-emblem.svg"
-            aria-hidden
-            className="absolute -right-8 -bottom-8 w-64 h-64 opacity-10 pointer-events-none"
-          />
+// Renders the archive card only when the admin has WC26 visible.
+function WC26PromoGate() {
+  const wc26Visible = useSiteSettings((s) => s.wc26Visible)
+  return wc26Visible ? <WC26PromoSection /> : null
+}
 
+function WC26PromoSection() {
+  // Post-tournament: the loud "main event" promo became a sober archive
+  // card. The pages behind it (bracket, groups, teams, stadiums,
+  // explained) all still exist and keep earning search traffic.
+  return (
+    <section className="py-16 sm:py-20 border-t border-slate-200/70 bg-gradient-to-b from-paper to-cream/50">
+      <div className="container max-w-6xl mx-auto px-6">
+        <div className="rounded-3xl bg-marine-950 text-cream p-8 sm:p-10 relative overflow-hidden">
           <div className="relative max-w-2xl">
             <div className="text-[11px] tracking-[0.22em] uppercase font-mono text-accent-gold mb-3">
-              🏆 The main event
+              🏆 The archive
             </div>
-            <h2 className="font-display font-bold text-3xl sm:text-5xl leading-tight tracking-tight">
-              WC<span className="text-accent-gold">26</span> · <span className="italic text-cream/80">The whole tournament hub</span>
+            <h2 className="font-display font-bold text-3xl sm:text-4xl leading-tight tracking-tight">
+              World Cup 2026 · <span className="italic text-cream/80">relive the tournament</span>
             </h2>
-            <p className="mt-4 text-cream/80 text-base sm:text-lg max-w-xl leading-relaxed">
-              All 12 groups · the live schedule · countdown to kickoff · the full bracket predictor with PNG export.
-              Everything World Cup 26 in one place.
+            <p className="mt-4 text-cream/80 text-base max-w-xl leading-relaxed">
+              The final bracket, every result, all 12 groups, the 16 stadiums
+              and every squad — preserved exactly as it happened.
             </p>
 
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-6 flex flex-wrap gap-3">
               <Link
                 to="/wc26"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 transition-colors"
               >
-                Enter the WC26 Hub →
+                Browse the archive →
               </Link>
               <Link
-                to="/predictions"
+                to="/stadiums"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 hover:bg-white/20 text-cream text-sm font-semibold transition-colors"
               >
-                🏆 Make my prediction
-              </Link>
-              <Link
-                to="/today"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white/10 hover:bg-white/20 text-cream text-sm font-semibold transition-colors"
-              >
-                ⚽ Today&apos;s matches
+                🏟 The 16 stadiums
               </Link>
             </div>
           </div>
@@ -564,8 +620,17 @@ function PredictionsPage() {
 }
 
 function TodayPage() {
+  // DailyMatches uses SectionHeader → h2. Without an h1 at the page
+  // level, Google can't anchor the topic, and /today was sitting
+  // unindexed since the start of the tournament. The sr-only h1 here
+  // gives crawlers the signal without disrupting the existing visual
+  // hierarchy.
   return (
     <>
+      <h1 className="sr-only">World Cup 2026 — today's matches, kickoff times and live scores</h1>
+      {/* Same broadcast scoreboard as the home — the day's biggest live
+          match in giant digits above the full board. */}
+      <HeroScoreboard />
       <Suspense fallback={<PageSkeleton caption="Loading today's fixtures…" />}>
         <DailyMatches />
       </Suspense>

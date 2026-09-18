@@ -51,7 +51,7 @@ export function Watch() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Where to watch
         </div>
-        <h1 className="font-display font-bold text-4xl sm:text-5xl text-ink-900 tracking-tight leading-[1.1]">
+        <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight leading-[1.1]">
           FIFA <span className="text-accent-gold">World Cup 2026</span>{' '}
           <span className="italic text-slate-700">by country</span>
         </h1>
@@ -63,7 +63,7 @@ export function Watch() {
       </header>
 
       <section className="mb-12">
-        <h2 className="font-display font-bold text-2xl text-ink-900 mb-5">
+        <h2 className="font-display font-bold text-2xl text-slate-900 mb-5">
           🌍 Pick your country
         </h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
@@ -75,7 +75,7 @@ export function Watch() {
             >
               <span className="text-3xl leading-none shrink-0">{c.flag}</span>
               <div className="min-w-0">
-                <div className="font-display font-semibold text-sm text-ink-900 truncate">
+                <div className="font-display font-semibold text-sm text-slate-900 truncate">
                   {c.name}
                 </div>
                 <div className="text-[10px] font-mono uppercase tracking-[0.18em] text-slate-500 group-hover:text-accent-gold">
@@ -88,7 +88,7 @@ export function Watch() {
       </section>
 
       <section className="mb-12 prose prose-slate max-w-none">
-        <h2 className="font-display font-bold text-2xl text-ink-900">
+        <h2 className="font-display font-bold text-2xl text-slate-900">
           How we source the rights
         </h2>
         <p className="text-slate-700 leading-relaxed">

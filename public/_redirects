@@ -1,1 +1,9 @@
+# SPA fallback — every non-asset route boots the React shell.
+#
+# DO NOT add a 404.html to this project: its mere existence switches
+# Cloudflare Pages out of SPA mode (the /* rewrite below is ignored and
+# every non-prerendered route — /visca-barca admin, /u/*, /bracket —
+# serves the 404 page instead of the app; broke prod on 2026-08-15).
+# Deploy-window chunk poisoning is handled client-side in main.tsx
+# (cache-healing fetch + reload), not here.
 /*    /index.html   200
