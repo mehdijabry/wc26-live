@@ -1,5 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { API_BASE } from '../../lib/api'
+import { StoryComposer } from './StoryComposer'
+import { ReelComposer } from './ReelComposer'
+import { MatchStoryComposer } from './MatchStoryComposer'
+import { uploadPostCards } from '../../lib/newsCards'
 
 /**
  * Admin panel — protected operator console for pressing90.live.
@@ -22,7 +26,7 @@ import { API_BASE } from '../../lib/api'
  */
 
 type Tab =
-  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news'
+  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news' | 'social'
 
 // Token storage key in sessionStorage. We use sessionStorage (not local)
 // so the token clears when the tab closes — saves us from a stale
@@ -115,7 +119,7 @@ export function AdminPanel() {
           <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500 mb-3">
             Pressing 90 · admin
           </div>
-          <h1 className="font-display font-bold text-2xl text-ink-900 mb-6">
+          <h1 className="font-display font-bold text-2xl text-slate-900 mb-6">
             Sign in
           </h1>
           <label className="block text-xs font-mono uppercase tracking-widest text-slate-500 mb-1">
@@ -143,8 +147,8 @@ export function AdminPanel() {
             <div className="text-[10px] uppercase tracking-[0.22em] text-slate-400 mb-2">
               Install on iPhone
             </div>
-            Open this page in Safari → tap <strong className="text-ink-900">Share</strong>
-            {' '}<span aria-hidden>⬆</span> → <strong className="text-ink-900">Add to Home Screen</strong>.
+            Open this page in Safari → tap <strong className="text-slate-900">Share</strong>
+            {' '}<span aria-hidden>⬆</span> → <strong className="text-slate-900">Add to Home Screen</strong>.
             The icon opens straight to this admin login — not the public site.
           </div>
         </form>
@@ -166,7 +170,7 @@ export function AdminPanel() {
             <div className="font-mono text-[10px] uppercase tracking-[0.22em] text-slate-500">
               Pressing 90 · admin
             </div>
-            <div className="font-display font-bold text-ink-900 truncate text-base sm:text-lg">
+            <div className="font-display font-bold text-slate-900 truncate text-base sm:text-lg">
               Operator console
             </div>
           </div>
@@ -185,7 +189,7 @@ export function AdminPanel() {
           className="max-w-6xl mx-auto px-4 sm:px-5 pb-2 flex gap-1.5 overflow-x-auto scroll-smooth"
           style={{ scrollPaddingInline: '1rem', WebkitOverflowScrolling: 'touch' }}
         >
-          {(['overview', 'analytics', 'news', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
+          {(['overview', 'analytics', 'news', 'social', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -221,6 +225,7 @@ export function AdminPanel() {
         {tab === 'health' && <SiteHealth />}
         {tab === 'actions' && <QuickActions />}
         {tab === 'news' && <News />}
+        {tab === 'social' && <Social />}
       </main>
     </div>
   )
@@ -251,6 +256,131 @@ function Overview() {
 
 // ─── Section: Analytics ─────────────────────────────────────────────
 
+// ISO-3166 alpha-2 → flag emoji (regional indicator pair).
+function isoFlag(code: string): string {
+  if (!/^[A-Za-z]{2}$/.test(code)) return '🌐'
+  const base = 0x1f1e6
+  const up = code.toUpperCase()
+  return String.fromCodePoint(base + up.charCodeAt(0) - 65, base + up.charCodeAt(1) - 65)
+}
+
+type VisitsData = {
+  ok: boolean
+  days: number
+  pageviews: number
+  sessions: number
+  byCountry: Array<{ key: string; count: number }>
+  bySource: Array<{ key: string; count: number }>
+  byLang: Array<{ key: string; count: number }>
+  byDay: Array<{ key: string; count: number }>
+}
+
+/** Real-visitor stats — the numbers that matter. Fed by the /hit beacon
+ *  (people opening pages), NOT Cloudflare request counts (bots, API
+ *  polls, assets), which massively overstate reality. */
+function Visitors() {
+  const [days, setDays] = useState<1 | 7 | 30>(1)
+  const [data, setData] = useState<VisitsData | null>(null)
+  useEffect(() => {
+    setData(null)
+    void adminGet(`/admin/stats/visits?days=${days}`).then((d) => setData(d as VisitsData))
+  }, [days])
+
+  const fbCount = data?.bySource.find((s) => s.key === 'facebook')?.count ?? 0
+  const fbPct = data && data.pageviews > 0 ? Math.round((fbCount / data.pageviews) * 100) : 0
+  const maxDay = data ? Math.max(1, ...data.byDay.map((d) => d.count)) : 1
+
+  return (
+    <Section title="Visitors · real people" eyebrow={days === 1 ? 'Beacon · last 24h' : `Beacon · last ${days} days`}>
+      <div className="flex gap-2 mb-4">
+        {([1, 7, 30] as const).map((d) => (
+          <button
+            key={d}
+            onClick={() => setDays(d)}
+            className={
+              'px-3 py-1 text-xs font-mono rounded-full transition-colors ' +
+              (days === d ? 'bg-ink-900 font-semibold' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+            }
+            style={days === d ? { color: '#ffffff' } : undefined}
+          >
+            {d === 1 ? '24h' : `${d}d`}
+          </button>
+        ))}
+      </div>
+      {!data ? <Loading /> : !data.ok ? (
+        <div className="text-xs font-mono text-amber-700 bg-amber-50 rounded-lg px-3 py-2">
+          Table « hits » indisponible — exécute worker/sql/analytics-hits.sql dans Supabase.
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <KpiCard label="Visits (sessions)" value={data.sessions} accent="gold" />
+            <KpiCard label="Page views" value={data.pageviews} />
+            <KpiCard
+              label="Top country"
+              value={data.byCountry[0] ? `${isoFlag(data.byCountry[0].key)} ${data.byCountry[0].key}` : '—'}
+            />
+            <KpiCard label="From Facebook" value={`${fbPct}%`} accent={fbPct > 0 ? 'green' : undefined} mono />
+          </div>
+
+          {/* Daily mini-bars */}
+          {data.byDay.length > 1 && (
+            <div className="mt-5 flex items-end gap-1 h-16">
+              {data.byDay.map((d) => (
+                <div key={d.key} className="flex-1 flex flex-col items-center gap-1" title={`${d.key} · ${d.count} vues`}>
+                  <div
+                    className="w-full rounded-t bg-accent-gold/70"
+                    style={{ height: `${Math.max(6, (d.count / maxDay) * 100)}%` }}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-5 grid sm:grid-cols-2 gap-5">
+            <div>
+              <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2">Top countries</div>
+              <div className="space-y-1">
+                {data.byCountry.slice(0, 10).map((c) => (
+                  <div key={c.key} className="flex items-center gap-2 text-sm">
+                    <span>{isoFlag(c.key)}</span>
+                    <span className="font-mono text-xs text-slate-600 w-8">{c.key}</span>
+                    <div className="flex-1 h-2 rounded bg-slate-100 overflow-hidden">
+                      <div className="h-full bg-accent-gold/60" style={{ width: `${(c.count / (data.byCountry[0]?.count || 1)) * 100}%` }} />
+                    </div>
+                    <span className="font-mono text-xs text-slate-500 w-10 text-right">{c.count}</span>
+                  </div>
+                ))}
+                {data.byCountry.length === 0 && <div className="text-xs text-slate-500">Aucune visite enregistrée pour l’instant.</div>}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2">Traffic sources</div>
+              <div className="space-y-1">
+                {data.bySource.map((s) => (
+                  <div key={s.key} className="flex items-center gap-2 text-sm">
+                    <span className={'font-mono text-xs w-24 truncate ' + (s.key === 'facebook' ? 'text-accent-green font-bold' : 'text-slate-600')}>
+                      {s.key === 'facebook' ? '📘 facebook' : s.key}
+                    </span>
+                    <div className="flex-1 h-2 rounded bg-slate-100 overflow-hidden">
+                      <div className={'h-full ' + (s.key === 'facebook' ? 'bg-accent-green/70' : 'bg-slate-300')} style={{ width: `${(s.count / (data.bySource[0]?.count || 1)) * 100}%` }} />
+                    </div>
+                    <span className="font-mono text-xs text-slate-500 w-10 text-right">{s.count}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mt-4 mb-2">Languages</div>
+              <div className="flex gap-3 font-mono text-xs text-slate-600">
+                {data.byLang.map((l) => <span key={l.key}>{l.key}: {l.count}</span>)}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+    </Section>
+  )
+}
+
 function Analytics() {
   const [cf, setCf] = useState<unknown>(null)
   const [gsc, setGsc] = useState<unknown>(null)
@@ -277,7 +407,7 @@ function Analytics() {
   }
   type GscMock = { clicks: number; impressions: number; ctr: string; position: number; topQueries: Array<{ query: string; clicks: number; impressions: number }>; topPages: Array<{ url: string; clicks: number; impressions: number }> }
   const cfData = cf as { configured?: boolean; message?: string; mock?: CfMock; raw?: unknown } | null
-  const gscData = gsc as { configured?: boolean; message?: string; mock?: GscMock } | null
+  const gscData = gsc as { configured?: boolean; error?: string; message?: string; mock?: GscMock } | null
 
   // The worker now flattens both 'configured' AND 'mock' paths into
   // the same shape, so we just read .mock either way and the UI
@@ -287,6 +417,7 @@ function Analytics() {
 
   return (
     <>
+      <Visitors />
       <Section title="Cloudflare Analytics" eyebrow={`Traffic · last ${range}`}>
         <div className="flex gap-2 mb-4">
           {(['24h', '7d', '30d'] as const).map((r) => (
@@ -451,6 +582,20 @@ function Analytics() {
               </div>
             </div>
           </>
+        ) : gscData?.error ? (
+          <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm">
+            <div className="font-bold text-rose-900 mb-1">GSC error — {gscData.error}</div>
+            {gscData.message && (
+              <div className="text-rose-800 text-xs font-mono break-all">{gscData.message}</div>
+            )}
+            <div className="text-rose-700 text-xs mt-2">
+              Common causes: refresh token expired/revoked, missing scope (needs <code>webmasters.readonly</code>),
+              or <code>GSC_SITE_URL</code> doesn't match a verified property. Re-run <code>scripts/get-gsc-refresh-token.mjs</code> and
+              <code> wrangler secret put GSC_REFRESH_TOKEN</code> to refresh.
+            </div>
+          </div>
+        ) : !gscData?.configured ? (
+          <ConfigBanner message={gscData?.message ?? 'GSC not configured.'} />
         ) : (
           <div className="text-sm text-slate-600">No data yet — GSC needs a few days to index your site.</div>
         )}
@@ -495,7 +640,7 @@ function Push() {
   const [url, setUrl] = useState('/today')
   const [tag, setTag] = useState('')
   const [preset, setPreset] = useState<PresetKind>('custom')
-  const [subs, setSubs] = useState<Array<{ provider: string; tail: string; fullEndpoint: string; ua?: string | null; lang?: string | null; created_at?: string | null }>>([])
+  const [subs, setSubs] = useState<Array<{ provider: string; tail: string; fullEndpoint: string; ua?: string | null; lang?: string | null; created_at?: string | null; alias?: string | null }>>([])
   const [selectedEndpoint, setSelectedEndpoint] = useState<string | null>(null)
   const [status, setStatus] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -717,7 +862,7 @@ function Push() {
             <div className="flex items-start gap-3">
               <img src="/icon-192.png" alt="" className="w-9 h-9 rounded-lg shrink-0" />
               <div className="min-w-0 flex-1">
-                <div className="font-display font-bold text-sm text-ink-900 truncate">{title || 'Title…'}</div>
+                <div className="font-display font-bold text-sm text-slate-900 truncate">{title || 'Title…'}</div>
                 <div className="text-xs text-slate-700 mt-0.5 line-clamp-2">{body || 'Body…'}</div>
                 <div className="text-[10px] text-slate-400 font-mono mt-1.5">→ {url}{tag ? ` · #${tag}` : ''}</div>
               </div>
@@ -758,7 +903,14 @@ function Push() {
                   onChange={() => setSelectedEndpoint(s.fullEndpoint)}
                 />
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold">{s.provider} · <span className="font-mono text-slate-500">…{s.tail}</span></div>
+                  <div className="text-sm font-semibold flex items-center gap-2">
+                    {s.provider} · <span className="font-mono text-slate-500">…{s.tail}</span>
+                    {s.alias && (
+                      <span className="px-1.5 py-0.5 rounded-md bg-accent-gold/15 text-accent-gold text-xs font-mono font-bold tracking-wide">
+                        {s.alias}
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-slate-500 font-mono truncate">{s.ua ?? ''}</div>
                 </div>
                 <div className="text-xs font-mono text-slate-400 shrink-0">
@@ -845,7 +997,7 @@ function ScheduledAlertsSection() {
         </div>
         <button
           onClick={() => void refresh()}
-          className="text-[10px] uppercase tracking-widest font-mono text-slate-500 hover:text-ink-900 px-2 py-1"
+          className="text-[10px] uppercase tracking-widest font-mono text-slate-500 hover:text-slate-900 px-2 py-1"
         >
           ↻ refresh
         </button>
@@ -861,7 +1013,7 @@ function ScheduledAlertsSection() {
               <li key={it.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center gap-2.5">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-display font-semibold text-sm text-ink-900 truncate">{it.title}</span>
+                    <span className="font-display font-semibold text-sm text-slate-900 truncate">{it.title}</span>
                     {it.leadMinutes !== null && (
                       <span className="shrink-0 px-2 py-0.5 rounded-full text-[10px] font-mono uppercase tracking-widest bg-slate-100 text-slate-600">
                         T-{it.leadMinutes}m
@@ -1061,6 +1213,404 @@ function SiteHealth() {
 
 // ─── Section: Quick actions ─────────────────────────────────────────
 
+/**
+ * Public site feature flags — persisted in Worker KV (site:settings) and
+ * read by every visitor at boot. Each toggle saves immediately.
+ */
+function SiteSwitches() {
+  type S = { wc26Visible: boolean; arabicArticles: boolean }
+  const [s, setS] = useState<S | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  useEffect(() => {
+    void adminGet('/admin/site/settings').then((d) => setS((d as { settings: S }).settings))
+  }, [])
+  async function toggle(key: keyof S, v: boolean) {
+    if (!s) return
+    const next = { ...s, [key]: v }
+    setS(next)
+    setMsg('Saving…')
+    try {
+      const r = await adminPost('/admin/site/settings', { settings: { [key]: v } }) as { settings?: S }
+      if (r.settings) setS(r.settings)
+      setMsg('✓ Saved — live for visitors within ~1 min (edge cache).')
+    } catch (e) {
+      setMsg('✗ ' + String(e))
+    }
+  }
+  return (
+    <Section title="Site switches" eyebrow="Visibility · Languages">
+      {!s && <Loading />}
+      {s && (
+        <>
+          <ToggleRow
+            label="🏆 Show the WC26 archive on the site"
+            sub="ON → nav entry “WC26 Archive”, mobile tab, home archive card, hero CTA and footer link are visible. OFF → all of them hidden. The /wc26, /team/*, /stadiums… URLs stay online and indexed either way — this only controls in-site visibility."
+            checked={s.wc26Visible}
+            onChange={(v) => toggle('wc26Visible', v)}
+          />
+          <div className="border-t border-slate-200 my-4" />
+          <ToggleRow
+            label="🇸🇦 Arabic articles (bilingual EN / AR)"
+            sub="ON → every article you Approve is also translated to Modern Standard Arabic (gpt-oss-120b, sports-journalism register); the article page gets an EN / عربي toggle; the Facebook auto-post publishes TWO posts (English, then Arabic linking to ?lang=ar). Articles published while OFF stay EN-only — use “Translate → AR” in the News tab to add Arabic later."
+            checked={s.arabicArticles}
+            onChange={(v) => toggle('arabicArticles', v)}
+          />
+          {msg && (
+            <div className={'mt-3 text-xs font-mono ' + (msg.startsWith('✓') ? 'text-emerald-700' : msg.startsWith('✗') ? 'text-rose-700' : 'text-slate-500')}>
+              {msg}
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  )
+}
+
+/**
+ * Facebook automation ("l'usine") — worker/src/automation.ts. English
+ * only. Master switch + per-output toggles, today's counters, the live
+ * log and "run now" buttons for testing. Everything renders on the
+ * Render studio and goes to Facebook through the Make webhooks.
+ */
+function AutomationPanel() {
+  type S = {
+    enabled: boolean; articles: boolean; articlesPerDay: number; matchday: boolean; morningHour: number
+    ftPosts: boolean; ftPerDay: number; stories: boolean; storiesPerDay: number; reels: boolean
+    goalAlerts: boolean; goalReelsPerDay: number; resultsReel: boolean; maxPostsPerDay?: number; barcaDaily?: boolean
+    lineups?: boolean; barcaFtStyle?: 'poster' | 'reel'
+    talesPerDay?: number; taleVariants?: number; taleVariantGapMin?: number; goalScope?: 'barca' | 'barca+morocco'
+    goalAnim?: boolean; goalAnimPerDay?: number; goalAnimScope?: 'all' | 'barca'
+    tales: boolean; taleDay: number; taleHour: number
+    freeVoices: boolean
+    taleLangs: { en: boolean; fr: boolean; ar: boolean }; taleGapMin: number
+    taleAutoGen: boolean; taleOrder: string
+    mainLang: 'ar' | 'en'; articleReels: boolean
+  }
+  type Status = {
+    date: string; localTime: string
+    counts: { article: number; ft: number; story: number; reel: number; post: number; goalreel?: number }
+    config: { studio: boolean; studioUrl: string | null; studioHealth: { ok?: boolean; pending?: number; error?: unknown } | null; postWebhook: boolean; videoWebhook: boolean; pageToken: boolean }
+    log: Array<{ t: string; job: string; ok: boolean; note: string }>
+    tales?: Array<{ slug: string; title: string; done: boolean; custom: boolean; needsReview?: string; hold?: boolean }>
+  }
+  const [s, setS] = useState<S | null>(null)
+  // Football Stories controls (Mehdi, 2026-09-10): pick a story, preview a language, publish now, generate a draft with AI.
+  const [taleSlug, setTaleSlug] = useState('')
+  const [taleLang, setTaleLang] = useState<'ar' | 'fr' | 'en'>('fr')
+  const [taleSubject, setTaleSubject] = useState('')
+  const [st, setSt] = useState<Status | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  // Facebook token checker (Mehdi, 2026-09-08): validity + expiry + scopes,
+  // link to the Graph API Explorer, and a field to paste a fresh token.
+  type Tok = { ok: boolean; valid: boolean; source: string; note?: string; expiresAt: number | null; daysLeft: number | null; obtainedAt: number | null; scopes: string[]; missing: string[]; page: { id: string; name: string } | null; explorerUrl: string | null; error?: string; fbSaysNever?: boolean; dataAccessExpiresAt?: number | null }
+  const [tok, setTok] = useState<Tok | null>(null)
+  const [tokBusy, setTokBusy] = useState(false)
+  const [tokInput, setTokInput] = useState('')
+  const checkToken = useCallback(() => {
+    setTokBusy(true)
+    void adminGet('/admin/automation/token').then((d) => setTok(d as Tok)).catch(() => {}).finally(() => setTokBusy(false))
+  }, [])
+  async function installToken() {
+    const t = tokInput.trim()
+    if (!t) return
+    setTokBusy(true)
+    setMsg('Installing the new token…')
+    try {
+      const r = await adminPost('/admin/automation/token', { token: t }) as Tok
+      setTok(r)
+      if (r.ok) { setTokInput(''); setMsg(`✓ Token installed · page ${r.page?.name ?? '?'}`) } else setMsg('✗ ' + (r.error ?? r.note ?? 'token rejected'))
+    } catch (e) { setMsg('✗ ' + String(e)) }
+    setTokBusy(false)
+    refresh()
+  }
+  const refresh = useCallback(() => {
+    void adminGet('/admin/automation/status').then((d) => setSt(d as Status)).catch(() => {})
+  }, [])
+  useEffect(() => {
+    void adminGet('/admin/automation/settings').then((d) => setS((d as { settings: S }).settings))
+    refresh()
+    checkToken()
+    const id = window.setInterval(refresh, 60_000)
+    return () => window.clearInterval(id)
+  }, [refresh, checkToken])
+  async function save(patch: Partial<S>) {
+    if (!s) return
+    setS({ ...s, ...patch })
+    setMsg('Saving…')
+    try {
+      const r = await adminPost('/admin/automation/settings', { settings: patch }) as { settings?: S }
+      if (r.settings) setS(r.settings)
+      setMsg('✓ Saved')
+    } catch (e) { setMsg('✗ ' + String(e)) }
+  }
+  async function run(job: string, extra: Record<string, unknown> = {}) {
+    setBusy(job)
+    setMsg(`Running ${job}…`)
+    try {
+      const r = await adminPost('/admin/automation/run', { job, ...extra }) as { ok: boolean; note: string }
+      setMsg((r.ok ? '✓ ' : '✗ ') + r.note)
+    } catch (e) { setMsg('✗ ' + String(e)) }
+    setBusy(null)
+    refresh()
+  }
+  const Num = ({ k, label }: { k: 'articlesPerDay' | 'ftPerDay' | 'storiesPerDay' | 'morningHour' | 'goalReelsPerDay' | 'taleDay' | 'taleHour' | 'taleGapMin' | 'maxPostsPerDay' | 'talesPerDay' | 'taleVariants' | 'taleVariantGapMin' | 'goalAnimPerDay'; label: string }) => (
+    <label className="flex items-center gap-2 text-[11px] font-mono text-slate-500">
+      {label}
+      <input
+        type="number" min={0} max={k === 'morningHour' || k === 'taleHour' ? 23 : k === 'taleDay' ? 6 : k === 'goalReelsPerDay' ? 60 : k === 'taleGapMin' ? 600 : 30}
+        value={s?.[k] ?? 0}
+        onChange={(e) => save({ [k]: parseInt(e.target.value, 10) || 0 } as Partial<S>)}
+        className="w-16 border border-slate-300 rounded px-2 py-1 text-slate-900 bg-white"
+      />
+    </label>
+  )
+  const Pill = ({ ok, label }: { ok: boolean; label: string }) => (
+    <span className={'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-mono ' + (ok ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800')}>
+      {ok ? '●' : '○'} {label}
+    </span>
+  )
+  return (
+    <Section title="Facebook automation" eyebrow="Usine · English only">
+      {!s && <Loading />}
+      {s && (
+        <>
+          <ToggleRow
+            label="🤖 Master switch — automated publishing"
+            sub="ON → the worker publishes on its own: morning match-day pack (post + stories + reel), full-time score posts, and articles without approval (English only, quality gates). OFF → nothing automatic; the manual studio keeps working as before."
+            checked={s.enabled}
+            onChange={(v) => save({ enabled: v })}
+            accent="red"
+          />
+          <div className="border-t border-slate-200 my-4" />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <ToggleRow label="📰 Articles — auto-publish" sub="Every 2 h the news cron produces one article; it goes live + FB post (split card) + story when it passes the gates (title, body ≥ 400 chars, image). Otherwise it stays a draft for you." checked={s.articles} onChange={(v) => save({ articles: v })} disabled={!s.enabled} />
+              <Num k="articlesPerDay" label="max / day" />
+            </div>
+            <div className="space-y-3">
+              <ToggleRow label="🌅 Morning match-day pack" sub="Post with today's big matches, story pages (6 matches each) and the reel with English voice + signature music." checked={s.matchday} onChange={(v) => save({ matchday: v })} disabled={!s.enabled} />
+              <Num k="morningHour" label="at (Morocco time, h)" />
+            </div>
+            <div className="space-y-3">
+              <ToggleRow label="⏱ Full-time score posts" sub="One post per finished big match (score card), at least 8 min apart." checked={s.ftPosts} onChange={(v) => save({ ftPosts: v })} disabled={!s.enabled} />
+              <Num k="ftPerDay" label="max / day" />
+            </div>
+            <div className="space-y-3">
+              <ToggleRow label="📱 Stories" sub="Match-day pages + one story per auto-published article (QR + “visit our profile”). Needs the FB_PAGE_TOKEN secret (Graph API) — Make has no story module." checked={s.stories} onChange={(v) => save({ stories: v })} disabled={!s.enabled} />
+              <Num k="storiesPerDay" label="max / day" />
+              <ToggleRow label="🎬 Match-day reel" sub="Rendered on the studio (ffmpeg), published through the Make video scenario (Reels API only as fallback — API reels do not render in the Facebook app). Link commented once Facebook has processed the video." checked={s.reels} onChange={(v) => save({ reels: v })} disabled={!s.enabled} />
+              <ToggleRow label="⚽ Goal alerts (reels)" sub="Every minute the live score of the big competitions (big-5, Champions League, major cups) is compared with the previous one — each goal becomes an 8 s video (GOAL card, scorer, minute, music only — no voice) posted through Make, with the live link in a comment. Max 4 per match." checked={s.goalAlerts ?? true} onChange={(v) => save({ goalAlerts: v })} disabled={!s.enabled} />
+              <Num k="goalReelsPerDay" label="max / day" />
+              <Num k="maxPostsPerDay" label="· feed budget / day (posts + reels, anti-spam)" />
+              <div className="flex items-center gap-3 text-[12px] text-slate-700 pl-1">
+                <span className="font-semibold">🌍 Main language of posts &amp; voices</span>
+                <select value={s.mainLang ?? 'ar'} onChange={(e) => save({ mainLang: e.target.value as 'ar' | 'en' })} disabled={!s.enabled} className="border border-slate-300 rounded px-2 py-1 text-slate-900 bg-white text-xs font-mono">
+                  <option value="ar">🇲🇦 Arabic first (audience: 97 % Maghreb / Middle East)</option><option value="en">🇬🇧 English</option>
+                </select>
+              </div>
+              <ToggleRow label="🎞 Article reels" sub="Digest reel every 2 published articles. Off after the 11 Sept audit: 2-3 s average play time, no engagement, Make operations wasted." checked={s.articleReels ?? false} onChange={(v) => save({ articleReels: v })} disabled={!s.enabled || !s.reels} />
+              <ToggleRow label="🆓 Free production mode" sub="Switches every voice-over to the free engines: Orion (Workers AI) for English reels, MeloTTS for French stories, music + captions only for Arabic stories. No ElevenLabs credits spent while it is on. Turn it off to get Adam / Sarah / the Arabic narrator back." checked={s.freeVoices ?? false} onChange={(v) => save({ freeVoices: v })} disabled={!s.enabled} />
+              <ToggleRow label="📖 Football Stories" sub="DAILY true-story reel (60–90 s, hook in the first 3 s, question in the comments) in Arabic, French and English, one language after the other, plus the article on the site (EN + AR). Hand-written bank first, then AI drafts from the verified subject bank." checked={s.tales ?? true} onChange={(v) => save({ tales: v })} disabled={!s.enabled} />
+              <div className="flex gap-4 flex-wrap items-center"><Num k="taleHour" label="hour (Morocco)" /><Num k="taleGapMin" label="min between languages" />
+                <label className="flex items-center gap-2 text-[11px] font-mono text-slate-500">order
+                  <select value={s.taleOrder ?? 'en,ar,fr'} onChange={(e) => save({ taleOrder: e.target.value })} className="border border-slate-300 rounded px-2 py-1 text-slate-900 bg-white">
+                    {['en,ar,fr', 'ar,en,fr', 'ar,fr,en', 'en,fr,ar', 'fr,en,ar', 'fr,ar,en'].map((o) => <option key={o} value={o}>{o.toUpperCase().replace(/,/g, ' → ')}</option>)}
+                  </select>
+                </label>
+              </div>
+              <ToggleRow label="🤖 Auto-generate stories" sub="Every morning at 09:00, when fewer than 2 unpublished stories remain, the next subject of the bank (23 verified fact sheets) is drafted by the AI: script in EN, fact-check pass against the fact sheet, then FR and AR. It shows up in the manual block with 🤖 so you can preview or delete it before 17:00." checked={s.taleAutoGen ?? true} onChange={(v) => save({ taleAutoGen: v })} disabled={!s.enabled || !s.tales} />
+              <div className="flex gap-4 text-[12px] text-slate-700 pl-1">
+                {(['ar', 'fr', 'en'] as const).map((l) => (
+                  <label key={l} className="flex items-center gap-1.5 cursor-pointer">
+                    <input type="checkbox" checked={s.taleLangs?.[l] !== false} disabled={!s.enabled || !s.tales} onChange={(e) => save({ taleLangs: { en: s.taleLangs?.en !== false, fr: s.taleLangs?.fr !== false, ar: s.taleLangs?.ar !== false, [l]: e.target.checked } })} />
+                    {l === 'ar' ? '🇲🇦 Arabic' : l === 'fr' ? '🇫🇷 French' : '🇬🇧 English'}
+                  </label>
+                ))}
+              </div>
+              <ToggleRow label="🔵🔴 Barça first" sub="The page's 5 150 followers came from a Barça fan page. Barça goals are always posted (only the global budget applies), the Barça match leads the matchday post/reel, a dedicated full-time reel replaces the score photo, one Barça article is fetched at 08:20 and the « برشلونة اليوم » digest reel (3 headlines, Arabic voice) goes out at 09:00. One Barça story a week in the Football Stories supply." checked={s.barcaDaily ?? true} onChange={(v) => save({ barcaDaily: v })} disabled={!s.enabled} />
+              <div className="text-sm text-slate-700 py-1 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span>📚 Football Stories:</span>
+                <Num k="talesPerDay" label="stories / day (slots every 4 h from the story hour)" />
+                <Num k="taleVariants" label="reels per story & language (same reel, different cover + caption)" />
+                <Num k="taleVariantGapMin" label="min between variants" />
+              </div>
+              <div className="flex items-center gap-3 text-sm text-slate-700 py-1">
+                <span>⚽ Goal reels:</span>
+                <select className="border border-slate-300 rounded px-2 py-1 text-sm" value={s.goalScope ?? 'barca'} onChange={(e) => save({ goalScope: e.target.value as 'barca' | 'barca+morocco' })} disabled={!s.enabled}>
+                  <option value="barca">Barça matches only</option>
+                  <option value="barca+morocco">Barça matches + Moroccan scorers</option>
+                </select>
+              </div>
+              <ToggleRow label="🎬 « كيف جاء الهدف » goal recreations" sub="After each finished match of the pool: the best goal (ESPN shot coordinates) becomes a 60-70 s narrated schematic recreation — Arabic voice, broadcast-style overlays, six numbered steps, automatic layout + audio QA, follow-the-page ending. One render at a time (~30 min on the studio); not published when the audio QA reports a problem." checked={s.goalAnim ?? true} onChange={(v) => save({ goalAnim: v })} disabled={!s.enabled} />
+              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-700 py-1">
+                <span>🎬 Recreations:</span>
+                <Num k="goalAnimPerDay" label="per day" />
+                <select className="border border-slate-300 rounded px-2 py-1 text-sm" value={s.goalAnimScope ?? 'all'} onChange={(e) => save({ goalAnimScope: e.target.value as 'all' | 'barca' })} disabled={!s.enabled}>
+                  <option value="all">every finished match of the day's pool</option>
+                  <option value="barca">Barça matches only</option>
+                </select>
+              </div>
+              <ToggleRow label="📋 Barça lineups (editorial)" sub="Predicted XI (the last confirmed XI) 6-3 h before kick-off, confirmed XI as soon as ESPN publishes it (~1 h before). Paper design, jerseys on the pitch." checked={s.lineups ?? true} onChange={(v) => save({ lineups: v })} disabled={!s.enabled} />
+              <div className="flex items-center gap-3 text-sm text-slate-700 py-1">
+                <span>⏱ Barça full time:</span>
+                <select className="border border-slate-300 rounded px-2 py-1 text-sm" value={s.barcaFtStyle ?? 'poster'} onChange={(e) => save({ barcaFtStyle: e.target.value as 'poster' | 'reel' })} disabled={!s.enabled}>
+                  <option value="poster">editorial poster (photo: score, scorers, player)</option>
+                  <option value="reel">animated reel (confetti)</option>
+                </select>
+              </div>
+              <ToggleRow label="⏱ Full-time results reel" sub="Once a day: every finished big match of the day (up to 10 slides, 3 s each, music only), posted when the last match is over or at 23:45 at the latest. Link in a comment." checked={s.resultsReel ?? true} onChange={(v) => save({ resultsReel: v })} disabled={!s.enabled} />
+            </div>
+          </div>
+          <div className="border-t border-slate-200 my-4" />
+          {st && (
+            <>
+              <div className="flex flex-wrap gap-2 mb-3">
+                <Pill ok={st.config.studio && !!st.config.studioHealth?.ok} label={st.config.studio ? (st.config.studioHealth?.ok ? `studio up${st.config.studioHealth?.pending ? ` · ${st.config.studioHealth.pending} rendering` : ''}` : 'studio unreachable') : 'studio not configured'} />
+                <Pill ok={st.config.postWebhook} label="Make · posts" />
+                <Pill ok={st.config.videoWebhook} label="Make · videos (reels)" />
+                <Pill ok={st.config.pageToken} label="Page token · stories + link comments" />
+              </div>
+              <div className="grid grid-cols-3 sm:grid-cols-6 gap-2 mb-3">
+                {([['post', 'posts'], ['article', 'articles'], ['ft', 'FT'], ['story', 'stories'], ['reel', 'reels'], ['goalreel', 'goal reels']] as const).map(([k, l]) => (
+                  <div key={k} className="rounded-lg bg-slate-50 border border-slate-200 p-2 text-center">
+                    <div className="font-display text-xl text-slate-900">{st.counts[k] ?? 0}</div>
+                    <div className="text-[10px] font-mono uppercase tracking-wider text-slate-500">{l} today</div>
+                  </div>
+                ))}
+              </div>
+              {/* ── Facebook token ─────────────────────────────────── */}
+              <div className={`rounded-xl border p-3 mb-3 ${tok ? (tok.ok && (tok.daysLeft === null || tok.daysLeft > 7) ? 'border-emerald-200 bg-emerald-50/50' : tok.ok ? 'border-amber-200 bg-amber-50/60' : 'border-rose-200 bg-rose-50/60') : 'border-slate-200 bg-slate-50'}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-900">🔑 Facebook access token</div>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={tokBusy} onClick={checkToken} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-mono text-slate-800 hover:bg-slate-50 disabled:opacity-50">{tokBusy ? '…' : '↻ Check now'}</button>
+                    <a href={tok?.explorerUrl ?? 'https://developers.facebook.com/tools/explorer/'} target="_blank" rel="noreferrer" className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-mono text-blue-800 hover:bg-blue-100">↗ Graph API Explorer (new token)</a>
+                  </div>
+                </div>
+                {tok ? (
+                  <div className="mt-2 space-y-1.5 text-[12px] text-slate-700">
+                    <div>
+                      {tok.ok ? <span className="font-semibold text-emerald-700">✓ Valid</span> : tok.valid ? <span className="font-semibold text-amber-700">⚠ Valid but page not resolved</span> : <span className="font-semibold text-rose-700">✗ Invalid / expired</span>}
+                      {tok.page && <span> · page <b>{tok.page.name}</b> ({tok.page.id})</span>}
+                      <span className="text-slate-500"> · {tok.source}</span>
+                    </div>
+                    <div>
+                      {tok.expiresAt === 0 || tok.expiresAt === null ? <span>Expiry: <b>{tok.valid ? 'never (long-lived Page token)' : 'unknown'}</b></span> : (
+                        <span>Expires <b>{new Date(tok.expiresAt).toLocaleDateString('fr-FR')}</b> · <b className={tok.daysLeft !== null && tok.daysLeft <= 7 ? 'text-rose-700' : tok.daysLeft !== null && tok.daysLeft <= 15 ? 'text-amber-700' : 'text-emerald-700'}>{tok.daysLeft} days left</b> (auto-renewed by the worker when under 10 days{tok.fbSaysNever ? '; Facebook itself reports “never expires”' : ''})</span>
+                      )}
+                      {tok.dataAccessExpiresAt ? <span className="text-slate-500"> · data access until {new Date(tok.dataAccessExpiresAt).toLocaleDateString('fr-FR')}</span> : null}
+                      {tok.obtainedAt ? <span className="text-slate-500"> · installed {new Date(tok.obtainedAt).toLocaleDateString('fr-FR')}</span> : null}
+                    </div>
+                    {tok.note && <div className="text-rose-700 break-words">{tok.note}</div>}
+                    <div className="flex flex-wrap gap-1">
+                      {tok.scopes.map((sc) => <span key={sc} className="rounded-full bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-mono">{sc}</span>)}
+                      {tok.missing.map((sc) => <span key={sc} className="rounded-full bg-rose-100 text-rose-800 px-2 py-0.5 text-[10px] font-mono" title="required by the automation">missing: {sc}</span>)}
+                    </div>
+                  </div>
+                ) : <div className="mt-2 text-[12px] text-slate-500">Checking…</div>}
+                <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                  <input
+                    type="password" autoComplete="off" spellCheck={false} placeholder="Paste a new User token from the Explorer (app “pressing 90 story”, all pages_* permissions) — it is exchanged for a 60-day token and stored server-side"
+                    value={tokInput} onChange={(e) => setTokInput(e.target.value)}
+                    className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 bg-white"
+                  />
+                  <button type="button" disabled={tokBusy || tokInput.trim().length < 40} onClick={() => void installToken()} className="rounded-lg bg-slate-900 text-white px-4 py-2 text-xs font-mono hover:bg-slate-700 disabled:opacity-40">{tokBusy ? '…' : 'Install token'}</button>
+                </div>
+                <div className="mt-1 text-[10px] text-slate-500">In the Explorer: pick the app, User token → “Get User Access Token”, keep every pages_* permission + business_management, generate, copy, paste here. The value is never shown again. E-mail alerts to medplay.inc@gmail.com: ⚠️ at 14/10/7/5/3/2/1/0 days, 🚨 instantly when Facebook rejects the token, ✅ when the worker renews it.</div>
+              </div>
+              {/* ── Football Stories: manual controls ─────────────────── */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 mb-3 space-y-2">
+                <div className="text-sm font-semibold text-slate-900">📖 Football Stories · manual</div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <select value={taleSlug} onChange={(e) => setTaleSlug(e.target.value)} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono bg-white text-slate-900 max-w-full">
+                    <option value="">next unpublished story</option>
+                    {(st.tales ?? []).map((t) => <option key={t.slug} value={t.slug}>{t.done ? '✓ ' : ''}{t.custom ? '🤖 ' : ''}{t.needsReview ? '⚠️ ' : ''}{t.hold ? '⏸ ' : ''}{t.title}</option>)}
+                  </select>
+                  <select value={taleLang} onChange={(e) => setTaleLang(e.target.value as 'ar' | 'fr' | 'en')} className="border border-slate-300 rounded-lg px-2 py-1.5 text-xs font-mono bg-white text-slate-900">
+                    <option value="ar">🇲🇦 Arabic</option><option value="fr">🇫🇷 French</option><option value="en">🇬🇧 English</option>
+                  </select>
+                  <button type="button" disabled={busy !== null} onClick={() => run('tale-preview', { slug: taleSlug || undefined, lang: taleLang, voice: true })} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-mono text-slate-800 hover:bg-slate-50 disabled:opacity-50">👁 Preview (not published)</button>
+                  <button type="button" disabled={busy !== null} onClick={() => { if (window.confirm('Publish this story now? Article on the site + reels in the enabled languages (posts to Facebook).')) void run('tale-next', { slug: taleSlug || undefined }) }} className="rounded-lg bg-slate-900 text-white px-3 py-1.5 text-xs font-mono hover:bg-slate-700 disabled:opacity-50">🚀 Publish now</button>
+                  <button type="button" disabled={busy !== null || !taleSlug} title="Make this story the one published at the next daily slot (11:00)" onClick={() => void run('tale-pin', { slug: taleSlug })} className="rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-mono text-emerald-800 hover:bg-emerald-100 disabled:opacity-50">📌 Pin as next story</button>
+                  {taleSlug && (st.tales ?? []).find((t) => t.slug === taleSlug)?.custom && (<>
+                    <button type="button" disabled={busy !== null} onClick={() => { if (window.confirm('Delete this AI draft?')) void run('tale-delete', { slug: taleSlug }) }} className="rounded-lg border border-rose-300 bg-rose-50 px-3 py-1.5 text-xs font-mono text-rose-800 hover:bg-rose-100 disabled:opacity-50">🗑 Delete draft</button>
+                    <button type="button" disabled={busy !== null} title="Re-run the Arabic editor pass on this AI draft (names, grammar, no Latin words)" onClick={() => void run('tale-polish', { slug: taleSlug })} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-mono text-amber-800 hover:bg-amber-100 disabled:opacity-50">✨ Re-polish Arabic</button>
+                    <button type="button" disabled={busy !== null} title="Keep this draft for a later day (the daily run skips it) — click again to release it" onClick={() => void run('tale-hold', { slug: taleSlug, hold: !(st.tales ?? []).find((t) => t.slug === taleSlug)?.hold })} className="rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-xs font-mono text-slate-700 hover:bg-slate-100 disabled:opacity-50">{(st.tales ?? []).find((t) => t.slug === taleSlug)?.hold ? '▶ Release' : '⏸ Hold for later'}</button>
+                  </>)}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input value={taleSubject} onChange={(e) => setTaleSubject(e.target.value)} placeholder="Generate a new story with AI — subject, e.g. “Ali Dia, the fake cousin of George Weah, Southampton 1996”" className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-xs font-mono text-slate-900 bg-white" />
+                  <button type="button" disabled={busy !== null || taleSubject.trim().length < 6} onClick={() => void run('tale-generate', { subject: taleSubject.trim() })} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-2 text-xs font-mono text-blue-800 hover:bg-blue-100 disabled:opacity-40">🤖 Generate draft (≈3 min)</button>
+                </div>
+                <div className="text-[10px] text-slate-500">The draft (EN → FR → AR, 10 beats, article, captions, question) appears in the list with 🤖 when the log says “DRAFT READY”. Verify the facts, preview it, then publish. The daily schedule keeps picking the next unpublished story.</div>
+                {/* Previews rendered by the studio (render-only, never published): playable right here. */}
+                {(() => {
+                  const rows = (st.log ?? []).filter((e) => e.job.startsWith('preview')).slice(0, 6)
+                  if (rows.length === 0) return null
+                  return (
+                    <div className="pt-2 border-t border-slate-200">
+                      <div className="text-[11px] font-mono text-slate-500 mb-1">Previews (not published) — a render takes 5 to 12 minutes; this list refreshes every minute</div>
+                      <div className="flex flex-wrap gap-3">
+                        {rows.map((e) => {
+                          const m = e.note.match(/https:\/\/\S+\.mp4/)
+                          const url = m ? m[0] : null
+                          const label = `${e.job.replace('preview-', '')} · ${e.t.slice(11, 16)}Z`
+                          return (
+                            <div key={e.t + e.job} className="w-[150px]">
+                              {url ? (
+                                <video src={url} controls preload="metadata" className="w-[150px] rounded-lg bg-black aspect-[9/16]" />
+                              ) : (
+                                <div className="w-[150px] aspect-[9/16] rounded-lg bg-slate-200 flex items-center justify-center text-[11px] text-slate-600 text-center px-2">{e.ok ? 'rendering…' : 'failed'}</div>
+                              )}
+                              <div className="text-[10px] font-mono text-slate-600 mt-1 truncate">{label}</div>
+                              {url && <a href={url} target="_blank" rel="noreferrer" className="text-[10px] text-blue-700 underline">open</a>}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+              </div>
+              <div className="text-[11px] font-mono text-slate-500 mb-2">{st.date} · {st.localTime} Morocco</div>
+              <div className="flex flex-wrap gap-2 mb-3">
+                {([['test-image', '🖼 Test image'], ['test-voice', '🔊 Test voice'], ['test-story', '📱 Test story (posts to FB!)'], ['test-video', '🎬 Test video (posts to FB!)'], ['test-goal', '⚽ Test goal reel (preview only)'], ['results-preview', '⏱ Results reel (preview only)'], ['results', '⏱ Results reel now (posts to FB!)'], ['token-check', '🔑 Token check (mails if needed)'], ['token-mail-test', '✉️ Test token e-mail'], ['tales', '📖 Stories bank'], ['matchday', '🌅 Run match-day now'], ['ft', '⏱ FT pass now'], ['cleanup', '🧹 Cleanup media']] as const).map(([job, label]) => (
+                  <button key={job} type="button" disabled={busy !== null} onClick={() => run(job)}
+                    className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-mono text-slate-800 hover:bg-slate-50 disabled:opacity-50">
+                    {busy === job ? '…' : label}
+                  </button>
+                ))}
+              </div>
+              <div className="max-h-72 overflow-y-auto rounded-lg border border-slate-200 bg-white divide-y divide-slate-100">
+                {st.log.length === 0 && <div className="p-3 text-xs font-mono text-slate-400">No automation activity today.</div>}
+                {st.log.map((e, i) => (
+                  <div key={i} className="p-2 text-[11px] font-mono flex gap-2 items-start">
+                    <span className={e.ok ? 'text-emerald-600' : 'text-rose-600'}>{e.ok ? '✓' : '✗'}</span>
+                    <span className="text-slate-400 shrink-0">{new Date(e.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="text-slate-700 shrink-0">{e.job}</span>
+                    <span className="text-slate-500 break-all">{/https?:\/\/\S+/.test(e.note) ? (
+                      <>
+                        {e.note.replace(/https?:\/\/\S+/, '')}
+                        <a className="text-blue-600 underline" href={e.note.match(/https?:\/\/\S+/)![0]} target="_blank" rel="noreferrer">open</a>
+                      </>
+                    ) : e.note}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+          {msg && (
+            <div className={'mt-3 text-xs font-mono break-all ' + (msg.startsWith('✓') ? 'text-emerald-700' : msg.startsWith('✗') ? 'text-rose-700' : 'text-slate-500')}>
+              {/https?:\/\/\S+/.test(msg) ? <>{msg.replace(/https?:\/\/\S+/, '')} <a className="underline" href={msg.match(/https?:\/\/\S+/)![0]} target="_blank" rel="noreferrer">open</a></> : msg}
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  )
+}
+
 function QuickActions() {
   const [status, setStatus] = useState<string | null>(null)
   async function clearCache(prefix: string) {
@@ -1069,6 +1619,9 @@ function QuickActions() {
     setStatus(`Cleared ${(r as { deleted: number }).deleted} keys.`)
   }
   return (
+    <>
+    <SiteSwitches />
+    <AutomationPanel />
     <Section title="Quick actions" eyebrow="Maintenance">
       <div className="grid sm:grid-cols-2 gap-3">
         <ActionButton title="Force ESPN cache refresh" onClick={() => clearCache('scoreboard')}>
@@ -1086,6 +1639,7 @@ function QuickActions() {
       </div>
       {status && <div className="mt-4 text-sm font-mono text-slate-600">{status}</div>}
     </Section>
+    </>
   )
 }
 
@@ -1095,7 +1649,7 @@ function Section({ title, eyebrow, children }: { title: string; eyebrow?: string
   return (
     <section className="mb-6 sm:mb-8 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
       {eyebrow && <div className="text-[10px] uppercase tracking-[0.22em] text-slate-500 font-mono mb-1">{eyebrow}</div>}
-      <h2 className="font-display font-bold text-lg sm:text-xl text-ink-900 mb-3 sm:mb-4">{title}</h2>
+      <h2 className="font-display font-bold text-lg sm:text-xl text-slate-900 mb-3 sm:mb-4">{title}</h2>
       {children}
     </section>
   )
@@ -1106,7 +1660,7 @@ function KpiCard({ label, value, accent, mono }: { label: string; value: number 
     accent === 'gold' ? 'text-accent-gold'
     : accent === 'green' ? 'text-emerald-600'
     : accent === 'red' ? 'text-accent-red'
-    : 'text-ink-900'
+    : 'text-slate-900'
   return (
     <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
       <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-1">{label}</div>
@@ -1241,7 +1795,7 @@ function TagPicker({ value, onChange }: { value: string; onChange: (v: string) =
 function ActionButton({ title, onClick, children }: { title: string; onClick: () => void; children: React.ReactNode }) {
   return (
     <button onClick={onClick} className="text-left rounded-xl border border-slate-200 bg-slate-50/60 p-4 hover:bg-slate-100 transition-colors">
-      <div className="font-display font-semibold text-ink-900">{title}</div>
+      <div className="font-display font-semibold text-slate-900">{title}</div>
       <div className="mt-1 text-xs text-slate-600">{children}</div>
     </button>
   )
@@ -1378,6 +1932,7 @@ interface Article {
   /** When true, the home-page NewsTicker carousel shows this article
    *  in its first 2 pages. Toggled via the pin/unpin actions. */
   pinned_to_home?: boolean
+  title_ar?: string | null
   created_at: string
   published_at: string | null
   archived_at: string | null
@@ -1394,28 +1949,72 @@ interface PolledCandidate {
   redditScore?: number
 }
 
+const ALL_POLL_SOURCES = [
+  'ESPN FC', 'BBC Sport', 'Goal', 'Sky Sports', 'The Guardian', 'FIFA', 'Footmercato',
+] as const
+
 function News() {
-  const [status, setStatus] = useState<'draft' | 'published' | 'archived'>('draft')
+  const [status, setStatus] = useState<'draft' | 'published' | 'archived' | 'reels'>('draft')
   const [items, setItems] = useState<Article[]>([])
   const [loading, setLoading] = useState(false)
   const [expanded, setExpanded] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
-  // 6 candidate articles returned by /poll. The operator picks one
+  // 10 candidate articles returned by /poll. The operator picks one
   // and we call /produce to AI-rewrite + save as draft.
   const [candidates, setCandidates] = useState<PolledCandidate[] | null>(null)
+  // Story generator modal — opened from a published article's row.
+  const [storyFor, setStoryFor] = useState<Article | null>(null)
+  // Reel composer modal — opened from the 'reels' studio tab.
+  const [reel, setReel] = useState<{ mode: 'article' | 'matchday'; article: Article | null } | null>(null)
+  // Voiceless match-day story image(s) — third studio card.
+  const [matchStory, setMatchStory] = useState(false)
   // Optional keyword to narrow the poll — empty = base poll (same as before).
   const [pollKeyword, setPollKeyword] = useState('')
+  // Which sources to include in the next poll. All enabled by default.
+  const [pollSources, setPollSources] = useState<Set<string>>(new Set(ALL_POLL_SOURCES))
+  function togglePollSource(s: string) {
+    setPollSources((prev) => {
+      const next = new Set(prev)
+      if (next.has(s)) next.delete(s)
+      else next.add(s)
+      return next
+    })
+  }
+  // Sources dropdown (replaced the chip wall — it crowded the section,
+  // especially on mobile). Closes on outside tap / Escape.
+  const [srcOpen, setSrcOpen] = useState(false)
+  const srcRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!srcOpen) return
+    function onDown(e: MouseEvent | TouchEvent) {
+      if (srcRef.current && !srcRef.current.contains(e.target as Node)) setSrcOpen(false)
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setSrcOpen(false) }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('touchstart', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('touchstart', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [srcOpen])
 
   async function load() {
+    // The 'reels' tab is a studio, not an article status — it still
+    // needs the published list (for the article-reel picker).
+    const listStatus = status === 'reels' ? 'published' : status
     setLoading(true)
     try {
-      const r = await fetch(`${API_BASE}/admin/news/list?status=${status}`, {
+      const r = await fetch(`${API_BASE}/admin/news/list?status=${listStatus}`, {
         headers: { authorization: `Bearer ${getToken() ?? ''}` },
       })
       if (!r.ok) throw new Error(String(r.status))
       const data = await r.json() as { articles: Article[] }
-      setItems(data.articles ?? [])
+      // Football Stories articles are produced by their own pipeline (Actions → Football Stories);
+      // keep them out of the article-reel studio so nobody renders them as an article reel by mistake.
+      setItems((data.articles ?? []).filter((x) => status !== 'reels' || !x.slug.startsWith('story-')))
     } catch (e) {
       setMsg('Load failed: ' + String(e))
     } finally {
@@ -1425,18 +2024,27 @@ function News() {
 
   useEffect(() => { void load() }, [status])
 
-  async function act(id: string, action: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish' | 'pin' | 'unpin') {
+  async function act(id: string, action: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish' | 'pin' | 'unpin' | 'share-facebook' | 'translate-ar') {
     if (action === 'delete' && !confirm('Delete this article permanently?')) return
     setBusy(id + ':' + action)
     setMsg(null)
+    // Branded FB post card: generated here in the browser (the worker
+    // can't render canvases) and uploaded BEFORE the publish call so
+    // the worker attaches it to the Facebook post(s). Silent failure =
+    // the post falls back to the raw article image.
+    if (action === 'approve' || action === 'share-facebook') {
+      const art = items.find((x) => x.id === id)
+      if (art) await uploadPostCards(art, getToken() ?? '')
+    }
     try {
       const r = await fetch(`${API_BASE}/admin/news/${id}/${action}`, {
         method: 'POST',
         headers: { authorization: `Bearer ${getToken() ?? ''}` },
       })
       if (!r.ok) throw new Error(await r.text())
-      setMsg(`✓ ${action}`)
-      await load()
+      // share-facebook doesn't change DB state, so skip the reload for it.
+      setMsg(action === 'share-facebook' ? '✓ Publié sur Facebook' : action === 'translate-ar' ? '✓ Traduction arabe générée' : `✓ ${action}`)
+      if (action !== 'share-facebook') await load()
     } catch (e) {
       setMsg('Error: ' + String(e))
     } finally {
@@ -1445,16 +2053,22 @@ function News() {
   }
 
   /**
-   * Poll = ask the worker for the top 6 candidates (filtered by dedup
+   * Poll = ask the worker for the top 10 candidates (filtered by dedup
    * against everything already in DB). Replaces the previous instant
    * 'trigger' flow with an explicit pick step.
    */
-  async function poll() {
-    setBusy('poll')
+  async function poll(mode?: 'botola') {
+    setBusy(mode === 'botola' ? 'poll-botola' : 'poll')
     setMsg(null)
     try {
       const kw = pollKeyword.trim()
-      const qs = kw ? `?keyword=${encodeURIComponent(kw)}` : ''
+      const params = new URLSearchParams()
+      if (kw) params.set('keyword', kw)
+      if (mode) params.set('mode', mode)
+      if (!mode && pollSources.size < ALL_POLL_SOURCES.length) {
+        params.set('sources', [...pollSources].join(','))
+      }
+      const qs = params.toString() ? '?' + params.toString() : ''
       const r = await fetch(`${API_BASE}/admin/news/poll${qs}`, {
         method: 'POST',
         headers: { authorization: `Bearer ${getToken() ?? ''}` },
@@ -1463,11 +2077,13 @@ function News() {
       const data = await r.json() as { candidates: PolledCandidate[]; diagnostics: Record<string, unknown> }
       setCandidates(data.candidates)
       if (data.candidates.length === 0) {
-        setMsg(kw
+        setMsg(mode === 'botola'
+          ? 'No fresh Botola candidates — Moroccan outlets may be quiet right now, try again later.'
+          : kw
           ? `No candidates match "${kw}" — try a broader term or another poll without the keyword.`
           : 'No fresh candidates — RSS feeds may be slow or all top items are already in DB. Try again later.')
       } else {
-        setMsg(`✓ ${data.candidates.length} candidates ready${kw ? ` for "${kw}"` : ''} — pick one to produce`)
+        setMsg(`✓ ${data.candidates.length}${mode === 'botola' ? ' Botola' : ''} candidates ready${kw ? ` for "${kw}"` : ''} — pick one to produce`)
       }
     } catch (e) {
       setMsg('Poll failed: ' + String(e))
@@ -1541,61 +2157,15 @@ function News() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      {/* Row 1 — title + utility buttons */}
+      <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="font-display font-bold text-2xl text-slate-900">📰 News pipeline</h2>
+          <h2 className="font-display font-bold text-xl sm:text-2xl text-slate-900">📰 News pipeline</h2>
           <div className="text-xs text-slate-500 font-mono">
-            Auto-drafted every 3 hours from RSS + Reddit · {items.length} {status} articles
+            Auto-drafted every 3h · {items.length} {status} articles
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex bg-slate-100 rounded-full p-1">
-            {(['draft', 'published', 'archived'] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatus(s)}
-                className={
-                  'px-3 py-1 rounded-full text-xs font-mono uppercase tracking-widest transition-colors ' +
-                  (status === s ? 'bg-ink-900 text-white' : 'text-slate-500')
-                }
-                style={status === s ? { color: '#fff' } : undefined}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
-          {/* Keyword + Poll grouped together — keyword is optional. Empty
-              input = same poll as before. Filled = filters candidates to
-              titles/descriptions matching the term. */}
-          <div className="flex items-stretch gap-0 rounded-full overflow-hidden border border-slate-200 bg-white">
-            <input
-              type="text"
-              value={pollKeyword}
-              onChange={(e) => setPollKeyword(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void poll() }}
-              placeholder="optional keyword…"
-              className="px-3 py-1.5 text-xs font-mono w-[160px] focus:outline-none placeholder:text-slate-400"
-              disabled={busy === 'poll'}
-            />
-            {pollKeyword && (
-              <button
-                onClick={() => setPollKeyword('')}
-                disabled={busy === 'poll'}
-                className="px-2 text-slate-400 hover:text-slate-700 text-xs"
-                title="Clear keyword"
-                type="button"
-              >
-                ✕
-              </button>
-            )}
-            <button
-              onClick={poll}
-              disabled={busy === 'poll'}
-              className="px-3 py-1.5 bg-accent-gold text-ink-900 text-xs font-bold hover:bg-yellow-300 disabled:opacity-50 border-l border-slate-200"
-            >
-              {busy === 'poll' ? 'Polling…' : pollKeyword ? `🎣 Poll "${pollKeyword.slice(0,12)}${pollKeyword.length>12?'…':''}"` : '🎣 Poll 6 articles'}
-            </button>
-          </div>
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={async () => {
               setBusy('backfill')
@@ -1639,18 +2209,134 @@ function News() {
               finally { setBusy(null) }
             }}
             disabled={busy === 'backfill'}
-            className="px-3 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 disabled:opacity-50"
+            className="px-2.5 py-1.5 rounded-full bg-slate-100 text-slate-700 text-xs font-bold hover:bg-slate-200 disabled:opacity-50"
             title="Fetch og:image for every published article whose image_url is null"
           >
-            {busy === 'backfill' ? 'Backfilling…' : '🖼 Backfill images'}
+            {busy === 'backfill' ? '…' : '🖼'}
           </button>
           <button
             onClick={load}
-            className="px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-mono"
+            className="px-2.5 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-xs font-mono"
           >
             ↻
           </button>
         </div>
+      </div>
+
+      {/* Row 2 — status tabs + poll controls, wraps on mobile */}
+      <div className="flex flex-wrap items-start gap-2">
+        {/* Status tabs (+ the reels studio) */}
+        <div className="flex bg-slate-100 rounded-full p-1 shrink-0">
+          {(['draft', 'published', 'archived', 'reels'] as const).map((s) => (
+            <button
+              key={s}
+              onClick={() => setStatus(s)}
+              className={
+                'px-3 py-1 rounded-full text-xs font-mono uppercase tracking-widest transition-colors ' +
+                (status === s ? 'bg-ink-900 text-white' : 'text-slate-500')
+              }
+              style={status === s ? { color: '#fff' } : undefined}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+
+        {/* Poll input + source chips — expands to fill remaining width.
+            Hidden on the reels studio tab (polling is about articles). */}
+        {status !== 'reels' && (
+        <div className="flex-1 min-w-[240px] flex flex-col gap-1.5">
+          <div className="flex items-stretch gap-0 rounded-full overflow-hidden border border-slate-200 bg-white">
+            <input
+              type="text"
+              value={pollKeyword}
+              onChange={(e) => setPollKeyword(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void poll() }}
+              placeholder="optional keyword…"
+              className="flex-1 min-w-0 px-3 py-1.5 text-xs font-mono focus:outline-none placeholder:text-slate-400"
+              disabled={busy === 'poll'}
+            />
+            {pollKeyword && (
+              <button
+                onClick={() => setPollKeyword('')}
+                disabled={busy === 'poll'}
+                className="px-2 text-slate-400 hover:text-slate-700 text-xs"
+                title="Clear keyword"
+                type="button"
+              >
+                ✕
+              </button>
+            )}
+            <button
+              onClick={() => void poll()}
+              disabled={busy === 'poll' || busy === 'poll-botola'}
+              className="shrink-0 px-3 py-1.5 bg-accent-gold text-ink-900 text-xs font-bold hover:bg-yellow-300 disabled:opacity-50 border-l border-slate-200 whitespace-nowrap"
+            >
+              {busy === 'poll' ? 'Polling…' : pollKeyword ? `🎣 "${pollKeyword.slice(0,10)}${pollKeyword.length>10?'…':''}"` : '🎣 Poll 10'}
+            </button>
+          </div>
+
+          {/* Second row — Botola poll + sources dropdown, compact */}
+          <div className="flex items-center gap-1.5">
+            {/* Dedicated Botola Pro poll: Moroccan outlets only (Le360
+                Sport, Hespress, Al Mountakhab) via news search — the
+                general RSS pool has zero Botola coverage. */}
+            <button
+              type="button"
+              onClick={() => void poll('botola')}
+              disabled={busy === 'poll' || busy === 'poll-botola'}
+              className="px-3 py-1.5 rounded-full bg-accent-green/15 border border-accent-green/40 text-accent-green text-xs font-bold hover:bg-accent-green/25 disabled:opacity-50 whitespace-nowrap"
+              title="Poll Botola Pro news — Le360 Sport · Hespress · Al Mountakhab"
+            >
+              {busy === 'poll-botola' ? 'Polling…' : '🇲🇦 Botola'}
+            </button>
+
+            <div className="relative" ref={srcRef}>
+              <button
+                type="button"
+                onClick={() => setSrcOpen((v) => !v)}
+                aria-expanded={srcOpen}
+                className="px-3 py-1.5 rounded-full border border-slate-200 bg-white text-xs font-mono text-slate-600 hover:border-slate-400 inline-flex items-center gap-1.5"
+              >
+                Sources
+                <span className="text-slate-400">{pollSources.size}/{ALL_POLL_SOURCES.length}</span>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" aria-hidden className={'transition-transform ' + (srcOpen ? 'rotate-180' : '')}>
+                  <path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {srcOpen && (
+                <div className="absolute left-0 top-full mt-1.5 z-30 w-56 rounded-xl border border-slate-200 bg-white shadow-xl p-1.5">
+                  {(ALL_POLL_SOURCES as readonly string[]).map((source) => (
+                    <button
+                      key={source}
+                      type="button"
+                      onClick={() => togglePollSource(source)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-xs hover:bg-slate-100 text-left transition-colors"
+                    >
+                      <span className={pollSources.has(source) ? 'text-slate-900' : 'text-slate-400'}>
+                        {source}
+                      </span>
+                      {pollSources.has(source) && <span className="text-accent-gold">✓</span>}
+                    </button>
+                  ))}
+                  {pollSources.size < ALL_POLL_SOURCES.length && (
+                    <>
+                      <div className="my-1 border-t border-slate-200/70" />
+                      <button
+                        type="button"
+                        onClick={() => setPollSources(new Set(ALL_POLL_SOURCES))}
+                        className="w-full px-3 py-2 rounded-lg text-xs text-slate-500 hover:bg-slate-100 text-left"
+                      >
+                        ↺ Reset all
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        )}
       </div>
 
       {msg && (
@@ -1702,21 +2388,288 @@ function News() {
           <div className="text-4xl mb-2">📭</div>
           <div className="font-display font-bold">No {status} articles yet</div>
           <div className="text-xs font-mono mt-1">
-            {status === 'draft' && "Click 'Poll 6 articles' to see fresh candidates from the news feeds."}
+            {status === 'draft' && "Click 'Poll 10 articles' to see fresh candidates from the news feeds."}
           </div>
         </div>
       )}
 
-      <div className="space-y-2">
-        {items.map((a) => (
-          <ArticleRow
-            key={a.id}
-            article={a}
-            expanded={expanded === a.id}
-            onExpand={() => setExpanded(expanded === a.id ? null : a.id)}
-            busy={busy}
-            onAct={(action) => act(a.id, action)}
+      {status === 'reels' ? (
+        /* ── Reels studio — two reel types (Mehdi's spec) ─────────── */
+        <div className="space-y-4">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <button
+              onClick={() => setReel({ mode: 'matchday', article: null })}
+              className="glass glass-hover rounded-2xl p-5 text-left"
+            >
+              <div className="text-3xl mb-2">📅</div>
+              <div className="font-display font-bold text-slate-900">Reel · Matchs du jour</div>
+              <div className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Les affiches majeures d’aujourd’hui en diapositives (écussons,
+                heure, compétition) + voix-off qui les annonce.
+              </div>
+            </button>
+            <button
+              onClick={() => setMatchStory(true)}
+              className="glass glass-hover rounded-2xl p-5 text-left"
+            >
+              <div className="text-3xl mb-2">📸</div>
+              <div className="font-display font-bold text-slate-900">Story · Matchs du jour</div>
+              <div className="text-xs text-slate-600 mt-1 leading-relaxed">
+                Image(s) story sans voix : la liste des matchs du jour
+                (2–3 images si la journée est chargée), QR + lien à copier.
+              </div>
+            </button>
+            <div className="glass rounded-2xl p-5">
+              <div className="text-3xl mb-2">📰</div>
+              <div className="font-display font-bold text-slate-900">Reel · Article</div>
+              <div className="text-xs text-slate-600 mt-1 leading-relaxed">
+                La carte de l’article animée + voix-off qui lit le titre et le
+                résumé. Choisis un article publié ci-dessous.
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            {items.map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setReel({ mode: 'article', article: a })}
+                className="w-full flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-white hover:border-accent-gold/60 text-left transition-colors"
+              >
+                {a.image_url && <img src={a.image_url} alt="" className="w-10 h-10 rounded-lg object-cover shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-slate-900 truncate">{a.title}</div>
+                  <div className="text-[10px] font-mono text-slate-500">{a.source_name}{a.title_ar ? ' · عربي ✓' : ''}</div>
+                </div>
+                <span className="shrink-0 text-lg">🎬</span>
+              </button>
+            ))}
+            {items.length === 0 && !loading && (
+              <div className="text-xs text-slate-500 font-mono">Aucun article publié pour l’instant.</div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {items.map((a) => (
+            <ArticleRow
+              key={a.id}
+              article={a}
+              expanded={expanded === a.id}
+              onExpand={() => setExpanded(expanded === a.id ? null : a.id)}
+              busy={busy}
+              onAct={(action) => act(a.id, action)}
+              onStory={() => setStoryFor(a)}
+            />
+          ))}
+        </div>
+      )}
+
+      {storyFor && (
+        <StoryComposer
+          article={storyFor}
+          onClose={() => setStoryFor(null)}
+          onTranslate={async () => {
+            // Generate the Arabic version, then refresh the modal's
+            // article so the عربي toggle appears without reopening.
+            await act(storyFor.id, 'translate-ar')
+            const r = await fetch(`${API_BASE}/admin/news/list?status=published`, {
+              headers: { authorization: `Bearer ${getToken() ?? ''}` },
+            })
+            const d = await r.json().catch(() => null) as { articles?: Article[] } | null
+            const upd = d?.articles?.find((x) => x.id === storyFor.id)
+            if (upd) setStoryFor(upd)
+          }}
+        />
+      )}
+      {matchStory && <MatchStoryComposer onClose={() => setMatchStory(false)} />}
+      {reel && (
+        <ReelComposer
+          mode={reel.mode}
+          article={reel.article}
+          token={getToken() ?? ''}
+          onClose={() => setReel(null)}
+        />
+      )}
+    </div>
+  )
+}
+
+interface SocialPost {
+  id: string
+  message: string
+  link: string | null
+  image_url: string | null
+  status: 'draft' | 'scheduled' | 'published' | 'failed'
+  scheduled_at: string | null
+  published_at: string | null
+  created_at: string
+}
+
+const SITE_URL = 'https://pressing90.live'
+
+function Social() {
+  const [topic, setTopic] = useState('')
+  const [message, setMessage] = useState('')
+  const [imageUrl, setImageUrl] = useState('')
+  const [link, setLink] = useState(SITE_URL)
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [busy, setBusy] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [posts, setPosts] = useState<SocialPost[]>([])
+
+  async function api(path: string, init?: RequestInit) {
+    const r = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      headers: { authorization: `Bearer ${getToken() ?? ''}`, 'content-type': 'application/json', ...(init?.headers ?? {}) },
+    })
+    if (!r.ok) throw new Error(await r.text())
+    return r.json()
+  }
+
+  async function loadPosts() {
+    try {
+      const d = await api('/admin/social/list') as { posts: SocialPost[] }
+      setPosts(d.posts ?? [])
+    } catch (e) { setMsg('Load failed: ' + String(e)) }
+  }
+  useEffect(() => { void loadPosts() }, [])
+
+  async function generate() {
+    if (!topic.trim()) return
+    setBusy('generate'); setMsg(null)
+    try {
+      const d = await api('/admin/social/generate', { method: 'POST', body: JSON.stringify({ topic: topic.trim() }) }) as { message?: string }
+      if (d.message) { setMessage(d.message); setMsg('✓ Post généré — relis, édite, puis publie ou planifie') }
+    } catch (e) { setMsg('Génération échouée: ' + String(e)) }
+    finally { setBusy(null) }
+  }
+
+  async function save(publishNow: boolean) {
+    if (!message.trim()) { setMsg('Le message est vide'); return }
+    setBusy(publishNow ? 'publish' : 'schedule'); setMsg(null)
+    try {
+      const created = await api('/admin/social/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          message: message.trim(),
+          link: link.trim() || SITE_URL,
+          image_url: imageUrl.trim() || null,
+          scheduled_at: publishNow ? null : (scheduledAt ? new Date(scheduledAt).toISOString() : null),
+        }),
+      }) as { post?: SocialPost }
+      if (publishNow && created.post?.id) {
+        await api(`/admin/social/${created.post.id}/publish`, { method: 'POST' })
+        setMsg('✓ Publié sur Facebook')
+      } else if (scheduledAt) {
+        setMsg('✓ Planifié pour ' + new Date(scheduledAt).toLocaleString())
+      } else {
+        setMsg('✓ Brouillon enregistré')
+      }
+      setMessage(''); setImageUrl(''); setScheduledAt(''); setTopic('')
+      await loadPosts()
+    } catch (e) { setMsg('Échec: ' + String(e)) }
+    finally { setBusy(null) }
+  }
+
+  async function publishExisting(id: string) {
+    setBusy('pub:' + id); setMsg(null)
+    try { await api(`/admin/social/${id}/publish`, { method: 'POST' }); setMsg('✓ Publié'); await loadPosts() }
+    catch (e) { setMsg('Échec: ' + String(e)) }
+    finally { setBusy(null) }
+  }
+  async function deletePost(id: string) {
+    if (!confirm('Supprimer ce post ?')) return
+    setBusy('del:' + id)
+    try { await api(`/admin/social/${id}/delete`, { method: 'POST' }); await loadPosts() }
+    catch (e) { setMsg('Échec: ' + String(e)) }
+    finally { setBusy(null) }
+  }
+
+  const badge = (s: SocialPost['status']) =>
+    s === 'published' ? 'bg-emerald-100 text-emerald-700' :
+    s === 'scheduled' ? 'bg-sky-100 text-sky-700' :
+    s === 'failed' ? 'bg-rose-100 text-rose-700' : 'bg-amber-100 text-amber-700'
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-display font-bold text-xl sm:text-2xl text-slate-900">📣 Générateur & planning Facebook</h2>
+        <div className="text-xs text-slate-500 font-mono">Génère un post promo, publie maintenant ou planifie-le sur la page Pressing 90.</div>
+      </div>
+
+      {msg && (
+        <div className={'px-3 py-2 rounded text-xs font-mono ' + (msg.startsWith('Éch') || msg.startsWith('Load') || msg.includes('échou') ? 'bg-rose-50 text-rose-800' : 'bg-emerald-50 text-emerald-800')}>{msg}</div>
+      )}
+
+      {/* Generator */}
+      <div className="rounded-xl border-2 border-[#1877F2]/20 bg-[#1877F2]/5 p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            value={topic}
+            onChange={(e) => setTopic(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && !busy) void generate() }}
+            placeholder="Sujet du post (ex: Maroc en demi-finale, Mbappé blessé, bracket à jour…)"
+            className="flex-1 px-3 py-2 rounded-lg border border-slate-300 font-mono text-sm focus:outline-none focus:ring-2 focus:ring-[#1877F2]/30"
           />
+          <button onClick={generate} disabled={busy === 'generate' || !topic.trim()} className="px-4 py-2 rounded-lg bg-[#1877F2] text-white text-sm font-bold hover:bg-[#0f63d6] disabled:opacity-50 whitespace-nowrap">
+            {busy === 'generate' ? 'Génération…' : '✨ Générer'}
+          </button>
+        </div>
+
+        <textarea
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Le texte du post apparaîtra ici — tu peux l'éditer librement."
+          className="w-full px-3 py-2 rounded-lg border border-slate-300 font-sans text-sm h-36 focus:outline-none focus:ring-2 focus:ring-[#1877F2]/30"
+        />
+
+        <div className="grid sm:grid-cols-2 gap-2">
+          <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="URL de l'image (optionnel)" className="px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[#1877F2]/30" />
+          <input value={link} onChange={(e) => setLink(e.target.value)} placeholder="Lien" className="px-3 py-2 rounded-lg border border-slate-300 font-mono text-xs focus:outline-none focus:ring-2 focus:ring-[#1877F2]/30" />
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-1">
+          <label className="text-xs font-mono text-slate-500">Planifier&nbsp;:</label>
+          <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} className="px-3 py-1.5 rounded-lg border border-slate-300 font-mono text-xs" />
+          <div className="flex gap-2 sm:ml-auto">
+            <button onClick={() => save(false)} disabled={!!busy || !message.trim() || !scheduledAt} className="px-3 py-2 rounded-lg bg-sky-600 text-white text-xs font-bold hover:bg-sky-700 disabled:opacity-50" title={!scheduledAt ? 'Choisis une date pour planifier' : ''}>
+              {busy === 'schedule' ? '…' : '🗓 Planifier'}
+            </button>
+            <button onClick={() => save(true)} disabled={!!busy || !message.trim()} className="px-3 py-2 rounded-lg bg-[#1877F2] text-white text-xs font-bold hover:bg-[#0f63d6] disabled:opacity-50">
+              {busy === 'publish' ? 'Publication…' : '📘 Publier maintenant'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="space-y-2">
+        <div className="text-xs uppercase tracking-widest font-mono text-slate-500">Publications ({posts.length})</div>
+        {posts.length === 0 && <div className="text-center py-8 text-slate-400 text-sm">Aucune publication pour l'instant.</div>}
+        {posts.map((p) => (
+          <div key={p.id} className="border border-slate-200 rounded-xl bg-white p-3 flex items-start gap-3">
+            {p.image_url && (
+              // eslint-disable-next-line jsx-a11y/img-redundant-alt
+              <img src={p.image_url} alt="" className="w-14 h-14 rounded-md object-cover flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+            )}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1 flex-wrap">
+                <span className={'text-[9px] uppercase tracking-widest font-mono px-2 py-0.5 rounded-full ' + badge(p.status)}>{p.status}</span>
+                {p.scheduled_at && p.status === 'scheduled' && <span className="text-[10px] text-slate-500 font-mono">🗓 {new Date(p.scheduled_at).toLocaleString()}</span>}
+                {p.published_at && <span className="text-[10px] text-slate-400 font-mono">✓ {new Date(p.published_at).toLocaleString()}</span>}
+              </div>
+              <div className="text-xs text-slate-700 whitespace-pre-wrap line-clamp-4">{p.message}</div>
+              <div className="flex gap-1.5 mt-2">
+                {(p.status === 'scheduled' || p.status === 'draft' || p.status === 'failed') && (
+                  <button disabled={busy === 'pub:' + p.id} onClick={() => publishExisting(p.id)} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-[#1877F2] text-white hover:bg-[#0f63d6] disabled:opacity-50">
+                    {busy === 'pub:' + p.id ? '…' : '📘 Publier'}
+                  </button>
+                )}
+                <button disabled={busy === 'del:' + p.id} onClick={() => deletePost(p.id)} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-slate-100 text-slate-700 hover:bg-rose-100 hover:text-rose-700 disabled:opacity-50">🗑</button>
+              </div>
+            </div>
+          </div>
         ))}
       </div>
     </div>
@@ -1729,23 +2682,27 @@ function ArticleRow({
   onExpand,
   busy,
   onAct,
+  onStory,
 }: {
   article: Article
   expanded: boolean
   onExpand: () => void
   busy: string | null
-  onAct: (a: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish' | 'pin' | 'unpin') => void
+  onAct: (a: 'approve' | 'reject' | 'delete' | 'unpublish' | 'republish' | 'pin' | 'unpin' | 'share-facebook' | 'translate-ar') => void
+  onStory: () => void
 }) {
   const isBusy = busy?.startsWith(article.id + ':')
   return (
     <div className="border border-slate-200 rounded-xl bg-white overflow-hidden">
-      <div className="flex items-center gap-3 p-3">
+      <div className="flex items-start gap-3 p-3">
         {article.image_url && (
           // eslint-disable-next-line jsx-a11y/img-redundant-alt
-          <img src={article.image_url} alt="" className="w-16 h-16 rounded-lg object-cover flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+          <img src={article.image_url} alt="" className="w-12 h-12 sm:w-16 sm:h-16 rounded-lg object-cover flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
         )}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          {/* flex-wrap: on a 390px phone the timestamp used to push this
+              row past the card edge. */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
             <span className={
               'text-[9px] uppercase tracking-widest font-mono px-2 py-0.5 rounded-full ' +
               (article.status === 'published' ? 'bg-emerald-100 text-emerald-700' :
@@ -1800,6 +2757,40 @@ function ArticleRow({
                 <button disabled={isBusy} onClick={() => onAct('unpublish')} className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-amber-100 text-amber-700 hover:bg-amber-200 disabled:opacity-50">
                   Unpublish
                 </button>
+                <button
+                  disabled={isBusy}
+                  onClick={() => onAct('share-facebook')}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-[#1877F2] text-white hover:bg-[#0f63d6] disabled:opacity-50"
+                  title="Publier cet article sur la page Facebook Pressing 90"
+                >
+                  {busy === article.id + ':share-facebook' ? '…' : '📘 Publier sur FB'}
+                </button>
+                {/* Arabic translation — generates/regenerates title_ar,
+                    excerpt_ar, body_ar via gpt-oss-120b. Badge shows
+                    whether this article already carries Arabic. */}
+                <button
+                  disabled={isBusy}
+                  onClick={() => onAct('translate-ar')}
+                  className={
+                    'px-2.5 py-1 text-[11px] font-bold rounded-full disabled:opacity-50 ' +
+                    (article.title_ar
+                      ? 'bg-emerald-100 text-emerald-800 hover:bg-emerald-200'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200')
+                  }
+                  title={article.title_ar ? 'Arabic version exists — click to regenerate' : 'Generate the Arabic version of this article'}
+                >
+                  {busy === article.id + ':translate-ar' ? '…' : article.title_ar ? 'عربي ✓' : 'Translate → AR'}
+                </button>
+                {/* Story generator — 1080×1920 card with QR, downloaded
+                    then posted manually from the Meta Business app
+                    (music + link sticker aren't available via API). */}
+                <button
+                  onClick={onStory}
+                  className="px-2.5 py-1 text-[11px] font-bold rounded-full bg-fuchsia-100 text-fuchsia-800 hover:bg-fuchsia-200"
+                  title="Générer l'image story (QR + visite notre profil)"
+                >
+                  📱 Story
+                </button>
               </>
             )}
             {article.status === 'archived' && (
@@ -1829,6 +2820,16 @@ function ArticleRow({
   )
 }
 
+function formatAge(pubDate: number): string {
+  const totalMin = Math.round((Date.now() - pubDate) / 60_000)
+  if (totalMin < 60) return `${totalMin}m ago`
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h < 24) return m > 0 ? `${h}h ${m}m ago` : `${h}h ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ${h % 24}h ago`
+}
+
 function CandidateRow({
   candidate,
   rank,
@@ -1846,7 +2847,6 @@ function CandidateRow({
   onProduce: () => void
   onReject: () => void
 }) {
-  const ageH = Math.round((Date.now() - candidate.pubDate) / 3600_000 * 10) / 10
   return (
     <div className="bg-white rounded-lg p-3 border border-amber-200/60 flex items-start gap-3">
       <div className="flex flex-col items-center flex-shrink-0 w-10">
@@ -1863,11 +2863,11 @@ function CandidateRow({
         />
       )}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mb-1">
           <span className="text-[10px] uppercase tracking-widest font-mono text-slate-500">
             {candidate.source}
           </span>
-          <span className="text-[10px] text-slate-400 font-mono">· {ageH}h ago</span>
+          <span className="text-[10px] text-slate-400 font-mono">· {formatAge(candidate.pubDate)}</span>
           {candidate.redditScore != null && candidate.redditScore > 0 && (
             <span className="text-[10px] text-orange-600 font-mono">
               · 🔥 {candidate.redditScore} on Reddit
@@ -1930,6 +2930,7 @@ interface PushSettingsShape {
   penalty: { enabled: boolean }
   halfTime: { enabled: boolean }
   articlePublished: { enabled: boolean }
+  facebookAutoPost: { enabled: boolean }
 }
 
 interface PushDiagShape {
@@ -1974,6 +2975,7 @@ function AutoPushSettingsSection() {
         penalty: { enabled: raw.penalty?.enabled ?? true },
         halfTime: { enabled: raw.halfTime?.enabled ?? true },
         articlePublished: { enabled: raw.articlePublished?.enabled ?? true },
+        facebookAutoPost: { enabled: raw.facebookAutoPost?.enabled ?? true },
       }
       setSettings(safe)
     })
@@ -2108,6 +3110,13 @@ function AutoPushSettingsSection() {
         checked={settings.articlePublished.enabled}
         onChange={(v) => setSettings({ ...settings, articlePublished: { enabled: v } })}
         disabled={!settings.enabled}
+      />
+
+      <ToggleRow
+        label="📘 Auto-post articles to Facebook"
+        sub="When ON, approving a draft also publishes it to the Pressing 90 Facebook page (image + link). Independent of the push master switch — turn this off to publish silently without posting to Facebook. The manual “📘 Publier sur FB” button stays available either way."
+        checked={settings.facebookAutoPost.enabled}
+        onChange={(v) => setSettings({ ...settings, facebookAutoPost: { enabled: v } })}
       />
 
       <div className="mt-5 flex items-center gap-3">
