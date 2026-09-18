@@ -331,6 +331,21 @@ export async function handleAdmin(
       return jsonResp({ ok: true, ...d })
     } catch (e) { return jsonResp({ ok: false, error: String(e).slice(0, 300) }, 502) }
   }
+  if (pathname.startsWith('/admin/tiktok/')) {
+    // TikTok (2026-09-18): status, OAuth URL for the browser, disconnect, manual publish (dry run by default).
+    const tk = await import('./tiktok'); const e3 = env as unknown as Parameters<typeof tk.tiktokStatus>[0]
+    try {
+      if (pathname === '/admin/tiktok/status' && req.method === 'GET') return jsonResp({ ok: true, ...(await tk.tiktokStatus(e3)) })
+      if (pathname === '/admin/tiktok/connect-url' && req.method === 'POST') return jsonResp({ ok: true, url: await tk.tiktokConnectUrl(e3), redirectUri: tk.TIKTOK_REDIRECT })
+      if (pathname === '/admin/tiktok/disconnect' && req.method === 'POST') { await tk.tiktokDisconnect(e3); return jsonResp({ ok: true }) }
+      if (pathname === '/admin/tiktok/publish' && req.method === 'POST') {
+        const b = await req.json().catch(() => ({})) as { url?: string; caption?: string; privacy?: string; mode?: string; dry?: boolean }
+        if (!b.url) return jsonResp({ ok: false, error: 'url required' }, 400)
+        const r = await tk.tiktokPublish(e3, { videoUrl: String(b.url), caption: tk.tiktokCaption(String(b.caption ?? '')), privacy: b.privacy as Parameters<typeof tk.tiktokPublish>[1]['privacy'], mode: (b.mode === 'inbox' ? 'inbox' : 'direct'), dry: b.dry !== false })
+        return jsonResp(r)
+      }
+    } catch (e) { return jsonResp({ ok: false, error: String(e).slice(0, 300) }, 502) }
+  }
   if (pathname === '/admin/automation/token' && req.method === 'GET') {
     const { fbTokenStatus } = await import('./automation')
     return jsonResp(await fbTokenStatus(env as unknown as Parameters<typeof fbTokenStatus>[0]))

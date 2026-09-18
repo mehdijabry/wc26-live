@@ -46,6 +46,28 @@ export interface Env {
   GSC_SITE_URL?: string
   RESEND_API_KEY?: string
   RESEND_FROM?: string
+  // Make.com webhook that publishes to the Facebook page. Used by the
+  // social scheduler cron to fire due posts. Set via wrangler secret.
+  MAKE_FB_WEBHOOK_URL?: string
+  // Automation (see automation.ts): Render-hosted studio + extra Make
+  // webhooks for stories / reels. All optional — missing = that output
+  // is skipped and logged.
+  STUDIO_URL?: string            // wrangler.toml [vars], e.g. https://p90-studio.onrender.com
+  STUDIO_SECRET?: string         // shared with the studio (wrangler secret)
+  TIKTOK_CLIENT_KEY?: string     // TikTok for Developers app (Content Posting API) — wrangler secret, Mehdi (2026-09-18)
+  TIKTOK_CLIENT_SECRET?: string
+  MAKE_FB_VIDEO_WEBHOOK_URL?: string  // Make scenario 2: webhook → Facebook Pages "Upload a Video"
+  FB_PAGE_TOKEN?: string              // Page token OR short-lived user token from the Explorer → stories + real Reels
+  FB_APP_ID?: string                  // Meta app "pressing 90 story" (wrangler.toml [vars])
+  FB_APP_SECRET?: string              // its App secret (wrangler secret) → the worker extends/renews the token itself
+  // Brave Search API key — used by the AI assistant's `web_search` tool
+  // when local sources (pressing90 articles + ESPN) don't cover the
+  // user's question. Optional: the tool returns a friendly error if
+  // the secret isn't set. Provision via `wrangler secret put BRAVE_API_KEY`.
+  BRAVE_API_KEY?: string
+  // Workers AI binding (wrangler.toml [ai]) — used by the news rewrite
+  // and the social-post generator.
+  AI?: unknown
   // Durable Object scheduler — fires kickoff pushes at the exact
   // second they're due (instead of waiting for the next 5-min cron).
   // See KickoffScheduler class at the bottom of this file.
@@ -67,6 +89,12 @@ const ALLOW_ORIGINS = [
   // installs cleanly as an isolated app. Same Pages project, same
   // worker — just a different origin for the manifest/scope.
   'https://admin.pressing90.live',
+  // AI subdomain — the conversational assistant fetches /ai/chat from
+  // the worker directly. Without this origin in the allow-list the
+  // browser receives a 403 from the bot-UA filter further down + the
+  // CORS reflection picks the first origin (localhost) instead of ai,
+  // which the browser refuses to accept.
+  'https://ai.pressing90.live',
   // Legacy origin — kept during migration window so existing PWA
   // installs on the wc26.mehdijabry.dev subdomain keep working until
   // the user re-opens them and lands on the 301-redirected page.
@@ -137,16 +165,65 @@ const DAILY_LEAGUES: Array<{ slug: string; label: string; tier: number }> = [
 // ----- HTTP entry point --------------------------------------------------
 
 export default {
-  async fetch(req: Request, env: Env): Promise<Response> {
+  async fetch(req: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(req.url)
 
     // CORS preflight
     if (req.method === 'OPTIONS') return cors(new Response(null, { status: 204 }), req)
 
+    // Drop known scraper/automation UAs early — saves KV reads and AI
+    // invocations. Curl and headless scrapers have no business hitting
+    // the API; legitimate services use a real browser or declare a UA.
+    const ua = req.headers.get('user-agent') ?? ''
+    if (/^(curl|python-requests|Go-http-client|Wget|axios|node-fetch)\//i.test(ua)) {
+      return new Response('Forbidden', { status: 403 })
+    }
+
     try {
       // Health
       if (url.pathname === '/' || url.pathname === '/health') {
         return cors(json({ ok: true, service: 'wc26-api', t: new Date().toISOString() }), req)
+      }
+
+      // Facebook image proxy. News-site CDNs (ESPN, Guardian, …) often
+      // block Facebook's image fetcher, which makes "Create a Post with
+      // Photos" fail with OAuthException 100. We re-serve the image from
+      // OUR origin (which FB can always reach) using a real-browser UA to
+      // get past hotlink protection. On any failure we 302 to the brand
+      // icon so a post never breaks for lack of a usable image.
+      if (url.pathname === '/fb-img') {
+        const raw = url.searchParams.get('u')
+        const FALLBACK = 'https://pressing90.live/icon-512.png'
+        if (!raw) return Response.redirect(FALLBACK, 302)
+        try {
+          const upstream = await fetch(raw, {
+            headers: {
+              'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+              accept: 'image/jpeg,image/png,image/*;q=0.8,*/*;q=0.5',   // no webp/avif: node-canvas in the studio cannot decode them (blank digest frame, 2026-09-14)
+            },
+            cf: { cacheTtl: 86400, cacheEverything: true },
+          })
+          const ct = upstream.headers.get('content-type') ?? ''
+          if (!upstream.ok || !ct.startsWith('image/')) return Response.redirect(FALLBACK, 302)
+          return new Response(upstream.body, {
+            status: 200,
+            headers: {
+              'content-type': ct,
+              'cache-control': 'public, max-age=86400',
+              'access-control-allow-origin': '*',
+            },
+          })
+        } catch {
+          return Response.redirect(FALLBACK, 302)
+        }
+      }
+
+      // AI assistant chat — Workers AI tool-use loop with WC26 data.
+      // Powers ai.pressing90.live. CORS is handled inside handleAiChat
+      // because it lets browsers POST cross-origin from the chat UI.
+      if (url.pathname === '/ai/chat') {
+        const { handleAiChat } = await import('./ai-chat')
+        return handleAiChat(env, req)
       }
 
       // Live scoreboard (all matches happening / upcoming today)
@@ -157,6 +234,157 @@ export default {
       // Full fixtures list (single-day window — ESPN returns ~limit events around now)
       if (url.pathname === '/fixtures') {
         return cors(await cachedFetch(env, 'fixtures', `${ESPN_BASE}/scoreboard?limit=200`, 3600), req)
+      }
+
+      // Public feature flags (WC26 visibility, Arabic articles). Read on
+      // every page boot; tiny JSON, short edge cache so an admin toggle
+      // lands within a minute.
+      if (url.pathname === '/site-settings') {
+        const s = await loadSiteSettings(env)
+        const r = json(s)
+        r.headers.set('cache-control', 'public, max-age=60')
+        return cors(r, req)
+      }
+
+      // Automation studio (Render) ↔ worker. The studio never holds the
+      // Supabase key: it PUTs rendered media here and we store it in
+      // Supabase Storage (bucket `media`, public). Reels come back via
+      // /studio/callback when ffmpeg is done. Both guarded by STUDIO_SECRET.
+      if (url.pathname.startsWith('/studio/media/') && req.method === 'PUT') {
+        const opsSecret = (env as unknown as { OPS_SECRET?: string }).OPS_SECRET
+        const okStudio = !!env.STUDIO_SECRET && req.headers.get('x-studio-secret') === env.STUDIO_SECRET
+        const okOps = !!opsSecret && req.headers.get('x-ops-secret') === opsSecret   // page assets uploaded from the ops CLI (2026-09-13)
+        if (!okStudio && !okOps) return json({ error: 'unauthorized' }, 401)
+        const key = url.pathname.slice('/studio/media/'.length)
+        if (!/^[A-Za-z0-9._-]{3,120}$/.test(key)) return json({ error: 'bad key' }, 400)
+        const { putMedia } = await import('./automation')
+        try {
+          const publicUrl = await putMedia(env, key, await req.arrayBuffer(), req.headers.get('content-type') ?? 'application/octet-stream')
+          return json({ ok: true, url: publicUrl })
+        } catch (e) {
+          return json({ error: String(e) }, 502)
+        }
+      }
+      // Ops diagnostic (STUDIO_SECRET): the big-match pool the automation
+      // would act on right now — proves the ESPN proxy + parsing work.
+      if (url.pathname.startsWith('/studio/ops/')) {
+        // Ops auth: the studio shared secret, or the separate OPS_SECRET kept on
+        // Mehdi's machine (~/.config/pressing90/ops_secret) for diagnostics.
+        const ex = env as unknown as { OPS_SECRET?: string }
+        const okStudio = !!env.STUDIO_SECRET && req.headers.get('x-studio-secret') === env.STUDIO_SECRET
+        const okOps = !!ex.OPS_SECRET && req.headers.get('x-ops-secret') === ex.OPS_SECRET
+        if (!okStudio && !okOps) return json({ error: 'unauthorized' }, 401)
+        const auto = await import('./automation')
+        const action = url.pathname.slice('/studio/ops/'.length)
+        try {
+          if (action === 'pool') return json({ ok: true, matches: await auto.bigMatchesToday(env) })
+          if (action === 'token') return json(await auto.fbTokenStatus(env))   // validity/expiry/scopes only — never the value
+          if (action === 'status') {
+            const { date } = auto.localParts()
+            const counts: Record<string, number> = {}
+            for (const c of ['article', 'ft', 'story', 'reel', 'post', 'goalreel'] as const) counts[c] = await auto.getCount(env, date, c)
+            return json({ ok: true, date, settings: await auto.loadAutomationSettings(env), counts, log: await auto.readLog(env, date) })
+          }
+          if (action === 'run' && req.method === 'POST') {
+            const body = await req.json().catch(() => ({})) as { job?: string } & Record<string, unknown>
+            return json(await auto.runJobNow(env, body.job ?? '', body))
+          }
+          if (action === 'settings' && req.method === 'POST') {
+            const body = await req.json().catch(() => ({})) as Record<string, unknown>
+            return json({ ok: true, settings: await auto.saveAutomationSettings(env, body as Partial<import('./automation').AutomationSettings>) })
+          }
+          return json({ error: 'unknown action' }, 404)
+        } catch (e) { return json({ error: String(e) }, 502) }
+      }
+      // Story kit page (mobile): copy the article link + share the story
+      const SHORTCUT_URL = 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/P90-Story.shortcut'
+      // video to the Facebook app. Unguessable id, 3-day TTL, no auth.
+      if (url.pathname.startsWith('/story-kit/')) {
+        const id = url.pathname.slice('/story-kit/'.length)
+        if (!/^[a-z0-9]{16,40}$/.test(id)) return new Response('Not found', { status: 404 })
+        const { readStoryKit } = await import('./automation')
+        const kit = await readStoryKit(env, id)
+        if (!kit) return new Response('<meta charset="utf-8"><p style="font-family:system-ui;padding:24px">Ce kit story a expiré (3 jours).</p>', { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } })
+        const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
+        const media = kit.video_url ?? kit.image_url ?? ''
+        const isVideo = !!kit.video_url
+        const html = `<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><title>Story · ${esc(kit.title)}</title>
+<style>body{margin:0;background:#071B30;color:#F3EFE6;font-family:-apple-system,system-ui,sans-serif}main{max-width:480px;margin:0 auto;padding:20px 16px 40px}h1{font-size:18px;line-height:1.3;margin:0 0 14px}.m{width:100%;max-width:300px;border-radius:14px;display:block;margin:0 auto 18px;background:#000}.b{display:block;width:100%;box-sizing:border-box;padding:16px;border:0;border-radius:12px;font-size:17px;font-weight:700;margin:10px 0;cursor:pointer}.gold{background:#D9B54A;color:#071B30}.blue{background:#1877F2;color:#fff}.ghost{background:transparent;color:#F3EFE6;border:1px solid rgba(243,239,230,.3)}.ok{color:#41C97C;font-size:14px;min-height:20px;text-align:center}.steps{font-size:14px;color:rgba(243,239,230,.75);line-height:1.6;margin:18px 0 0}.link{font-size:12px;color:rgba(243,239,230,.55);word-break:break-all;margin-top:14px}</style></head><body><main>
+<p style="font-size:11px;letter-spacing:.12em;color:#D9B54A;margin:0 0 8px">PRESSING 90' · STORY KIT</p>
+<h1>${esc(kit.title)}</h1>
+${isVideo ? `<video class="m" src="${esc(media)}" playsinline muted autoplay loop></video>` : `<img class="m" src="${esc(media)}" alt="">`}
+<button class="b gold" id="copy">1 · Copier le lien</button>
+<a class="b blue" style="text-align:center;text-decoration:none" href="shortcuts://run-shortcut?name=P90%20Story&input=text&text=${encodeURIComponent(media)}">2 · Enregistrer + ouvrir Facebook</a>
+<button class="b ghost" id="share">Partager (feuille iOS)</button>
+<a class="b ghost" style="text-align:center;text-decoration:none" href="${esc(media)}" download="pressing90-story.${isVideo ? 'mp4' : 'png'}">Télécharger le fichier</a>
+<div class="ok" id="msg"></div>
+<p class="steps">Le bouton 2 lance le raccourci iOS <b>« P90 Story »</b> : il enregistre la vidéo dans Photos et ouvre l'app Facebook → <b>Story</b> → dernière vidéo → sticker <b>Lien</b> → coller → <b>Publier</b>.</p>
+<a class="b ghost" style="text-align:center;text-decoration:none;font-size:15px" href="${SHORTCUT_URL}">⚙️ Installer le raccourci « P90 Story » (une seule fois)</a>
+<p class="link">${esc(kit.link)}</p>
+</main><script>
+const link=${JSON.stringify(kit.link)};const media=${JSON.stringify(media)};const msg=document.getElementById('msg');
+document.getElementById('copy').onclick=async()=>{try{await navigator.clipboard.writeText(link);msg.textContent='Lien copié ✓'}catch{prompt('Copie ce lien :',link)}};
+document.getElementById('share').onclick=async()=>{msg.textContent='Préparation…';try{const r=await fetch(media);const blob=await r.blob();const file=new File([blob],'pressing90-story.${isVideo ? 'mp4' : 'png'}',{type:blob.type||'${isVideo ? 'video/mp4' : 'image/png'}'});if(navigator.canShare&&navigator.canShare({files:[file]})){await navigator.share({files:[file]});msg.textContent='Choisis Facebook → Story'}else{msg.textContent='Partage de fichier non supporté ici : utilise « Télécharger » puis crée la story depuis Photos.'}}catch(e){msg.textContent=String(e.message||e)}};
+</script></body></html>`
+        return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } })
+      }
+      // TikTok Login Kit callback (2026-09-18): the browser lands here after Mehdi authorises the app.
+      if (url.pathname === '/tiktok/callback' && req.method === 'GET') { const { handleTikTokCallback } = await import('./tiktok'); return handleTikTokCallback(req, env) }
+      if (url.pathname === '/studio/callback' && req.method === 'POST') {
+        const { handleStudioCallback } = await import('./automation')
+        return handleStudioCallback(req, env)
+      }
+
+      // Branded FB post cards — PNGs generated by the admin browser and
+      // stored in KV (see admin.ts action 'post-image'). Served publicly
+      // so Facebook's fetcher can grab them.
+      if (url.pathname.startsWith('/post-img/')) {
+        const m = /^\/post-img\/([A-Za-z0-9-]{8,64})\/(en|ar)\.png$/.exec(url.pathname)
+        if (!m) return json({ error: 'bad path' }, 400)
+        const buf = await env.CACHE.get(`postimg:${m[1]}:${m[2]}`, 'arrayBuffer')
+        if (!buf) return Response.redirect('https://pressing90.live/icon-512.png', 302)
+        return new Response(buf, {
+          headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' },
+        })
+      }
+
+      // Visitor beacon — one POST per pageview from the site front-end.
+      // Records REAL visits (country via Cloudflare geo, traffic source,
+      // language) into Supabase, unlike the zone analytics which count
+      // every request including bots and API polls. Fire-and-forget:
+      // always 204, never blocks or breaks the visitor's page.
+      if (url.pathname === '/hit' && req.method === 'POST') {
+        const ua = req.headers.get('user-agent') ?? ''
+        // Bot guard — crawlers, previews and headless browsers (incl.
+        // our own prerender) don't count as visitors.
+        if (/bot|crawl|spider|preview|headless|lighthouse|facebookexternalhit|whatsapp|telegram/i.test(ua)) {
+          return cors(new Response(null, { status: 204 }), req)
+        }
+        const rl = await rateLimit(env, req, { route: 'hit', limit: 120 })
+        if (rl.blocked) return cors(new Response(null, { status: 204 }), req)
+        const body = await req.json().catch(() => null) as
+          { path?: string; source?: string; lang?: string; ns?: boolean } | null
+        const country = (req as { cf?: { country?: string } }).cf?.country ?? null
+        const row = {
+          country,
+          path: String(body?.path ?? '/').slice(0, 120),
+          source: String(body?.source ?? 'direct').slice(0, 24),
+          lang: String(body?.lang ?? 'en').slice(0, 5),
+          new_session: body?.ns === true,
+        }
+        ctx.waitUntil(
+          fetch(`${env.SUPABASE_URL}/rest/v1/hits`, {
+            method: 'POST',
+            headers: {
+              apikey: env.SUPABASE_SERVICE_KEY,
+              authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+              'content-type': 'application/json',
+              prefer: 'return=minimal',
+            },
+            body: JSON.stringify(row),
+          }).catch(() => {})
+        )
+        return cors(new Response(null, { status: 204 }), req)
       }
 
       // FULL tournament fan-out — every WC26 fixture from June 11 → July 19, 2026.
@@ -281,12 +509,39 @@ export default {
   // The two passes share one ESPN fetch to keep subrequests low.
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     // Dispatch by cron pattern — see wrangler.toml [triggers].
-    //   '0 */3 * * *' = news pipeline (8 × / day)
+    //   '*/30 * * * *' = news pipeline (every 30 min; publishes only when something fresh exists)
     //   anything else (default '*/5 * * * *') = match alerts pass below.
-    if (event.cron === '0 */3 * * *') {
+    if (event.cron === '*/30 * * * *') {
       const { runNewsPipeline } = await import('./news')
-      ctx.waitUntil(runNewsPipeline(env))
+      const { loadAutomationSettings, maybeAutoPublishArticle, articleSlotOpen, localParts } = await import('./automation')
+      ctx.waitUntil((async () => {
+        const auto = await loadAutomationSettings(env)
+        const autoOn = auto.enabled && auto.articles
+        if (autoOn) {
+          // Auto mode: quiet hours + pacing (articles spread over the
+          // day instead of the whole daily cap going out at 1 am).
+          const slot = await articleSlotOpen(env, auto)
+          if (!slot.open) { console.log('[auto] article slot closed:', slot.why); return }
+        } else {
+          // Manual mode: drafts every 2 h (the historical cadence), not every 30 min.
+          const { minute, hour } = localParts()
+          if (minute >= 30 || hour % 2 !== 0) return
+        }
+        // Auto mode (English only): no editor email — the article ships
+        // on its own when it passes the gates in maybeAutoPublishArticle.
+        const report = await runNewsPipeline(env, { skipEmail: autoOn })
+        if (autoOn && report.inserted?.id) await maybeAutoPublishArticle(env, report.inserted.id)
+      })())
       return
+    }
+    // --- Facebook automation FIRST — must not depend on the ESPN fetch
+    // below (ESPN 403s Cloudflare IPs; the early `return` there used to
+    // silently skip the whole automation, including the 8 am pack).
+    try {
+      const { runAutomationTick } = await import('./automation')
+      await runAutomationTick(env)
+    } catch (e) {
+      console.log('[auto] tick failed:', e)
     }
     try {
       const sb = await fetch(`${ESPN_BASE}/scoreboard?limit=200`)
@@ -301,6 +556,24 @@ export default {
         await fireMatchAlerts(env, events)
       } catch (e) {
         console.log('[push] alerts pass failed:', e)
+      }
+
+      // --- Pass 1b: kickoff alerts for ALL big competitions -----------
+      // fireMatchAlerts above only sees the fifa.world scoreboard. This
+      // pass fans out across the major leagues + cups (Champions League,
+      // CAF/AFC/CONMEBOL, top-5 leagues, …) so every big match gets the
+      // automatic T-60 / T-15 kickoff push, not just World Cup games.
+      try {
+        await scheduleKickoffsForLeagues(env)
+      } catch (e) {
+        console.log('[push] multi-league kickoff pass failed:', e)
+      }
+
+      // --- Pass 1c: fire any scheduled Facebook posts that are due ----
+      try {
+        await fireDueSocialPosts(env)
+      } catch (e) {
+        console.log('[social] due-posts pass failed:', e)
       }
 
       // --- Pass 2: sync finished matches → Supabase --------------------
@@ -383,6 +656,10 @@ export interface PushSettings {
   // gated separately so an editor can suppress the push for a routine
   // briefing without disabling the publish itself.
   articlePublished: { enabled: boolean }
+  // Auto-publish the article to the Facebook page (via the Make webhook)
+  // when it's approved. Independent of the push toggle so the operator
+  // can keep push but mute Facebook, or vice-versa.
+  facebookAutoPost: { enabled: boolean }
 }
 
 export const DEFAULT_PUSH_SETTINGS: PushSettings = {
@@ -395,6 +672,7 @@ export const DEFAULT_PUSH_SETTINGS: PushSettings = {
   penalty: { enabled: true },
   halfTime: { enabled: true },
   articlePublished: { enabled: true },
+  facebookAutoPost: { enabled: true },
 }
 
 const PUSH_SETTINGS_KEY = 'push:settings'
@@ -429,6 +707,7 @@ export async function loadPushSettings(env: Env): Promise<PushSettings> {
       penalty:          { ...DEFAULT_PUSH_SETTINGS.penalty,          ...(parsed.penalty ?? {}) },
       halfTime:         { ...DEFAULT_PUSH_SETTINGS.halfTime,         ...(parsed.halfTime ?? {}) },
       articlePublished: { ...DEFAULT_PUSH_SETTINGS.articlePublished, ...(parsed.articlePublished ?? {}) },
+      facebookAutoPost: { ...DEFAULT_PUSH_SETTINGS.facebookAutoPost, ...(parsed.facebookAutoPost ?? {}) },
     }
   } catch {
     return DEFAULT_PUSH_SETTINGS
@@ -457,8 +736,58 @@ export async function savePushSettings(env: Env, s: PushSettings): Promise<void>
     penalty: { enabled: !!s.penalty.enabled },
     halfTime: { enabled: !!s.halfTime.enabled },
     articlePublished: { enabled: !!s.articlePublished?.enabled },
+    facebookAutoPost: { enabled: !!s.facebookAutoPost?.enabled },
   }
   await env.CACHE.put(PUSH_SETTINGS_KEY, JSON.stringify(sanitized))
+}
+
+// ─── Site settings — PUBLIC feature flags toggled from the admin ─────
+// Unlike PushSettings these are read by every visitor (GET /site-settings,
+// no auth) so the front can hide/show whole sections at runtime without a
+// redeploy. Keep this to booleans the public may legitimately see.
+
+export interface SiteSettings {
+  // Post-tournament: the WC26 archive (nav entry, bottom tab, home card,
+  // hero CTA, footer link) is hidden by default. Flip on from the admin
+  // to bring it back. The /wc26 URLs themselves stay reachable + indexed
+  // either way — this only controls in-site visibility.
+  wc26Visible: boolean
+  // Article bilingual mode. When on, the article pipeline generates an
+  // Arabic version alongside the English one, the site exposes an
+  // EN/AR toggle on each article, and the Facebook auto-post publishes
+  // BOTH languages (two posts).
+  arabicArticles: boolean
+}
+
+export const DEFAULT_SITE_SETTINGS: SiteSettings = {
+  wc26Visible: false,
+  arabicArticles: false,
+}
+
+const SITE_SETTINGS_KEY = 'site:settings'
+
+export async function loadSiteSettings(env: Env): Promise<SiteSettings> {
+  try {
+    const raw = await env.CACHE.get(SITE_SETTINGS_KEY)
+    if (!raw) return DEFAULT_SITE_SETTINGS
+    const p = JSON.parse(raw) as Partial<SiteSettings>
+    return {
+      wc26Visible: p.wc26Visible ?? DEFAULT_SITE_SETTINGS.wc26Visible,
+      arabicArticles: p.arabicArticles ?? DEFAULT_SITE_SETTINGS.arabicArticles,
+    }
+  } catch {
+    return DEFAULT_SITE_SETTINGS
+  }
+}
+
+export async function saveSiteSettings(env: Env, s: Partial<SiteSettings>): Promise<SiteSettings> {
+  const cur = await loadSiteSettings(env)
+  const next: SiteSettings = {
+    wc26Visible: typeof s.wc26Visible === 'boolean' ? s.wc26Visible : cur.wc26Visible,
+    arabicArticles: typeof s.arabicArticles === 'boolean' ? s.arabicArticles : cur.arabicArticles,
+  }
+  await env.CACHE.put(SITE_SETTINGS_KEY, JSON.stringify(next))
+  return next
 }
 
 // Diagnostic record — surfaces 'why didn't a push arrive' to the panel.
@@ -778,6 +1107,119 @@ function scheduledKickoffFor(
   }
 }
 
+// Competitions that get automatic kickoff alerts. Tier ≤ 2 of
+// DAILY_LEAGUES = World Cup + friendlies + Nations Leagues, every
+// European/continental club cup (CL, Europa, Conf, Libertadores,
+// CAF/AFC/CONCACAF, Club WC), and the top-5 domestic leagues. fifa.world
+// is already covered by fireMatchAlerts, so it's excluded here to avoid
+// a redundant fetch (the KV sentinel would dedupe it anyway).
+const ALERT_LEAGUE_SLUGS = DAILY_LEAGUES
+  .filter((l) => l.tier <= 2 && l.slug !== 'fifa.world')
+  .map((l) => l.slug)
+
+/**
+ * Fan out across the big competitions and queue T-60 / T-15 kickoff
+ * pushes for every upcoming match. Mirrors Pass A of fireMatchAlerts
+ * but for non-World-Cup leagues. Each league scoreboard is edge-cached
+ * 5 min so repeated cron ticks don't hammer ESPN, and every (match,lead)
+ * pair is KV-deduped so the Durable Object only gets each alert once.
+ */
+async function scheduleKickoffsForLeagues(env: Env): Promise<void> {
+  const settings = await loadPushSettings(env)
+  if (!settings.enabled || !settings.kickoff.enabled) return
+
+  const pending: ScheduledPush[] = []
+  await Promise.allSettled(
+    ALERT_LEAGUE_SLUGS.map(async (slug) => {
+      try {
+        const r = await fetch(`${ESPN_SOCCER}/${slug}/scoreboard?limit=100`, {
+          cf: { cacheTtl: 300, cacheEverything: true },
+        })
+        if (!r.ok) return
+        const data = await r.json<EspnScoreboard>()
+        for (const ev of data.events ?? []) {
+          for (const leadMin of settings.kickoff.leadMinutes) {
+            const sched = scheduledKickoffFor(ev, leadMin * 60_000)
+            if (!sched) continue
+            const seenKey = `alert:kickoff:${sched.id}:${leadMin}`
+            if (await env.CACHE.get(seenKey)) continue
+            pending.push(sched)
+            await env.CACHE.put(seenKey, 'scheduled', { expirationTtl: KV_TTL_SECONDS })
+          }
+        }
+      } catch (e) {
+        console.log('[push] league kickoff fetch failed', slug, e)
+      }
+    })
+  )
+
+  if (pending.length > 0) {
+    try {
+      const stub = env.SCHEDULER.get(env.SCHEDULER.idFromName('singleton'))
+      await stub.fetch('https://do/schedule', { method: 'POST', body: JSON.stringify(pending) })
+    } catch (e) {
+      console.log('[push] DO multi-league schedule failed', e)
+      // Roll back sentinels so the next tick retries instead of losing matches.
+      for (const item of pending) {
+        const leadMin = item.id.split('-').pop()
+        await env.CACHE.delete(`alert:kickoff:${item.id}:${leadMin}`)
+      }
+    }
+  }
+}
+
+/**
+ * Publish any scheduled social posts whose time has come. Reads the
+ * social_posts table for rows with status='scheduled' and a past
+ * scheduled_at, pushes each to the Facebook webhook, and flips them to
+ * 'published' (or 'failed'). Runs every cron tick so a post fires within
+ * ~1 min of its scheduled time.
+ */
+/** Wrap a source image through our /fb-img proxy (see the route in
+ *  fetch()) so Facebook can always reach it. Mirrors fbProxiedImage in
+ *  admin.ts — duplicated here to avoid an admin↔index import cycle. */
+function fbProxyImage(raw?: string | null): string {
+  const FALLBACK = 'https://pressing90.live/icon-512.png'
+  const src = (raw && raw.trim()) ? raw.trim() : FALLBACK
+  if (src.startsWith('https://wc26-api.nameless-violet-5dc1.workers.dev') || src.startsWith('https://pressing90.live/')) return src
+  return `https://wc26-api.nameless-violet-5dc1.workers.dev/fb-img?u=${encodeURIComponent(src)}`
+}
+
+async function fireDueSocialPosts(env: Env): Promise<void> {
+  if (!env.MAKE_FB_WEBHOOK_URL) return
+  const nowIso = new Date().toISOString()
+  const r = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/social_posts?status=eq.scheduled&scheduled_at=lte.${encodeURIComponent(nowIso)}&select=id,message,link,image_url&limit=10`,
+    { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+  )
+  if (!r.ok) return
+  const due = await r.json().catch(() => []) as Array<{ id: string; message: string; link?: string | null; image_url?: string | null }>
+  for (const post of due) {
+    let ok = false
+    try {
+      // Tag our own links with ?ref=fb so the analytics beacon attributes
+      // the resulting visits to Facebook.
+      let link = post.link ?? null
+      if (link && link.startsWith('https://pressing90.live') && !/[?&]ref=/.test(link)) {
+        link += (link.includes('?') ? '&' : '?') + 'ref=fb'
+      }
+      const hook = await fetch(env.MAKE_FB_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message: post.message, link, image_url: fbProxyImage(post.image_url), title: post.message.slice(0, 80) }),
+      })
+      ok = hook.ok
+    } catch (e) {
+      console.log('[social] webhook failed for', post.id, e)
+    }
+    await fetch(`${env.SUPABASE_URL}/rest/v1/social_posts?id=eq.${encodeURIComponent(post.id)}`, {
+      method: 'PATCH',
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'content-type': 'application/json', prefer: 'return=minimal' },
+      body: JSON.stringify(ok ? { status: 'published', published_at: nowIso } : { status: 'failed' }),
+    })
+  }
+}
+
 async function maybeFireGoalOrFt(
   env: Env,
   ev: NonNullable<EspnScoreboard['events']>[number],
@@ -1087,13 +1529,24 @@ async function fetchTournament(env: Env): Promise<Response> {
     })
   }
 
-  // Fan out across every WC26 day. ESPN tolerates this — and we cache aggressively.
+  // Fan out across every WC26 day. The cache TTL slides with how close
+  // the date is to "today" — without this, ESPN's edge cache was holding
+  // the BRA-JPN score 30 minutes after full-time, which is unacceptable
+  // when matches are live. Past+future days can hang on to a longer
+  // cache since their state changes slowly (results don't move; future
+  // fixtures move only on rare rescheduling).
+  const todayUtc = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  const yesterdayUtc = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10).replace(/-/g, '')
+  const tomorrowUtc = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10).replace(/-/g, '')
   const days = wc26Days()
   const dayResults = await Promise.all(
     days.map(async (d) => {
       try {
+        // Live + adjacent days need tight cache; everything else can be
+        // cached for an hour (results don't change once final).
+        const cacheTtl = (d === todayUtc || d === yesterdayUtc || d === tomorrowUtc) ? 30 : 3600
         const r = await fetch(`${ESPN_BASE}/scoreboard?dates=${d}`, {
-          cf: { cacheTtl: 1800, cacheEverything: true },
+          cf: { cacheTtl, cacheEverything: true },
         })
         if (!r.ok) return []
         const data = await r.json<EspnScoreboard>()
@@ -1145,7 +1598,7 @@ type DailyComp = {
   events: EspnScoreboard['events']
 }
 
-async function fetchDaily(env: Env, date: string): Promise<Response> {
+export async function fetchDaily(env: Env, date: string): Promise<Response> {
   const cacheKey = `daily:${date}`
   const cached = await env.CACHE.get(cacheKey)
   if (cached) {
@@ -1712,12 +2165,35 @@ async function handlePushSubscribe(req: Request, env: Env): Promise<Response> {
   // ua/lang are free-text metadata; cap + sanitize but treat as optional.
   const ua = safeString(payload.ua, 300) // standard UA strings stay < 300 chars
   const lang = safeString(payload.lang, 20)
+
+  // If the client sent a Supabase Bearer token, validate it server-side
+  // and extract the authenticated user ID. Never trust user_id from the
+  // request body — only from a validated JWT.
+  let user_id: string | null = null
+  const bearer = req.headers.get('authorization')
+  if (bearer?.startsWith('Bearer ')) {
+    const token = bearer.slice(7)
+    try {
+      const authRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: {
+          apikey: env.SUPABASE_SERVICE_KEY,
+          authorization: `Bearer ${token}`,
+        },
+      })
+      if (authRes.ok) {
+        const u = await authRes.json() as { id?: string }
+        user_id = u.id ?? null
+      }
+    } catch { /* non-blocking — subscription still saved without user_id */ }
+  }
+
   await supabaseUpsert(env, 'push_subscriptions', {
     endpoint,
     p256dh,
     auth,
     user_agent: ua ?? null,
     lang: lang ?? null,
+    ...(user_id ? { user_id } : {}),
   }, 'endpoint')
   return json({ ok: true })
 }

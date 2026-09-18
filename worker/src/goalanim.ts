@@ -7,7 +7,8 @@
 // every caption. One job at a time (a render takes ~30 min on the studio).
 import type { Env } from './index'
 import { withPlaybook, checkCaption, pinnedComment } from './playbook'
-import { log, bump, getCount, localParts, edgeVoice, gptJson, fbReel, fbComment, enqueuePendingComment, studio, matchSummary, WORKER_PUBLIC, SITE, type AutoMatch, type MatchSummary, type MatchGoal, type AutomationSettings } from './automation'
+import { tiktokConfigured, tiktokPublish, tiktokCaption } from './tiktok'
+import { log, bump, getCount, localParts, edgeVoice, gptJson, fbReel, fbComment, enqueuePendingComment, studio, matchSummary, loadAutomationSettings, WORKER_PUBLIC, SITE, type AutoMatch, type MatchSummary, type MatchGoal, type AutomationSettings } from './automation'
 
 export type GoalAnimItem = { id: string; slug: string; league: string; home: string; away: string; homeLogo: string | null; awayLogo: string | null; homeScore: string; awayScore: string; venue?: string; addedAt: number; preview?: boolean; goalId?: string; fps?: number; scale?: number; force?: boolean }
 type Texts = { scorerAr: string; assistAr: string; voices: string[]; captions: Array<[string, string]>; tags: string[]; cover: string; title: string; post: string }
@@ -113,6 +114,11 @@ export async function goalAnimCallback(env: Env, job: { date: string; descriptio
   const r = await fbReel(env, { video_url: body.url, description: job.description ?? '', title: job.title ?? '' })
   if (r.ok) { await bump(env, job.date, 'reel'); await bump(env, job.date, 'goalanim') }
   await log(env, job.date, 'goal-anim', r.ok, r.ok ? `${who}: published (${body.seconds ?? '?'}s) · ${r.note ?? ''} · ${qaNote} · ${body.url}` : `${who}: publish failed ${r.status ?? ''} ${r.note ?? ''} · ${body.url}`)
+  // TikTok (2026-09-18): same video, TikTok caption (no link line, ≤ 5 hashtags), privacy/mode from the settings — never for previews.
+  if (r.ok) {
+    try { const st = await loadAutomationSettings(env); if (st.tiktok && tiktokConfigured(env)) { const t = await tiktokPublish(env, { videoUrl: body.url, caption: tiktokCaption(job.description ?? '', ['#تحليل_الأهداف', '#Pressing90']), privacy: st.tiktokPrivacy, mode: st.tiktokMode }); await log(env, job.date, 'tiktok', t.ok, `${who}: ${t.note ?? ''} · ${t.publish_id ?? ''}`) } }
+    catch (e) { await log(env, job.date, 'tiktok', false, `${who}: ${String(e).slice(0, 200)}`) }
+  }
   // Pinned comment (playbook): keyword-rich sentence + closed question + link — under the reel once Facebook shows it.
   if (r.ok && job.comment) {
     if (r.id) { const c = await fbComment(env, r.id, job.comment); await log(env, job.date, 'goal-anim-comment', c.ok, c.note ?? '') }

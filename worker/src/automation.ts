@@ -72,6 +72,9 @@ export interface AutomationSettings {
   goalAnimScope: 'all' | 'barca'                        // every match of the pool, or Barça matches only
   goalAnimFps: number                                   // render frame rate (20 = ~30 min per reel on the 0.1-CPU studio)
   goalAnimScale: number                                 // draw scale: 1 = 1080p native, 0.667 = drawn at 720p and upscaled (about twice as fast)
+  tiktok: boolean                                       // TikTok (2026-09-18): also post the goal recreations to the connected TikTok account
+  tiktokMode: 'direct' | 'inbox'                        // direct post (privacy below) or upload to the TikTok inbox (Mehdi finishes the post in the app)
+  tiktokPrivacy: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY'   // unaudited app → SELF_ONLY only
 }
 export const DEFAULT_AUTOMATION: AutomationSettings = {
   enabled: false,
@@ -93,6 +96,7 @@ export const DEFAULT_AUTOMATION: AutomationSettings = {
   talesPerDay: 3, taleVariants: 2, taleVariantGapMin: 15, goalScope: 'barca', taleSlots: '08:30,13:30,18:45', taleArt: 'photos',
   mainLang: 'ar', articleReels: false,
   goalAnim: true, goalAnimPerDay: 4, goalAnimScope: 'all', goalAnimFps: 20, goalAnimScale: 1,
+  tiktok: false, tiktokMode: 'direct', tiktokPrivacy: 'SELF_ONLY',
 }
 const KEY = 'auto:settings'
 export async function loadAutomationSettings(env: Env): Promise<AutomationSettings> {
@@ -122,6 +126,8 @@ export async function saveAutomationSettings(env: Env, patch: Partial<Automation
   next.goalAnimFps = Math.max(8, Math.min(25, Number(next.goalAnimFps ?? 20)))
   next.goalAnimScale = Math.max(0.4, Math.min(1, Number(next.goalAnimScale ?? 1)))
   if (next.goalAnimScope !== 'barca') next.goalAnimScope = 'all'
+  if (next.tiktokMode !== 'inbox') next.tiktokMode = 'direct'
+  if (!['PUBLIC_TO_EVERYONE', 'MUTUAL_FOLLOW_FRIENDS', 'FOLLOWER_OF_CREATOR', 'SELF_ONLY'].includes(next.tiktokPrivacy)) next.tiktokPrivacy = 'SELF_ONLY'
   next.taleLangs = { en: next.taleLangs?.en !== false, fr: next.taleLangs?.fr !== false, ar: next.taleLangs?.ar !== false }
   const ord = String(next.taleOrder ?? 'en,ar,fr').split(',').map((x) => x.trim()).filter((x) => ['en', 'fr', 'ar'].includes(x))
   next.taleOrder = [...new Set([...ord, 'en', 'ar', 'fr'])].join(',')
@@ -2906,6 +2912,21 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       const note = `${r.ok ? 'published' : 'failed'} ${r.id ?? ''} ${r.note ?? ''}`.trim()
       await log(env, date, 'reel-publish', r.ok, note)
       return { ok: r.ok, note }
+    }
+    if (job.startsWith('tiktok-')) {
+      // TikTok (2026-09-18): tiktok-status · tiktok-connect-url · tiktok-publish {url, caption?, privacy?, mode?, dry?: true} · tiktok-publish-status {publish_id}
+      const tk = await import('./tiktok')
+      if (job === 'tiktok-status') return { ok: true, note: JSON.stringify(await tk.tiktokStatus(env)).slice(0, 1500) }
+      if (job === 'tiktok-connect-url') return { ok: true, note: await tk.tiktokConnectUrl(env) }
+      if (job === 'tiktok-publish-status') { const id = String((extra as { publish_id?: string }).publish_id ?? ''); return { ok: true, note: JSON.stringify(await tk.tiktokPublishStatus(env, id)) } }
+      if (job === 'tiktok-publish') {
+        const x = extra as { url?: string; caption?: string; privacy?: string; mode?: string; dry?: boolean }
+        if (!x.url) return { ok: false, note: 'url required' }
+        const r = await tk.tiktokPublish(env, { videoUrl: String(x.url), caption: tk.tiktokCaption(String(x.caption ?? '')), privacy: x.privacy as Parameters<typeof tk.tiktokPublish>[1]['privacy'], mode: x.mode === 'inbox' ? 'inbox' : 'direct', dry: x.dry !== false })
+        if (!r.note?.startsWith('dry run')) await log(env, date, 'tiktok', r.ok, `manual: ${r.note ?? ''} · ${r.publish_id ?? ''} · ${x.url}`)
+        return { ok: r.ok, note: `${r.note ?? ''}${r.publish_id ? ' · publish_id ' + r.publish_id : ''}` }
+      }
+      return { ok: false, note: 'unknown tiktok job' }
     }
     if (job === 'playbook') return { ok: true, note: playbookSummary().slice(0, 3500) }
     if (job === 'insights-data') { const { playbookReviewData } = await import('./review'); const d = await playbookReviewData(env, { days: Number((extra as { days?: number }).days ?? 7), limit: Number((extra as { limit?: number }).limit ?? 25), refresh: true }); return { ok: true, note: JSON.stringify({ generatedAt: d.generatedAt, count: d.review.count, account: d.review.account, recommendations: d.review.recommendations, actions: d.review.actions, groups: d.review.groups, page: { current: d.page.current, previous: d.page.previous, seriesKeys: Object.keys(d.page.series) }, note: d.note }).slice(0, 6000) } }

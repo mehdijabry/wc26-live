@@ -1281,6 +1281,7 @@ function AutomationPanel() {
     lineups?: boolean; barcaFtStyle?: 'poster' | 'reel'
     talesPerDay?: number; taleVariants?: number; taleVariantGapMin?: number; goalScope?: 'barca' | 'barca+morocco'
     goalAnim?: boolean; goalAnimPerDay?: number; goalAnimScope?: 'all' | 'barca'
+    tiktok?: boolean; tiktokMode?: 'direct' | 'inbox'; tiktokPrivacy?: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY'
     tales: boolean; taleDay: number; taleHour: number
     freeVoices: boolean
     taleLangs: { en: boolean; fr: boolean; ar: boolean }; taleGapMin: number
@@ -1308,6 +1309,16 @@ function AutomationPanel() {
   const [tok, setTok] = useState<Tok | null>(null)
   const [tokBusy, setTokBusy] = useState(false)
   const [tokInput, setTokInput] = useState('')
+  // TikTok (2026-09-18): connection status + OAuth in a new tab; posting itself is a setting below.
+  type TT = { ok: boolean; configured: boolean; connected: boolean; username?: string; nickname?: string; scope?: string; expiresAt?: number; refreshExpiresAt?: number; creator?: { privacy_level_options?: string[]; max_video_post_duration_sec?: number }; error?: string; redirectUri: string }
+  const [tt, setTt] = useState<TT | null>(null)
+  const [ttBusy, setTtBusy] = useState(false)
+  const loadTikTok = useCallback(() => { void adminGet('/admin/tiktok/status').then((d) => setTt(d as TT)).catch(() => {}) }, [])
+  async function connectTikTok() {
+    setTtBusy(true)
+    try { const r = await adminPost('/admin/tiktok/connect-url', {}) as { ok: boolean; url?: string; error?: string }; if (r.ok && r.url) window.open(r.url, '_blank', 'noopener'); else setMsg('✗ ' + (r.error ?? 'no url')) } catch (e) { setMsg('✗ ' + String(e)) }
+    setTtBusy(false)
+  }
   const checkToken = useCallback(() => {
     setTokBusy(true)
     void adminGet('/admin/automation/token').then((d) => setTok(d as Tok)).catch(() => {}).finally(() => setTokBusy(false))
@@ -1332,6 +1343,7 @@ function AutomationPanel() {
     void adminGet('/admin/automation/settings').then((d) => setS((d as { settings: S }).settings))
     refresh()
     checkToken()
+    loadTikTok()
     const id = window.setInterval(refresh, 60_000)
     return () => window.clearInterval(id)
   }, [refresh, checkToken])
@@ -1519,6 +1531,35 @@ function AutomationPanel() {
                   <button type="button" disabled={tokBusy || tokInput.trim().length < 40} onClick={() => void installToken()} className="rounded-lg bg-slate-900 text-white px-4 py-2 text-xs font-mono hover:bg-slate-700 disabled:opacity-40">{tokBusy ? '…' : 'Install token'}</button>
                 </div>
                 <div className="mt-1 text-[10px] text-slate-500">In the Explorer: pick the app, User token → “Get User Access Token”, keep every pages_* permission + business_management, generate, copy, paste here. The value is never shown again. E-mail alerts to medplay.inc@gmail.com: ⚠️ at 14/10/7/5/3/2/1/0 days, 🚨 instantly when Facebook rejects the token, ✅ when the worker renews it.</div>
+              </div>
+              {/* ── TikTok (2026-09-18) ────────────────────────────── */}
+              <div className={`rounded-xl border p-3 mb-3 ${tt?.connected ? 'border-emerald-200 bg-emerald-50/50' : 'border-slate-200 bg-slate-50/60'}`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="text-sm font-semibold text-slate-900">🎵 TikTok</div>
+                  <div className="flex gap-2">
+                    <button type="button" disabled={ttBusy || !tt?.configured} onClick={connectTikTok} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-mono text-slate-700 hover:bg-slate-100 disabled:opacity-50">{tt?.connected ? '↻ Reconnect' : '🔗 Connect TikTok account'}</button>
+                    <button type="button" onClick={loadTikTok} className="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-mono text-slate-700 hover:bg-slate-100">Check</button>
+                  </div>
+                </div>
+                <div className="mt-2 text-xs font-mono text-slate-600">
+                  {!tt && 'checking…'}
+                  {tt && !tt.configured && <>App not configured — set <code>TIKTOK_CLIENT_KEY</code> / <code>TIKTOK_CLIENT_SECRET</code> (wrangler secret put). Redirect URI to declare in the TikTok app: <code>{tt.redirectUri}</code></>}
+                  {tt?.configured && !tt.connected && <>App configured, no account linked yet → Connect. Redirect URI: <code>{tt.redirectUri}</code></>}
+                  {tt?.connected && <>Connected {tt.nickname ?? ''} {tt.username ? '@' + tt.username : ''} · scopes {tt.scope} · token renews itself (refresh valid until {tt.refreshExpiresAt ? new Date(tt.refreshExpiresAt).toLocaleDateString('fr-FR') : '?'}){tt.creator?.privacy_level_options ? <> · allowed privacy: {tt.creator.privacy_level_options.join(', ')} · max {tt.creator.max_video_post_duration_sec ?? '?'} s</> : null}{tt.error ? <span className="text-rose-600"> · {tt.error}</span> : null}</>}
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-3 text-sm text-slate-700">
+                  <label className="flex items-center gap-2"><input type="checkbox" checked={!!s.tiktok} onChange={(e) => save({ tiktok: e.target.checked })} disabled={!s.enabled || !tt?.connected} /> post goal recreations to TikTok</label>
+                  <select className="border border-slate-300 rounded px-2 py-1 text-sm" value={s.tiktokMode ?? 'direct'} onChange={(e) => save({ tiktokMode: e.target.value as 'direct' | 'inbox' })} disabled={!s.enabled}>
+                    <option value="direct">direct post</option>
+                    <option value="inbox">send to TikTok inbox (finish in the app)</option>
+                  </select>
+                  <select className="border border-slate-300 rounded px-2 py-1 text-sm" value={s.tiktokPrivacy ?? 'SELF_ONLY'} onChange={(e) => save({ tiktokPrivacy: e.target.value as NonNullable<S['tiktokPrivacy']> })} disabled={!s.enabled}>
+                    <option value="SELF_ONLY">private (SELF_ONLY — unaudited app)</option>
+                    <option value="FOLLOWER_OF_CREATOR">followers</option>
+                    <option value="MUTUAL_FOLLOW_FRIENDS">friends</option>
+                    <option value="PUBLIC_TO_EVERYONE">public (after TikTok audit)</option>
+                  </select>
+                </div>
               </div>
               {/* ── Football Stories: manual controls ─────────────────── */}
               <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 mb-3 space-y-2">
