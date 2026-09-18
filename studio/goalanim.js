@@ -18,7 +18,7 @@ import { animSlide } from './video.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** Render one goal recreation: spec (scene), voices (local mp3 paths, one per beat), music / roar / confetti (local paths), dir (scratch), out (final mp4). */
-export async function renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps = 20, scale = 1 }) {
+export async function renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps = 20, scale = 1, upscale = false }) {
   // scale < 1 (2026-09-18 test): every frame is drawn on a smaller canvas (2/3 → 720×1280) and ffmpeg scales it back to
   // 1080×1920 with lanczos — about half the CPU per frame on the 0.1-CPU studio, slightly softer picture.
   const RS = Math.max(0.4, Math.min(1, Number(scale) || 1)), RW = Math.round(1080 * RS / 2) * 2, RH = Math.round(1920 * RS / 2) * 2
@@ -117,7 +117,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   // ── automatic layout QA: marker repulsion, label placement with collision avoidance, viewport fit ──
   const QA = { markerCollisions: 0, labelMoves: 0, unresolved: 0, viewportFits: 0, events: [] }
   const qaEvent = (t, what) => { if (QA.events.length < 80) QA.events.push({ t: +t.toFixed(2), what }) }
-  const OFF = new Map(), SIDE = new Map(); let CUR = {}, RECTS = [], VIEW = null, VSCALE = null
+  const OFF = new Map(), SIDE = new Map(); let CUR = {}, RECTS = [], VIEW = null, VSCALE = null, VFX = null, VFY = null
   const carriersAt = (t) => { const fixed = new Set(); let start = 0
     for (const sg of BALL) { if (sg.carry && t >= start - 0.3 && t < sg.until + 0.3) fixed.add(sg.carry)
       if (sg.pass && typeof sg.to[0] === 'string' && t >= start - 0.5 && t < sg.until + 1.0) fixed.add(sg.to[0])
@@ -330,7 +330,9 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
   console.log('[goal-anim]', JSON.stringify({ S: BEATS.map((x) => +x.toFixed(2)), shot: +tShot.toFixed(2), goal: +tGoal.toFixed(2), end: +tEnd.toFixed(2) }))
   const N = Math.round(tEnd * FPS)
-  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${RW}x${RH}`, '-r', String(FPS), '-i', '-', ...(RS < 1 ? ['-vf', 'scale=1080:1920:flags=lanczos'] : []), '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-x264-params', 'rc-lookahead=8:ref=1:bframes=0', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath], { stdio: ['pipe', 'ignore', 'inherit'] })
+  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${RW}x${RH}`, '-r', String(FPS), '-i', '-', ...(RS < 1 && upscale ? ['-vf', 'scale=1080:1920:flags=lanczos'] : []), '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-x264-params', 'rc-lookahead=8:ref=1:bframes=0', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath], { stdio: ['pipe', 'ignore', 'inherit'] })
+  let baseS = base
+  if (RS < 1) { baseS = createCanvas(RW, RH); const bc = baseS.getContext('2d'); bc.imageSmoothingEnabled = true; bc.imageSmoothingQuality = 'high'; bc.drawImage(base, 0, 0, RW, RH) }
   const c = createCanvas(RW, RH); const ctx = c.getContext('2d')
   const world = createCanvas(RW, RH); const wctx = world.getContext('2d')
   ctx.setTransform(RW / W, 0, 0, RH / H, 0, 0); wctx.setTransform(RW / W, 0, 0, RH / H, 0, 0)   // everything below keeps drawing in 1080×1920 coordinates
@@ -339,7 +341,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const t0 = Date.now()
   for (let f = 0; f < N; f++) {
     const t = f / FPS
-    ctx.drawImage(base, 0, 0)
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.drawImage(baseS, 0, 0); ctx.restore()
     { const p = eo(t / 0.4); const s = 1.18 - 0.18 * p; ctx.save(); ctx.globalAlpha = c01(t / 0.18); ctx.translate(W / 2, 250); ctx.scale(s, s); ctx.translate(-W / 2, -250); ctx.drawImage(titleC, 0, 0); ctx.restore() }
     { const p = eo((t - 0.12) / 0.5); const s = 0.96 + 0.04 * p
       ctx.save(); ctx.globalAlpha = c01((t - 0.12) / 0.3); ctx.translate(CX, CY); ctx.scale(s, s); ctx.translate(-CX, -CY)
@@ -347,12 +349,20 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
       ctx.strokeStyle = E.LINE; ctx.lineWidth = 2; rr(ctx, PX, PY, PW, PH, 30); ctx.stroke()
       rr(ctx, PX + 14, PY + 14, PW - 28, PH - 28, 22); ctx.clip()
       layoutActors(t)
-      let [fu, fv, sc] = kf3(CAM, t); const [fx, fy] = P(fu, fv)
-      { const need = [ballAt(t).slice(0, 2), ...[...carriersAt(t)].filter((id) => CUR[id]).map((id) => CUR[id])]
-        const fits = (k) => need.every(([x, y]) => Math.abs(x - fx) * k <= PW / 2 - 70 && Math.abs(y - fy) * k <= PH / 2 - 90)
-        let target = sc, n = 0; while (!fits(target) && target > 1.0 && n++ < 25) target *= 0.97
-        if (n > 0) { QA.viewportFits++; if (f % 25 === 0) qaEvent(t, `viewport fit: zoom ${sc.toFixed(2)} → ${target.toFixed(2)}`); const prev = VSCALE ?? sc; sc = prev + (target - prev) * 0.2 } else if (VSCALE != null && Math.abs(VSCALE - sc) > 0.02) sc = VSCALE + (sc - VSCALE) * 0.2
-        VSCALE = sc }
+      let [fu, fv, sc] = kf3(CAM, t); let [fx, fy] = P(fu, fv)
+      { // Viewport fit v2 (2026-09-18): PAN toward the ball first, zoom out only for what the pan cannot solve, never below 1.3
+        // (v1 zoomed out on 40 % of the Bayern frames and left the players tiny).
+        const ball = ballAt(t), carrier = [...carriersAt(t)].filter((id) => CUR[id]).map((id) => CUR[id])
+        const need = [[ball[0], ball[1]], ...carrier]
+        const inside = (k, cx, cy) => need.every(([x, y]) => Math.abs(x - cx) * k <= PW / 2 - 70 && Math.abs(y - cy) * k <= PH / 2 - 90)
+        const hx = (PW / 2 - 70) / sc, hy = (PH / 2 - 90) / sc
+        const px = Math.max(ball[0] - hx, Math.min(ball[0] + hx, fx)), py = Math.max(ball[1] - hy, Math.min(ball[1] + hy, fy))
+        let target = sc, n = 0; while (!inside(target, px, py) && target > 1.3 && n++ < 20) target *= 0.97
+        const pan = px !== fx || py !== fy
+        if (pan || n > 0) { QA.viewportFits++; if (f % 25 === 0) qaEvent(t, `viewport ${pan ? 'pan' : ''}${pan && n ? ' + ' : ''}${n ? 'zoom ' + sc.toFixed(2) + ' → ' + target.toFixed(2) : ''}`) }
+        const prevS = VSCALE ?? sc; sc = prevS + (target - prevS) * 0.2
+        const prevX = VFX ?? px, prevY = VFY ?? py; fx = prevX + (px - prevX) * 0.25; fy = prevY + (py - prevY) * 0.25
+        VSCALE = sc; VFX = fx; VFY = fy }
       VIEW = { x: fx - (PW / 2) / sc, y: fy - (PH / 2) / sc, w: PW / sc, h: PH / sc }
       wctx.save(); wctx.setTransform(1, 0, 0, 1, 0, 0); wctx.clearRect(0, 0, RW, RH); wctx.restore(); drawWorld(wctx, t)
       ctx.translate(CX, CY); ctx.scale(sc, sc); ctx.translate(-fx, -fy); ctx.drawImage(world, 0, 0, W, H)
@@ -383,7 +393,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const layers = {}
   for (const [k, buf] of Object.entries(cardSpec.layers)) { layers[k] = path.join(dir, `card-${k}.png`); fs.writeFileSync(layers[k], buf) }
   const cardPath = path.join(dir, 'card.mp4')
-  await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5 })
+  await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5, small: RS < 1 && !upscale })
   const ffr = (args) => { const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error('ffmpeg ' + String(r.stderr || '').slice(-600)) }
   const Ds = dur(scenePath), XF = 0.4, fullPath = path.join(dir, 'full.mp4')
   ffr(['-i', scenePath, '-i', cardPath, '-filter_complex', `[0:v][1:v]xfade=transition=fade:duration=${XF}:offset=${(Ds - XF).toFixed(3)},format=yuv420p[v]`, '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-movflags', '+faststart', fullPath])
