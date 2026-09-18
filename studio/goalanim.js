@@ -18,7 +18,10 @@ import { animSlide } from './video.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** Render one goal recreation: spec (scene), voices (local mp3 paths, one per beat), music / roar / confetti (local paths), dir (scratch), out (final mp4). */
-export async function renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps = 20 }) {
+export async function renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps = 20, scale = 1 }) {
+  // scale < 1 (2026-09-18 test): every frame is drawn on a smaller canvas (2/3 → 720×1280) and ffmpeg scales it back to
+  // 1080×1920 with lanczos — about half the CPU per frame on the 0.1-CPU studio, slightly softer picture.
+  const RS = Math.max(0.4, Math.min(1, Number(scale) || 1)), RW = Math.round(1080 * RS / 2) * 2, RH = Math.round(1920 * RS / 2) * 2
   d.registerBrandFonts(); ed.registerEditorialFonts()
   const E = ed.E, W = 1080, H = 1920, FPS = fps
   const ID = spec.id || 'goal'
@@ -327,9 +330,10 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
   console.log('[goal-anim]', JSON.stringify({ S: BEATS.map((x) => +x.toFixed(2)), shot: +tShot.toFixed(2), goal: +tGoal.toFixed(2), end: +tEnd.toFixed(2) }))
   const N = Math.round(tEnd * FPS)
-  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${W}x${H}`, '-r', String(FPS), '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-x264-params', 'rc-lookahead=8:ref=1:bframes=0', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath], { stdio: ['pipe', 'ignore', 'inherit'] })
-  const c = createCanvas(W, H); const ctx = c.getContext('2d')
-  const world = createCanvas(W, H); const wctx = world.getContext('2d')
+  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${RW}x${RH}`, '-r', String(FPS), '-i', '-', ...(RS < 1 ? ['-vf', 'scale=1080:1920:flags=lanczos'] : []), '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-x264-params', 'rc-lookahead=8:ref=1:bframes=0', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath], { stdio: ['pipe', 'ignore', 'inherit'] })
+  const c = createCanvas(RW, RH); const ctx = c.getContext('2d')
+  const world = createCanvas(RW, RH); const wctx = world.getContext('2d')
+  ctx.setTransform(RW / W, 0, 0, RH / H, 0, 0); wctx.setTransform(RW / W, 0, 0, RH / H, 0, 0)   // everything below keeps drawing in 1080×1920 coordinates
   const PX = 60, PY = 470, PW = 960, PH = 1100, CX = PX + PW / 2, CY = PY + PH / 2
   const TOTAL = tEnd + 4.2, GW = spec.goalWord || 'هدف!'
   const t0 = Date.now()
@@ -350,8 +354,8 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
         if (n > 0) { QA.viewportFits++; if (f % 25 === 0) qaEvent(t, `viewport fit: zoom ${sc.toFixed(2)} → ${target.toFixed(2)}`); const prev = VSCALE ?? sc; sc = prev + (target - prev) * 0.2 } else if (VSCALE != null && Math.abs(VSCALE - sc) > 0.02) sc = VSCALE + (sc - VSCALE) * 0.2
         VSCALE = sc }
       VIEW = { x: fx - (PW / 2) / sc, y: fy - (PH / 2) / sc, w: PW / sc, h: PH / sc }
-      wctx.clearRect(0, 0, W, H); drawWorld(wctx, t)
-      ctx.translate(CX, CY); ctx.scale(sc, sc); ctx.translate(-fx, -fy); ctx.drawImage(world, 0, 0)
+      wctx.save(); wctx.setTransform(1, 0, 0, 1, 0, 0); wctx.clearRect(0, 0, RW, RH); wctx.restore(); drawWorld(wctx, t)
+      ctx.translate(CX, CY); ctx.scale(sc, sc); ctx.translate(-fx, -fy); ctx.drawImage(world, 0, 0, W, H)
       ctx.restore()
       if (t >= tGoal && t < tGoal + 0.8) { const a = 1 - (t - tGoal) / 0.8; ctx.save(); rr(ctx, PX + 14, PY + 14, PW - 28, PH - 28, 22); ctx.clip(); const g = ctx.createRadialGradient(CX, CY - 200, 0, CX, CY - 200, 800); g.addColorStop(0, `rgba(255,255,255,${0.95 * a})`); g.addColorStop(0.4, `rgba(232,194,90,${0.35 * a})`); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore() }
     }

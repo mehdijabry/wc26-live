@@ -69,6 +69,7 @@ export interface AutomationSettings {
   goalAnimPerDay: number                                // daily cap of goal recreations (each render takes ~30 min on the studio)
   goalAnimScope: 'all' | 'barca'                        // every match of the pool, or Barça matches only
   goalAnimFps: number                                   // render frame rate (20 = ~30 min per reel on the 0.1-CPU studio)
+  goalAnimScale: number                                 // draw scale: 1 = 1080p native, 0.667 = drawn at 720p and upscaled (about twice as fast)
 }
 export const DEFAULT_AUTOMATION: AutomationSettings = {
   enabled: false,
@@ -89,7 +90,7 @@ export const DEFAULT_AUTOMATION: AutomationSettings = {
   barcaFtStyle: 'poster', lineups: true,
   talesPerDay: 3, taleVariants: 2, taleVariantGapMin: 15, goalScope: 'barca', taleSlots: '08:30,13:30,18:45', taleArt: 'photos',
   mainLang: 'ar', articleReels: false,
-  goalAnim: true, goalAnimPerDay: 4, goalAnimScope: 'all', goalAnimFps: 20,
+  goalAnim: true, goalAnimPerDay: 4, goalAnimScope: 'all', goalAnimFps: 20, goalAnimScale: 1,
 }
 const KEY = 'auto:settings'
 export async function loadAutomationSettings(env: Env): Promise<AutomationSettings> {
@@ -117,6 +118,7 @@ export async function saveAutomationSettings(env: Env, patch: Partial<Automation
   next.taleGapMin = Math.max(5, Math.min(600, Number(next.taleGapMin ?? 90)))
   next.goalAnimPerDay = Math.max(0, Math.min(12, Number(next.goalAnimPerDay ?? 4)))
   next.goalAnimFps = Math.max(8, Math.min(25, Number(next.goalAnimFps ?? 20)))
+  next.goalAnimScale = Math.max(0.4, Math.min(1, Number(next.goalAnimScale ?? 1)))
   if (next.goalAnimScope !== 'barca') next.goalAnimScope = 'all'
   next.taleLangs = { en: next.taleLangs?.en !== false, fr: next.taleLangs?.fr !== false, ar: next.taleLangs?.ar !== false }
   const ord = String(next.taleOrder ?? 'en,ar,fr').split(',').map((x) => x.trim()).filter((x) => ['en', 'fr', 'ar'].includes(x))
@@ -2887,7 +2889,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     }
     if (job === 'goal-anim') {
       // Queue a goal recreation for one match: { event, slug, preview?: boolean, fps?: number, goal?: playId, force?: boolean }. Names/logos come from the ESPN summary when the match is not in today's pool.
-      const x = extra as { event?: string; slug?: string; preview?: boolean; fps?: number; goal?: string; force?: boolean }
+      const x = extra as { event?: string; slug?: string; preview?: boolean; fps?: number; scale?: number; goal?: string; force?: boolean }
       const id = String(x.event ?? '').replace(/[^0-9]/g, ''); if (!id) return { ok: false, note: 'event id required' }
       const pool = await bigMatchesToday(env)
       const pm = pool.find((mm) => mm.id === id)
@@ -2895,7 +2897,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       const sum = await matchSummary(env, { id, slug }, true)
       const home = sum.teams.find((t) => t.side === 'home'), away = sum.teams.find((t) => t.side === 'away')
       if (!pm && (!home || !away)) return { ok: false, note: `no summary for ${slug} ${id}` }
-      const item: GoalAnimItem = { id, slug, league: pm?.league ?? slug, home: pm?.home ?? home!.name, away: pm?.away ?? away!.name, homeLogo: pm?.homeLogo ?? (home?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${home.id}.png` : null), awayLogo: pm?.awayLogo ?? (away?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${away.id}.png` : null), homeScore: pm?.homeScore ?? String(home?.score ?? ''), awayScore: pm?.awayScore ?? String(away?.score ?? ''), venue: pm?.venue ?? sum.venue, addedAt: Date.now(), preview: x.preview !== false, fps: x.fps, goalId: x.goal, force: x.force !== false }
+      const item: GoalAnimItem = { id, slug, league: pm?.league ?? slug, home: pm?.home ?? home!.name, away: pm?.away ?? away!.name, homeLogo: pm?.homeLogo ?? (home?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${home.id}.png` : null), awayLogo: pm?.awayLogo ?? (away?.id ? `https://a.espncdn.com/i/teamlogos/soccer/500/${away.id}.png` : null), homeScore: pm?.homeScore ?? String(home?.score ?? ''), awayScore: pm?.awayScore ?? String(away?.score ?? ''), venue: pm?.venue ?? sum.venue, addedAt: Date.now(), preview: x.preview !== false, fps: x.fps, scale: x.scale, goalId: x.goal, force: x.force !== false }
       const best = pickBestGoal(sum, item, x.goal)
       const queued = await enqueueGoalAnim(env, date, item)
       return { ok: true, note: `${queued ? 'queued' : 'already queued/done'}: ${item.home} v ${item.away} — best goal ${best ? `${best.scorer} ${best.minute} (${best.text?.slice(0, 80)})` : 'none with coordinates'} — ${item.preview ? 'PREVIEW (not published)' : 'will be published'}; next tick starts it` }

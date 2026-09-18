@@ -8,7 +8,7 @@
 import type { Env } from './index'
 import { log, bump, getCount, localParts, edgeVoice, gptJson, fbReel, studio, matchSummary, WORKER_PUBLIC, SITE, type AutoMatch, type MatchSummary, type MatchGoal, type AutomationSettings } from './automation'
 
-export type GoalAnimItem = { id: string; slug: string; league: string; home: string; away: string; homeLogo: string | null; awayLogo: string | null; homeScore: string; awayScore: string; venue?: string; addedAt: number; preview?: boolean; goalId?: string; fps?: number; force?: boolean }
+export type GoalAnimItem = { id: string; slug: string; league: string; home: string; away: string; homeLogo: string | null; awayLogo: string | null; homeScore: string; awayScore: string; venue?: string; addedAt: number; preview?: boolean; goalId?: string; fps?: number; scale?: number; force?: boolean }
 type Texts = { scorerAr: string; assistAr: string; voices: string[]; captions: Array<[string, string]>; tags: string[]; cover: string; title: string; post: string }
 type Meta = { scorer: string; assist: string; minute: string; distance: number; side: 'home' | 'away'; team: string; opp: string; template: string; opening: string; corner: string; foot: string; scoreLine: string; league: string; venue: string; barca: boolean }
 type Scene = { spec: Record<string, unknown>; storyboard: string[]; meta: Meta }
@@ -67,7 +67,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
         const spec = job.scene!.spec, meta = job.scene!.meta, texts = job.texts!
         const description = `${texts.post}\n\n${MUSIC_CREDIT}`
         await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'goal-anim', date, label: 'goal-anim', description, title: texts.title, preview: !!job.item.preview, item: job.item, meta }), { expirationTtl: 6 * 3600 })
-        await studio(env, '/render/reel', { type: 'goal-anim', data: { spec, voiceUrls: job.voiceUrls, fps: job.item.fps ?? s.goalAnimFps ?? 20 }, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+        await studio(env, '/render/reel', { type: 'goal-anim', data: { spec, voiceUrls: job.voiceUrls, fps: job.item.fps ?? s.goalAnimFps ?? 20, scale: job.item.scale ?? s.goalAnimScale ?? 1 }, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
         job.jobId = jobId; job.stage = 'wait'; job.stageAt = Date.now()
         await saveJob(env, job)
         await log(env, date, 'goal-anim', true, `${meta.scorer} ${meta.minute}: render job ${jobId} sent to the studio (${(job.voiceUrls ?? []).length} voices)`)
@@ -217,11 +217,11 @@ export function buildScene(m: GoalAnimItem, sum: MatchSummary, g: MatchGoal): Sc
   pushActor('CB2', CBL, 'CB', defKind, kitDef, K(['0', 0.58, 0.34], ['runs', 0.57, 0.28], ['runsEnd', 0.55, 0.12], ['end', 0.55, 0.12]))
   const fbU = aSide === 'L' ? 0.22 : aSide === 'R' ? 0.78 : ou < 0.5 ? 0.78 : 0.22
   pushActor('FB', FB, 'FB', defKind, kitDef, K(['0', fbU, 0.42], ['runs', fbU, 0.36], ['runsEnd', r3(fbU + (fbU < 0.5 ? 0.03 : -0.03)), 0.19], ['end', r3(fbU + (fbU < 0.5 ? 0.03 : -0.03)), 0.19]))
-  if (opening === 'recovery' || opening === 'counter') pushActor('CM1', CM1, 'CM', defKind, kitDef, K(['0', r3(recPt[0] + 0.02), r3(recPt[1] + 0.01)], ['rec', r3(recPt[0] + 0.03), r3(recPt[1] + 0.02)], ['carryEnd', r3(clamp(aEnd[0] - 0.02, 0.1, 0.9)), r3(aEnd[1] + 0.1)], ['shot', r3(clamp(aEnd[0] - 0.04, 0.1, 0.9)), r3(aEnd[1] + 0.05)], ['end', r3(clamp(aEnd[0] - 0.04, 0.1, 0.9)), r3(aEnd[1] + 0.05)]))
+  if (opening === 'recovery' || opening === 'counter') pushActor('CM1', CM1, 'CM', defKind, kitDef, K(['0', r3(clamp(recPt[0] + 0.1, 0.1, 0.9)), r3(recPt[1] + 0.02)], ['rec', r3(clamp(recPt[0] + 0.09, 0.1, 0.9)), r3(recPt[1] + 0.03)], ['carryEnd', r3(clamp(aEnd[0] - 0.02, 0.1, 0.9)), r3(aEnd[1] + 0.1)], ['shot', r3(clamp(aEnd[0] - 0.04, 0.1, 0.9)), r3(aEnd[1] + 0.05)], ['end', r3(clamp(aEnd[0] - 0.04, 0.1, 0.9)), r3(aEnd[1] + 0.05)]))
   else pushActor('CM1', CM1, 'CM', defKind, kitDef, K(['0', 0.56, 0.40], ['runsEnd', 0.58, 0.30], ['end', 0.58, 0.30]))
-  pushActor('CM2', CM2, 'CM', defKind, kitDef, K(['0', 0.44, 0.60], ['carryEnd', 0.48, 0.44], ['shot', 0.52, 0.34], ['end', 0.52, 0.34]))
+  pushActor('CM2', CM2, 'CM', defKind, kitDef, K(['0', r3(clamp(recPt[0] - 0.14, 0.1, 0.9)), r3(clamp(recPt[1] + 0.08, 0.1, 0.9))], ['carryEnd', 0.50, 0.42], ['shot', 0.53, 0.33], ['end', 0.53, 0.33]))
   // ── attackers ──
-  if (T3) pushActor('T3', T3, 'MF', attKind, kitAtt, K(['0', 0.36, 0.66], ['carryEnd', 0.40, 0.52], ['end', 0.42, 0.46]))
+  if (T3) pushActor('T3', T3, 'MF', attKind, kitAtt, K(['0', r3(clamp(sStart[0] - 0.16 * sgn, 0.08, 0.92)), r3(clamp(sStart[1] + 0.16, 0.2, 0.9))], ['carryEnd', r3(clamp(sStart[0] - 0.14 * sgn, 0.08, 0.92)), r3(clamp(sStart[1] + 0.04, 0.2, 0.9))], ['end', r3(clamp(sStart[0] - 0.12 * sgn, 0.08, 0.92)), r3(clamp(sStart[1] - 0.02, 0.15, 0.9))]))
   if (T2) pushActor('T2', T2, 'W', attKind, kitAtt, K(['0', uOf(farSide, 0.2), 0.44], ['runs', uOf(farSide, 0.2), 0.40], ['runsEnd', uOf(farSide, 0.16), 0.16], ['end', uOf(farSide, 0.16), 0.15]))
   if (T1) pushActor('T1', T1, 'ST', attKind, kitAtt, K(['0', 0.5, 0.36], ['runs', 0.5, 0.30], ['runsEnd', 0.5, 0.09], ['end', 0.5, 0.08]))
   if (A) {

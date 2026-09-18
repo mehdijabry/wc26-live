@@ -257,7 +257,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         // Rendered in a child process (2026-09-18): the frame loop is CPU-bound for ~20-30 min on this 0.1-CPU box; in-process it starved the
         // event loop, /health stopped answering and Render restarted the instance mid-render (job lost, no callback).
         const jobFile = path.join(dir, 'job.json')
-        await fs.writeFile(jobFile, JSON.stringify({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20 }))
+        await fs.writeFile(jobFile, JSON.stringify({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20, scale: data.scale || 1 }))
         await new Promise((resolve, reject) => {
           const child = spawnChild(process.execPath, ['--max-old-space-size=256', path.join(__dirname, 'goalanim-cli.js'), jobFile], { stdio: ['ignore', 'inherit', 'inherit'] })
           const killer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, 100 * 60_000)
