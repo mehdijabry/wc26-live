@@ -29,6 +29,7 @@
  */
 import { TALES, TALE_LABELS, TALE_SUBJECTS, type Tale, type TaleCover, type TaleLang, type TaleText } from './tales'
 import type { Env } from './index'
+import { withPlaybook, checkCaption, playbookSummary } from './playbook'
 import { enqueueGoalAnim, processGoalAnim, goalAnimCallback, goalAnimJob, goalAnimQueue, resetGoalAnim, pickBestGoal, buildScene, type GoalAnimItem } from './goalanim'
 
 export const SITE = 'https://pressing90.live'
@@ -1920,7 +1921,7 @@ const taleLink = (t: Tale, lang: TaleLang) => `${SITE}/news/story-${t.slug}?${la
 function taleDescription(tx: TaleText, lang: TaleLang): string {
   // Curiosity first (Mehdi): the caption teases, the pinned comment carries the question + link.
   const L = TALE_LABELS[lang]
-  return `${tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`
+  return checkCaption(`${tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`).text   // playbook: ≤ 5 hashtags (2026-09-18)
 }
 async function taleDone(env: Env): Promise<string[]> { try { return JSON.parse((await env.CACHE.get('auto:tales:done')) ?? '[]') as string[] } catch { return [] } }
 /** AI-drafted stories (admin panel "generate") live in KV until Mehdi reviews and publishes them. */
@@ -2022,7 +2023,7 @@ function languageProblem(en: TaleText, tx: TaleText, lang: TaleLang): string | n
 async function taleVariantsAI(env: Env, tx: TaleText, lang: TaleLang): Promise<{ covers: TaleCover[]; captions: string[] }> {
   const L = lang === 'ar' ? 'Arabic (Modern Standard, as Arabic sports media write it)' : lang === 'fr' ? 'French' : 'English'
   const sys = `You write scroll-stopping thumbnails and captions for a vertical football-story reel. Answer with ONE JSON object: {"covers":[{"l1":"...","l2":"...","l3":"..."} ×4],"captions":["..." ×4]}. Language: ${L}. Each cover = 3 short lines shown as coloured pills on the thumbnail: l1 = the shock (2-4 words: a number, a paradox, a name), l2 = the claim (4-7 words), l3 = context (year, place or the name). The 4 covers take 4 DIFFERENT angles (the number, the person, the question, the twist). Never write numbers in words. No emoji, no hashtags, no quotes. Each caption = 2 short lines for the Facebook post that create curiosity without revealing the ending, ending with ⬇️ — 4 different angles too.`
-  const j = await gptJson(env, sys, `Title: ${tx.title}\nHook: ${tx.hook}\nScript:\n${tx.beats.map((b) => `- ${b.voice}`).join('\n')}`) as { covers?: Array<Partial<TaleCover>>; captions?: unknown }
+  const j = await gptJson(env, withPlaybook(sys, 'cover', 'caption'), `Title: ${tx.title}\nHook: ${tx.hook}\nScript:\n${tx.beats.map((b) => `- ${b.voice}`).join('\n')}`) as { covers?: Array<Partial<TaleCover>>; captions?: unknown }
   const clean = (v: unknown) => String(v ?? '').replace(/[\p{Extended_Pictographic}\uFE0F\u200D#*"]/gu, '').replace(/\s+/g, ' ').trim()
   const covers = (Array.isArray(j.covers) ? j.covers : []).map((c) => ({ l1: clean(c.l1).slice(0, 40), l2: clean(c.l2).slice(0, 60), l3: clean(c.l3).slice(0, 40) })).filter((c) => c.l1 || c.l2).slice(0, 4)
   const captions = (Array.isArray(j.captions) ? j.captions : []).map((c) => String(c ?? '').replace(/#\S+/g, '').trim()).filter(Boolean).slice(0, 4)
@@ -2124,7 +2125,7 @@ export async function processTaleGeneration(env: Env, date: string): Promise<voi
     }
     if (g.stage === 'en') {
       const src = g.brief ? `\nFACT SHEET (the ONLY source of facts — do not add dates, numbers, names or quotes that are not in it; widely known context is fine):\n${g.brief}` : '\nUse only facts you are certain of; leave out any detail you are not sure about.'
-      const j = await gptJson(env, `You write "Football Stories": 60-90 s vertical reels telling a TRUE, strange or memorable football story. Answer with ONE JSON object exactly shaped like: ${TALE_SCHEMA}\n${TALE_RULES}`, `Subject: ${g.subject}${src}\nLanguage: English.`)
+      const j = await gptJson(env, withPlaybook(`You write "Football Stories": 60-90 s vertical reels telling a TRUE, strange or memorable football story. Answer with ONE JSON object exactly shaped like: ${TALE_SCHEMA}\n${TALE_RULES}`, 'reel', 'caption'), `Subject: ${g.subject}${src}\nLanguage: English.`)
       const en = validateTaleText(j, 'en')
       if (g.brief) {
         // the EN script must carry the fact sheet's numbers as digits (the checks on FR/AR compare against them)
@@ -2271,7 +2272,8 @@ export async function queueTaleReel(env: Env, date: string, t: Tale, lang: TaleL
   const tag = lang === 'ar' ? (isB ? 'قصة برشلونة' : 'قصة لا تُصدق') : lang === 'fr' ? (isB ? 'HISTOIRE DU BARÇA' : 'HISTOIRE INCROYABLE') : (isB ? 'BARÇA STORY' : 'INCREDIBLE STORY')
   const cvSrc: TaleCover[] = (tx.covers && tx.covers.length ? tx.covers : (comic ? [{ l2: tx.hook }] : [])).slice(0, nVar)
   const covers = cvSrc.map((cv, i) => ({ ...cv, tag, img: illustrated.length ? illustrated[(i * 2) % illustrated.length] : undefined }))
-  const variant = (i: number) => ({ title: `${tx.title} (${lang.toUpperCase()})`.slice(0, 100), description: `${tx.captions?.[i] || tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`, comment: `${tx.question}\n\n${L.more}: ${taleLink(t, lang)}` })
+  const variant = (i: number) => ({ title: `${tx.title} (${lang.toUpperCase()})`.slice(0, 100), description: checkCaption(`${tx.captions?.[i] || tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`).text, comment: `${tx.question}\n\n${L.more}: ${taleLink(t, lang)}` })
+  { const chk = checkCaption(`${tx.captions?.[0] || tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`); if (chk.warnings.length && !opts.preview) await log(env, date, 'tale-playbook', true, `${t.slug} ${lang}: ${chk.warnings.join('; ')}`) }
   const job = opts.preview
     ? { kind: 'preview', label: `preview-tale-${lang}`, date }
     : covers.length
@@ -2887,6 +2889,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       await log(env, date, 'reel-publish', r.ok, note)
       return { ok: r.ok, note }
     }
+    if (job === 'playbook') return { ok: true, note: playbookSummary().slice(0, 3500) }
     if (job === 'goal-anim') {
       // Queue a goal recreation for one match: { event, slug, preview?: boolean, fps?: number, goal?: playId, force?: boolean }. Names/logos come from the ESPN summary when the match is not in today's pool.
       const x = extra as { event?: string; slug?: string; preview?: boolean; fps?: number; scale?: number; goal?: string; force?: boolean }

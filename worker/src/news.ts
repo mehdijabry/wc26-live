@@ -13,6 +13,7 @@
  */
 
 import type { Env } from './index'
+import { withPlaybook } from './playbook'
 
 // ─── Sources ─────────────────────────────────────────────────────────
 
@@ -26,7 +27,21 @@ const RSS_SOURCES: Array<{ name: string; url: string; weight: number }> = [
   { name: 'Goal',        url: 'https://www.goal.com/feeds/en/news', weight: 0.85 },
   { name: 'Sky Sports',  url: 'https://www.skysports.com/rss/12040', weight: 0.85 },
   { name: 'The Guardian',url: 'https://www.theguardian.com/football/rss', weight: 0.9 },
-  { name: 'FIFA',        url: 'https://www.fifa.com/en/rss', weight: 0.9 },
+  // FIFA and Goal no longer publish RSS (both URLs return HTML/404) —
+  // they are covered by the SEARCH_SUPPLEMENTS below instead.
+  { name: 'Footmercato', url: 'https://www.footmercato.net/flux-rss', weight: 0.8 },
+]
+
+/**
+ * Bing news-search supplements: sources without a usable RSS feed
+ * (FIFA, Goal) and a backup for Footmercato. Results carry Bing's
+ * indexing lag (hours), so the RSS feed is what gives "at publication
+ * time" freshness for Footmercato; the search only fills gaps.
+ */
+const SEARCH_SUPPLEMENTS: Array<{ name: string; query: string; weight: number }> = [
+  { name: 'Footmercato', query: 'site:footmercato.net', weight: 0.8 },
+  { name: 'FIFA',        query: 'site:fifa.com',        weight: 0.9 },
+  { name: 'Goal',        query: 'site:goal.com',        weight: 0.85 },
 ]
 
 const REDDIT_HOT = 'https://www.reddit.com/r/soccer/hot.json?limit=50'
@@ -43,6 +58,16 @@ interface Candidate {
   imageUrl?: string
   redditScore?: number        // upvotes if matched on Reddit
   redditComments?: number
+  // Set to true when the candidate was fetched via a Bing News
+  // keyword search. The substring filter further down trusts Bing's
+  // fuzzy match for these and skips re-checking — otherwise a Bing
+  // article that mentions the keyword only in the article body
+  // (not in title/description) gets wrongly dropped.
+  fromKeywordSearch?: boolean
+  // Main article text fetched through the studio (Render) — press sites
+  // block Cloudflare IPs. Feeds the AI rewrite with real facts instead
+  // of a 2-line RSS snippet.
+  bodyText?: string
 }
 
 // ─── Public-facing types ─────────────────────────────────────────────
@@ -74,19 +99,106 @@ export interface PolledCandidate {
  * keyword is an ADDITIVE filter that runs AFTER dedup, so the same
  * editorial signals still decide ranking inside the matching subset.
  */
+// Botola Pro (Moroccan D1) source pool — none of the big RSS feeds
+// above covers it, and Moroccan outlets' own RSS is unreliable from CF
+// datacenter IPs, so the Botola poll runs entirely on the multi-
+// provider news-search path (same pattern as the Footmercato
+// supplement). Three highly credible Moroccan outlets:
+//   Le360 Sport   — leading FR-language news site, strong sports desk
+//   Hespress      — biggest Moroccan news site (AR), dedicated sport section
+//   Al Mountakhab — the country's sports-only daily, Botola-first
+const BOTOLA_SEARCHES: Array<{ name: string; query: string; weight: number }> = [
+  { name: 'Le360 Sport',   query: 'site:le360.ma botola',                weight: 0.9 },
+  { name: 'Hespress',      query: 'site:hespress.com البطولة الاحترافية', weight: 0.9 },
+  { name: 'Al Mountakhab', query: 'site:almountakhab.com',              weight: 0.85 },
+]
+
 export async function pollTopCandidates(
   env: Env,
-  n = 6,
-  keyword?: string
+  n = 10,
+  keyword?: string,
+  sources?: string[],
+  mode?: 'botola'
 ): Promise<{ candidates: PolledCandidate[]; diagnostics: Record<string, number | string> }> {
   const diag: Record<string, number | string> = { step: 'rss' }
-  const { all, perSource } = await fetchCandidatesWithStats()
-  Object.assign(diag, { rssTotal: all.length, ...perSource })
+  setStudioEnv(env)
 
-  // Recency window — 24h to give the operator a wider menu than the
-  // automated cron (which uses 6h).
-  let candidates = all.filter((c) => Date.now() - c.pubDate < 24 * 3600 * 1000)
+  // Source filtering — when the caller specifies a subset, restrict the
+  // RSS pool to only those source names. Empty / undefined = all sources.
+  // Botola mode skips the general RSS pool entirely.
+  const activeSources = mode === 'botola'
+    ? []
+    : sources && sources.length > 0
+      ? RSS_SOURCES.filter((s) => sources.includes(s.name))
+      : RSS_SOURCES
+  diag.activeSources = activeSources.length
+  if (mode) diag.mode = mode
+
+  // Footmercato Bing supplement: footmercato.net/feed is unreliable
+  // from CF datacenter IPs (returns empty or 403), so when Footmercato
+  // is in the active source list we always fire a parallel Bing
+  // site: search. Results are relabeled so the panel shows 'Footmercato'
+  // as the source rather than the Bing-inferred SLD.
+  const includeFootmercato = activeSources.some((s) => s.name === 'Footmercato')
+  const footmercatoPromise: Promise<Candidate[]> = includeFootmercato
+    ? fetchGoogleNews('site:footmercato.net', 0.8, { sortByDate: true }).then((res) =>
+        res.map((c) => ({ ...c, source: 'Footmercato', sourceWeight: 0.8 }))
+      ).catch(() => [])
+    : Promise.resolve([])
+
+  // Botola mode: fan out the three Moroccan site-searches in parallel.
+  const botolaPromise: Promise<Candidate[]> = mode === 'botola'
+    ? Promise.all(
+        BOTOLA_SEARCHES.map((s) =>
+          fetchGoogleNews(s.query, s.weight, { sortByDate: true }).then((res) =>
+            res.map((c) => ({ ...c, source: s.name, sourceWeight: s.weight }))
+          ).catch(() => [] as Candidate[])
+        )
+      ).then((lists) => lists.flat())
+    : Promise.resolve([])
+
+  const [{ all, perSource }, footmercatoExtra, botolaExtra] = await Promise.all([
+    activeSources.length > 0
+      ? fetchCandidatesWithStats(activeSources)
+      : Promise.resolve({ all: [] as Candidate[], perSource: {} as Record<string, number> }),
+    footmercatoPromise,
+    botolaPromise,
+  ])
+  Object.assign(diag, { rssTotal: all.length, ...perSource })
+  if (includeFootmercato) diag.footmercatoRaw = footmercatoExtra.length
+  if (mode === 'botola') diag.botolaRaw = botolaExtra.length
+
+  // Recency window — 12h so the pool is large enough to survive DB +
+  // KV dedup. Freshness is handled by the scoring formula (recency
+  // score halves every 2h) rather than a hard cutoff, so recent
+  // articles naturally float to the top while older ones only appear
+  // when nothing fresher is available. Keyword search widens to 7
+  // days: the operator is hunting specific coverage that may be days
+  // old. Botola coverage is thinner than European football, so its
+  // base window is 48h.
+  const isKeyword = !!(keyword && keyword.trim())
+  const recencyMs = isKeyword
+    ? 7 * 24 * 3600 * 1000
+    : (mode === 'botola' ? 48 : 12) * 3600 * 1000
+  let candidates = [
+    ...all.filter((c) => Date.now() - c.pubDate < recencyMs),
+    ...footmercatoExtra.filter((c) => Date.now() - c.pubDate < recencyMs),
+    ...botolaExtra.filter((c) => Date.now() - c.pubDate < recencyMs),
+  ]
   diag.afterRecency = candidates.length
+
+  // Keyword expansion — when the operator typed a search term, tap
+  // Bing News too. The curated RSS feeds miss African / French coverage,
+  // so a search like 'ayoub bouaddi' would return nothing from the
+  // static pool. Bing pulls in SO FOOT, Hespress and similar within seconds.
+  if (keyword && keyword.trim()) {
+    const extra = await fetchGoogleNews(keyword.trim())
+    diag.bingNewsRaw = extra.length
+    const recentExtra = extra.filter((c) => Date.now() - c.pubDate < 7 * 24 * 3600 * 1000)
+    diag.bingNewsRecent = recentExtra.length
+    candidates = candidates.concat(recentExtra)
+  }
+
   if (candidates.length === 0) return { candidates: [], diagnostics: diag }
 
   // Reddit signal.
@@ -97,16 +209,49 @@ export async function pollTopCandidates(
   // Drop anything already processed (any status). Rejected candidates
   // get a minimal row inserted with status='archived' (see
   // rejectCandidate below), so this same dedup pass swallows them.
+  // This is the right default even for keyword search: a rejected
+  // article shouldn't reappear when the operator searches the same
+  // topic again — that's exactly what reject is supposed to prevent.
   const seen = await fetchAllSourceUrls(env)
   diag.alreadyInDb = seen.size
   candidates = candidates.filter((c) => !seen.has(c.link))
   diag.afterDedup = candidates.length
 
+  // Anti-redundancy: load URLs shown in recent polls from KV so that
+  // re-polling always surfaces fresh candidates. TTL = 6h — articles
+  // cycle back the next day. We keep the last 200 shown URLs so the
+  // list doesn't grow unbounded across many poll sessions.
+  const SHOWN_KV_KEY = 'poll:candidates:shown:v1'
+  let recentlyShown: string[] = []
+  try {
+    const raw = await env.CACHE.get(SHOWN_KV_KEY)
+    if (raw) recentlyShown = JSON.parse(raw) as string[]
+  } catch { /* non-blocking — degrade gracefully if KV unavailable */ }
+  if (recentlyShown.length > 0) {
+    const shownSet = new Set(recentlyShown)
+    const afterKV = candidates.filter((c) => !shownSet.has(c.link))
+    // Only apply the KV filter if it leaves at least half a panel's
+    // worth of candidates. If it would empty the panel, skip it so
+    // the operator always gets something to work with.
+    if (afterKV.length >= Math.ceil(n / 2)) {
+      candidates = afterKV
+      diag.afterShownDedup = candidates.length
+    } else {
+      diag.afterShownDedup = 'bypassed'
+    }
+  }
+
   // Optional keyword filter — narrows to title/description matches but
-  // doesn't change the scoring formula or source weights.
+  // doesn't change the scoring formula or source weights. Bing-
+  // fetched candidates (fromKeywordSearch=true) skip the substring
+  // check: Bing already matched them on the keyword via fuzzy search
+  // (full-body indexing), and a strict title/description substring
+  // would drop legitimate hits that only mention the keyword deeper
+  // in the article. Static RSS candidates still pass through.
   if (keyword && keyword.trim()) {
     const needle = keyword.trim().toLowerCase()
     candidates = candidates.filter((c) => {
+      if (c.fromKeywordSearch) return true
       const hay = (c.title + ' ' + (c.description ?? '')).toLowerCase()
       return hay.includes(needle)
     })
@@ -114,8 +259,17 @@ export async function pollTopCandidates(
     diag.afterKeyword = candidates.length
   }
 
+  // Image gate: only present candidates with a thumbnail — an article
+  // without an image can't be published attractively. If at least n
+  // candidates have images use that pool exclusively; otherwise fall
+  // back to the full set so the panel doesn't return empty-handed.
+  const withImage = candidates.filter((c) => !!c.imageUrl)
+  const pool = withImage.length >= n ? withImage : candidates
+  diag.withImage = withImage.length
+  diag.pool = pool.length
+
   // Score, sort, take top N.
-  const top = candidates
+  const top = pool
     .map((c) => ({ ...c, score: scoreCandidate(c) }))
     .sort((a, b) => b.score - a.score)
     .slice(0, n)
@@ -131,6 +285,16 @@ export async function pollTopCandidates(
     }))
   diag.returned = top.length
   diag.step = 'done'
+
+  // Persist these URLs as "shown" in KV so re-polling always gives
+  // the operator a fresh batch. Slice to -200 to cap memory usage.
+  if (top.length > 0) {
+    const next = [...recentlyShown, ...top.map((c) => c.link)].slice(-200)
+    try {
+      await env.CACHE.put(SHOWN_KV_KEY, JSON.stringify(next), { expirationTtl: 6 * 3600 })
+    } catch { /* non-blocking */ }
+  }
+
   return { candidates: top, diagnostics: diag }
 }
 
@@ -212,8 +376,7 @@ export async function produceFromCandidate(env: Env, picked: PolledCandidate): P
   // parser's imageUrl is null on most candidates. The article page
   // itself ALWAYS has an og:image meta — that's what every Twitter /
   // Facebook unfurl relies on. Strictly preferred over the RSS hint.
-  const ogImage = await fetchOgImage(c.link)
-  if (ogImage) c.imageUrl = ogImage
+  await enrichCandidate(env, c)
 
   // First pass — normal prompt.
   let ai = await rewriteWithAi(env, c)
@@ -264,8 +427,13 @@ export async function produceFromCandidate(env: Env, picked: PolledCandidate): P
  *   https://www.espn.com/espn/betting/story/_/id/<DIGITS>/<slug>
  */
 async function fetchEspnImage(url: string): Promise<string | null> {
+  return (await fetchEspnStory(url)).image
+}
+/** ESPN content API — hero image AND the article body (their HTML pages
+ *  bot-challenge every datacenter IP, the JSON API doesn't). */
+async function fetchEspnStory(url: string): Promise<{ image: string | null; text: string | null }> {
   const m = url.match(/espn\.com\/[^?]*\/id\/(\d+)/i)
-  if (!m) return null
+  if (!m) return { image: null, text: null }
   try {
     const r = await fetch(`https://now.core.api.espn.com/v1/sports/news/${m[1]}`, {
       headers: {
@@ -274,14 +442,14 @@ async function fetchEspnImage(url: string): Promise<string | null> {
       },
       cf: { cacheTtl: 3600, cacheEverything: true },
     })
-    if (!r.ok) return null
+    if (!r.ok) return { image: null, text: null }
     // ESPN's content API serves the article object two ways depending
     // on the entry point: bare {…images:[]} OR wrapped in
     // {headlines:[{images:[]}]} (a list endpoint shape they sometimes
     // reuse for single-article reads). Probe both — keeps us robust
     // when ESPN rotates between shapes.
     const j = await r.json() as
-      | { images?: unknown[]; headlines?: Array<{ images?: unknown[] }> }
+      | { images?: unknown[]; story?: string; headlines?: Array<{ images?: unknown[]; story?: string }> }
     const candidates: unknown[] = []
     if (Array.isArray(j.images)) candidates.push(...j.images)
     if (Array.isArray(j.headlines)) {
@@ -289,9 +457,13 @@ async function fetchEspnImage(url: string): Promise<string | null> {
         if (Array.isArray(h.images)) candidates.push(...h.images)
       }
     }
-    return pickImageUrl(candidates)
+    const storyHtml = j.story ?? j.headlines?.find((h) => typeof h.story === 'string')?.story ?? ''
+    const text = storyHtml
+      ? storyHtml.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<\/p>/gi, '\n\n').replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&rsquo;/g, "'").replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim().slice(0, 6000)
+      : ''
+    return { image: pickImageUrl(candidates), text: text.length > 200 ? text : null }
   } catch {
-    return null
+    return { image: null, text: null }
   }
 }
 
@@ -371,6 +543,102 @@ export async function fetchOgImage(url: string): Promise<string | null> {
   }
 }
 
+/**
+ * Source ladder for the automated pipeline (Mehdi, 2026-09-06): mainly
+ * Footmercato, then ESPN, then FIFA, then the rest by reliability and
+ * popularity. Each cron run takes the freshest unpublished article of
+ * the highest tier that has one; lower tiers only when the upper ones
+ * are exhausted. Unknown sources rank last.
+ */
+export const SOURCE_PRIORITY = ['Footmercato', 'ESPN FC', 'FIFA', 'BBC Sport', 'The Guardian', 'Sky Sports', 'Goal']
+/** Only pick articles younger than this — "at publication time". */
+export const MAX_PICK_AGE_MS = 3 * 3600 * 1000
+/** Live-match pages, score tickers, quizzes… are not articles. */
+export function isJunkTitle(title: string): boolean {
+  return /\ben direct\b|\blive\b|^match\s|\bcompo(s)?\b.*officielle|\bscore\b.*\ben direct|quiz|\bpronostic|\bstreaming\b|\bsondage\b/i.test(title)
+}
+export function sourceTier(source: string): number {
+  const i = SOURCE_PRIORITY.indexOf(source)
+  return i === -1 ? SOURCE_PRIORITY.length : i
+}
+
+function extractOgImage(html: string, base: string): string | null {
+  const og = html.match(/<meta[^>]+(?:property|name)=["']og:image(?::secure_url)?["'][^>]+content=["']([^"']+)["']/i)
+    ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']og:image(?::secure_url)?["']/i)
+  if (og) return resolveUrl(og[1], base)
+  const tw = html.match(/<meta[^>]+(?:property|name)=["']twitter:image["'][^>]+content=["']([^"']+)["']/i)
+    ?? html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']twitter:image["']/i)
+  if (tw) return resolveUrl(tw[1], base)
+  return null
+}
+
+/** Fetch the article through the studio (Render IPs reach footmercato,
+ *  ESPN, BBC… where Cloudflare's get 403). Returns og image + main text. */
+async function fetchArticleViaStudio(env: Env, url: string): Promise<{ image: string | null; text: string | null }> {
+  if (!env.STUDIO_URL || !env.STUDIO_SECRET) return { image: null, text: null }
+  try {
+    const r = await fetch(`${env.STUDIO_URL}/html?url=${encodeURIComponent(url)}`, {
+      headers: { 'x-studio-secret': env.STUDIO_SECRET, 'user-agent': 'p90-worker/1.0' }, signal: AbortSignal.timeout(25000),
+    })
+    if (!r.ok) return { image: null, text: null }
+    const j = await r.json() as { status?: number; url?: string; head?: string; text?: string }
+    if (!j.status || j.status >= 400) return { image: null, text: null }
+    const image = j.head ? extractOgImage(j.head, j.url || url) : null
+    const text = j.text && j.text.length > 200 ? j.text : null
+    return { image, text }
+  } catch { return { image: null, text: null } }
+}
+
+/** Image (og:image) + body text for a candidate: direct fetch first
+ *  (works for ESPN's JSON API, some feeds), then the studio proxy. */
+export async function enrichCandidate(env: Env, c: Candidate): Promise<void> {
+  // The page's og:image (1200 px+) is ALWAYS preferred over the RSS /
+  // Bing thumbnail (often 240 px — that is what made the cards blurry
+  // on 2026-09-07). The thumbnail only stays as a last resort.
+  const thumb = c.imageUrl
+  c.imageUrl = undefined
+  if (/espn\.com\//i.test(c.link)) {
+    const espn = await fetchEspnStory(c.link)
+    if (espn.image) c.imageUrl = espn.image
+    if (!c.bodyText && espn.text) c.bodyText = espn.text
+  }
+  if (!c.imageUrl) {
+    const direct = await fetchOgImage(c.link)
+    if (direct) c.imageUrl = direct
+  }
+  if (!c.bodyText || !c.imageUrl) {
+    const via = await fetchArticleViaStudio(env, c.link)
+    if (!c.imageUrl && via.image) c.imageUrl = via.image
+    if (!c.bodyText && via.text) c.bodyText = via.text
+  }
+  if (!c.imageUrl) c.imageUrl = thumb
+}
+
+/** Re-fetch the full-size og:image for articles whose image_url is a
+ *  thumbnail (ops repair after the 2026-09-07 regression). */
+export async function refreshArticleImages(env: Env, sinceIso: string, limit = 5): Promise<string> {
+  // ≤ 5 articles per call: each one costs up to 4 subrequests and a
+  // Worker invocation is capped at 50.
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/articles?select=id,slug,source_url,image_url&created_at=gte.${encodeURIComponent(sinceIso)}&order=created_at.asc&limit=${Math.min(8, limit)}`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+  })
+  const rows = await r.json().catch(() => []) as Array<{ id: string; slug: string; source_url: string; image_url: string | null }>
+  const out: string[] = []
+  for (const row of rows) {
+    const c: Candidate = { title: row.slug, link: row.source_url, description: '', pubDate: Date.now(), source: '', sourceWeight: 0.8, imageUrl: row.image_url ?? undefined }
+    await enrichCandidate(env, c)
+    if (c.imageUrl && c.imageUrl !== row.image_url) {
+      await fetch(`${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(row.id)}`, {
+        method: 'PATCH', headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'content-type': 'application/json', prefer: 'return=minimal' },
+        body: JSON.stringify({ image_url: c.imageUrl }),
+      })
+      out.push(`${row.slug}: updated`)
+    } else out.push(`${row.slug}: unchanged`)
+  }
+  const last = rows[rows.length - 1]
+  return out.join(' | ') + (rows.length ? ` || next: since=${(await fetch(`${env.SUPABASE_URL}/rest/v1/articles?select=created_at&id=eq.${encodeURIComponent(last.id)}`, { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }).then((x) => x.json()).catch(() => [{}]) as Array<{ created_at?: string }>)[0]?.created_at ?? ''}` : ' || done')
+}
+
 function resolveUrl(maybeRelative: string, base: string): string {
   try { return new URL(maybeRelative, base).toString() } catch { return maybeRelative }
 }
@@ -409,7 +677,7 @@ export interface PipelineReport {
   error?: string
 }
 
-export async function runNewsPipeline(env: Env): Promise<PipelineReport> {
+export async function runNewsPipeline(env: Env, opts: { skipEmail?: boolean } = {}): Promise<PipelineReport> {
   const r: PipelineReport = {
     step: 'init', ok: false, rssBySource: {}, rssTotal: 0,
     candidatesAfterRecency: 0, redditHot: 0, winner: null,
@@ -417,12 +685,32 @@ export async function runNewsPipeline(env: Env): Promise<PipelineReport> {
   }
   try {
     r.step = 'rss'
-    const { all, perSource } = await fetchCandidatesWithStats()
-    r.rssBySource = perSource
+    setStudioEnv(env)
+    // RSS pool + the Footmercato search supplement (its RSS feed is
+    // unreliable from Cloudflare IPs — same trick as the manual poll).
+    const [{ all: rssAll, perSource }, ...supplements] = await Promise.all([
+      fetchCandidatesWithStats(),
+      ...SEARCH_SUPPLEMENTS.map((s) =>
+        fetchGoogleNews(s.query, s.weight, { sortByDate: true })
+          .then((res) => res.map((c) => ({ ...c, source: s.name, sourceWeight: s.weight })))
+          .catch(() => [] as Candidate[])
+      ),
+    ])
+    // RSS items win over search duplicates of the same URL (better dates).
+    const seenLinks = new Set(rssAll.map((c) => c.link))
+    const all = [...rssAll]
+    r.rssBySource = { ...perSource }
+    SEARCH_SUPPLEMENTS.forEach((s, i) => {
+      const extra = supplements[i].filter((c) => !seenLinks.has(c.link))
+      extra.forEach((c) => seenLinks.add(c.link))
+      all.push(...extra)
+      r.rssBySource[`${s.name} (search)`] = extra.length
+    })
     r.rssTotal = all.length
-    // 6h window — extended to 24h if first pass empty, to keep things
-    // moving when feeds publish less frequently overnight.
-    let candidates = all.filter((c) => Date.now() - c.pubDate < 6 * 3600 * 1000)
+    // 12h window (Bing indexes Footmercato with a few hours of lag) —
+    // extended to 24h if the first pass is empty, to keep things moving
+    // when feeds publish less frequently overnight.
+    let candidates = all.filter((c) => Date.now() - c.pubDate < 12 * 3600 * 1000)
     if (candidates.length === 0 && all.length > 0) {
       candidates = all.filter((c) => Date.now() - c.pubDate < 24 * 3600 * 1000)
       r.notes.push(`Recency window widened to 24h (kept ${candidates.length}/${all.length})`)
@@ -440,23 +728,37 @@ export async function runNewsPipeline(env: Env): Promise<PipelineReport> {
 
     r.step = 'score'
     const scored = candidates
+      .filter((c) => c.title.trim().length >= 20 && !isJunkTitle(c.title))
       .map((c) => ({ ...c, score: scoreCandidate(c) }))
       .sort((a, b) => b.score - a.score)
-    const winner = scored[0]
-    if (!winner) { r.notes.push('No winner after scoring'); return r }
+
+    // Dedup against everything already in DB (any status), then walk
+    // the source ladder: Footmercato → ESPN → FIFA → others. Freshness
+    // rule (Mehdi): an article is taken close to its publication time —
+    // within each tier the NEWEST article wins and it must be younger
+    // than MAX_PICK_AGE; older ones are left alone (the cron comes back
+    // every 30 min, so nothing fresh = nothing published this round).
+    r.step = 'dedup'
+    const seen = await fetchAllSourceUrls(env)
+    const now = Date.now()
+    const fresh = scored.filter((c) => !seen.has(c.link) && now - c.pubDate < MAX_PICK_AGE_MS).sort((a, b) => b.pubDate - a.pubDate)
+    let winner: (typeof scored)[number] | undefined
+    for (let t = 0; t <= SOURCE_PRIORITY.length; t++) {
+      const name = SOURCE_PRIORITY[t] ?? 'other sources'
+      const tierPool = fresh.filter((c) => sourceTier(c.source) === t)
+      const total = scored.filter((c) => sourceTier(c.source) === t).length
+      if (tierPool.length === 0) { r.notes.push(`${name}: nothing fresh (${total} in window, none new & < ${MAX_PICK_AGE_MS / 3600000}h)`); continue }
+      winner = tierPool[0]
+      r.notes.push(`${name}: picked "${winner.title.slice(0, 70)}" (${Math.round((now - winner.pubDate) / 60000)} min old, ${tierPool.length} fresh)`)
+      break
+    }
+    if (!winner) { r.notes.push('Nothing fresh anywhere — waiting for the next run.'); return r }
     r.winner = { title: winner.title, source: winner.source, score: Number(winner.score.toFixed(1)), link: winner.link }
 
-    r.step = 'dedup'
-    if (await alreadyHave(env, winner.link)) {
-      r.notes.push('Winner already in DB; skipped.')
-      return r
-    }
-
-    // Augment with og:image from the source page before AI rewrite.
-    // RSS feeds rarely include images in the standard tags so this is
-    // where every produced article's hero photo actually comes from.
-    const ogImage = await fetchOgImage(winner.link)
-    if (ogImage) winner.imageUrl = ogImage
+    // Hero image (og:image) + article text, via the studio when the
+    // press site blocks Cloudflare. Image is mandatory for auto-publish.
+    await enrichCandidate(env, winner)
+    if (winner.bodyText) r.notes.push(`Article text fetched (${winner.bodyText.length} chars)`)
 
     r.step = 'ai'
     const aiResult = await rewriteWithAi(env, winner)
@@ -474,11 +776,15 @@ export async function runNewsPipeline(env: Env): Promise<PipelineReport> {
     r.inserted = { id: inserted.id, slug: inserted.slug }
 
     r.step = 'email'
-    try {
-      await sendEditorEmail(env, inserted, winner.title)
-      r.emailSent = true
-    } catch (e) {
-      r.notes.push('Email failed: ' + String(e))
+    if (opts.skipEmail) {
+      r.notes.push('Editor email skipped (automation on)')
+    } else {
+      try {
+        await sendEditorEmail(env, inserted, winner.title)
+        r.emailSent = true
+      } catch (e) {
+        r.notes.push('Email failed: ' + String(e))
+      }
     }
 
     r.step = 'done'
@@ -493,14 +799,16 @@ export async function runNewsPipeline(env: Env): Promise<PipelineReport> {
 
 // ─── 1. Candidate fetching ──────────────────────────────────────────
 
-async function fetchCandidatesWithStats(): Promise<{ all: Candidate[]; perSource: Record<string, number> }> {
+let studioEnvForRss: Env | null = null
+export function setStudioEnv(env: Env): void { studioEnvForRss = env }
+async function fetchCandidatesWithStats(pool = RSS_SOURCES): Promise<{ all: Candidate[]; perSource: Record<string, number> }> {
   const results = await Promise.allSettled(
-    RSS_SOURCES.map((s) => fetchRss(s.name, s.url, s.weight))
+    pool.map((s) => fetchRss(s.name, s.url, s.weight))
   )
   const perSource: Record<string, number> = {}
   const all: Candidate[] = []
   results.forEach((res, i) => {
-    const name = RSS_SOURCES[i].name
+    const name = pool[i].name
     if (res.status === 'fulfilled') {
       perSource[name] = res.value.length
       all.push(...res.value)
@@ -518,12 +826,25 @@ async function fetchCandidatesWithStats(): Promise<{ all: Candidate[]; perSource
  */
 async function fetchRss(name: string, url: string, weight: number): Promise<Candidate[]> {
   try {
-    const r = await fetch(url, {
-      headers: { 'user-agent': 'pressing90.live news bot (https://pressing90.live)' },
-      cf: { cacheTtl: 600, cacheEverything: true },
-    })
-    if (!r.ok) return []
-    const xml = await r.text()
+    let xml = ''
+    try {
+      const r = await fetch(url, {
+        headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36', accept: 'application/rss+xml, application/atom+xml, application/xml, text/xml, */*;q=0.8' },
+        cf: { cacheTtl: 300, cacheEverything: true },
+      })
+      if (r.ok) xml = await r.text()
+    } catch { /* fall through to the studio */ }
+    // Blocked / empty from Cloudflare → read the feed through the studio (Render IPs).
+    if (!/<(item|entry)\b/i.test(xml) && studioEnvForRss?.STUDIO_URL && studioEnvForRss.STUDIO_SECRET) {
+      try {
+        const sr = await fetch(`${studioEnvForRss.STUDIO_URL}/raw?url=${encodeURIComponent(url)}`, {
+          headers: { 'x-studio-secret': studioEnvForRss.STUDIO_SECRET, 'user-agent': 'p90-worker/1.0' }, signal: AbortSignal.timeout(20000),
+        })
+        const j = await sr.json() as { status?: number; body?: string }
+        if (j.status && j.status < 400 && j.body) xml = j.body
+      } catch { /* ignore */ }
+    }
+    if (!xml) return []
     const blockRe = /<(item|entry)\b[\s\S]*?<\/\1>/gi
     const out: Candidate[] = []
     for (const m of xml.matchAll(blockRe)) {
@@ -557,6 +878,223 @@ interface RedditPost {
   score: number
   num_comments: number
   created_utc: number
+}
+
+/**
+ * On-demand source expansion via Google News RSS. Only fires when the
+ * operator typed a keyword into the poll input — covers any topic the
+ * curated 6 RSS feeds miss (e.g. an 18-year-old Lille midfielder having
+ * a breakout WC26 game gets 50+ French / North-African articles within
+ * hours, none of which surface on ESPN / BBC / Goal / Sky / Guardian /
+ * FIFA).
+ *
+ * Google News returns titled "Title - Source.com" — we extract the
+ * source name from the dedicated <source> tag and strip it from the
+ * end of the title so the headline reads cleanly when shown in the
+ * poll panel.
+ *
+ * The link is a Google News redirect URL. Cloudflare's fetch follows
+ * redirects by default, so downstream fetchOgImage + the AI rewrite
+ * land on the real article without extra handling.
+ *
+ * hl=fr + gl=FR + ceid=FR:fr biases toward French-language coverage,
+ * which is exactly what the operator wants for an Atlas Lions
+ * (Morocco) audience. Switch to hl=en if the keyword ever needs an
+ * English angle.
+ */
+async function fetchGoogleNews(keyword: string, weight = 0.8, opts: { sortByDate?: boolean } = {}): Promise<Candidate[]> {
+  // Multi-provider fan-out. Google News RSS returns 503 to Cloudflare
+  // Worker datacenter IPs, so we run Bing (2 pages for depth), Google,
+  // and Yahoo in parallel, then dedup by URL. Bing's pagination doubles
+  // the keyword-specific pool when it's the only one answering, and
+  // running providers concurrently rather than sequentially shaves ~1s
+  // off the operator's wait when they're testing several keywords.
+  const q = encodeURIComponent(keyword.trim())
+  if (!q) return []
+  const ua = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+
+  const tryFetch = async (url: string, label: string): Promise<string | null> => {
+    try {
+      // 5s hard cap — Bing/Google/Yahoo occasionally hang for 20-30s
+      // when our CF datacenter hits their soft throttling, dragging
+      // the operator's poll wait from <2s to >20s. AbortSignal.timeout
+      // gives every provider the same budget; one slow tail won't
+      // hold up the rest.
+      //
+      // 5-min Cloudflare edge cache per URL. Bing aggressively rate-
+      // limits repeated requests from the same datacenter IP and will
+      // start returning empty <channel> bodies (raw=0) when polled
+      // more than ~3x per minute. Caching the RSS at our edge means
+      // repeated polls of the same keyword hit cache (instant, free,
+      // no rate-limit) and Bing only sees one request per 5 minutes.
+      const r = await fetch(url, {
+        headers: { 'user-agent': ua, accept: 'application/rss+xml, application/xml;q=0.9, */*;q=0.8' },
+        signal: AbortSignal.timeout(5000),
+        cf: { cacheTtl: 300, cacheEverything: true },
+      })
+      if (!r.ok) {
+        console.log(`[news] ${label} HTTP ${r.status} for "${keyword}"`)
+        return null
+      }
+      return await r.text()
+    } catch (e) {
+      console.log(`[news] ${label} threw: ${(e as Error).message}`)
+      return null
+    }
+  }
+
+  // EN + FR Bing in parallel. The site renders in English because the
+  // AI rewrite prompt forces English output — the SOURCE article's
+  // language doesn't matter, Llama translates as it paraphrases. So
+  // we sweep both: EN catches the BBC / Guardian / Worldsoccertalk
+  // universe Bing already ranks for our CF US datacenter; FR catches
+  // SoFoot / Hespress / MaliActu / RMC coverage that's the only
+  // place where African breakout players (Atlas Lions, Algerian
+  // Lions) get written about until they cross to a Premier League
+  // club. Without FR, niche francophone keywords return empty.
+  //
+  // Google + Yahoo dropped: Google 503s our CF IP every call; Yahoo's
+  // RSS endpoint started returning empty <channel> bodies in mid-2026.
+  const sort = opts.sortByDate ? '&sortby=Date' : ''
+  const providers: Array<{ label: string; url: string }> = [
+    { label: 'Bing EN p1', url: `https://www.bing.com/news/search?q=${q}&format=rss&setlang=en&cc=us&first=1${sort}` },
+    { label: 'Bing EN p2', url: `https://www.bing.com/news/search?q=${q}&format=rss&setlang=en&cc=us&first=11${sort}` },
+    { label: 'Bing FR p1', url: `https://www.bing.com/news/search?q=${q}&format=rss&setlang=fr&first=1${sort}` },
+    { label: 'Bing FR p2', url: `https://www.bing.com/news/search?q=${q}&format=rss&setlang=fr&first=11${sort}` },
+  ]
+
+  const responses = await Promise.allSettled(providers.map((p) => tryFetch(p.url, p.label)))
+  const all: Candidate[] = []
+  for (let i = 0; i < providers.length; i++) {
+    const p = providers[i]
+    const res = responses[i]
+    if (res.status !== 'fulfilled' || !res.value) continue
+    const xml = res.value
+    const blockRe = /<item\b[^>]*>[\s\S]*?<\/item>/gi
+    const out: Candidate[] = []
+    for (const m of xml.matchAll(blockRe)) {
+      const block = m[0]
+      const titleRaw = stripCdata(pickTag(block, 'title')) ?? ''
+      const linkRaw = stripCdata(pickTag(block, 'link')) ?? ''
+      const description = stripCdata(pickTag(block, 'description') ?? '') ?? ''
+      const pubRaw = pickTag(block, 'pubDate') ?? ''
+      const pubDate = pubRaw ? new Date(pubRaw).getTime() : Date.now()
+      // Prefer the RSS <source> tag (Google News fills it). When absent
+      // (Bing, Yahoo), infer the publisher from the link host — strips
+      // 'www.' and TLD so 'sofoot.com' becomes 'sofoot'.
+      // Bing News and Yahoo wrap article links in a tracking redirect
+      // (bing.com/news/apiclick.aspx?...&url=REAL or r.search.yahoo.com/
+      // RV=2/RE=.../RU=REAL/RK=2/RS=...) — unwrap so downstream
+      // fetchOgImage hits the real article and the publisher inferred
+      // from the host is meaningful (sofoot.com not bing.com).
+      //
+      // HTML-decode the link FIRST so '&amp;' becomes '&' before URL
+      // parsing — otherwise URLSearchParams treats the whole tail as
+      // one giant param and can't find 'url'.
+      const realLink = unwrapNewsLink(decodeHtmlEntities(linkRaw.trim()))
+      const sourceFromTag = stripCdata(pickTag(block, 'source'))
+      const sourceTag = sourceFromTag ?? publisherFromUrl(realLink) ?? p.label
+      const title = titleRaw
+        .replace(new RegExp(`\\s*[-|]\\s*${escapeRegex(sourceTag)}\\s*$`, 'i'), '')
+        .replace(/\s*-\s*[^-]{1,40}\.(com|net|fr|ma|dz|tn|sn|ci)\s*$/i, '')
+        .trim()
+      // Bing News RSS exposes the article thumbnail as a Bing-hosted
+      // CDN URL on either <News:Image>...</News:Image> (the
+      // News:-prefixed RSS extension Bing publishes) or as a
+      // media:thumbnail / enclosure node. These URLs are stable
+      // image proxies (bing.com/th?id=...) so we can show them
+      // directly in the poll candidate row — no extra fetch needed.
+      const imageUrl = pickTag(block, 'News:Image')
+        ?? pickAttr(block, 'media:thumbnail', 'url')
+        ?? pickAttr(block, 'media:content', 'url')
+        ?? pickAttr(block, 'enclosure', 'url')
+      if (title && realLink) {
+        out.push({
+          title: decodeHtmlEntities(title),
+          link: realLink,
+          description: decodeHtmlEntities(description),
+          pubDate,
+          source: sourceTag,
+          sourceWeight: weight,
+          imageUrl: imageUrl ? decodeHtmlEntities(imageUrl) : undefined,
+          fromKeywordSearch: true,
+        })
+      }
+    }
+    console.log(`[news] ${p.label} parsed=${out.length} for "${keyword}"`)
+    all.push(...out)
+  }
+  // Dedup by realLink across all providers. When Bing p1+p2+Google all
+  // surface the same SoFoot article, we want the highest-quality source
+  // label to win — prefer entries with a non-Bing/non-Google publisher
+  // tag (i.e. Google News fills <source>SoFoot</source> properly).
+  const seen = new Map<string, Candidate>()
+  for (const c of all) {
+    const existing = seen.get(c.link)
+    if (!existing) {
+      seen.set(c.link, c)
+      continue
+    }
+    // Prefer entries with a real publisher name (from <source> tag) over
+    // the URL-inferred SLD fallback — the <source> tag is more accurate.
+    // Both are now just the clean publisher name; this check keeps the
+    // first-seen entry by default, which is fine.
+    if (c.source.length > existing.source.length) {
+      seen.set(c.link, c)
+    }
+  }
+  return Array.from(seen.values())
+}
+
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function unwrapNewsLink(url: string): string {
+  try {
+    const u = new URL(url)
+    // Bing News: /news/apiclick.aspx?...&url=<encoded>
+    if (u.hostname.endsWith('bing.com')) {
+      const inner = u.searchParams.get('url')
+      if (inner) return inner
+    }
+    // Yahoo News: redirect path /RV=2/RE=.../RU=<encoded>/RK=...
+    if (u.hostname.includes('yahoo.com')) {
+      const m = u.pathname.match(/\/RU=([^/]+)/)
+      if (m) {
+        try { return decodeURIComponent(m[1]) } catch { /* fallthrough */ }
+      }
+    }
+    return url
+  } catch {
+    return url
+  }
+}
+
+function publisherFromUrl(url: string): string | null {
+  try {
+    const h = new URL(url).hostname.replace(/^www\./, '')
+    const parts = h.split('.')
+    // Take the SLD (e.g. 'sofoot' from 'sofoot.com', 'lemonde' from
+    // 'www.lemonde.fr'). For uk.tv-style cases the SLD is still the
+    // recognizable name, so taking parts[parts.length - 2] is correct.
+    const sld = parts.length >= 2 ? parts[parts.length - 2] : parts[0]
+    return sld.charAt(0).toUpperCase() + sld.slice(1)
+  } catch {
+    return null
+  }
+}
+
+function decodeHtmlEntities(s: string): string {
+  return s
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)))
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
 }
 
 async function fetchRedditHot(): Promise<RedditPost[]> {
@@ -721,6 +1259,7 @@ the rewritten paragraphs in plain markdown
 SOURCE:
 Title: ${c.title}
 ${c.description ? 'Summary: ' + stripHtml(c.description).slice(0, 500) : ''}
+${c.bodyText ? 'Article text (facts to use — paraphrase, never copy a sentence):\n' + c.bodyText.slice(0, opts.tight ? 1500 : 2600) : ''}
 Source name: ${c.source}
 Source URL: ${c.link}
 
@@ -758,6 +1297,154 @@ OUTPUT:`
   } catch (err) {
     console.log('[news] AI rewrite failed:', err)
     return { rewritten: null, raw: 'EXCEPTION: ' + String(err) }
+  }
+}
+
+/**
+ * Translate an English article into Modern Standard Arabic (فصحى).
+ *
+ * Uses gpt-oss-120b (same model as the AI chat) — Llama 8B is fine for
+ * English rewrites but produces stilted, error-prone Arabic. Register:
+ * pan-Arab sports journalism (beIN / Kooora style), NOT dialect. Team,
+ * player and competition names use their established Arabic media forms.
+ * Same 3-marker delimited output as rewriteWithAi so the parser is shared.
+ *
+ * Returns null on any failure — the caller publishes EN-only rather than
+ * blocking the article on a translation hiccup.
+ */
+export async function translateArticleToArabic(
+  env: Env,
+  a: { title: string; excerpt: string; body: string }
+): Promise<{ title_ar: string; excerpt_ar: string; body_ar: string } | null> {
+  const prompt = `أنت مترجم رياضي محترف. ترجم المقال التالي من الإنجليزية إلى العربية الفصحى الحديثة بأسلوب الصحافة الرياضية العربية (beIN Sports، Kooora، الجزيرة الرياضية).
+
+═══ القاعدة الأهم: أسماء الأعلام ═══
+أسماء اللاعبين والمدربين والأندية والملاعب تُكتب بالشكل المتداول في الإعلام الرياضي العربي. إذا لم تكن متأكداً من الشكل المتداول، اكتب الاسم بنقل صوتي حرفي دقيق من نطقه الأصلي، حرفاً بحرف، ولا تخترع اسماً مشابهاً أبداً. الخطأ في اسم لاعب خطأ فادح.
+- انقل كل مقطع صوتي من الاسم اللاتيني: Ferran → فيران (وليس فوزان)، Rodri → رودري، Vinícius → فينيسيوس، Haaland → هالاند، Bellingham → بيلينغهام، Yamal → يامال، Rashford → راشفورد، Engels → إنغلز، Gakpo → غاكبو.
+- إذا ذُكر الاسم أكثر من مرة، اكتبه بنفس الشكل في كل مرة.
+- عند نهاية عملك، أعد قراءة كل اسم عَلَم كتبته وقارنه بالاسم اللاتيني في الأصل حرفاً بحرف قبل التسليم.
+
+مرجع الأشكال المتداولة (انسخها كما هي):
+- الأندية: Real Madrid → ريال مدريد، Barcelona → برشلونة، Atlético Madrid → أتلتيكو مدريد، Manchester City → مانشستر سيتي، Manchester United → مانشستر يونايتد، Liverpool → ليفربول، Arsenal → أرسنال، Chelsea → تشيلسي، Tottenham → توتنهام، Bayern Munich → بايرن ميونخ، Borussia Dortmund → بوروسيا دورتموند، PSG / Paris St-Germain → باريس سان جيرمان، Juventus → يوفنتوس، Inter Milan → إنتر ميلان، AC Milan → ميلان، Napoli → نابولي، Al Hilal → الهلال، Al Nassr → النصر، Al Ahly → الأهلي، Wydad → الوداد، Raja → الرجاء، Celtic → سيلتيك، West Ham → وست هام، Ajax → أياكس، Benfica → بنفيكا، Porto → بورتو.
+- اللاعبون: Mbappé → مبابي، Messi → ميسي، Ronaldo → رونالدو، Salah → صلاح، Hakimi → حكيمي، Ziyech → زياش، Bounou → بونو، En-Nesyri → النصيري، Diaz → دياز، Vinícius Jr → فينيسيوس جونيور، Lewandowski → ليفاندوفسكي، Kane → كين، Saka → ساكا، Foden → فودين، Pedri → بيدري، Gavi → غافي، Lamine Yamal → لامين يامال، Ferran Torres → فيران توريس، Bruno Fernandes → برونو فرنانديز.
+- البطولات: World Cup → كأس العالم، Champions League → دوري أبطال أوروبا، Europa League → الدوري الأوروبي، Premier League → الدوري الإنجليزي الممتاز، LaLiga → الدوري الإسباني (الليغا)، Serie A → الدوري الإيطالي، Bundesliga → الدوري الألماني، Ligue 1 → الدوري الفرنسي، Copa del Rey → كأس ملك إسبانيا، FA Cup → كأس الاتحاد الإنجليزي، Community Shield → الدرع الخيرية، Euro → كأس أمم أوروبا، AFCON → كأس الأمم الأفريقية، Copa América → كوبا أمريكا، Club World Cup → كأس العالم للأندية، Saudi Pro League → دوري روشن السعودي، MLS → الدوري الأمريكي.
+- عام: transfer → انتقال/صفقة، loan → إعارة، contract → عقد، striker → مهاجم، winger → جناح، midfielder → لاعب وسط، defender → مدافع، goalkeeper → حارس مرمى، head coach → المدرب، preseason → التحضيرات الصيفية / فترة الإعداد، injury → إصابة، fixture → مباراة، matchday → جولة، clean sheet → شباك نظيفة، hat-trick → هاتريك.
+
+═══ قواعد الترجمة ═══
+- ترجمة أمينة للمعنى بصياغة عربية طبيعية (ليست حرفية). لا تضف معلومات غير موجودة في الأصل ولا تحذف أي معلومة.
+- الأرقام والنتائج والمبالغ بالأرقام العربية الغربية (0-9) كما في الأصل، والعملات كما هي (£22m → 22 مليون جنيه إسترليني، €50m → 50 مليون يورو).
+- لا لهجات محلية. لا تشكيل إلا للضرورة.
+- العنوان: أقل من 70 حرفاً، يبدأ بالكلمة المفتاحية الأهم (اسم النادي أو اللاعب).
+- المقتطف: جملة واحدة إخبارية، 120-160 حرفاً.
+- المتن: نفس عدد الفقرات وبنفس التنسيق (markdown بسيط). السطر الأخير (المصدر) يُترجم بصيغة: "استناداً إلى تقرير [اسم المصدر كما هو بالإنجليزية] — راجع المقال الأصلي للتفاصيل الكاملة."
+
+═══ شكل الإخراج ═══
+لا تُخرج أي شرح أو تعليق أو مقدمة. فقط الأقسام الثلاثة أدناه، مع نسخ أسطر العلامات حرفياً:
+
+===TITLE===
+العنوان المترجم
+===EXCERPT===
+المقتطف المترجم
+===BODY===
+المتن المترجم
+
+═══ المقال الأصلي ═══
+Title: ${a.title}
+Excerpt: ${a.excerpt}
+Body:
+${a.body}
+
+الإخراج:`
+  try {
+    type GptOut = { output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>; response?: string }
+    const ai = (env as Env & { AI?: { run: (model: string, input: unknown) => Promise<GptOut> } }).AI
+    if (!ai) return null
+    // Same Responses-API call shape ai-chat.ts uses for gpt-oss-120b.
+    const out = await ai.run('@cf/openai/gpt-oss-120b', {
+      instructions: 'You are a professional Arabic sports translator. Output ONLY the three delimited sections requested — no preamble, no JSON, no code fences.',
+      input: [{ role: 'user', content: prompt }],
+      max_output_tokens: 4500,
+      // 'medium' — the prompt asks the model to re-check every proper
+      // noun against the Latin original before answering; 'low' skipped
+      // that and produced فوزان for Ferran on the first live test.
+      reasoning: { effort: 'medium' },
+    })
+    let raw = ''
+    for (const item of out.output ?? []) {
+      if (item.type !== 'message') continue // skip 'reasoning' scratchpad
+      for (const c of item.content ?? []) {
+        if ((c.type === 'output_text' || c.type === 'text') && typeof c.text === 'string') raw += c.text
+      }
+    }
+    raw = raw.trim() || (out.response ?? '').trim()
+    const parsed = parseDelimitedSections(raw)
+    if (!parsed || !parsed.title || !parsed.body) {
+      console.log('[news:ar] parse failed. Raw preview:', raw.slice(0, 300))
+      return null
+    }
+    // Sanity: the output must actually be Arabic (guards against the
+    // model echoing English back).
+    const arabicRatio = (parsed.body.match(/[؀-ۿ]/g) ?? []).length / Math.max(1, parsed.body.length)
+    if (arabicRatio < 0.3) {
+      console.log('[news:ar] output not Arabic enough (ratio', arabicRatio.toFixed(2), ')')
+      return null
+    }
+    return {
+      title_ar: parsed.title.slice(0, 160),
+      excerpt_ar: (parsed.excerpt ?? '').slice(0, 300),
+      body_ar: parsed.body,
+    }
+  } catch (err) {
+    console.log('[news:ar] translation failed:', err)
+    return null
+  }
+}
+
+/**
+ * Generate a ready-to-post Facebook caption from a free-form topic.
+ * Always written to promote Pressing 90 (pressing90.live). Used by the
+ * admin "Social" generator section — the operator types a subject and
+ * gets back an engaging post they can edit, schedule or publish.
+ */
+export async function generateSocialPost(
+  env: Env,
+  topic: string
+): Promise<{ message: string | null; raw: string }> {
+  const prompt = [
+    'You are the social media manager for "Pressing 90" — a World Cup 2026 live-scores and football news site at pressing90.live.',
+    'Write ONE engaging Facebook post about the topic below.',
+    'Rules:',
+    '- Strong hook on the first line (a question, bold claim, or stat).',
+    '- 2 to 4 short punchy sentences total.',
+    '- 1 to 3 relevant emojis, used naturally (not every line).',
+    '- End with a call to action that drives readers to Pressing 90 for live scores, brackets and news.',
+    '- Add 2 to 4 relevant hashtags on the last line (include #WorldCup2026 and #Pressing90).',
+    '- Write in English. Output ONLY the post text — no quotes, no preamble, no markdown.',
+    '',
+    `Topic: ${topic}`,
+  ].join('\n')
+
+  try {
+    const ai = (env as Env & { AI?: { run: (model: string, input: unknown) => Promise<{ response?: string }> } }).AI
+    if (!ai) return { message: null, raw: 'AI_BINDING_MISSING' }
+    const out = await ai.run('@cf/meta/llama-3.1-8b-instruct-fast', {
+      messages: [
+        { role: 'system', content: withPlaybook('You are a concise, high-energy social media copywriter. Output ONLY the post text, no commentary, no surrounding quotes.', 'caption') },
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: 600,
+    })
+    let msg = (out.response ?? '').trim()
+    // Strip accidental surrounding quotes / code fences Llama sometimes adds.
+    msg = msg.replace(/^```[a-z]*\n?/i, '').replace(/```$/,'').trim()
+    if ((msg.startsWith('"') && msg.endsWith('"')) || (msg.startsWith('“') && msg.endsWith('”'))) {
+      msg = msg.slice(1, -1).trim()
+    }
+    if (!msg) return { message: null, raw: out.response ?? '' }
+    return { message: msg, raw: out.response ?? '' }
+  } catch (err) {
+    console.log('[news] social generate failed:', err)
+    return { message: null, raw: 'EXCEPTION: ' + String(err) }
   }
 }
 

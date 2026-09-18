@@ -65,3 +65,12 @@ ou à lire en début de session. Ne contient aucun secret.
 - Ops : `goal-anim {event, slug, preview?, fps?}` (file + aperçu), `goal-anim-tick`, `goal-anim-status`,
   `goal-anim-reset`, `goal-anim-scene {event, slug}` (chorégraphie sans rendu), `reel-publish {url, description, title}`.
 - Les positions des autres joueurs et l'enchaînement avant le tir sont une interprétation (mention « رسم توضيحي »).
+
+## Playbook contenu (depuis le 18/09)
+- Trois recherches 2026 (algorithme TikTok / viralité / SEO / miniatures ; Pinterest / Trends / mots-clés / conversion ;
+  KPIs et leviers) intégrées telles quelles dans `docs/playbook/` et comme skill Claude `tiktok-pinterest-playbook`
+  (avec le skill `prospect-pitch` installé tel quel pour la prospection TikTok for Business).
+- `worker/src/playbook.ts` : règles condensées injectées dans les prompts (scripts d'histoires, covers/légendes,
+  narration et légende des recréations de buts, posts d'articles) via `withPlaybook()` ; `checkCaption()` plafonne
+  les hashtags à 5 et journalise « tale-playbook » / « goal-anim-playbook » quand une légende n'a pas le mot-clé en
+  première phrase ou pas d'appel à l'action. Ops : `playbook` (résumé en vigueur).
