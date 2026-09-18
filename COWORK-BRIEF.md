@@ -77,3 +77,6 @@ ou à lire en début de session. Ne contient aucun secret.
   « playbook ») ; commentaires épinglés riches en mots-clés (`pinnedComment`) sous histoires et recréations ; revue
   hebdomadaire des reels (insights Graph → complétion, replays, partages, actions) le lundi 09:05 et via
   `playbook-review`. Ops : `playbook` (résumé en vigueur).
+- Onglet admin « insights » (18/09) : revue Facebook du playbook — KPIs, séries page, groupes durée/format/langue/
+  créneau, recommandations ; route `GET /admin/automation/insights` (cache 6 h, `?refresh=1`), ops `insights-data`.
+  Le jeton de page a maintenant `read_insights`.
