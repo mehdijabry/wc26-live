@@ -426,12 +426,26 @@ app.get('/debug/audio', async (req, res) => {
   out.genVoice = run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2:sample_rate=24000', '-ac', '1', '-c:a', 'libmp3lame', '-b:a', '96k', voice])
   out.genMusic = run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'anoisesrc=d=6:c=pink:r=44100:a=0.3', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '128k', music])
   out.probeVoice = run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', voice])
-  const fc = ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16,afade=t=in:st=0:d=0.6[m]', '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]'].join(';')
-  out.mix = run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=10:d=6', '-stream_loop', '-1', '-i', music, '-i', voice, '-filter_complex', fc, '-map', '0:v', '-map', '[mix]', '-t', '6', '-c:v', 'libx264', '-preset', 'ultrafast', '-ar', '48000', '-c:a', 'aac', '-b:a', '128k', mixed])
-  const vd = (f, extra = []) => { const r = spawnSync('ffmpeg', ['-hide_banner', '-i', f, ...extra, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' }); return { status: r.status, mean: (String(r.stderr || '').match(/mean_volume:\s*(-?[\d.]+)/) || [])[1], stderrLen: String(r.stderr || '').length, error: r.error ? String(r.error) : undefined } }
-  out.vdMixed_0_1s = vd(mixed, ['-t', '1'])       // before the voice: music only (expect ≈ music-16 dB)
-  out.vdMixed_1_3s = vd(mixed, ['-ss', '1', '-t', '2'])   // voice + music (expect much louder)
+  const vd = (f, extra = []) => { const r = spawnSync('ffmpeg', ['-hide_banner', '-i', f, ...extra, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' }); return (String(r.stderr || '').match(/mean_volume:\s*(-?[\d.]+)/) || [])[1] }
   out.vdVoice = vd(voice); out.vdMusic = vd(music)
+  const V = {
+    baseline: ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16,afade=t=in:st=0:d=0.6[m]', '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]'],
+    noNormalize: ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16,afade=t=in:st=0:d=0.6[m]', '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0,alimiter=limit=0.95[mix]'],
+    noLimiter: ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16,afade=t=in:st=0:d=0.6[m]', '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[mix]'],
+    plain: ['[1:a]volume=0.16[m]', '[2:a]adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0[mix]'],
+    orderMV: ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16,afade=t=in:st=0:d=0.6[m]', '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]', '[m][v0]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]'],
+    voiceOnly: ['[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[mix]'],
+    musicOnly: ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16[mix]'],
+    amixFirst: ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16,afade=t=in:st=0:d=0.6[m]', '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[mix]'],
+  }
+  out.variants = {}
+  for (const [name, chain] of Object.entries(V)) {
+    for (const loop of [true, false]) {
+      const f = path.join(dir, `mix-${name}-${loop ? 'loop' : 'noloop'}.mp4`)
+      const r = run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=10:d=6', ...(loop ? ['-stream_loop', '-1'] : []), '-i', music, '-i', voice, '-filter_complex', chain.join(';'), '-map', '0:v', '-map', '[mix]', '-t', '6', '-c:v', 'libx264', '-preset', 'ultrafast', '-ar', '48000', '-c:a', 'aac', '-b:a', '128k', f])
+      out.variants[`${name}/${loop ? 'loop' : 'noloop'}`] = r.status === 0 ? { m0_1: vd(f, ['-t', '1']), m1_3: vd(f, ['-ss', '1', '-t', '2']) } : { error: r.err.slice(-200) }
+    }
+  }
   await fs.rm(dir, { recursive: true, force: true })
   res.json(out)
 })
