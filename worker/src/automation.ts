@@ -2533,6 +2533,16 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       const ids = String(extra.ids ?? '').split(',').map((x) => x.trim()).filter(Boolean)
       const details: Record<string, unknown> = {}
       for (const id of ids.slice(0, 8)) details[id] = await graph(env, token, 'GET', `/${id}`, { fields }).catch((e) => ({ error: String(e) }))
+      // brief=1 (2026-09-18): one compact line per reel — the full JSON is truncated at 6000 chars and stops being parsable.
+      if (extra.brief) {
+        const rows = ((list as { data?: Array<Record<string, unknown>> }).data ?? []).map((v) => {
+          const st = v.status as { publishing_phase?: { publish_time?: string; publish_status?: string } } | undefined
+          const d = String(v.description ?? '').replace(/\s+/g, ' ')
+          const kind = /uppbeat|تحليل هدف|كيف جاء/.test(d) ? 'goal-anim' : 'other'
+          return `${v.id} ${String(st?.publishing_phase?.publish_time ?? v.updated_time ?? '').slice(5, 16)} ${Math.round(Number(v.length ?? 0))}s views=${v.views ?? 0} ${kind} ${d.slice(0, 60)}`
+        })
+        return { ok: true, note: rows.join('\n').slice(0, 5500) }
+      }
       return { ok: true, note: JSON.stringify({ list, details }).slice(0, 6000) }
     }
     if (job === 'fb-insights') {
@@ -2927,6 +2937,29 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
         return { ok: r.ok, note: `${r.note ?? ''}${r.publish_id ? ' · publish_id ' + r.publish_id : ''}` }
       }
       return { ok: false, note: 'unknown tiktok job' }
+    }
+    if (job === 'edge-voice-test') {
+      // Debug (2026-09-19): one Arabic clip through the studio TTS exactly like the goal recreations (rate 1.22) → URL in the note
+      const text = String((extra as { text?: string }).text ?? 'الدقيقة الثامنة. عرضية أديمي، رافينيا يسدد، والحارس يتصدى.')
+      const url = await edgeVoice(env, text, 'ar', `dbg-edge-${Date.now().toString(36)}.mp3`, 1.22)
+      return { ok: true, note: url }
+    }
+    if (job === 'studio-debug-audio') {
+      // Debug (2026-09-19): the studio's /debug/audio probe (ffmpeg versions + synthetic mix), read through the worker (it holds STUDIO_SECRET).
+      if (!studioConfigured(env)) return { ok: false, note: 'studio not configured' }
+      const vu = String((extra as { voice?: string }).voice ?? '')
+      const r = await fetch(`${env.STUDIO_URL}/debug/audio${vu ? '?voice=' + encodeURIComponent(vu) : ''}`, { headers: { 'x-studio-secret': env.STUDIO_SECRET!, 'user-agent': 'p90-worker/1.0' }, signal: AbortSignal.timeout(120000) })
+      return { ok: r.ok, note: (await r.text()).slice(0, 5000) }
+    }
+    if (job === 'whisper') {
+      // Debug (2026-09-19): transcribe a short audio file (URL) with Workers AI — is the narration really in the mix?
+      const u = String((extra as { url?: string }).url ?? ''); if (!/^https:/.test(u)) return { ok: false, note: 'url required' }
+      const r = await fetch(u); if (!r.ok) return { ok: false, note: `fetch ${r.status}` }
+      const buf = new Uint8Array(await r.arrayBuffer())
+      const ai = env.AI as { run: (m: string, i: unknown) => Promise<{ text?: string; words?: unknown[] }> } | undefined
+      if (!ai) return { ok: false, note: 'no AI binding' }
+      const out = await ai.run('@cf/openai/whisper', { audio: [...buf] })
+      return { ok: true, note: `${buf.length} bytes → "${(out.text ?? '').slice(0, 400)}"` }
     }
     if (job === 'playbook') return { ok: true, note: playbookSummary().slice(0, 3500) }
     if (job === 'insights-data') { const { playbookReviewData } = await import('./review'); const d = await playbookReviewData(env, { days: Number((extra as { days?: number }).days ?? 7), limit: Number((extra as { limit?: number }).limit ?? 25), refresh: true }); return { ok: true, note: JSON.stringify({ generatedAt: d.generatedAt, count: d.review.count, account: d.review.account, recommendations: d.review.recommendations, actions: d.review.actions, groups: d.review.groups, page: { current: d.page.current, previous: d.page.previous, seriesKeys: Object.keys(d.page.series) }, note: d.note }).slice(0, 6000) } }
