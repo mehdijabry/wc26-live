@@ -123,18 +123,32 @@ export async function tiktokPublish(env: Env, p: { videoUrl: string; caption: st
   if (!head.ok || !size) throw new Error(`video not reachable (${head.status})`)
   if (size > 64 * 1024 * 1024) throw new Error(`video too large for a single chunk (${Math.round(size / 1048576)} MB > 64 MB)`)
   if (p.dry) return { ok: true, mode, privacy, bytes: size, note: `dry run: creator @${info.creator_username ?? '?'}, privacy options ${allowed.join('/') || '?'}, max ${info.max_video_post_duration_sec ?? '?'} s, video ${Math.round(size / 1048576)} MB — nothing sent` }
-  const source_info = { source: 'FILE_UPLOAD', video_size: size, chunk_size: size, total_chunk_count: 1 }
+  // Chunked upload (2026-09-19): a 48.6 MB video sent as ONE chunk arrived in the inbox as a 1-second clip even though TikTok
+  // answered PUBLISH_COMPLETE. Anything above 20 MB now goes in 10 MB chunks, read from the source with range requests so the
+  // worker never holds the whole file in memory. The last chunk carries the remainder.
+  const CHUNK = 10 * 1024 * 1024
+  const chunks = size > 20 * 1024 * 1024 ? Math.max(1, Math.floor(size / CHUNK)) : 1
+  const chunkSize = chunks === 1 ? size : CHUNK
+  const source_info = { source: 'FILE_UPLOAD', video_size: size, chunk_size: chunkSize, total_chunk_count: chunks }
   const init = mode === 'direct'
     ? await api<{ publish_id: string; upload_url: string }>(env, '/post/publish/video/init/', { post_info: { title: p.caption.slice(0, 2200), privacy_level: privacy, disable_duet: !!info.duet_disabled, disable_comment: !!info.comment_disabled, disable_stitch: !!info.stitch_disabled, video_cover_timestamp_ms: p.coverMs ?? 1000 }, source_info })
     : await api<{ publish_id: string; upload_url: string }>(env, '/post/publish/inbox/video/init/', { source_info })
-  const video = await fetch(p.videoUrl, { signal: AbortSignal.timeout(60000) })
-  if (!video.ok) throw new Error(`video download ${video.status}`)
-  const buf = await video.arrayBuffer()
-  const up = await fetch(init.upload_url, { method: 'PUT', headers: { 'content-type': 'video/mp4', 'content-length': String(buf.byteLength), 'content-range': `bytes 0-${buf.byteLength - 1}/${buf.byteLength}` }, body: buf, signal: AbortSignal.timeout(120000) })
-  if (!up.ok && up.status !== 201) throw new Error(`tiktok upload ${up.status} ${(await up.text()).slice(0, 160)}`)
+  let sent = 0
+  for (let i = 0; i < chunks; i++) {
+    const start = i * chunkSize
+    const end = i === chunks - 1 ? size - 1 : start + chunkSize - 1
+    const video = await fetch(p.videoUrl, { headers: chunks > 1 ? { range: `bytes=${start}-${end}` } : {}, signal: AbortSignal.timeout(60000) })
+    if (!video.ok) throw new Error(`video download ${video.status} (chunk ${i + 1}/${chunks})`)
+    const buf = await video.arrayBuffer()
+    if (buf.byteLength !== end - start + 1) throw new Error(`chunk ${i + 1}/${chunks}: got ${buf.byteLength} bytes, expected ${end - start + 1}`)
+    const up = await fetch(init.upload_url, { method: 'PUT', headers: { 'content-type': 'video/mp4', 'content-length': String(buf.byteLength), 'content-range': `bytes ${start}-${end}/${size}` }, body: buf, signal: AbortSignal.timeout(120000) })
+    if (!up.ok && up.status !== 201 && up.status !== 308) throw new Error(`tiktok upload ${up.status} (chunk ${i + 1}/${chunks}) ${(await up.text()).slice(0, 160)}`)
+    sent += buf.byteLength
+  }
+  if (sent !== size) throw new Error(`tiktok upload incomplete: ${sent}/${size} bytes`)
   let status = 'PROCESSING_UPLOAD'
   for (let i = 0; i < 6; i++) { await new Promise((r) => setTimeout(r, 3000)); try { status = (await tiktokPublishStatus(env, init.publish_id)).status; if (status !== 'PROCESSING_UPLOAD' && status !== 'PROCESSING_DOWNLOAD') break } catch { /* keep polling */ } }
-  return { ok: status !== 'FAILED', publish_id: init.publish_id, status, mode, privacy, bytes: buf.byteLength, note: `${mode} · ${privacy} · ${status}` }
+  return { ok: status !== 'FAILED', publish_id: init.publish_id, status, mode, privacy, bytes: sent, note: `${mode} · ${privacy} · ${status} · ${Math.round(sent / 1048576)} MB in ${chunks} chunk(s)` }
 }
 export async function tiktokPublishStatus(env: Env, publishId: string): Promise<{ status: string; fail_reason?: string; post_ids?: string[] }> {
   const d = await api<{ status?: string; fail_reason?: string; publicaly_available_post_id?: string[] }>(env, '/post/publish/status/fetch/', { publish_id: publishId })

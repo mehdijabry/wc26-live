@@ -280,7 +280,7 @@ export default {
           if (action === 'pool') return json({ ok: true, matches: await auto.bigMatchesToday(env) })
           if (action === 'token') return json(await auto.fbTokenStatus(env))   // validity/expiry/scopes only — never the value
           if (action === 'status') {
-            const { date } = auto.localParts()
+            const date = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date') ?? '') ? url.searchParams.get('date')! : auto.localParts().date   // ?date= to read yesterday's log (callbacks log under the job's own date)
             const counts: Record<string, number> = {}
             for (const c of ['article', 'ft', 'story', 'reel', 'post', 'goalreel'] as const) counts[c] = await auto.getCount(env, date, c)
             return json({ ok: true, date, settings: await auto.loadAutomationSettings(env), counts, log: await auto.readLog(env, date) })
