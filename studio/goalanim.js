@@ -409,7 +409,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   qa.loudness = lufs(out)
   if (Number.isFinite(qa.loudness) && Math.abs(qa.loudness + 16) > 1.5) {
     const ln = path.join(dir, 'ln.mp4')
-    ffr(['-i', out, '-c:v', 'copy', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', ln])
+    ffr(['-i', out, '-c:v', 'copy', '-af', 'loudnorm=I=-16:TP=-1.5:LRA=11', '-ar', '48000', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', ln])
     fs.renameSync(ln, out); qa.loudnessFixed = true; qa.loudnessAfter = lufs(out)
   }
   console.log('[goal-anim] QA audio:', JSON.stringify({ voices: qa.voices.length, overlaps: qa.overlaps.length, loudness: qa.loudness, fixed: qa.loudnessFixed, after: qa.loudnessAfter, issues: qa.issues }))
