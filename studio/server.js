@@ -425,16 +425,20 @@ app.get('/debug/audio', async (req, res) => {
   const vd = async (f, extra = []) => { const r = await sh('ffmpeg', ['-hide_banner', '-i', f, ...extra, '-af', 'volumedetect', '-f', 'null', '-']); return (r.err.match(/mean_volume:\s*(-?[\d.]+)/) || [])[1] ?? null }
   out.voice = await vd(voice); out.music = await vd(music)
   const A = '[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16[m]', B = '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]'
-  const V = String(req.query.only || '') ? {} : {
-    baseline: [A, B, '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]'],
-    noNormalize: [A, B, '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0[mix]'],
-    plain: ['[1:a]volume=0.16[m]', '[2:a]adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:normalize=0[mix]'],
-    voiceOnly: ['[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[mix]'],
-    musicOnly: [A.replace('[m]', '[mix]')],
+  // Delay syntax variants (voice only): which one really delays on this ffmpeg? expected m0_1 ≈ silence (< -60), m1_3 ≈ -21.5
+  const R = 'aresample=48000,aformat=channel_layouts=stereo'
+  const V = {
+    pipe_after: ['[2:a]' + R + ',adelay=1000|1000[mix]'],
+    all1_after: ['[2:a]' + R + ',adelay=1000:all=1[mix]'],
+    pipe_before: ['[2:a]adelay=1000|1000,' + R + '[mix]'],
+    single_before: ['[2:a]adelay=1000,' + R + '[mix]'],
+    named_all: ['[2:a]' + R + ',adelay=delays=1000:all=1[mix]'],
+    samples: ['[2:a]' + R + ',adelay=48000S|48000S[mix]'],
+    concat: ['aevalsrc=0:c=stereo:s=48000:d=1[s]', '[2:a]' + R + '[a]', '[s][a]concat=n=2:v=0:a=1[mix]'],
   }
   out.variants = {}
   for (const [name, chain] of Object.entries(V)) {
-    for (const loop of [true, false]) {
+    for (const loop of [false]) {
       const f = path.join(dir, `mix-${name}-${loop ? 'loop' : 'noloop'}.mp4`)
       const r = await sh('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-f', 'lavfi', '-i', 'color=c=black:s=32x32:r=5:d=4', ...(loop ? ['-stream_loop', '-1'] : []), '-i', music, '-i', voice, '-filter_complex', chain.join(';'), '-map', '0:v', '-map', '[mix]', '-t', '4', '-c:v', 'libx264', '-preset', 'ultrafast', '-ar', '48000', '-c:a', 'aac', '-b:a', '96k', f])
       out.variants[`${name}/${loop ? 'loop' : 'noloop'}`] = r.code === 0 ? { m0_1: await vd(f, ['-t', '1']), m1_3: await vd(f, ['-ss', '1', '-t', '2']) } : { error: r.err.slice(-200) }
