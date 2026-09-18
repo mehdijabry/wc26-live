@@ -26,7 +26,7 @@ import { uploadPostCards } from '../../lib/newsCards'
  */
 
 type Tab =
-  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news' | 'social'
+  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news' | 'social' | 'insights'
 
 // Token storage key in sessionStorage. We use sessionStorage (not local)
 // so the token clears when the tab closes — saves us from a stale
@@ -189,7 +189,7 @@ export function AdminPanel() {
           className="max-w-6xl mx-auto px-4 sm:px-5 pb-2 flex gap-1.5 overflow-x-auto scroll-smooth"
           style={{ scrollPaddingInline: '1rem', WebkitOverflowScrolling: 'touch' }}
         >
-          {(['overview', 'analytics', 'news', 'social', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
+          {(['overview', 'analytics', 'insights', 'news', 'social', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -226,6 +226,7 @@ export function AdminPanel() {
         {tab === 'actions' && <QuickActions />}
         {tab === 'news' && <News />}
         {tab === 'social' && <Social />}
+        {tab === 'insights' && <Insights />}
       </main>
     </div>
   )
@@ -1608,6 +1609,135 @@ function AutomationPanel() {
         </>
       )}
     </Section>
+  )
+}
+
+// ─── Facebook Insights (playbook / KPI guide, 2026-09-18) ─────────────────
+type InsightReel = { id: string; when: string; title: string; views: number; length: number; completion: number | null; replays?: number; shares?: number; comments?: number; likes?: number; link?: string; kind: string; lang: 'ar' | 'en'; hour: number | null; action: string }
+type InsightGroup = { by: 'length' | 'kind' | 'lang' | 'hour'; rows: Array<{ key: string; n: number; medViews: number; medCompletion: number | null; totalViews: number }> }
+type InsightsData = {
+  ok: boolean; error?: string; generatedAt: string; days: number; note?: string
+  review: { count: number; reels: InsightReel[]; account: { medianViews: number | null; medianCompletion: number | null; medianShareRate: number | null; perDay: number; totalViews: number; totalComments: number; totalReplays: number; insights: boolean }; actions: string[]; recommendations: string[]; groups: InsightGroup[] }
+  page: { series: Record<string, Array<{ date: string; value: number }>>; current: Record<string, number>; previous: Record<string, number> }
+}
+const KIND_FR: Record<string, string> = { goal: 'reel de but', analysis: 'analyse de but', matchday: 'matchs du jour', results: 'résultats', barca: 'برشلونة اليوم', articles: 'articles', story: 'histoire' }
+const GROUP_FR: Record<InsightGroup['by'], string> = { length: 'Durée', kind: 'Format', lang: 'Langue', hour: 'Créneau' }
+function delta(cur?: number, prev?: number): { text: string; accent?: 'green' | 'red' } {
+  if (cur == null) return { text: '—' }
+  if (!prev) return { text: cur.toLocaleString() }
+  const p = (cur - prev) / prev
+  return { text: `${cur.toLocaleString()} (${p >= 0 ? '+' : ''}${Math.round(p * 100)} %)`, accent: p >= 0 ? 'green' : 'red' }
+}
+function Insights() {
+  const [days, setDays] = useState<7 | 14 | 30>(7)
+  const [d, setD] = useState<InsightsData | null>(null)
+  const [busy, setBusy] = useState(false)
+  const load = useCallback((refresh: boolean) => {
+    setBusy(true)
+    void adminGet(`/admin/automation/insights?days=${days}&limit=${days > 7 ? 50 : 25}${refresh ? '&refresh=1' : ''}`).then((x) => setD(x as InsightsData)).catch(() => setD({ ok: false, error: 'network' } as InsightsData)).finally(() => setBusy(false))
+  }, [days])
+  useEffect(() => { load(false) }, [load])
+  const r = d?.ok ? d.review : null
+  const pct = (x: number | null | undefined) => (x == null ? '—' : `${Math.round(x * 100)} %`)
+  const reach = delta(d?.page?.current?.page_impressions_unique, d?.page?.previous?.page_impressions_unique)
+  const vviews = delta(d?.page?.current?.page_video_views, d?.page?.previous?.page_video_views)
+  const followsNow = d?.page?.current?.page_follows, followsPrev = d?.page?.previous?.page_follows
+  const follows = followsNow != null && followsPrev != null ? `${followsNow - followsPrev >= 0 ? '+' : ''}${(followsNow - followsPrev).toLocaleString()} (${followsNow.toLocaleString()})` : (d?.page?.current?.page_daily_follows_net ?? '—')
+  const series = d?.page?.series?.page_video_views ?? d?.page?.series?.page_impressions_unique ?? []
+  const maxS = Math.max(1, ...series.map((v) => v.value))
+  const sorted = r ? [...r.reels].sort((a, b) => (b.completion ?? -1) - (a.completion ?? -1) || b.views - a.views) : []
+  return (
+    <>
+      <Section eyebrow="Facebook · playbook 2026" title="📊 Insights & recommandations">
+        <div className="flex flex-wrap items-center gap-2 mb-4 text-sm">
+          {([7, 14, 30] as const).map((n) => (
+            <button key={n} onClick={() => setDays(n)} className={`px-3 py-1 rounded-full text-xs font-mono border ${days === n ? 'bg-ink-900 text-white border-ink-900' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`} style={days === n ? { color: '#fff' } : undefined}>{n} j</button>
+          ))}
+          <button onClick={() => load(true)} disabled={busy} className="px-3 py-1 rounded-full text-xs font-mono border border-slate-300 text-slate-700 hover:bg-slate-100 disabled:opacity-50">{busy ? '⏳ lecture Facebook…' : '↻ Actualiser (Graph API)'}</button>
+          {d?.ok && <span className="text-xs text-slate-500 font-mono">généré {new Date(d.generatedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} · cache 6 h</span>}
+        </div>
+        {d && !d.ok && <ConfigBanner message={`Insights indisponibles : ${d.error ?? 'erreur'}`} />}
+        {d?.note && <ConfigBanner message={d.note} />}
+        {!d && <div className="text-sm text-slate-500">Chargement des statistiques de la page…</div>}
+        {r && (
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+              <KpiCard label={`Reels · ${days} j`} value={r.count} />
+              <KpiCard label="Vues médianes / reel" value={r.account.medianViews ?? '—'} />
+              <KpiCard label="Complétion médiane" value={pct(r.account.medianCompletion)} accent={r.account.medianCompletion != null ? (r.account.medianCompletion >= 0.6 ? 'green' : r.account.medianCompletion < 0.35 ? 'red' : 'gold') : undefined} />
+              <KpiCard label="Replays · commentaires" value={`${r.account.totalReplays} · ${r.account.totalComments}`} mono />
+              <KpiCard label={`Portée page (${days} j vs préc.)`} value={reach.text} accent={reach.accent} mono />
+              <KpiCard label={`Vues vidéo page (${days} j vs préc.)`} value={vviews.text} accent={vviews.accent} mono />
+              <KpiCard label={`Abonnés net (${days} j) · total`} value={follows} mono />
+              <KpiCard label="Reels / jour" value={r.account.perDay.toFixed(1)} accent={r.account.perDay > 5 ? 'red' : undefined} />
+            </div>
+            {series.length > 0 && (
+              <div className="mb-5">
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-1">Vues vidéo de la page par jour</div>
+                <div className="flex items-end gap-1 h-20 rounded-lg border border-slate-200 bg-slate-50/60 p-2">
+                  {series.map((v) => (
+                    <div key={v.date} title={`${v.date}: ${v.value.toLocaleString()}`} className="flex-1 bg-ink-900/80 rounded-sm" style={{ height: `${Math.max(3, Math.round((v.value / maxS) * 100))}%` }} />
+                  ))}
+                </div>
+              </div>
+            )}
+            <div className="grid sm:grid-cols-2 gap-4 mb-5">
+              <div className="rounded-xl border border-amber-200 bg-amber-50/60 p-4">
+                <div className="text-[10px] uppercase tracking-widest text-amber-700 font-mono mb-2">Recommandations pour améliorer les vues</div>
+                {r.recommendations.length === 0 && <div className="text-sm text-slate-600">Pas assez de reels sur la période pour comparer.</div>}
+                <ol className="list-decimal pl-5 space-y-2 text-sm text-slate-800">{r.recommendations.map((x, i) => <li key={i}>{x}</li>)}</ol>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+                <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">Diagnostic du compte (guide KPIs)</div>
+                <ul className="list-disc pl-5 space-y-1.5 text-sm text-slate-700">{(r.actions.length ? r.actions : ['rien à signaler']).map((x, i) => <li key={i}>{x}</li>)}</ul>
+                <div className="mt-3 text-xs text-slate-500">Ordre de lecture : complétion → replays → partages → commentaires → vues. Les abonnés mesurent la fidélité, pas la portée.</div>
+              </div>
+            </div>
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+              {r.groups.map((g) => (
+                <div key={g.by} className="rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-2">{GROUP_FR[g.by]}</div>
+                  <table className="w-full text-xs"><tbody>
+                    {g.rows.map((row) => (
+                      <tr key={row.key} className="border-t border-slate-100">
+                        <td className="py-1 pr-2 text-slate-700">{g.by === 'kind' ? (KIND_FR[row.key] ?? row.key) : g.by === 'lang' ? (row.key === 'ar' ? 'arabe' : 'anglais') : row.key}</td>
+                        <td className="py-1 pr-2 text-slate-400 font-mono">{row.n}</td>
+                        <td className="py-1 pr-2 font-mono text-right">{row.medViews.toLocaleString()} v</td>
+                        <td className="py-1 font-mono text-right text-slate-500">{pct(row.medCompletion)}</td>
+                      </tr>
+                    ))}
+                  </tbody></table>
+                </div>
+              ))}
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono mb-1">Reels, classés par complétion</div>
+            <div className="max-h-[28rem] overflow-auto rounded-lg border border-slate-200 bg-white">
+              <table className="w-full text-xs min-w-[720px]">
+                <thead className="bg-slate-50 text-slate-500 font-mono text-[10px] uppercase sticky top-0"><tr>
+                  <th className="text-left p-2">Quand</th><th className="text-left p-2">Reel</th><th className="text-right p-2">Durée</th><th className="text-right p-2">Vues</th><th className="text-right p-2">Complétion</th><th className="text-right p-2">Replays</th><th className="text-right p-2">Comm.</th><th className="text-left p-2">Action</th>
+                </tr></thead>
+                <tbody>
+                  {sorted.map((x) => (
+                    <tr key={x.id} className="border-t border-slate-100 align-top">
+                      <td className="p-2 font-mono text-slate-400 whitespace-nowrap">{x.when ? new Date(x.when).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</td>
+                      <td className="p-2 text-slate-800">{x.link ? <a className="underline decoration-slate-300 hover:decoration-slate-700" href={x.link} target="_blank" rel="noreferrer">{x.title || x.id}</a> : (x.title || x.id)}<span className="ml-1 text-[10px] text-slate-400 font-mono">{KIND_FR[x.kind] ?? x.kind} · {x.lang}</span></td>
+                      <td className="p-2 font-mono text-right text-slate-500">{Math.round(x.length)} s</td>
+                      <td className="p-2 font-mono text-right">{x.views.toLocaleString()}</td>
+                      <td className={`p-2 font-mono text-right ${x.completion == null ? 'text-slate-400' : x.completion >= 0.6 ? 'text-emerald-600' : x.completion < 0.35 ? 'text-rose-600' : 'text-amber-600'}`}>{pct(x.completion)}</td>
+                      <td className="p-2 font-mono text-right text-slate-500">{x.replays ?? '—'}</td>
+                      <td className="p-2 font-mono text-right text-slate-500">{x.comments ?? '—'}</td>
+                      <td className="p-2 text-slate-600">{x.action}</td>
+                    </tr>
+                  ))}
+                  {sorted.length === 0 && <tr><td colSpan={8} className="p-3 text-slate-400 font-mono">Aucun reel sur la période.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+            <div className="mt-3 text-xs text-slate-500">Complétion = temps moyen regardé ÷ durée (Facebook inclut les replays : &gt; 100 % possible). Revue automatique chaque lundi 09:05 dans le journal (« playbook-review »). Règles : <code>docs/playbook/</code>.</div>
+          </>
+        )}
+      </Section>
+    </>
   )
 }
 

@@ -2908,6 +2908,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       return { ok: r.ok, note }
     }
     if (job === 'playbook') return { ok: true, note: playbookSummary().slice(0, 3500) }
+    if (job === 'insights-data') { const { playbookReviewData } = await import('./review'); const d = await playbookReviewData(env, { days: Number((extra as { days?: number }).days ?? 7), limit: Number((extra as { limit?: number }).limit ?? 25), refresh: true }); return { ok: true, note: JSON.stringify({ generatedAt: d.generatedAt, count: d.review.count, account: d.review.account, recommendations: d.review.recommendations, actions: d.review.actions, groups: d.review.groups, page: { current: d.page.current, previous: d.page.previous, seriesKeys: Object.keys(d.page.series) }, note: d.note }).slice(0, 6000) } }
     if (job === 'playbook-review') { const x = extra as { limit?: number; days?: number }; const n = await playbookReview(env, Number(x.limit ?? 20), Number(x.days ?? 7)); await log(env, date, 'playbook-review', true, n.slice(0, 700)); return { ok: true, note: n.slice(0, 3800) } }
     if (job === 'goal-anim') {
       // Queue a goal recreation for one match: { event, slug, preview?: boolean, fps?: number, goal?: playId, force?: boolean }. Names/logos come from the ESPN summary when the match is not in today's pool.

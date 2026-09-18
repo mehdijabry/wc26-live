@@ -53,6 +53,10 @@ export interface AdminEnv {
   // Resend for transactional email
   RESEND_API_KEY?: string
   RESEND_FROM?: string          // e.g. 'WC26 Live <hello@pressing90.live>'
+  // Make.com webhook that posts to the Facebook Page. Set via
+  // `wrangler secret put MAKE_FB_WEBHOOK_URL`. When unset, the
+  // share-facebook action returns a friendly 'not configured' error.
+  MAKE_FB_WEBHOOK_URL?: string
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -187,10 +191,183 @@ export async function handleAdmin(
   if (pathname === '/admin/stats/overview') return handleOverview(env)
   if (pathname === '/admin/stats/cloudflare') return handleCloudflareAnalytics(env, req)
   if (pathname === '/admin/stats/gsc') return handleGsc(env, req)
+  if (pathname === '/admin/stats/visits') return handleVisits(env, req)
+  if (pathname === '/admin/reels/script' && req.method === 'POST') {
+    // 100% Arabic voice-over script for the matchday reel. TTS chokes on
+    // Latin names and digits, so gpt-oss transliterates every team and
+    // competition name into Arabic (beIN/Kooora spelling) and writes
+    // every number OUT IN WORDS.
+    const body = await req.json().catch(() => null) as {
+      matches?: Array<{ home?: string; away?: string; league?: string; time?: string; live?: boolean; score?: string }>
+    } | null
+    const matches = (body?.matches ?? []).slice(0, 10)
+    if (matches.length === 0) return jsonResp({ error: 'no_matches' }, 400)
+    type GptOut = { output?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }> }
+    const ai = (env as unknown as { AI?: { run: (model: string, input: unknown) => Promise<GptOut> } }).AI
+    if (!ai) return jsonResp({ error: 'ai_unavailable' }, 502)
+    const lines = matches.map((m, i) =>
+      `${i + 1}. ${m.home} vs ${m.away} — competition: ${m.league}` +
+      (m.live ? ` — LIVE now${m.score ? `, score ${m.score}` : ''}` : m.time ? ` — kick-off at ${m.time} local time` : '')
+    ).join('\n')
+    const prompt =
+      `Write an Arabic voice-over script for a short vertical video announcing today's football matches.\n\n` +
+      `STRICT RULES:\n` +
+      `- 100% Arabic script. NO Latin characters AT ALL. NO digits AT ALL.\n` +
+      `- Transliterate every team and competition name into Arabic exactly as Arabic sports media (beIN SPORTS, Kooora) write them.\n` +
+      `- Every number (kick-off times, scores) must be written out in Arabic WORDS (e.g. "السادسة مساءً", "هدفين مقابل هدف واحد").\n` +
+      `- Tone: energetic TV announcer. Short sentences. 90 words maximum.\n` +
+      `- Open with: أبرز مباريات اليوم على بريسينغ تسعين.\n` +
+      `- One short sentence per match.\n` +
+      `- Close with: تابعوا النتائج لحظة بلحظة على موقعنا بريسينغ تسعين دوت لايف.\n\n` +
+      `Matches:\n${lines}`
+    try {
+      const out = await ai.run('@cf/openai/gpt-oss-120b', {
+        instructions: 'You are an Arabic sports TV announcer. Output ONLY the final Arabic script — no preamble, no notes, no quotes.',
+        input: [{ role: 'user', content: prompt }],
+        max_output_tokens: 900,
+        reasoning: { effort: 'low' },
+      })
+      let script = ''
+      for (const item of out.output ?? []) {
+        if (item.type !== 'message') continue
+        for (const c of item.content ?? []) {
+          if ((c.type === 'output_text' || c.type === 'text') && typeof c.text === 'string') script += c.text
+        }
+      }
+      script = script.trim()
+      const arabicChars = (script.match(/[؀-ۿ]/g) ?? []).length
+      const ratio = script.length ? arabicChars / script.replace(/\s/g, '').length : 0
+      if (!script || ratio < 0.7) return jsonResp({ error: 'script_not_arabic', ratio: Number(ratio.toFixed(2)) }, 502)
+      // Belt-and-braces: strip any stray digits the model let through.
+      script = script.replace(/[0-9٠-٩]+/g, '').replace(/\s{2,}/g, ' ')
+      return jsonResp({ ok: true, script })
+    } catch (e) {
+      return jsonResp({ error: 'script_failed', detail: String(e) }, 502)
+    }
+  }
+
+  if (pathname === '/admin/reels/tts' && req.method === 'POST') {
+    // Voice-over for the Reel composer. Edge TTS is dead (Microsoft now
+    // 403s both datacenter IPs and browser origins), so:
+    //   Arabic (or any voice when a key is set) → ElevenLabs
+    //     (ELEVENLABS_API_KEY secret, eleven_multilingual_v2)
+    //   en/fr without a key → Workers AI MeloTTS (free, no Arabic)
+    const body = await req.json().catch(() => null) as { text?: string; voice?: string } | null
+    const text = (body?.text ?? '').trim().slice(0, 2500)
+    const voice = (body?.voice ?? 'ar').slice(0, 60)
+    if (!text) return jsonResp({ error: 'empty_text' }, 400)
+    const wantsArabic = voice.startsWith('ar')
+    const el = (env as unknown as { ELEVENLABS_API_KEY?: string }).ELEVENLABS_API_KEY
+    try {
+      if (el) {
+        // ElevenLabs voice ids: allow the caller to pass one directly
+        // (20-char alphanumeric), else a solid multilingual male default.
+        const voiceId = /^[A-Za-z0-9]{16,32}$/.test(voice) ? voice : 'pNInz6obpgDQGcFmaJgB'
+        const r = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}?output_format=mp3_44100_128`, {
+          method: 'POST',
+          headers: { 'xi-api-key': el, 'content-type': 'application/json' },
+          body: JSON.stringify({ text, model_id: 'eleven_multilingual_v2' }),
+        })
+        if (!r.ok) return jsonResp({ error: 'elevenlabs_failed', status: r.status, detail: (await r.text()).slice(0, 300) }, 502)
+        // Buffer the WHOLE mp3 before answering — passing the stream
+        // through can get cut mid-flight and the browser then decodes a
+        // truncated voice-over (reel shorter than the speech).
+        const audio = await r.arrayBuffer()
+        return new Response(audio, {
+          headers: { 'content-type': 'audio/mpeg', 'content-length': String(audio.byteLength), 'cache-control': 'no-store' },
+        })
+      }
+      if (wantsArabic) {
+        return jsonResp({ error: 'arabic_needs_elevenlabs', hint: 'Set the ELEVENLABS_API_KEY worker secret to unlock Arabic voice-overs.' }, 400)
+      }
+      // Free path: Workers AI MeloTTS (en / fr).
+      const lang = voice.startsWith('fr') ? 'fr' : 'en'
+      const ai = (env as unknown as { AI: { run: (model: string, input: Record<string, unknown>) => Promise<{ audio?: string }> } }).AI
+      const out = await ai.run('@cf/myshell-ai/melotts', { prompt: text, lang })
+      if (!out?.audio) return jsonResp({ error: 'melotts_no_audio' }, 502)
+      const bin = Uint8Array.from(atob(out.audio), (c) => c.charCodeAt(0))
+      return new Response(bin, { headers: { 'content-type': 'audio/mpeg', 'cache-control': 'no-store' } })
+    } catch (e) {
+      return jsonResp({ error: 'tts_failed', detail: String(e) }, 502)
+    }
+  }
+  // ─── Facebook automation (automation.ts) ───────────────────────
+  if (pathname === '/admin/automation/settings' && req.method === 'GET') {
+    const { loadAutomationSettings } = await import('./automation')
+    return jsonResp({ settings: await loadAutomationSettings(env as unknown as Parameters<typeof loadAutomationSettings>[0]) })
+  }
+  if (pathname === '/admin/automation/settings' && req.method === 'POST') {
+    const body = await req.json().catch(() => null) as { settings?: Record<string, unknown> } | null
+    const { saveAutomationSettings } = await import('./automation')
+    const settings = await saveAutomationSettings(env as unknown as Parameters<typeof saveAutomationSettings>[0], (body?.settings ?? {}) as Parameters<typeof saveAutomationSettings>[1])
+    return jsonResp({ ok: true, settings })
+  }
+  if (pathname === '/admin/automation/status' && req.method === 'GET') {
+    const { localParts, readLog, getCount, studioConfigured, listTales } = await import('./automation')
+    const e2 = env as unknown as Parameters<typeof readLog>[0]
+    const { date, hour, minute } = localParts()
+    const url = new URL(req.url)
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date') ?? '') ? url.searchParams.get('date')! : date
+    const [article, ft, story, reel, post, goalreel] = await Promise.all(['article', 'ft', 'story', 'reel', 'post', 'goalreel'].map((c) => getCount(e2, day, c as Parameters<typeof getCount>[2])))
+    const ex = env as unknown as { STUDIO_URL?: string; MAKE_FB_WEBHOOK_URL?: string; MAKE_FB_VIDEO_WEBHOOK_URL?: string; FB_PAGE_TOKEN?: string }
+    let studioHealth: unknown = null
+    if (studioConfigured(e2)) {
+      try { const h = await fetch(`${ex.STUDIO_URL}/health`, { signal: AbortSignal.timeout(8000) }); studioHealth = h.ok ? await h.json() : { error: h.status } } catch (e) { studioHealth = { error: String(e).slice(0, 80) } }
+    }
+    return jsonResp({
+      date: day, localTime: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
+      counts: { article, ft, story, reel, post, goalreel },
+      config: { studio: studioConfigured(e2), studioUrl: ex.STUDIO_URL ?? null, studioHealth, postWebhook: !!ex.MAKE_FB_WEBHOOK_URL, videoWebhook: !!ex.MAKE_FB_VIDEO_WEBHOOK_URL, pageToken: !!ex.FB_PAGE_TOKEN },
+      log: await readLog(e2, day),
+      tales: await listTales(e2).catch(() => []),
+    })
+  }
+  if (pathname === '/admin/automation/insights' && req.method === 'GET') {
+    // Facebook insights review (playbook, 2026-09-18): reels + page series + recommendations, cached 6 h (?refresh=1 forces a new read).
+    const url = new URL(req.url)
+    const { playbookReviewData } = await import('./review')
+    try {
+      const d = await playbookReviewData(env as unknown as Parameters<typeof playbookReviewData>[0], { days: Number(url.searchParams.get('days') ?? 7), limit: Number(url.searchParams.get('limit') ?? 25), refresh: url.searchParams.get('refresh') === '1' })
+      return jsonResp({ ok: true, ...d })
+    } catch (e) { return jsonResp({ ok: false, error: String(e).slice(0, 300) }, 502) }
+  }
+  if (pathname === '/admin/automation/token' && req.method === 'GET') {
+    const { fbTokenStatus } = await import('./automation')
+    return jsonResp(await fbTokenStatus(env as unknown as Parameters<typeof fbTokenStatus>[0]))
+  }
+  if (pathname === '/admin/automation/token' && req.method === 'POST') {
+    // Body: { token } pasted by Mehdi. Never logged, never echoed back.
+    const body = await req.json().catch(() => null) as { token?: string } | null
+    const { installUserToken } = await import('./automation')
+    try { return jsonResp(await installUserToken(env as unknown as Parameters<typeof installUserToken>[0], String(body?.token ?? ''))) }
+    catch (e) { return jsonResp({ ok: false, error: String(e).replace(/EAA[\w]+/g, '***') }, 400) }
+  }
+  if (pathname === '/admin/automation/run' && req.method === 'POST') {
+    const body = await req.json().catch(() => null) as { job?: string } | null
+    const { runJobNow } = await import('./automation')
+    const r = await runJobNow(env as unknown as Parameters<typeof runJobNow>[0], body?.job ?? '', (body ?? {}) as Record<string, unknown>)
+    return jsonResp(r, r.ok ? 200 : 400)
+  }
   if (pathname === '/admin/subscriptions') return handleListSubscriptions(env)
   if (pathname === '/admin/users') return handleListUsers(env)
   if (pathname === '/admin/brackets') return handleListBrackets(env)
   if (pathname === '/admin/site-health') return handleSiteHealth(env)
+
+  // Public site feature flags (WC26 archive visibility, Arabic articles).
+  if (pathname === '/admin/site/settings' && req.method === 'GET') {
+    const { loadSiteSettings } = await import('./index')
+    return jsonResp({ settings: await loadSiteSettings(env as unknown as Parameters<typeof loadSiteSettings>[0]) })
+  }
+  if (pathname === '/admin/site/settings' && req.method === 'POST') {
+    const { saveSiteSettings } = await import('./index')
+    const body = await req.json().catch(() => null) as { settings?: unknown } | null
+    if (!body?.settings || typeof body.settings !== 'object') return jsonResp({ error: 'missing_settings' }, 400)
+    const saved = await saveSiteSettings(
+      env as unknown as Parameters<typeof saveSiteSettings>[0],
+      body.settings as Parameters<typeof saveSiteSettings>[1]
+    )
+    return jsonResp({ ok: true, settings: saved })
+  }
 
   // Push auto-alert settings + last-tick diagnostics.
   if (pathname === '/admin/push/settings' && req.method === 'GET') {
@@ -219,6 +396,22 @@ export async function handleAdmin(
   if (pathname === '/admin/news/list') return handleListNews(env, req)
   if (pathname.startsWith('/admin/news/') && req.method === 'POST') {
     return handleNewsAction(env, req, pathname)
+  }
+
+  // Social posts — AI generator + scheduler for the Facebook page.
+  // Separate from the news pipeline: free-form posts that promote the
+  // site, optionally scheduled for a future time (fired by the cron).
+  if (pathname === '/admin/social/generate' && req.method === 'POST') {
+    return handleSocialGenerate(env, req)
+  }
+  if (pathname === '/admin/social/list' && req.method === 'GET') {
+    return handleSocialList(env)
+  }
+  if (pathname === '/admin/social/create' && req.method === 'POST') {
+    return handleSocialCreate(env, req)
+  }
+  if (pathname.startsWith('/admin/social/') && req.method === 'POST') {
+    return handleSocialAction(env, req, pathname)
   }
 
   // Scheduled-alerts management — list / cancel / postpone the
@@ -598,10 +791,23 @@ async function handleGsc(env: AdminEnv, _req: Request): Promise<Response> {
     // hitting /v1/sites/.../searchAnalytics returns Google's 404 HTML page,
     // which made worker JSON parsing throw earlier.
     const url = `https://searchconsole.googleapis.com/webmasters/v3/sites/${encodeURIComponent(env.GSC_SITE_URL)}/searchAnalytics/query`
+    // Wrap each call so a Google API error (403 scope missing, 401
+    // refresh-token revoked, 404 GSC_SITE_URL not a verified property…)
+    // surfaces as a parseable string instead of crashing inside Promise.all.
+    async function gscPost(payload: object): Promise<unknown> {
+      const r = await fetch(url, {
+        method: 'POST',
+        headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const text = await r.text()
+      if (!r.ok) throw new Error(`gsc API ${r.status}: ${text.slice(0, 300)}`)
+      try { return JSON.parse(text) } catch { throw new Error('gsc non-JSON response: ' + text.slice(0, 200)) }
+    }
     const [queries, pages, totals] = await Promise.all([
-      fetch(url, { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify(body('query')) }).then((r) => r.json()),
-      fetch(url, { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify(body('page')) }).then((r) => r.json()),
-      fetch(url, { method: 'POST', headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }, body: JSON.stringify({ startDate, endDate }) }).then((r) => r.json()),
+      gscPost(body('query')),
+      gscPost(body('page')),
+      gscPost({ startDate, endDate }),
     ])
     // Flatten the GSC payload into the same shape the UI's mock path uses
     // — saves us a second renderer on the frontend. When the site is too
@@ -742,15 +948,14 @@ async function handleListSubscriptions(env: AdminEnv): Promise<Response> {
     }
   )
   const rows = (await r.json()) as Array<{ endpoint: string; user_agent?: string; lang?: string; created_at?: string }>
-  // Mask the endpoint URL — show provider + tail for traceability without
-  // leaking the full push token in the admin UI.
   const masked = rows.map((row) => ({
     provider: providerFromEndpoint(row.endpoint),
     tail: row.endpoint.slice(-8),
     ua: row.user_agent ?? null,
     lang: row.lang ?? null,
     created_at: row.created_at ?? null,
-    fullEndpoint: row.endpoint,   // included so 'send single' can reuse
+    alias: null,
+    fullEndpoint: row.endpoint,
   }))
   return jsonResp({ count: masked.length, rows: masked })
 }
@@ -1140,7 +1345,7 @@ async function handleListNews(env: AdminEnv, req: Request): Promise<Response> {
   const limit = Math.min(100, parseInt(url.searchParams.get('limit') ?? '50'))
   try {
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/articles?status=eq.${encodeURIComponent(status)}&select=id,slug,title,excerpt,body,image_url,source_url,source_name,score,status,pinned_to_home,created_at,published_at,archived_at&order=created_at.desc&limit=${limit}`,
+      `${env.SUPABASE_URL}/rest/v1/articles?status=eq.${encodeURIComponent(status)}&select=id,slug,title,excerpt,body,image_url,source_url,source_name,score,status,pinned_to_home,title_ar,created_at,published_at,archived_at&order=created_at.desc&limit=${limit}`,
       {
         headers: {
           apikey: env.SUPABASE_SERVICE_KEY,
@@ -1180,6 +1385,21 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
     const { runNewsPipeline } = await import('./news')
     const report = await runNewsPipeline(env as unknown as Parameters<typeof runNewsPipeline>[0])
     return jsonResp({ ok: true, triggered: true, report })
+  }
+
+  if (action === 'post-image' && req.method === 'POST') {
+    // Branded FB post card, generated by the ADMIN BROWSER (canvas) and
+    // uploaded here just before approve/share-facebook. Stored in KV,
+    // served publicly at /post-img/<id>/<lang>.png (see index.ts), and
+    // picked up by the FB publish paths below in place of the raw
+    // article image. 7-day TTL — a card is only needed at publish time.
+    const lang = new URL(req.url).searchParams.get('lang') === 'ar' ? 'ar' : 'en'
+    const bytes = await req.arrayBuffer()
+    if (bytes.byteLength < 1_000 || bytes.byteLength > 4_000_000) {
+      return jsonResp({ error: 'bad_size', size: bytes.byteLength }, 400)
+    }
+    await env.CACHE.put(`postimg:${tail}:${lang}`, bytes, { expirationTtl: 7 * 86_400 })
+    return jsonResp({ ok: true, url: `${WORKER_PUBLIC}/post-img/${tail}/${lang}.png` })
   }
 
   if (tail === 'backfill-images' && !action && req.method === 'POST') {
@@ -1248,18 +1468,26 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
   }
 
   if (tail === 'poll' && !action) {
-    // Return top 6 candidates skipping anything already in DB. The
+    // Return top 10 candidates skipping anything already in DB. The
     // operator picks which one to produce. Optional `keyword` query
-    // param narrows the selection to title/description matches —
-    // useful when the operator wants 'Vinicius after Brazil-Morocco'
-    // articles and the default poll won't surface them.
+    // param narrows the selection to title/description matches.
+    // Optional `sources` param (comma-separated names) restricts which
+    // RSS feeds are polled — e.g. "BBC Sport,Footmercato".
     const url = new URL(req.url)
     const keyword = url.searchParams.get('keyword') ?? undefined
+    const sourcesRaw = url.searchParams.get('sources')
+    const sources = sourcesRaw
+      ? sourcesRaw.split(',').map((s) => s.trim()).filter(Boolean)
+      : undefined
+    // mode=botola swaps the RSS pool for the Moroccan-outlet searches.
+    const mode = url.searchParams.get('mode') === 'botola' ? 'botola' as const : undefined
     const { pollTopCandidates } = await import('./news')
     const result = await pollTopCandidates(
       env as unknown as Parameters<typeof pollTopCandidates>[0],
-      6,
-      keyword || undefined
+      10,
+      keyword || undefined,
+      sources,
+      mode
     )
     return jsonResp({ ok: true, ...result })
   }
@@ -1296,31 +1524,102 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
   const id = tail
 
   if (action === 'approve') {
-    const result = await updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null })
-    // Side-effect: fire a broadcast push so subscribers get a tap-to-
-    // read link. Gated on the articlePublished setting so it can be
-    // suppressed for low-signal updates. Bullet-proof — push failures
-    // don't roll the publish back.
-    try {
-      const cloned = result.clone()
-      const data = await cloned.json() as { article?: { slug?: string; title?: string; excerpt?: string | null } }
-      const a = data.article
-      if (a?.slug && a?.title) {
-        const { loadPushSettings, broadcastCore } = await import('./index')
-        const settings = await loadPushSettings(env as unknown as Parameters<typeof loadPushSettings>[0])
-        if (settings.enabled && settings.articlePublished.enabled) {
-          await broadcastCore(env as unknown as Parameters<typeof broadcastCore>[0], {
-            title: `📰 ${a.title}`,
-            body: a.excerpt?.slice(0, 140) ?? 'Tap to read on Pressing 90.',
-            url: `/news/${a.slug}`,
-            tag: `article-${a.slug}`,
-          })
+    // Site flags decide whether this article ships bilingual.
+    const { loadPushSettings, loadSiteSettings, broadcastCore } = await import('./index')
+    const settings = await loadPushSettings(env as unknown as Parameters<typeof loadPushSettings>[0])
+    const site = await loadSiteSettings(env as unknown as Parameters<typeof loadSiteSettings>[0])
+
+    // Step 0 (Arabic mode ON): translate BEFORE flipping to published so
+    // the article goes live with both languages at once — no window where
+    // the site/FB see EN-only. Skipped if a translation already exists
+    // (re-approve after unpublish). Translation failure never blocks the
+    // publish: we log and ship EN-only.
+    let arCols: { title_ar?: string; excerpt_ar?: string; body_ar?: string } = {}
+    if (site.arabicArticles) {
+      try {
+        const cur = await fetchArticleRow(env, id)
+        if (cur && !(cur.title_ar && cur.body_ar) && cur.title && cur.body) {
+          const { translateArticleToArabic } = await import('./news')
+          const ar = await translateArticleToArabic(
+            env as unknown as Parameters<typeof translateArticleToArabic>[0],
+            { title: cur.title, excerpt: cur.excerpt ?? '', body: cur.body }
+          )
+          if (ar) arCols = ar
+          else console.log('[news:ar] translation returned null — publishing EN-only for', id)
         }
+      } catch (e) {
+        console.log('[news:ar] translation step failed — publishing EN-only:', e)
+      }
+    }
+
+    const result = await updateArticle(env, id, { status: 'published', published_at: nowIso(), archived_at: null, ...arCols })
+    // Parse the published row once — used by both side-effects below.
+    let a: { slug?: string; title?: string; excerpt?: string | null; image_url?: string | null; title_ar?: string | null; excerpt_ar?: string | null } | undefined
+    try {
+      const data = await result.clone().json() as { article?: typeof a }
+      a = data.article
+    } catch { /* ignore */ }
+
+    // Side-effect 1: fire a broadcast push so subscribers get a tap-to-
+    // read link. Gated on the articlePublished setting. Bullet-proof —
+    // push failures don't roll the publish back.
+    try {
+      if (a?.slug && a?.title && settings.enabled && settings.articlePublished.enabled) {
+        await broadcastCore(env as unknown as Parameters<typeof broadcastCore>[0], {
+          title: `📰 ${a.title}`,
+          body: a.excerpt?.slice(0, 140) ?? 'Tap to read on Pressing 90.',
+          url: `/news/${a.slug}`,
+          tag: `article-${a.slug}`,
+        })
       }
     } catch (e) {
       console.log('[push] article publish broadcast failed:', e)
     }
+
+    // Side-effect 2: auto-publish to the Facebook page via the Make
+    // webhook. Gated on the facebookAutoPost toggle so the operator can
+    // mute it. Same bullet-proof contract — a webhook failure never
+    // rolls back the publish. Skips silently if FB isn't configured.
+    try {
+      if (a?.slug && a?.title && settings.facebookAutoPost.enabled && env.MAKE_FB_WEBHOOK_URL) {
+        // ?ref=fb — picked up by the site's analytics beacon so these
+        // visits are attributed to Facebook in the admin visitor stats.
+        const link = `https://pressing90.live/news/${a.slug}?ref=fb`
+        const message = `${a.title}${a.excerpt ? '\n\n' + a.excerpt : ''}\n\n👉 ${link}`
+        // Branded split card (photo + generated panel + QR) uploaded by
+        // the admin browser just before this call; raw image fallback.
+        const cardEn = await fbCardUrl(env, id, 'en')
+        await postToFacebookWebhook(env, { message, link, title: a.title, image_url: cardEn ?? a.image_url ?? null })
+        // Bilingual: a SECOND post in Arabic, linking to the Arabic view
+        // (?lang=ar) so the click lands on the right language. Only when
+        // the article actually carries a translation. The AR card only
+        // exists when the translation predated the approve — otherwise
+        // reuse the EN card (brand-consistent beats raw).
+        if (site.arabicArticles && a.title_ar) {
+          const linkAr = `${link}&lang=ar`
+          const messageAr = `${a.title_ar}${a.excerpt_ar ? '\n\n' + a.excerpt_ar : ''}\n\n👉 ${linkAr}`
+          const cardAr = await fbCardUrl(env, id, 'ar')
+          await postToFacebookWebhook(env, { message: messageAr, link: linkAr, title: a.title_ar, image_url: cardAr ?? cardEn ?? a.image_url ?? null })
+        }
+      }
+    } catch (e) {
+      console.log('[fb] article auto-post failed:', e)
+    }
     return result
+  }
+  // Manual (re)translation from the admin — for articles published while
+  // Arabic mode was off, or to regenerate a translation the editor
+  // didn't like. Overwrites the AR columns; EN untouched.
+  if (action === 'translate-ar') {
+    const cur = await fetchArticleRow(env, id)
+    if (!cur?.title || !cur.body) return jsonResp({ error: 'article_not_found' }, 404)
+    const { translateArticleToArabic } = await import('./news')
+    const ar = await translateArticleToArabic(
+      env as unknown as Parameters<typeof translateArticleToArabic>[0],
+      { title: cur.title, excerpt: cur.excerpt ?? '', body: cur.body }
+    )
+    if (!ar) return jsonResp({ error: 'translation_failed' }, 502)
+    return updateArticle(env, id, ar)
   }
   if (action === 'reject')  return updateArticle(env, id, { status: 'archived',  archived_at: nowIso() })
   if (action === 'unpublish') return updateArticle(env, id, { status: 'draft',  published_at: null })
@@ -1342,6 +1641,59 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
     if (!r.ok) return jsonResp({ error: 'delete_failed', status: r.status }, 500)
     return jsonResp({ ok: true, deleted: id })
   }
+  if (action === 'share-facebook') {
+    // Push the article to the Facebook Page via a Make.com webhook.
+    // Make's pre-verified Facebook connection does the actual posting,
+    // so we don't need Meta business verification on our own app.
+    if (!env.MAKE_FB_WEBHOOK_URL) {
+      return jsonResp({ error: 'fb_not_configured', hint: 'Set MAKE_FB_WEBHOOK_URL secret' }, 400)
+    }
+    // Pull the article so we send a clean, complete payload.
+    const ar = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(id)}&select=slug,title,excerpt,image_url,title_ar,excerpt_ar&limit=1`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+    )
+    const rows = await ar.json().catch(() => []) as Array<{ slug?: string; title?: string; excerpt?: string | null; image_url?: string | null; title_ar?: string | null; excerpt_ar?: string | null }>
+    const a = rows[0]
+    if (!a?.slug || !a?.title) return jsonResp({ error: 'article_not_found' }, 404)
+    // ?ref=fb — the site's analytics beacon reads it so Facebook-driven
+    // visits show up as 'facebook' in the admin visitor stats.
+    const link = `https://pressing90.live/news/${a.slug}?ref=fb`
+    const message = `${a.title}${a.excerpt ? '\n\n' + a.excerpt : ''}\n\n👉 ${link}`
+    const cardEn = await fbCardUrl(env, id, 'en')
+    try {
+      const hook = await fetch(env.MAKE_FB_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ message, link, title: a.title, image_url: cardEn ?? fbProxiedImage(a.image_url) }),
+      })
+      if (!hook.ok) return jsonResp({ error: 'webhook_failed', status: hook.status }, 502)
+      // Same contract as the Approve auto-post: when the article carries an
+      // Arabic version AND the Arabic switch is on, publish the Arabic post
+      // too (links to ?lang=ar). One click = both languages, no second step.
+      let postedAr = false
+      try {
+        const { loadSiteSettings } = await import('./index')
+        const site = await loadSiteSettings(env as unknown as Parameters<typeof loadSiteSettings>[0])
+        if (site.arabicArticles && a.title_ar) {
+          const linkAr = `${link}&lang=ar`
+          const messageAr = `${a.title_ar}${a.excerpt_ar ? '\n\n' + a.excerpt_ar : ''}\n\n👉 ${linkAr}`
+          const cardAr = await fbCardUrl(env, id, 'ar')
+          const hookAr = await fetch(env.MAKE_FB_WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ message: messageAr, link: linkAr, title: a.title_ar, image_url: cardAr ?? cardEn ?? fbProxiedImage(a.image_url) }),
+          })
+          postedAr = hookAr.ok
+        }
+      } catch (e) {
+        console.log('[fb] arabic manual post failed:', e)
+      }
+      return jsonResp({ ok: true, posted: link, postedArabic: postedAr })
+    } catch (e) {
+      return jsonResp({ error: 'webhook_error', detail: String(e) }, 502)
+    }
+  }
   if (action === 'edit') {
     const body = await req.json().catch(() => null) as Partial<{ title: string; excerpt: string; body: string; image_url: string }> | null
     if (!body) return jsonResp({ error: 'bad_body' }, 400)
@@ -1352,6 +1704,199 @@ async function handleNewsAction(env: AdminEnv, req: Request, pathname: string): 
     if (typeof body.image_url === 'string') allowed.image_url = body.image_url
     return updateArticle(env, id, allowed)
   }
+  return jsonResp({ error: 'unknown_action' }, 400)
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Social posts — AI generator + scheduler for the Facebook page
+// ─────────────────────────────────────────────────────────────────────
+
+/** Fallback image so every FB post has a visual even when the source
+ *  article / generated post has no image of its own. The Make scenario
+ *  uses "Create a Post with Photos", which needs a REAL, publicly
+ *  reachable raster image — /og.png doesn't exist (the SPA returns HTML
+ *  for unknown paths, which Facebook rejects with OAuthException 100),
+ *  so we point at the 512×512 PWA icon which is a genuine PNG. */
+export const FB_FALLBACK_IMAGE = 'https://pressing90.live/icon-512.png'
+
+const WORKER_PUBLIC = 'https://wc26-api.nameless-violet-5dc1.workers.dev'
+
+/** Public URL of the branded post card uploaded for this article+lang,
+ *  or null when the admin browser didn't upload one (canvas failure,
+ *  very old tab…) — callers then fall back to the raw article image. */
+async function fbCardUrl(env: AdminEnv, id: string, lang: 'en' | 'ar'): Promise<string | null> {
+  const v = await env.CACHE.get(`postimg:${id}:${lang}`, 'stream')
+  if (!v) return null
+  try { await v.cancel() } catch { /* just an existence probe */ }
+  return `${WORKER_PUBLIC}/post-img/${id}/${lang}.png`
+}
+
+/** Wrap a source image URL through our /fb-img proxy so Facebook always
+ *  fetches a reachable image from our origin (press-site CDNs frequently
+ *  block FB's fetcher → OAuthException 100). Images already served from
+ *  our own domains are passed through untouched. Empty → brand fallback. */
+export function fbProxiedImage(raw?: string | null): string {
+  const src = (raw && raw.trim()) ? raw.trim() : FB_FALLBACK_IMAGE
+  if (src.startsWith(WORKER_PUBLIC) || src.startsWith('https://pressing90.live/')) return src
+  return `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(src)}`
+}
+
+/** POST the post payload to the Make.com webhook that publishes to FB. */
+/**
+ * Real-visitor aggregates from the `hits` table (written by the public
+ * /hit beacon — one row per pageview, country from Cloudflare geo).
+ * ?days=7|30. PostgREST aggregates aren't enabled on this project, so
+ * we page through raw rows (1k/page, hard cap 20k) and reduce here.
+ */
+async function handleVisits(env: Env, req: Request): Promise<Response> {
+  const url = new URL(req.url)
+  const days = Math.min(90, Math.max(1, parseInt(url.searchParams.get('days') ?? '7', 10) || 7))
+  const since = new Date(Date.now() - days * 86_400_000).toISOString()
+  type HitRow = { ts: string; country: string | null; source: string | null; lang: string | null; new_session: boolean }
+  const rows: HitRow[] = []
+  for (let page = 0; page < 20; page++) {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/hits?ts=gte.${encodeURIComponent(since)}&select=ts,country,source,lang,new_session&order=ts.desc&limit=1000&offset=${page * 1000}`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+    )
+    if (!r.ok) return jsonResp({ error: 'supabase fetch failed', status: r.status }, 502)
+    const batch = await r.json().catch(() => []) as HitRow[]
+    rows.push(...batch)
+    if (batch.length < 1000) break
+  }
+  const count = (key: (h: HitRow) => string | null | undefined) => {
+    const m = new Map<string, number>()
+    for (const h of rows) {
+      const k = key(h) || '—'
+      m.set(k, (m.get(k) ?? 0) + 1)
+    }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => ({ key: k, count: n }))
+  }
+  // days=1 → hourly buckets ('YYYY-MM-DDTHH', sorts naturally); else daily.
+  const byDay = count((h) => (days === 1 ? h.ts.slice(0, 13) : h.ts.slice(0, 10)))
+    .sort((a, b) => a.key.localeCompare(b.key))
+  return jsonResp({
+    ok: true,
+    days,
+    pageviews: rows.length,
+    sessions: rows.filter((h) => h.new_session).length,
+    byCountry: count((h) => h.country).slice(0, 15),
+    bySource: count((h) => h.source).slice(0, 10),
+    byLang: count((h) => h.lang).slice(0, 5),
+    byDay,
+  })
+}
+
+export async function postToFacebookWebhook(
+  env: { MAKE_FB_WEBHOOK_URL?: string },
+  payload: { message: string; link?: string | null; image_url?: string | null; title?: string }
+): Promise<{ ok: boolean; status?: number; error?: string }> {
+  if (!env.MAKE_FB_WEBHOOK_URL) return { ok: false, error: 'fb_not_configured' }
+  try {
+    const hook = await fetch(env.MAKE_FB_WEBHOOK_URL, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...payload, image_url: fbProxiedImage(payload.image_url) }),
+    })
+    if (!hook.ok) return { ok: false, status: hook.status, error: 'webhook_failed' }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: String(e) }
+  }
+}
+
+const SITE_URL = 'https://pressing90.live'
+
+// POST /admin/social/generate  { topic } → AI-written FB post promoting the site
+async function handleSocialGenerate(env: AdminEnv, req: Request): Promise<Response> {
+  const body = await req.json().catch(() => null) as { topic?: string } | null
+  const topic = body?.topic?.trim()
+  if (!topic) return jsonResp({ error: 'missing_topic' }, 400)
+  const { generateSocialPost } = await import('./news')
+  const result = await generateSocialPost(
+    env as unknown as Parameters<typeof generateSocialPost>[0],
+    topic
+  )
+  if (!result.message) return jsonResp({ error: 'ai_failed', raw: result.raw?.slice(0, 300) }, 502)
+  return jsonResp({ ok: true, message: result.message })
+}
+
+// GET /admin/social/list → all social posts, newest first
+async function handleSocialList(env: AdminEnv): Promise<Response> {
+  const r = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/social_posts?select=*&order=created_at.desc&limit=100`,
+    { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+  )
+  if (!r.ok) return jsonResp({ error: 'list_failed', status: r.status, posts: [] }, 200)
+  const posts = await r.json().catch(() => [])
+  return jsonResp({ ok: true, posts })
+}
+
+// POST /admin/social/create { message, link?, image_url?, scheduled_at? }
+// scheduled_at present → status 'scheduled'; absent → 'draft'
+async function handleSocialCreate(env: AdminEnv, req: Request): Promise<Response> {
+  const body = await req.json().catch(() => null) as {
+    message?: string; link?: string; image_url?: string; scheduled_at?: string
+  } | null
+  const message = body?.message?.trim()
+  if (!message) return jsonResp({ error: 'missing_message' }, 400)
+  const row = {
+    message,
+    link: body?.link?.trim() || SITE_URL,
+    image_url: body?.image_url?.trim() || null,
+    scheduled_at: body?.scheduled_at || null,
+    status: body?.scheduled_at ? 'scheduled' : 'draft',
+  }
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/social_posts`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      prefer: 'return=representation',
+    },
+    body: JSON.stringify(row),
+  })
+  if (!r.ok) return jsonResp({ error: 'create_failed', status: r.status, detail: await r.text() }, 502)
+  const created = await r.json().catch(() => [])
+  return jsonResp({ ok: true, post: Array.isArray(created) ? created[0] : created })
+}
+
+// POST /admin/social/<id>/<action>  action ∈ publish | delete
+async function handleSocialAction(env: AdminEnv, req: Request, pathname: string): Promise<Response> {
+  const parts = pathname.replace('/admin/social/', '').split('/')
+  const id = parts[0]
+  const action = parts[1]
+  if (!id || !action) return jsonResp({ error: 'bad_path' }, 400)
+
+  if (action === 'delete') {
+    const r = await fetch(`${env.SUPABASE_URL}/rest/v1/social_posts?id=eq.${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, prefer: 'return=minimal' },
+    })
+    if (!r.ok) return jsonResp({ error: 'delete_failed', status: r.status }, 502)
+    return jsonResp({ ok: true, deleted: id })
+  }
+
+  if (action === 'publish') {
+    // Pull the post, push it to Facebook now, mark published.
+    const ar = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/social_posts?id=eq.${encodeURIComponent(id)}&select=message,link,image_url&limit=1`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+    )
+    const rows = await ar.json().catch(() => []) as Array<{ message?: string; link?: string | null; image_url?: string | null }>
+    const post = rows[0]
+    if (!post?.message) return jsonResp({ error: 'post_not_found' }, 404)
+    const sent = await postToFacebookWebhook(env, { message: post.message, link: post.link, image_url: post.image_url, title: post.message.slice(0, 80) })
+    if (!sent.ok) return jsonResp({ error: sent.error ?? 'webhook_failed', status: sent.status }, 502)
+    await fetch(`${env.SUPABASE_URL}/rest/v1/social_posts?id=eq.${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'content-type': 'application/json', prefer: 'return=minimal' },
+      body: JSON.stringify({ status: 'published', published_at: nowIso() }),
+    })
+    return jsonResp({ ok: true, published: id })
+  }
+
   return jsonResp({ error: 'unknown_action' }, 400)
 }
 
@@ -1369,6 +1914,20 @@ async function updateArticle(env: AdminEnv, id: string, patch: Record<string, un
   if (!r.ok) return jsonResp({ error: 'update_failed', status: r.status, detail: await r.text() }, 500)
   const rows = await r.json() as unknown[]
   return jsonResp({ ok: true, article: rows[0] })
+}
+
+type ArticleRow = {
+  id: string; slug?: string; title?: string; excerpt?: string | null; body?: string
+  title_ar?: string | null; excerpt_ar?: string | null; body_ar?: string | null
+}
+async function fetchArticleRow(env: AdminEnv, id: string): Promise<ArticleRow | null> {
+  const r = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/articles?id=eq.${encodeURIComponent(id)}&select=id,slug,title,excerpt,body,title_ar,excerpt_ar,body_ar&limit=1`,
+    { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } }
+  )
+  if (!r.ok) return null
+  const rows = await r.json() as ArticleRow[]
+  return rows[0] ?? null
 }
 
 function nowIso(): string {
