@@ -42,7 +42,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     return base + (m[2] ? (m[2] === '-' ? -1 : 1) * parseFloat(m[3]) : 0)
   }
   for (const k of Object.keys(spec.anchors || {})) T(k)
-  const BEATS = spec.voices.map((_, i) => S(i))
+  const BEATS = voices.map((_, i) => S(i))   // the voice FILES passed in (the worker leaves spec.voices empty — that emptied the mix on Render, 2026-09-19)
   const tShot = T(spec.shot), tGoal = T(spec.goal), tEnd = T(spec.end)
   const c01 = (p) => Math.max(0, Math.min(1, p))
   const eio = (p) => { p = c01(p); return p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2 }
@@ -406,7 +406,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   let extra = ''
   if (roar) { const ri = BEATS.length + 2; ins.push('-i', roar); fc.push(`[${ri}:a]aresample=48000,aformat=channel_layouts=stereo,volume=${spec.roar ?? 0.3},afade=t=out:st=2.2:d=1.6,adelay=${ms(tGoal - 0.15)}|${ms(tGoal - 0.15)}[fx]`); extra = '[fx]' }
   fc.push(`${mix.join('')}[m]${extra}amix=inputs=${mix.length + 1 + (extra ? 1 : 0)}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]`)
-  ffr([...ins, '-filter_complex', fc.join(';'), '-map', '0:v', '-map', '[mix]', '-t', Tt.toFixed(2), '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out])
+  ffr([...ins, '-filter_complex', fc.join(';'), '-map', '0:v', '-map', '[mix]', '-t', Tt.toFixed(2), '-c:v', 'copy', '-ar', '48000', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out])
   // audio QA
   const err = (args) => spawnSync('ffmpeg', ['-hide_banner', ...args, '-f', 'null', '-'], { encoding: 'utf8' }).stderr || ''
   const qa = { voices: [], overlaps: [], loudness: null, loudnessFixed: false, issues: [] }

@@ -395,6 +395,7 @@ function templateTexts(mt: Meta): Texts {
 }
 function applyTexts(spec: Record<string, unknown>, t: Texts, mt: Meta): void {
   spec.voiceTexts = t.voices
+  spec.voices = t.voices.map((_, i) => `voice-${i}.mp3`)   // one entry per narration clip (the studio mixes exactly this many)
   spec.captions = t.captions.map((c, i) => [i === 0 ? 'B0' : i === 7 ? 'goal' : `B${i}`, c[0], c[1]])
   const tags = spec.tags as Array<[string, number, number, string, string]>; tags.forEach((tg, i) => { tg[4] = t.tags[i] ?? tg[4] })
   const title = spec.title as { l1: string; l2: string; lat: string }; title.l1 = `هدف ${t.scorerAr || surname(mt.scorer)}`
