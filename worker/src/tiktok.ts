@@ -5,12 +5,13 @@
 // Videos are uploaded from the worker (FILE_UPLOAD, one chunk ≤ 64 MB) — no domain verification needed for the
 // Supabase media URLs. Docs: developers.tiktok.com/docs/content-posting-api-get-started.
 import type { Env } from './index'
-import { log, localParts, WORKER_PUBLIC } from './automation'
+import { log, localParts } from './automation'
 import { checkCaption } from './playbook'
 
 const API = 'https://open.tiktokapis.com/v2'
 export const TIKTOK_SCOPES = 'user.info.basic,video.publish,video.upload'
-export const TIKTOK_REDIRECT = `${WORKER_PUBLIC}/tiktok/callback`
+// Literal on purpose: WORKER_PUBLIC is not initialised yet when this module is evaluated (import cycle automation → goalanim → tiktok).
+export const TIKTOK_REDIRECT = 'https://wc26-api.nameless-violet-5dc1.workers.dev/tiktok/callback'
 const AUTH_KEY = 'tiktok:auth'
 
 type TikTokEnv = Env & { TIKTOK_CLIENT_KEY?: string; TIKTOK_CLIENT_SECRET?: string }
