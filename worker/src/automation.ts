@@ -2529,6 +2529,14 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       for (const id of ids.slice(0, 8)) details[id] = await graph(env, token, 'GET', `/${id}`, { fields }).catch((e) => ({ error: String(e) }))
       return { ok: true, note: JSON.stringify({ list, details }).slice(0, 6000) }
     }
+    if (job === 'fb-insights') {
+      // Debug (playbook review): raw video_insights of one or more reels, with the requested metric list.
+      const x = extra as { ids?: string; metric?: string; edge?: string }
+      const { token } = await pageAuth(env)
+      const out: Record<string, unknown> = {}
+      for (const id of String(x.ids ?? '').split(',').map((v) => v.trim()).filter(Boolean).slice(0, 4)) out[id] = await graph(env, token, 'GET', `/${id}/${x.edge || 'video_insights'}`, { metric: String(x.metric || 'post_video_avg_time_watched,fb_reels_total_plays,fb_reels_replay_count,post_impressions_unique,post_video_social_actions') }).catch((e) => ({ error: String(e) }))
+      return { ok: true, note: JSON.stringify(out).slice(0, 5000) }
+    }
     if (job === 'fb-posts') {
       const { id: pid, token } = await pageAuth(env)
       const j = await graph(env, token, 'GET', `/${pid}/posts`, { fields: 'id,message,created_time', limit: '15' })
