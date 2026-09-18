@@ -257,7 +257,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         // Rendered in a child process (2026-09-18): the frame loop is CPU-bound for ~20-30 min on this 0.1-CPU box; in-process it starved the
         // event loop, /health stopped answering and Render restarted the instance mid-render (job lost, no callback).
         const jobFile = path.join(dir, 'job.json')
-        await fs.writeFile(jobFile, JSON.stringify({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20, scale: data.scale || 1 }))
+        await fs.writeFile(jobFile, JSON.stringify({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20, scale: data.scale || 1, upscale: !!data.upscale }))
         await new Promise((resolve, reject) => {
           const child = spawnChild(process.execPath, ['--max-old-space-size=256', path.join(__dirname, 'goalanim-cli.js'), jobFile], { stdio: ['ignore', 'inherit', 'inherit'] })
           const killer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, 100 * 60_000)
@@ -411,6 +411,30 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
 // Free neural voices (Microsoft Edge "read aloud" endpoint, no key) — Mehdi,
 // 2026-09-10: Arabic (ar-MA-JamalNeural), English (en-US-AndrewMultilingualNeural),
 // French (fr-FR-HenriNeural). Unofficial endpoint → the worker keeps fallbacks.
+// Debug (2026-09-19, missing narration on Render): ffmpeg/ffprobe versions + the goal-anim mix chain on synthetic inputs.
+app.get('/debug/audio', async (req, res) => {
+  if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
+  const { spawnSync } = await import('node:child_process')
+  const out = {}
+  const run = (cmd, args) => { const r = spawnSync(cmd, args, { encoding: 'utf8' }); return { status: r.status, out: String(r.stdout || '').slice(0, 300), err: String(r.stderr || '').slice(-600), error: r.error ? String(r.error) : undefined } }
+  out.ffmpegVersion = run('ffmpeg', ['-version']).out.split('\n')[0]
+  out.ffprobeVersion = run('ffprobe', ['-version']).out.split('\n')[0]
+  out.which = run('sh', ['-c', 'command -v ffmpeg; command -v ffprobe; echo PATH=$PATH']).out
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dbg-'))
+  const voice = path.join(dir, 'voice.mp3'), music = path.join(dir, 'music.mp3'), mixed = path.join(dir, 'mix.mp4')
+  // synthetic voice: 2 s 440 Hz mono 24 kHz mp3 (like Edge TTS); music: 6 s pink-ish noise stereo 44.1 kHz
+  out.genVoice = run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=2:sample_rate=24000', '-ac', '1', '-c:a', 'libmp3lame', '-b:a', '96k', voice])
+  out.genMusic = run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'anoisesrc=d=6:c=pink:r=44100:a=0.3', '-ac', '2', '-c:a', 'libmp3lame', '-b:a', '128k', music])
+  out.probeVoice = run('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', voice])
+  const fc = ['[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.16,afade=t=in:st=0:d=0.6[m]', '[2:a]aresample=48000,aformat=channel_layouts=stereo,adelay=1000|1000[v0]', '[v0][m]amix=inputs=2:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]'].join(';')
+  out.mix = run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-f', 'lavfi', '-i', 'color=c=black:s=64x64:r=10:d=6', '-stream_loop', '-1', '-i', music, '-i', voice, '-filter_complex', fc, '-map', '0:v', '-map', '[mix]', '-t', '6', '-c:v', 'libx264', '-preset', 'ultrafast', '-ar', '48000', '-c:a', 'aac', '-b:a', '128k', mixed])
+  const vd = (f, extra = []) => { const r = spawnSync('ffmpeg', ['-hide_banner', '-i', f, ...extra, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' }); return { status: r.status, mean: (String(r.stderr || '').match(/mean_volume:\s*(-?[\d.]+)/) || [])[1], stderrLen: String(r.stderr || '').length, error: r.error ? String(r.error) : undefined } }
+  out.vdMixed_0_1s = vd(mixed, ['-t', '1'])       // before the voice: music only (expect ≈ music-16 dB)
+  out.vdMixed_1_3s = vd(mixed, ['-ss', '1', '-t', '2'])   // voice + music (expect much louder)
+  out.vdVoice = vd(voice); out.vdMusic = vd(music)
+  await fs.rm(dir, { recursive: true, force: true })
+  res.json(out)
+})
 app.post('/tts', async (req, res) => {
   if (!SECRET || req.get('x-studio-secret') !== SECRET) return res.status(401).json({ error: 'unauthorized' })
   const { text, voice = 'en-US-AndrewMultilingualNeural', rate } = req.body || {}
