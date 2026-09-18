@@ -6,8 +6,8 @@
 // (blocked when the studio's audio QA reports an issue). Music « Quake » (aavirall, Uppbeat): credit line in
 // every caption. One job at a time (a render takes ~30 min on the studio).
 import type { Env } from './index'
-import { withPlaybook, checkCaption } from './playbook'
-import { log, bump, getCount, localParts, edgeVoice, gptJson, fbReel, studio, matchSummary, WORKER_PUBLIC, SITE, type AutoMatch, type MatchSummary, type MatchGoal, type AutomationSettings } from './automation'
+import { withPlaybook, checkCaption, pinnedComment } from './playbook'
+import { log, bump, getCount, localParts, edgeVoice, gptJson, fbReel, fbComment, enqueuePendingComment, studio, matchSummary, WORKER_PUBLIC, SITE, type AutoMatch, type MatchSummary, type MatchGoal, type AutomationSettings } from './automation'
 
 export type GoalAnimItem = { id: string; slug: string; league: string; home: string; away: string; homeLogo: string | null; awayLogo: string | null; homeScore: string; awayScore: string; venue?: string; addedAt: number; preview?: boolean; goalId?: string; fps?: number; scale?: number; force?: boolean }
 type Texts = { scorerAr: string; assistAr: string; voices: string[]; captions: Array<[string, string]>; tags: string[]; cover: string; title: string; post: string }
@@ -73,7 +73,8 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
         const chk = checkCaption(texts.post, { keyword: texts.scorerAr || meta.scorer })   // playbook (2026-09-18): ≤ 5 hashtags, keyword first, CTA
         if (chk.warnings.length) await log(env, date, 'goal-anim-playbook', true, `${meta.scorer} ${meta.minute}: ${chk.warnings.join('; ')}`)
         const description = `${chk.text}\n\n${MUSIC_CREDIT}`
-        await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'goal-anim', date, label: 'goal-anim', description, title: texts.title, preview: !!job.item.preview, item: job.item, meta }), { expirationTtl: 6 * 3600 })
+        const comment = pinnedComment(`تحليل هدف ${texts.scorerAr || meta.scorer} في مباراة ${meta.scoreLine} (${meta.league}): ${meta.template === 'solo' ? 'انطلاقة فردية' : `صناعة ${texts.assistAr || meta.assist}`}، تسديدة من ${meta.distance} متراً.`, 'أجمل هدف في المباراة: نعم أم لا؟ 👇', `كل تحليلات الأهداف على ${SITE}/today?lang=ar&ref=fb-goal`)
+        await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'goal-anim', date, label: 'goal-anim', description, comment, title: texts.title, preview: !!job.item.preview, item: job.item, meta }), { expirationTtl: 6 * 3600 })
         await studio(env, '/render/reel', { type: 'goal-anim', data: { spec, voiceUrls: job.voiceUrls, fps: job.item.fps ?? s.goalAnimFps ?? 20, scale: job.item.scale ?? s.goalAnimScale ?? 1 }, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
         job.jobId = jobId; job.stage = 'wait'; job.stageAt = Date.now()
         await saveJob(env, job)
@@ -97,7 +98,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
 }
 
 /** Studio → worker: the reel is rendered. QA gate, then publish (or log the preview URL). */
-export async function goalAnimCallback(env: Env, job: { date: string; description?: string; title?: string; preview?: boolean; item?: GoalAnimItem; meta?: Meta }, body: { ok?: boolean; url?: string; seconds?: number; error?: string; qa?: { visual?: Record<string, unknown>; audio?: { issues?: string[]; loudness?: number; loudnessAfter?: number } } }): Promise<void> {
+export async function goalAnimCallback(env: Env, job: { date: string; description?: string; comment?: string; title?: string; preview?: boolean; item?: GoalAnimItem; meta?: Meta }, body: { ok?: boolean; url?: string; seconds?: number; error?: string; qa?: { visual?: Record<string, unknown>; audio?: { issues?: string[]; loudness?: number; loudnessAfter?: number } } }): Promise<void> {
   await env.CACHE.delete(JKEY)
   const id = job.item?.id ?? ''
   if (id) await env.CACHE.put(DONE(id), '1', { expirationTtl: 3 * 86400 })
@@ -112,6 +113,11 @@ export async function goalAnimCallback(env: Env, job: { date: string; descriptio
   const r = await fbReel(env, { video_url: body.url, description: job.description ?? '', title: job.title ?? '' })
   if (r.ok) { await bump(env, job.date, 'reel'); await bump(env, job.date, 'goalanim') }
   await log(env, job.date, 'goal-anim', r.ok, r.ok ? `${who}: published (${body.seconds ?? '?'}s) · ${r.note ?? ''} · ${qaNote} · ${body.url}` : `${who}: publish failed ${r.status ?? ''} ${r.note ?? ''} · ${body.url}`)
+  // Pinned comment (playbook): keyword-rich sentence + closed question + link — under the reel once Facebook shows it.
+  if (r.ok && job.comment) {
+    if (r.id) { const c = await fbComment(env, r.id, job.comment); await log(env, job.date, 'goal-anim-comment', c.ok, c.note ?? '') }
+    else if (env.FB_PAGE_TOKEN) { await enqueuePendingComment(env, job.description ?? '', job.comment); await log(env, job.date, 'goal-anim-comment', true, 'queued — commented once Facebook has processed the video') }
+  }
 }
 
 // ─── best goal of the match ──────────────────────────────────────────────────
@@ -349,7 +355,7 @@ async function goalTexts(env: Env, scene: Scene): Promise<Texts> {
 {"scorerAr":"...","assistAr":"...","voices":[9 strings],"captions":[[small,big] ×9],"tags":[6 strings],"cover":"...","title":"...","post":"..."}
 Rules: Modern Standard Arabic as Arabic sports TV commentators speak, energetic but factual, natural for text-to-speech (no abbreviations, no Latin letters — transliterate every name into Arabic, e.g. Cherki → شيركي, Bouaddi → بوعدي). voices[i] narrates storyboard beat i (9 beats: hook, 1-7, CTA), 12-25 words each, sentences separated by periods; voices[0] must end with "شاهد كيف جاء" and voices[8] must say "تابع صفحة بريسينغ تسعين". captions[i] = [small, big]: small = context, max 6 words; big = the punch, max 4 words (it is displayed in a large calligraphic font). tags = 6 labels of 1-2 words for the numbered steps: opening, run, decoys, arrival, assist, finish. cover = max 5 words for the closing card. title = max 60 characters for the video title. post = 3 lines for the Facebook caption (first line a question, then what happened, then "تحليل هدف كل يوم على Pressing 90'") plus one line of 5 hashtags (mix Arabic and English, include #Pressing90). No emoji anywhere except the post. Never invent statistics beyond the storyboard; the distance in metres and the score are facts you may use. Digits are fine (e.g. "الدقيقة 32").`
   const prompt = `Match: ${mt.scoreLine} (${mt.league}${mt.venue ? ', ' + mt.venue : ''}). Scorer: ${mt.scorer}. Assist: ${mt.assist || 'none (solo goal)'}. Minute ${mt.minute}. Shot: ${mt.foot}, ${mt.distance} m, ${mt.corner}. Template: ${mt.template}${mt.opening ? ' / opening: ' + mt.opening : ''}.\nStoryboard:\n${scene.storyboard.map((l, i) => `${i}. ${l}`).join('\n')}`
-  const j = (await gptJson(env, withPlaybook(sys, 'reel', 'caption', 'cover'), prompt, 6000)) as Partial<Texts> & { captions?: unknown; voices?: unknown; tags?: unknown }
+  const j = (await gptJson(env, withPlaybook(sys, 'reel', 'hook', 'caption', 'cover'), prompt, 6000)) as Partial<Texts> & { captions?: unknown; voices?: unknown; tags?: unknown }
   const clean = (v: unknown, max: number) => String(v ?? '').replace(/[\p{Extended_Pictographic}️‍#*"]/gu, '').replace(/\s+/g, ' ').trim().slice(0, max)
   const voices = (Array.isArray(j.voices) ? j.voices : []).map((v) => clean(v, 260)).filter(Boolean)
   const captions = (Array.isArray(j.captions) ? j.captions : []).map((c) => (Array.isArray(c) ? [clean(c[0], 60), clean(c[1], 32)] : [clean((c as { small?: string })?.small, 60), clean((c as { big?: string })?.big, 32)]) as [string, string])

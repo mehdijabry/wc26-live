@@ -16,10 +16,15 @@ Ils sont rédigés pour Cradly (parentalité UK) ; les principes sont génériqu
   `withPlaybook(system, …sections)` les ajoute aux prompts du modèle qui écrit les accroches, miniatures, légendes
   et narrations : Football Stories (script, variantes de covers/légendes), recréations de buts « كيف جاء الهدف »
   (narration, sous-titres, légende).
-- `checkCaption(text, { keyword })` s'applique à chaque légende publiée : plafonne les hashtags à 5, signale un
-  mot-clé absent de la première phrase et l'absence d'appel à l'action (avertissements dans le journal ops, jamais
-  bloquant).
-- Ops : `POST /studio/ops/run {"job":"playbook"}` renvoie le résumé en vigueur.
+- **Publication** : `fbPost()` et `fbReel()` passent chaque légende par `checkCaption()` (hashtags plafonnés à 5,
+  mot-clé en première phrase, appel à l'action) — avertissements dans le journal ops sous « playbook », jamais
+  bloquant. Les légendes de fin de match mettent le score en première phrase ; `pinnedComment()` construit le
+  commentaire épinglé (phrase riche en mots-clés + question fermée + lien) sous les histoires et les recréations de buts.
+- **Revue hebdomadaire** (guide KPIs) : `worker/src/review.ts` lit les reels de la page et leurs insights Graph
+  (temps moyen regardé → complétion, replays, partages, commentaires), classe-les et propose une action par reel et
+  pour le compte ; automatique le lundi 09:05 (journal « playbook-review »), à la demande via
+  `{"job":"playbook-review","limit":20,"days":7}`.
+- Ops : `{"job":"playbook"}` renvoie le résumé des règles en vigueur.
 - La même connaissance est disponible comme skill Claude : `~/.claude/skills/tiktok-pinterest-playbook`.
 
 Quand un format change (nouveau type de reel, nouvelle cover), le vérifier contre les checklists des sections 2-4 du

@@ -29,7 +29,8 @@
  */
 import { TALES, TALE_LABELS, TALE_SUBJECTS, type Tale, type TaleCover, type TaleLang, type TaleText } from './tales'
 import type { Env } from './index'
-import { withPlaybook, checkCaption, playbookSummary } from './playbook'
+import { withPlaybook, checkCaption, playbookSummary, pinnedComment } from './playbook'
+import { playbookReview } from './review'
 import { enqueueGoalAnim, processGoalAnim, goalAnimCallback, goalAnimJob, goalAnimQueue, resetGoalAnim, pickBestGoal, buildScene, type GoalAnimItem } from './goalanim'
 
 export const SITE = 'https://pressing90.live'
@@ -275,6 +276,7 @@ async function hook(url: string | undefined, payload: unknown): Promise<{ ok: bo
  * — and Make's operations are no longer consumed. Make stays as fallback.
  */
 export async function fbPost(env: Env, p: { message: string; link: string; image_url: string; title: string; comment?: string }): Promise<{ ok: boolean; status?: number; id?: string; note?: string }> {
+  p = { ...p, message: await playbookGate(env, 'post', p.title, p.message) }   // playbook (2026-09-18): ≤ 5 hashtags, CTA — warnings in the log
   // Mehdi, 2026-09-08: photo posts go through MAKE (that rendering is the
   // one the mobile app shows reliably); the worker then finds the new post
   // in the Page feed and comments the link. Graph API only as fallback.
@@ -338,7 +340,7 @@ async function findRecentPost(env: Env, message: string, attempts = 1): Promise<
   return null
 }
 type PendingComment = { message: string; comment: string; until: number }
-async function enqueuePendingComment(env: Env, message: string, comment: string): Promise<void> {
+export async function enqueuePendingComment(env: Env, message: string, comment: string): Promise<void> {
   const raw = await env.CACHE.get('auto:pendingcomments')
   const q = (raw ? JSON.parse(raw) : []) as PendingComment[]
   q.push({ message, comment, until: Date.now() + 30 * 60_000 })
@@ -406,7 +408,7 @@ export async function processPendingComments(env: Env, date: string): Promise<vo
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 type GraphJson = Record<string, unknown> & { id?: string | number; error?: { message?: string; code?: number } }
-async function graph(env: Env, token: string, method: 'GET' | 'POST', path: string, params: Record<string, string>): Promise<GraphJson> {
+export async function graph(env: Env, token: string, method: 'GET' | 'POST', path: string, params: Record<string, string>): Promise<GraphJson> {
   const url = new URL(`${GRAPH}${path}`)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   url.searchParams.set('access_token', token)
@@ -485,7 +487,7 @@ export async function refreshUserToken(env: Env): Promise<string> {
   }
   return `ok until ${s.expiresAt ? new Date(s.expiresAt).toISOString().slice(0, 10) : 'never'}`
 }
-async function pageAuth(env: Env): Promise<PageAuth> {
+export async function pageAuth(env: Env): Promise<PageAuth> {
   if (pageAuthCache) return pageAuthCache
   const cached = await env.CACHE.get('auto:fb:pageauth')
   if (cached) { pageAuthCache = JSON.parse(cached) as PageAuth; return pageAuthCache }
@@ -676,7 +678,14 @@ export async function fbComment(env: Env, objectId: string, message: string): Pr
     return { ok: true, note: `comment ${String(j.id ?? 'ok')}` }
   } catch (e) { return { ok: false, note: String(e) } }
 }
+/** Publication gate of the content playbook: trims the hashtags to 5 and logs what the caption misses (never blocks). */
+async function playbookGate(env: Env, kind: 'post' | 'reel', title: string, text: string): Promise<string> {
+  const g = checkCaption(text)
+  if (g.warnings.length) { try { await log(env, localParts().date, 'playbook', true, `${kind} « ${String(title ?? '').replace(/\s+/g, ' ').slice(0, 40)} »: ${g.warnings.join('; ')}`) } catch { /* log only */ } }
+  return g.text
+}
 export async function fbReel(env: Env, p: { video_url: string; description: string; title: string }): Promise<{ ok: boolean; status?: number; note?: string; id?: string; viaMake?: boolean }> {
+  p = { ...p, description: await playbookGate(env, 'reel', p.title, p.description) }
   // Mehdi, 2026-09-08 evening: reels published through the Reels API are
   // "published" for Graph (status complete, public, in /feed) but do NOT
   // render in the Facebook app — endless spinner on desktop, black
@@ -926,7 +935,7 @@ function reelCaption(pool: AutoMatch[], label: string): string {
 }
 function ftMessage(m: AutoMatch): string {
   const pens = m.homePens && m.awayPens ? ` (${m.homePens}–${m.awayPens} on penalties)` : ''
-  return `⏱ FULL TIME\n\n${m.home} ${m.homeScore}–${m.awayScore} ${m.away}${pens}\n🏆 ${m.league}\n\n👉 All today's results on pressing90.live (link in the comments)\n\n#football #fulltime #Pressing90`
+  return `⏱ FULL TIME: ${m.home} ${m.homeScore}–${m.awayScore} ${m.away}${pens}\n🏆 ${m.league}\n\n👉 All today's results on pressing90.live (link in the comments)\n\n#football #fulltime #Pressing90`
 }
 function ftStatus(m: AutoMatch): 'FT' | 'AET' | 'PEN' {
   if (/PEN/i.test(m.statusName)) return 'PEN'
@@ -1576,7 +1585,7 @@ async function queueBarcaFtPoster(env: Env, date: string, m: AutoMatch, preview 
   if (preview) return img
   const sc = scorersBySide(m, sum.goals)
   const line = `${m.home} ${m.homeScore}–${m.awayScore} ${m.away}`
-  const message = `⏱ نهاية المباراة\n\n${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇`
+  const message = `⏱ نهاية المباراة: ${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل الإحصائيات على pressing90.live (الرابط في التعليقات)\n\n#برشلونة #Barça ${AR_TAGS}`
   const r = await fbPost(env, { message, link: `${SITE}/today?lang=ar&ref=fb`, image_url: img, title: `FT: ${line}`.slice(0, 100), comment: '⏱ كل النتائج والتفاصيل على pressing90.live' })
   if (r.ok) await bump(env, date, 'ft')
   await log(env, date, 'barca-ft', r.ok, r.ok ? `${line} · poster · ${r.note ?? ''} · ${img}` : `${r.note ?? r.status ?? 'error'}`)
@@ -1642,7 +1651,7 @@ async function queueBarcaFtReel(env: Env, date: string, m: AutoMatch, preview = 
   const data = { cover, special: barcaWon ? 'barca' : undefined, sfx: false, home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo, homeScore: m.homeScore, awayScore: m.awayScore, league: m.league, scorer: sc.home || (goals.length ? '–' : 'No goals'), assist: sc.away || '', assistLabel: '', minute: 'FT', scoringSide: winner, title: 'نهاية المباراة', titleLang: 'ar', footer: 'Full time · pressing90.live' }
   const jobId = `barcaft-${date}-${Math.random().toString(36).slice(2, 7)}`
   const line = `${m.home} ${m.homeScore}–${m.awayScore} ${m.away}`
-  const description = `⏱ نهاية المباراة\n\n${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل الإحصائيات على pressing90.live (الرابط في التعليقات)\n\n⏱ FULL TIME · ${line}\n\n#برشلونة #Barça #FCBarcelona ${AR_TAGS} #نهاية_المباراة`
+  const description = `⏱ نهاية المباراة: ${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل الإحصائيات على pressing90.live (الرابط في التعليقات)\n\n⏱ FULL TIME · ${line}\n\n#برشلونة #Barça #FCBarcelona ${AR_TAGS} #نهاية_المباراة`
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify(preview ? { kind: 'preview', label: 'preview-barca-ft', date } : { kind: 'reel', label: 'barca-ft', date, title: `FT: ${line}`.slice(0, 100), description, comment: `⏱ كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb-reel` }), { expirationTtl: 6 * 3600 })
   await studio(env, '/render/reel', { type: 'goal', data, seconds: 10, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
   await log(env, date, preview ? 'preview-barca-ft' : 'barca-ft', true, `rendering ${line} (job ${jobId})${goals.length ? ` — ${goals.length} goals` : ''}`)
@@ -2125,7 +2134,7 @@ export async function processTaleGeneration(env: Env, date: string): Promise<voi
     }
     if (g.stage === 'en') {
       const src = g.brief ? `\nFACT SHEET (the ONLY source of facts — do not add dates, numbers, names or quotes that are not in it; widely known context is fine):\n${g.brief}` : '\nUse only facts you are certain of; leave out any detail you are not sure about.'
-      const j = await gptJson(env, withPlaybook(`You write "Football Stories": 60-90 s vertical reels telling a TRUE, strange or memorable football story. Answer with ONE JSON object exactly shaped like: ${TALE_SCHEMA}\n${TALE_RULES}`, 'reel', 'caption'), `Subject: ${g.subject}${src}\nLanguage: English.`)
+      const j = await gptJson(env, withPlaybook(`You write "Football Stories": 60-90 s vertical reels telling a TRUE, strange or memorable football story. Answer with ONE JSON object exactly shaped like: ${TALE_SCHEMA}\n${TALE_RULES}`, 'reel', 'hook', 'caption'), `Subject: ${g.subject}${src}\nLanguage: English.`)
       const en = validateTaleText(j, 'en')
       if (g.brief) {
         // the EN script must carry the fact sheet's numbers as digits (the checks on FR/AR compare against them)
@@ -2272,13 +2281,13 @@ export async function queueTaleReel(env: Env, date: string, t: Tale, lang: TaleL
   const tag = lang === 'ar' ? (isB ? 'قصة برشلونة' : 'قصة لا تُصدق') : lang === 'fr' ? (isB ? 'HISTOIRE DU BARÇA' : 'HISTOIRE INCROYABLE') : (isB ? 'BARÇA STORY' : 'INCREDIBLE STORY')
   const cvSrc: TaleCover[] = (tx.covers && tx.covers.length ? tx.covers : (comic ? [{ l2: tx.hook }] : [])).slice(0, nVar)
   const covers = cvSrc.map((cv, i) => ({ ...cv, tag, img: illustrated.length ? illustrated[(i * 2) % illustrated.length] : undefined }))
-  const variant = (i: number) => ({ title: `${tx.title} (${lang.toUpperCase()})`.slice(0, 100), description: checkCaption(`${tx.captions?.[i] || tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`).text, comment: `${tx.question}\n\n${L.more}: ${taleLink(t, lang)}` })
+  const variant = (i: number) => ({ title: `${tx.title} (${lang.toUpperCase()})`.slice(0, 100), description: checkCaption(`${tx.captions?.[i] || tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`).text, comment: pinnedComment(tx.title, tx.question, `${L.more}: ${taleLink(t, lang)}`) })
   { const chk = checkCaption(`${tx.captions?.[0] || tx.caption || tx.hook}\n\n${L.cta}\n\n${tx.hashtags}`); if (chk.warnings.length && !opts.preview) await log(env, date, 'tale-playbook', true, `${t.slug} ${lang}: ${chk.warnings.join('; ')}`) }
   const job = opts.preview
     ? { kind: 'preview', label: `preview-tale-${lang}`, date }
     : covers.length
       ? { kind: 'reel-variants', label: 'tale-reel', date, gapMin: sset.taleVariantGapMin || 15, variants: covers.map((_, i) => variant(i)), ...variant(0) }
-      : { kind: 'reel', label: 'tale-reel', date, title: `${tx.title} (${lang.toUpperCase()})`.slice(0, 100), description: taleDescription(tx, lang), comment: `${tx.question}\n\n${L.more}: ${taleLink(t, lang)}` }
+      : { kind: 'reel', label: 'tale-reel', date, title: `${tx.title} (${lang.toUpperCase()})`.slice(0, 100), description: taleDescription(tx, lang), comment: pinnedComment(tx.title, tx.question, `${L.more}: ${taleLink(t, lang)}`) }
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify(job), { expirationTtl: 6 * 3600 })
   const special = (t.barca || /barca|barcelona/i.test(`${t.slug} ${t.en.title} ${t.subject ?? ''}`) || TALE_SUBJECTS.some((x) => x.tag === 'barca' && x.subject === t.subject)) ? 'barca' : undefined   // Barça stories: bokeh loop + Barça band (2026-09-14)
   // Thumbnail line on the hook beat (all reel types carry one, 2026-09-14)
@@ -2402,6 +2411,7 @@ export async function runAutomationTick(env: Env): Promise<void> {
   try { await processTaleQueue(env, date) } catch (e) { await log(env, date, 'tale-reel', false, String(e)) }
   try { await processReelQueue(env, date) } catch (e) { await log(env, date, 'tale-reel', false, String(e)) }
   if (s.goalAnim) { try { await processGoalAnim(env, s, date) } catch (e) { await log(env, date, 'goal-anim', false, String(e)) } }
+  if (hour === 9 && minute === 5 && new Date(`${date}T12:00:00Z`).getUTCDay() === 1) { try { await log(env, date, 'playbook-review', true, (await playbookReview(env, 30, 7)).slice(0, 700)) } catch (e) { await log(env, date, 'playbook-review', false, String(e).slice(0, 200)) } }   // weekly content review (KPI guide)
   try { await processTaleGeneration(env, date) } catch (e) { await log(env, date, 'tale-generate', false, String(e)) }
   try { await runTales(env, s, date, hour, minute) } catch (e) { await log(env, date, 'tale', false, String(e)) }
   try { await runTaleSupply(env, s, date, hour, minute) } catch (e) { await log(env, date, 'tale-generate', false, String(e)) }
@@ -2890,6 +2900,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       return { ok: r.ok, note }
     }
     if (job === 'playbook') return { ok: true, note: playbookSummary().slice(0, 3500) }
+    if (job === 'playbook-review') { const x = extra as { limit?: number; days?: number }; const n = await playbookReview(env, Number(x.limit ?? 20), Number(x.days ?? 7)); await log(env, date, 'playbook-review', true, n.slice(0, 700)); return { ok: true, note: n.slice(0, 3800) } }
     if (job === 'goal-anim') {
       // Queue a goal recreation for one match: { event, slug, preview?: boolean, fps?: number, goal?: playId, force?: boolean }. Names/logos come from the ESPN summary when the match is not in today's pool.
       const x = extra as { event?: string; slug?: string; preview?: boolean; fps?: number; scale?: number; goal?: string; force?: boolean }

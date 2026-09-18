@@ -73,4 +73,7 @@ ou à lire en début de session. Ne contient aucun secret.
 - `worker/src/playbook.ts` : règles condensées injectées dans les prompts (scripts d'histoires, covers/légendes,
   narration et légende des recréations de buts, posts d'articles) via `withPlaybook()` ; `checkCaption()` plafonne
   les hashtags à 5 et journalise « tale-playbook » / « goal-anim-playbook » quand une légende n'a pas le mot-clé en
-  première phrase ou pas d'appel à l'action. Ops : `playbook` (résumé en vigueur).
+  première phrase ou pas d'appel à l'action ; la porte de publication est dans `fbPost()` / `fbReel()` (journal
+  « playbook ») ; commentaires épinglés riches en mots-clés (`pinnedComment`) sous histoires et recréations ; revue
+  hebdomadaire des reels (insights Graph → complétion, replays, partages, actions) le lundi 09:05 et via
+  `playbook-review`. Ops : `playbook` (résumé en vigueur).
