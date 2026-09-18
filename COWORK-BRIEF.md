@@ -80,3 +80,7 @@ ou à lire en début de session. Ne contient aucun secret.
 - Onglet admin « insights » (18/09) : revue Facebook du playbook — KPIs, séries page, groupes durée/format/langue/
   créneau, recommandations ; route `GET /admin/automation/insights` (cache 6 h, `?refresh=1`), ops `insights-data`.
   Le jeton de page a maintenant `read_insights`.
+- TikTok (18/09) : `worker/src/tiktok.ts` (Login Kit OAuth, direct post / inbox, FILE_UPLOAD), réglages `tiktok` (off),
+  `tiktokMode`, `tiktokPrivacy` (SELF_ONLY tant que l'app n'est pas auditée), carte TikTok dans l'onglet actions,
+  ops `tiktok-status` / `tiktok-connect-url` / `tiktok-publish` (dry par défaut). Secrets `TIKTOK_CLIENT_KEY` /
+  `TIKTOK_CLIENT_SECRET` à coller par Mehdi ; redirect URI `…workers.dev/tiktok/callback`.
