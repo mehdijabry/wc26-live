@@ -281,13 +281,15 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     if (o.type === 'zoneLabel') { const [x, y] = P(o.at[0], o.at[1]); smartPill(ctx, 'zone' + o._i, o.label, x + (o.labelDx ?? 0), y - (o.labelDy ?? 92), t, { font: 'bold 28px Tajawal', bg: E.NAVY, fg: E.GOLD, alpha: a }); return }
     if (o.type === 'label') { const L = ptPx(o.at, t); smartPill(ctx, 'label' + o._i, o.text, L[0], L[1], t, { font: `bold ${o.size ?? 24}px Tajawal`, bg: col(o.bg || 'GRANA'), fg: col(o.fg || 'CREAM'), alpha: a }) }
   }
+  let pitchLayer = null
   function drawWorld(ctx, t) {
-    ctx.save(); quad(ctx, 0, 1, y0, yb); ctx.fillStyle = 'rgba(46,139,87,0.11)'; ctx.fill()
-    for (let i = 0; i < 10; i += 2) { quad(ctx, 0, 1, y0 + ph * i / 10, y0 + ph * (i + 1) / 10); ctx.fillStyle = 'rgba(46,139,87,0.055)'; ctx.fill() }
-    ctx.restore()
-    ed.pitch(ctx, x0, y0, pw, ph, { topW, color: 'rgba(17,28,79,0.42)' })
+    if (!pitchLayer) { pitchLayer = createCanvas(W, H); const pc = pitchLayer.getContext('2d')
+      pc.save(); quad(pc, 0, 1, y0, yb); pc.fillStyle = 'rgba(46,139,87,0.11)'; pc.fill()
+      for (let i = 0; i < 10; i += 2) { quad(pc, 0, 1, y0 + ph * i / 10, y0 + ph * (i + 1) / 10); pc.fillStyle = 'rgba(46,139,87,0.055)'; pc.fill() }
+      pc.restore(); ed.pitch(pc, x0, y0, pw, ph, { topW, color: 'rgba(17,28,79,0.42)' }); goalFrame(pc, yb, 1, 0) }
+    ctx.drawImage(pitchLayer, 0, 0)
     const shake = t > tGoal && t < tGoal + 0.55 ? Math.sin((t - tGoal) * 60) * 4 * (1 - (t - tGoal) / 0.55) : 0
-    goalFrame(ctx, y0, -1, shake); goalFrame(ctx, yb, 1, 0)
+    goalFrame(ctx, y0, -1, shake)
     if (runTrail) { const seen = runTrail.pts.filter(([tt]) => tt <= t).map(([, x, y]) => [x, y + 6]); if (seen.length > 3) glowPath(ctx, smooth(seen, 2), { c0: E.NAVY, c1: '#3FA9C9', width: 4, alpha: 0.85, arrow: false, flow: t }) }
     for (const ps of passSegs) if (t >= ps.start && ps.s.glow !== false) { const p = eo((t - ps.start) / (ps.end - ps.start)); const a = ballAt(ps.start), b = ballAt(ps.end - 1e-4); glowPath(ctx, bezPts([a[0], a[1] + 6], [b[0], b[1] + 6], ps.s.k ?? -0.12), { c0: E.BLUE, c1: E.AQUA, width: 5, p, flow: t, alpha: t < tShot ? 1 : 0.45 }) }
     if (shotSeg && t >= shotSeg.start) { const p = c01((t - shotSeg.start) / (shotSeg.end - shotSeg.start)); const a = ballAt(shotSeg.start), b = P(shotSeg.s.shot[0], shotSeg.s.shot[1]); glowPath(ctx, bezPts([a[0], a[1] + 6], [b[0], b[1] + 6], shotSeg.s.k ?? 0.06), { c0: E.GRANA, c1: E.GOLD, width: 6, p, flow: t * 1.6 }); if (p >= 1) ripples(ctx, b[0], b[1] + 4, tGoal, t, E.GOLD, { n: 3, period: 0.7, rmax: 90 }) }
@@ -325,7 +327,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
   console.log('[goal-anim]', JSON.stringify({ S: BEATS.map((x) => +x.toFixed(2)), shot: +tShot.toFixed(2), goal: +tGoal.toFixed(2), end: +tEnd.toFixed(2) }))
   const N = Math.round(tEnd * FPS)
-  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${W}x${H}`, '-r', String(FPS), '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath], { stdio: ['pipe', 'ignore', 'inherit'] })
+  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${W}x${H}`, '-r', String(FPS), '-i', '-', '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-x264-params', 'rc-lookahead=8:ref=1:bframes=0', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath], { stdio: ['pipe', 'ignore', 'inherit'] })
   const c = createCanvas(W, H); const ctx = c.getContext('2d')
   const world = createCanvas(W, H); const wctx = world.getContext('2d')
   const PX = 60, PY = 470, PW = 960, PH = 1100, CX = PX + PW / 2, CY = PY + PH / 2
@@ -364,6 +366,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     if (ci >= 0) { const st = CAPS[ci][0]; const p = eo((t - st) / 0.25); const s = 1.12 - 0.12 * p; ctx.save(); ctx.globalAlpha = c01((t - st) / 0.12); ctx.translate(W / 2, 1690); ctx.scale(s, s); ctx.drawImage(capC[ci], -500, -120); ctx.restore() }
     const buf = c.toBuffer('raw')
     if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r))
+    await new Promise((r) => setImmediate(r))
     if (f % 250 === 0) console.log('[goal-anim] frame', f, '/', N, ((Date.now() - t0) / 1000).toFixed(1) + 's')
   }
   ff.stdin.end()

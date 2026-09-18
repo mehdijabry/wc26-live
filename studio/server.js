@@ -11,7 +11,9 @@ import path from 'node:path'
 import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
 import edgePkg from 'msedge-tts'
-import { renderGoalRecreation } from './goalanim.js'
+import { spawn as spawnChild } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const { MsEdgeTTS, OUTPUT_FORMAT } = edgePkg
 
 const PORT = process.env.PORT || 10000
@@ -252,7 +254,19 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const roar = data.roar === false ? null : await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3')
         const confetti = spec.card && spec.card.special === 'barca' ? await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti-paper.mp4') : null
         const out = path.join(dir, 'reel.mp4')
-        const { seconds: len, qa } = await renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20 })
+        // Rendered in a child process (2026-09-18): the frame loop is CPU-bound for ~20-30 min on this 0.1-CPU box; in-process it starved the
+        // event loop, /health stopped answering and Render restarted the instance mid-render (job lost, no callback).
+        const jobFile = path.join(dir, 'job.json')
+        await fs.writeFile(jobFile, JSON.stringify({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20 }))
+        await new Promise((resolve, reject) => {
+          const child = spawnChild(process.execPath, ['--max-old-space-size=256', path.join(__dirname, 'goalanim-cli.js'), jobFile], { stdio: ['ignore', 'inherit', 'inherit'] })
+          const killer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, 100 * 60_000)
+          child.on('error', (e) => { clearTimeout(killer); reject(e) })
+          child.on('close', (code) => { clearTimeout(killer); code === 0 ? resolve() : reject(new Error('goal-anim child exited ' + code)) })
+        })
+        const result = JSON.parse(await fs.readFile(out + '.json', 'utf8'))
+        if (result.error) throw new Error('goal-anim: ' + result.error.slice(0, 400))
+        const { seconds: len, qa } = result
         const buf = await fs.readFile(out)
         const url = await upload(`reel-goalanim-${(spec.id || 'goal').replace(/[^a-z0-9-]/gi, '').slice(0, 40)}-${stamp()}.mp4`, buf, 'video/mp4')
         await fs.rm(dir, { recursive: true, force: true })
