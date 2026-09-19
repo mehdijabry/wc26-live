@@ -435,8 +435,9 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   console.log('[goal-anim] scene encoded, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
   const Ds = dur(scenePath), XF = 0.4, fullPath = path.join(dir, 'full.mp4')
   // The card was rendered smaller to keep the peak down; it is brought back to the scene's size here, where the chain
-  // only ever holds the two clips being crossfaded.
-  ffr(['-i', scenePath, '-i', cardPath, '-filter_complex', `[1:v]scale=${RW}:${RH}:flags=bicubic,setsar=1,fps=${FPS}[cd];[0:v][cd]xfade=transition=fade:duration=${XF}:offset=${(Ds - XF).toFixed(3)},format=yuv420p[v]`, '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-movflags', '+faststart', fullPath])
+  // only ever holds the two clips being crossfaded. Both branches are put on the same time base first: xfade refuses to
+  // configure when they differ (the scene came out of the frame sequence at 1/12800, the fps filter set the card to 1/25).
+  ffr(['-i', scenePath, '-i', cardPath, '-filter_complex', `[0:v]fps=${FPS},settb=AVTB[sc];[1:v]scale=${RW}:${RH}:flags=bicubic,setsar=1,fps=${FPS},settb=AVTB[cd];[sc][cd]xfade=transition=fade:duration=${XF}:offset=${(Ds - XF).toFixed(3)},format=yuv420p[v]`, '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-movflags', '+faststart', fullPath])
   const Tt = dur(fullPath)
   const ms = (s) => Math.round(s * 1000)
   // The music sits under the narration: a lower base level (0.10 instead of 0.16) and a duck over every voice clip —
