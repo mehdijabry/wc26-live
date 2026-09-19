@@ -263,12 +263,16 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     ctx.fillStyle = E.GRANA; ctx.beginPath(); ctx.arc(0, 0, 21, 0, Math.PI * 2); ctx.fill(); ctx.shadowColor = 'transparent'
     ctx.fillStyle = E.CREAM; ctx.font = '900 24px Playfair'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(n, 0, 1)
     ctx.restore()
+    // The numbered disc stays for the whole video (the trail of steps), but its label fades out after its own moment
+    // (Brentford, 2026-09-19): six labels kept on screen at once piled up on the right edge and hid the players.
+    const la = t < t0 + 4 ? 1 : c01(1 - (t - t0 - 4) / 1.2)
+    if (la <= 0.02) return
     ctx.font = 'bold 24px Tajawal'; const w = ctx.measureText(label).width + 24, h = 36
     const L = [x - 30 - w, y - h / 2], R = [x + 30, y - h / 2], U = [x - w / 2, y - 33 - h], D = [x - w / 2, y + 33]
     const far = [[x - 60 - w, y - 60 - h], [x + 60, y - 60 - h], [x - 60 - w, y + 60], [x + 60, y + 60], [x - w / 2, y - 90 - h], [x - w / 2, y + 90]]
     const cands = u > 0.62 ? [L, R, U, D, ...far] : [R, L, U, D, ...far]
     const c = place('tag' + n, cands, w, h, t)
-    ctx.save(); ctx.globalAlpha = a * c01((t - t0) / 0.12); pill(ctx, label, c[0], c[1] + h / 2, { font: 'bold 24px Tajawal', align: 'left', pad: 12 }); ctx.restore()
+    ctx.save(); ctx.globalAlpha = a * la * c01((t - t0) / 0.12); pill(ctx, label, c[0], c[1] + h / 2, { font: 'bold 24px Tajawal', align: 'left', pad: 12 }); ctx.restore()
   }
   function overlay(ctx, o, t) {
     const a = win(o, t); if (a <= 0 && o.type !== 'ripple') return
