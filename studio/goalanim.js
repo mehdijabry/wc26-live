@@ -352,7 +352,11 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
   console.log('[goal-anim]', JSON.stringify({ S: BEATS.map((x) => +x.toFixed(2)), shot: +tShot.toFixed(2), goal: +tGoal.toFixed(2), end: +tEnd.toFixed(2) }))
   const N = Math.round(tEnd * FPS)
-  const ff = spawn('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${RW}x${RH}`, '-r', String(FPS), '-i', '-', ...(RS < 1 && upscale ? ['-vf', 'scale=1080:1920:flags=lanczos'] : []), '-c:v', 'libx264', '-preset', 'ultrafast', '-threads', '1', '-x264-params', 'rc-lookahead=8:ref=1:bframes=0', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath], { stdio: ['pipe', 'ignore', 'inherit'] })
+  // Frames go to disk, the encoder runs later (Render 512 MB, 2026-09-19). Piping raw frames into a live x264 meant the
+  // drawing process (≈206 MB of canvases) and the encoder (≈160-220 MB) were resident at the same time, which is what
+  // kept filling the container. Written as JPEGs, the two never coexist: the drawing child exits, then 'finish' encodes.
+  const framesDir = path.join(dir, 'frames')
+  fs.mkdirSync(framesDir, { recursive: true })
   let baseS = base
   if (RS < 1) { baseS = createCanvas(RW, RH); const bc = baseS.getContext('2d'); bc.imageSmoothingEnabled = true; bc.imageSmoothingQuality = 'high'; bc.drawImage(base, 0, 0, RW, RH) }
   const c = createCanvas(RW, RH); const ctx = c.getContext('2d')
@@ -400,13 +404,11 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
       const w = ctx.measureText(GW).width; ctx.fillStyle = ed.inkGradient(ctx, -w / 2, w); ctx.fillText(GW, 0, 0); ctx.restore() }
     let ci = -1; for (let i = 0; i < CAPS.length; i++) if (t >= CAPS[i][0]) ci = i
     if (ci >= 0) { const st = CAPS[ci][0]; const p = eo((t - st) / 0.25); const s = 1.12 - 0.12 * p; ctx.save(); ctx.globalAlpha = c01((t - st) / 0.12); ctx.translate(W / 2, 1690); ctx.scale(s, s); ctx.drawImage(capC[ci], -500, -120); ctx.restore() }
-    const buf = c.toBuffer('raw')
-    if (!ff.stdin.write(buf)) await new Promise((r) => ff.stdin.once('drain', r))
+    fs.writeFileSync(path.join(framesDir, `f-${String(f).padStart(5, '0')}.jpg`), c.toBuffer('image/jpeg', { quality: 0.92 }))
     await new Promise((r) => setImmediate(r))
     if (f % 250 === 0) console.log('[goal-anim] frame', f, '/', N, ((Date.now() - t0) / 1000).toFixed(1) + 's')
   }
-  ff.stdin.end()
-  await new Promise((res, rej) => ff.on('close', (code) => (code ? rej(new Error('ffmpeg ' + code)) : res())))
+  console.log('[goal-anim] frames written, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
   // Free every drawing surface before the closing card (Render OOM, 2026-09-19): the main loop keeps ~10 full-size
   // canvases alive (pitch, base, title, world, 9 caption cards, the sprite cache) and the card stage then allocates its
   // own full-size layers on top — 512 MB was reached every time at this exact point. node-canvas releases the Cairo
@@ -426,6 +428,11 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
 
   // ── transition + audio mix + audio QA (the closing card was rendered before the frame loop) ──
   const ffr = (args) => { const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error('ffmpeg ' + String(r.stderr || '').slice(-600)) }
+  // Scene encode from the frame sequence. rc-lookahead=1 + sync-lookahead=0 cost nothing visible here (no B-frames, one
+  // reference) and take x264's own footprint from 222 MB down to 160 MB, measured at 1080×1920.
+  ffr(['-framerate', String(FPS), '-i', path.join(dir, 'frames', 'f-%05d.jpg'), ...(RS < 1 && upscale ? ['-vf', 'scale=1080:1920:flags=lanczos'] : []), '-c:v', 'libx264', '-preset', 'ultrafast', '-x264-params', 'rc-lookahead=1:sync-lookahead=0:ref=1:bframes=0', '-crf', '22', '-maxrate', '6M', '-bufsize', '6M', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', scenePath])
+  fs.rmSync(path.join(dir, 'frames'), { recursive: true, force: true })
+  console.log('[goal-anim] scene encoded, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
   const Ds = dur(scenePath), XF = 0.4, fullPath = path.join(dir, 'full.mp4')
   // The card was rendered smaller to keep the peak down; it is brought back to the scene's size here, where the chain
   // only ever holds the two clips being crossfaded.
