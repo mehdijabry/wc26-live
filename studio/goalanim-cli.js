@@ -11,6 +11,8 @@ try {
   fs.writeFileSync(job.out + '.json', JSON.stringify(r))
   process.exit(0)
 } catch (e) {
-  fs.writeFileSync(job.out + '.json', JSON.stringify({ error: String(e && e.stack || e).slice(0, 1500) }))
+  const msg = String((e && e.stack) || e).slice(0, 1500)
+  console.error(`[goal-anim] ${phase || 'render'} FAILED:`, msg)   // stderr is inherited: the reason lands in the Render logs
+  fs.writeFileSync(job.out + '.json', JSON.stringify({ error: msg, phase }))
   process.exit(1)
 }

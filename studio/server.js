@@ -265,7 +265,14 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           const child = spawnChild('nice', ['-n', '19', process.execPath, '--max-old-space-size=256', '--expose-gc', path.join(__dirname, 'goalanim-cli.js'), jobFile, phase], { stdio: ['ignore', 'inherit', 'inherit'] })
           const killer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, minutes * 60_000)
           child.on('error', (e) => { clearTimeout(killer); reject(e) })
-          child.on('close', (code) => { clearTimeout(killer); code === 0 ? resolve() : reject(new Error(`goal-anim ${phase} exited ` + code)) })
+          child.on('close', async (code) => {
+            clearTimeout(killer)
+            if (code === 0) return resolve()
+            // Surface the child's own message instead of just its exit code (2026-09-19).
+            let why = ''
+            try { why = ': ' + String(JSON.parse(await fs.readFile(out + '.json', 'utf8')).error || '').slice(0, 400) } catch { /* no file */ }
+            reject(new Error(`goal-anim ${phase} exited ${code}${why}`))
+          })
         })
         await runPhase('frames', 80)
         await runPhase('finish', 25)
