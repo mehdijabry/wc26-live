@@ -324,7 +324,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const cardSpec = await d.drawGoalAnimSpec({ titleLang: 'ar', footer: 'LIVE ON PRESSING90.LIVE', assistLabel: 'صناعة', ...(spec.card.special === 'barca' && confetti ? { special: 'barca', bgVideo: confetti } : {}), ...spec.card })
   const layers = {}
   for (const [k, buf] of Object.entries(cardSpec.layers)) { layers[k] = path.join(dir, `card-${k}.png`); fs.writeFileSync(layers[k], buf); cardSpec.layers[k] = null }   // the PNG is on disk — drop the buffer
-  await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5, small: RS < 1 && !upscale })
+  await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5, small: RS < 1 && !upscale, work: 0.7 })   // 0.7: the nine-layer overlay chain is the pipeline's memory peak (245 MB → 161 MB)
   if (global.gc) { global.gc() }
   console.log('[goal-anim] closing card ready, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
 
@@ -427,7 +427,9 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   // ── transition + audio mix + audio QA (the closing card was rendered before the frame loop) ──
   const ffr = (args) => { const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error('ffmpeg ' + String(r.stderr || '').slice(-600)) }
   const Ds = dur(scenePath), XF = 0.4, fullPath = path.join(dir, 'full.mp4')
-  ffr(['-i', scenePath, '-i', cardPath, '-filter_complex', `[0:v][1:v]xfade=transition=fade:duration=${XF}:offset=${(Ds - XF).toFixed(3)},format=yuv420p[v]`, '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-movflags', '+faststart', fullPath])
+  // The card was rendered smaller to keep the peak down; it is brought back to the scene's size here, where the chain
+  // only ever holds the two clips being crossfaded.
+  ffr(['-i', scenePath, '-i', cardPath, '-filter_complex', `[1:v]scale=${RW}:${RH}:flags=bicubic,setsar=1,fps=${FPS}[cd];[0:v][cd]xfade=transition=fade:duration=${XF}:offset=${(Ds - XF).toFixed(3)},format=yuv420p[v]`, '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-movflags', '+faststart', fullPath])
   const Tt = dur(fullPath)
   const ms = (s) => Math.round(s * 1000)
   // The music sits under the narration: a lower base level (0.10 instead of 0.16) and a duck over every voice clip —

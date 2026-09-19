@@ -104,7 +104,13 @@ async function muxAudio({ video, music, musicGain, voice, sfx, total, out }) {
  * One PNG per layer looped inside the graph (memory-flat), yuva420p overlays,
  * single filter thread (≈ 250 MB at 1080p). Writes a silent mp4 segment.
  */
-export async function animSlide({ spec, seconds, fps = 25, out, small = false, fadeIn = 0.25, fadeOut = 0.3, push = false }) {
+// `work` (2026-09-19) renders the whole overlay chain at a fraction of the final size and scales the result back up at
+// the end. Measured on the closing card of a goal recreation: ffmpeg's peak drops from 245 MB to 161 MB at 0.7, which is
+// what keeps the 512 MB instance alive — the layers are stills, so the only visible cost is slightly softer text.
+// The output KEEPS the working size: scaling it back here would rebuild every frame at full size and give the memory
+// straight back. The caller scales the clip when it next touches it (the goal recreation does it inside its crossfade).
+export async function animSlide({ spec, seconds, fps = 25, out, small = false, fadeIn = 0.25, fadeOut = 0.3, push = false, work = 1 }) {
+  const WORK = Math.max(0.4, Math.min(1, Number(work) || 1))
   const total = seconds
   const frames = Math.max(1, Math.round(total * fps))
   const names = ['bg', ...spec.anims.map((x) => x.layer)]
@@ -115,10 +121,10 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
   for (const n of names) inputs.push('-i', spec.layers[n])
   const off = spec.bgVideo ? 1 : 0
   const ease = (t0, d) => `pow(1-min(1,max(0,(t-${t0})/${d})),3)`
-  const still = (i) => `[${i}:v]format=${i === 0 ? 'yuv420p' : 'yuva420p'},loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${total.toFixed(3)}`
+  const still = (i) => `[${i}:v]format=${i === 0 ? 'yuv420p' : 'yuva420p'}${WORK < 1 ? `,scale=iw*${WORK}:ih*${WORK}:flags=bicubic` : ''},loop=loop=${frames - 1}:size=1:start=0,setpts=N/(${fps}*TB),trim=duration=${total.toFixed(3)}`
   const fc = []
   if (spec.bgVideo) {
-    fc.push(`[0:v]trim=duration=${total.toFixed(3)},setpts=PTS-STARTPTS,scale=1080:1920,setsar=1,format=yuv420p[vb]`)
+    fc.push(`[0:v]trim=duration=${total.toFixed(3)},setpts=PTS-STARTPTS,scale=${Math.round(1080 * WORK / 2) * 2}:${Math.round(1920 * WORK / 2) * 2},setsar=1,format=yuv420p[vb]`)
     fc.push(`${still(1)}[b1]`, `[vb][b1]overlay=0:0:format=yuv420[v0]`)
   } else fc.push(`${still(0)}[v0]`)
   let cur = 'v0'
