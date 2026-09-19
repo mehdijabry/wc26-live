@@ -101,7 +101,7 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
 }
 
 /** Studio → worker: the reel is rendered. QA gate, then publish (or log the preview URL). */
-export async function goalAnimCallback(env: Env, job: { date: string; description?: string; comment?: string; title?: string; preview?: boolean; item?: GoalAnimItem; meta?: Meta }, body: { ok?: boolean; url?: string; seconds?: number; error?: string; qa?: { visual?: Record<string, unknown>; audio?: { issues?: string[]; loudness?: number; loudnessAfter?: number } } }): Promise<void> {
+export async function goalAnimCallback(env: Env, job: { date: string; description?: string; comment?: string; title?: string; preview?: boolean; item?: GoalAnimItem; meta?: Meta }, body: { ok?: boolean; url?: string; coverUrl?: string; seconds?: number; error?: string; qa?: { visual?: Record<string, unknown>; audio?: { issues?: string[]; loudness?: number; loudnessAfter?: number } } }): Promise<void> {
   await env.CACHE.delete(JKEY)
   const id = job.item?.id ?? ''
   if (id && !job.preview) await env.CACHE.put(DONE(id), '1', { expirationTtl: 3 * 86400 })   // previews never block the automatic production (Bayern, 2026-09-18)
@@ -112,13 +112,23 @@ export async function goalAnimCallback(env: Env, job: { date: string; descriptio
   const lufs = [body.qa?.audio?.loudness, body.qa?.audio?.loudnessAfter].filter((x) => typeof x === 'number' && Number.isFinite(x) && x !== 0).map((x) => x!.toFixed(1)).join(' → ') || 'n/a'
   const qaNote = `QA audio ${issues.length ? 'FAIL: ' + issues.join('; ') : 'ok'} (${lufs} LUFS) · visual moves ${vis.labelMoves ?? '?'}, unresolved ${vis.unresolved ?? '?'}/${vis.frames ?? '?'}, fits ${vis.viewportFits ?? '?'}`
   if (issues.length) { await log(env, job.date, 'goal-anim', false, `${who}: NOT published — ${qaNote} · ${body.url}`); return }
+  // TikTok kit (2026-09-19): the inbox upload carries no text at all, so the cover, the caption, the hashtags and the music
+  // credit are e-mailed with a push button — Mehdi taps it when he wants the video in his TikTok drafts.
+  const st0 = await loadAutomationSettings(env)
+  if (st0.tiktokKit && tiktokConfigured(env)) {
+    try {
+      const { queueTikTokKit } = await import('./ttkit')
+      const k = await queueTikTokKit(env, { title: job.title ?? who, videoUrl: body.url, coverUrl: body.coverUrl, caption: tiktokCaption(job.description ?? '', ['#تحليل_الأهداف', '#Pressing90']), hashtags: [], meta: job.item ? `${job.item.home} ${job.item.homeScore ?? ''}-${job.item.awayScore ?? ''} ${job.item.away}` : undefined, seconds: body.seconds })
+      await log(env, job.date, 'tiktok-kit', k.ok, `${who}: ${k.ok ? 'e-mail envoyé' : 'e-mail KO ' + (k.note ?? '')} · ${k.url}`)
+    } catch (e) { await log(env, job.date, 'tiktok-kit', false, `${who}: ${String(e).slice(0, 160)}`) }
+  }
   if (job.preview) { await log(env, job.date, 'goal-anim', true, `${who}: PREVIEW ready (${body.seconds ?? '?'}s, not published) · ${qaNote} · ${body.url}`); return }
   const r = await fbReel(env, { video_url: body.url, description: job.description ?? '', title: job.title ?? '' })
   if (r.ok) { await bump(env, job.date, 'reel'); await bump(env, job.date, 'goalanim') }
   await log(env, job.date, 'goal-anim', r.ok, r.ok ? `${who}: published (${body.seconds ?? '?'}s) · ${r.note ?? ''} · ${qaNote} · ${body.url}` : `${who}: publish failed ${r.status ?? ''} ${r.note ?? ''} · ${body.url}`)
   // TikTok (2026-09-18): same video, TikTok caption (no link line, ≤ 5 hashtags), privacy/mode from the settings — never for previews.
   if (r.ok) {
-    try { const st = await loadAutomationSettings(env); if (st.tiktok && tiktokConfigured(env)) { const t = await tiktokPublish(env, { videoUrl: body.url, caption: tiktokCaption(job.description ?? '', ['#تحليل_الأهداف', '#Pressing90']), privacy: st.tiktokPrivacy, mode: st.tiktokMode }); await log(env, job.date, 'tiktok', t.ok, `${who}: ${t.note ?? ''} · ${t.publish_id ?? ''}`) } }
+    try { const st = st0; if (st.tiktok && !st.tiktokKit && tiktokConfigured(env)) { const t = await tiktokPublish(env, { videoUrl: body.url, caption: tiktokCaption(job.description ?? '', ['#تحليل_الأهداف', '#Pressing90']), privacy: st.tiktokPrivacy, mode: st.tiktokMode }); await log(env, job.date, 'tiktok', t.ok, `${who}: ${t.note ?? ''} · ${t.publish_id ?? ''}`) } }
     catch (e) { await log(env, job.date, 'tiktok', false, `${who}: ${String(e).slice(0, 200)}`) }
   }
   // Pinned comment (playbook): keyword-rich sentence + closed question + link — under the reel once Facebook shows it.

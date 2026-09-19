@@ -328,6 +328,21 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
 </script></body></html>`
         return new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } })
       }
+      // TikTok hand-off kit (2026-09-19): the e-mail button lands here — copy buttons, cover download, push to the drafts.
+      if (url.pathname.startsWith('/tiktok-kit/')) {
+        const m = /^\/tiktok-kit\/([a-z0-9]{16,40})(\/push)?$/.exec(url.pathname)
+        if (!m) return new Response('Not found', { status: 404 })
+        const { readTikTokKit, tikTokKitPage, pushTikTokKit } = await import('./ttkit')
+        if (m[2]) {
+          if (req.method !== 'POST') return json({ ok: false, note: 'POST only' }, 405)
+          const auto2 = await import('./automation')
+          const st = await auto2.loadAutomationSettings(env)
+          return json(await pushTikTokKit(env, m[1], { mode: st.tiktokMode, privacy: st.tiktokPrivacy }))
+        }
+        const kit = await readTikTokKit(env, m[1])
+        if (!kit) return new Response('<meta charset="utf-8"><p style="font-family:system-ui;padding:24px">Ce kit TikTok a expiré (7 jours).</p>', { status: 404, headers: { 'content-type': 'text/html; charset=utf-8' } })
+        return new Response(tikTokKitPage(m[1], kit), { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } })
+      }
       // TikTok Login Kit callback (2026-09-18): the browser lands here after Mehdi authorises the app.
       if (url.pathname === '/tiktok/callback' && req.method === 'GET') { const { handleTikTokCallback } = await import('./tiktok'); return handleTikTokCallback(req, env) }
       if (url.pathname === '/studio/callback' && req.method === 'POST') {

@@ -270,9 +270,22 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         if (result.error) throw new Error('goal-anim: ' + result.error.slice(0, 400))
         const { seconds: len, qa } = result
         const buf = await fs.readFile(out)
-        const url = await upload(`reel-goalanim-${(spec.id || 'goal').replace(/[^a-z0-9-]/gi, '').slice(0, 40)}-${stamp()}.mp4`, buf, 'video/mp4')
+        const base = `${(spec.id || 'goal').replace(/[^a-z0-9-]/gi, '').slice(0, 40)}-${stamp()}`
+        const url = await upload(`reel-goalanim-${base}.mp4`, buf, 'video/mp4')
+        // Cover frame (2026-09-19): TikTok drafts arrive with no text and no thumbnail, so the e-mail kit carries one to download.
+        // Taken from the hook card unless the job asks for another timestamp.
+        let coverUrl
+        try {
+          const cover = path.join(dir, 'cover.jpg')
+          await new Promise((resolve, reject) => {
+            const t = Math.max(0, Number(data.coverMs ?? 1200) / 1000)
+            const c = spawnChild('ffmpeg', ['-y', '-loglevel', 'error', '-ss', String(t), '-i', out, '-frames:v', '1', '-q:v', '3', cover], { stdio: ['ignore', 'inherit', 'inherit'] })
+            c.on('error', reject); c.on('close', (code) => (code === 0 ? resolve() : reject(new Error('cover ' + code))))
+          })
+          coverUrl = await upload(`cover-goalanim-${base}.jpg`, await fs.readFile(cover), 'image/jpeg')
+        } catch (e) { console.log('[goal-anim] cover frame failed:', String(e).slice(0, 120)) }
         await fs.rm(dir, { recursive: true, force: true })
-        return { url, seconds: len, qa }
+        return { url, coverUrl, seconds: len, qa }
       }
       // ── Football Stories (Mehdi, 2026-09-10): beats with their own voice clips ──
       if (type === 'tale') {

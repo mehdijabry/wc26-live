@@ -73,6 +73,7 @@ export interface AutomationSettings {
   goalAnimFps: number                                   // render frame rate (20 = ~30 min per reel on the 0.1-CPU studio)
   goalAnimScale: number                                 // draw scale: 1 = 1080p native, 0.667 = drawn at 720p and upscaled (about twice as fast)
   tiktok: boolean                                       // TikTok (2026-09-18): also post the goal recreations to the connected TikTok account
+  tiktokKit: boolean                                    // e-mail the TikTok kit (cover + texts + push button) instead of uploading by itself (2026-09-19)
   tiktokMode: 'direct' | 'inbox'                        // direct post (privacy below) or upload to the TikTok inbox (Mehdi finishes the post in the app)
   tiktokPrivacy: 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS' | 'FOLLOWER_OF_CREATOR' | 'SELF_ONLY'   // unaudited app → SELF_ONLY only
 }
@@ -96,7 +97,7 @@ export const DEFAULT_AUTOMATION: AutomationSettings = {
   talesPerDay: 3, taleVariants: 2, taleVariantGapMin: 15, goalScope: 'barca', taleSlots: '08:30,13:30,18:45', taleArt: 'photos',
   mainLang: 'ar', articleReels: false,
   goalAnim: true, goalAnimPerDay: 4, goalAnimScope: 'all', goalAnimFps: 20, goalAnimScale: 1,
-  tiktok: false, tiktokMode: 'direct', tiktokPrivacy: 'SELF_ONLY',
+  tiktok: false, tiktokKit: true, tiktokMode: 'inbox', tiktokPrivacy: 'SELF_ONLY',
 }
 const KEY = 'auto:settings'
 export async function loadAutomationSettings(env: Env): Promise<AutomationSettings> {
@@ -2928,6 +2929,15 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       const tk = await import('./tiktok')
       if (job === 'tiktok-status') return { ok: true, note: JSON.stringify(await tk.tiktokStatus(env)).slice(0, 1500) }
       if (job === 'tiktok-connect-url') return { ok: true, note: await tk.tiktokConnectUrl(env) }
+      if (job === 'tiktok-kit') {
+        // Build a hand-off kit by hand: { url, cover?, caption, title?, meta?, seconds? } → stores it, e-mails it, returns the page link.
+        const x = extra as { url?: string; cover?: string; caption?: string; title?: string; meta?: string; seconds?: number }
+        if (!x.url || !x.caption) return { ok: false, note: 'url and caption required' }
+        const { queueTikTokKit } = await import('./ttkit')
+        const k = await queueTikTokKit(env, { title: x.title ?? 'Pressing 90\'', videoUrl: x.url, coverUrl: x.cover, caption: x.caption, hashtags: [], meta: x.meta, seconds: x.seconds })
+        await log(env, date, 'tiktok-kit', k.ok, `${x.title ?? ''}: ${k.ok ? 'e-mail envoyé' : 'e-mail KO ' + (k.note ?? '')} · ${k.url}`)
+        return { ok: k.ok, note: `${k.url}${k.ok ? '' : ' · ' + (k.note ?? '')}` }
+      }
       if (job === 'tiktok-publish-status') { const id = String((extra as { publish_id?: string }).publish_id ?? ''); return { ok: true, note: JSON.stringify(await tk.tiktokPublishStatus(env, id)) } }
       if (job === 'tiktok-publish') {
         const x = extra as { url?: string; caption?: string; privacy?: string; mode?: string; dry?: boolean }
