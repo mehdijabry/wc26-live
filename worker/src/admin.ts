@@ -322,6 +322,11 @@ export async function handleAdmin(
       tales: await listTales(e2).catch(() => []),
     })
   }
+  if (pathname === '/admin/automation/tiktok-kits' && req.method === 'GET') {
+    // The TikTok hand-off kits, newest first — the panel can always reach them even when the e-mail is filtered out.
+    const { listTikTokKits } = await import('./ttkit')
+    return jsonResp({ ok: true, kits: await listTikTokKits(env as unknown as Parameters<typeof listTikTokKits>[0]) })
+  }
   if (pathname === '/admin/automation/insights' && req.method === 'GET') {
     // Facebook insights review (playbook, 2026-09-18): reels + page series + recommendations, cached 6 h (?refresh=1 forces a new read).
     const url = new URL(req.url)

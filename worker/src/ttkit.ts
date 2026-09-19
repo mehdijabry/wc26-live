@@ -26,6 +26,19 @@ export type TikTokKit = {
   lastStatus?: string
 }
 const KEY = (id: string) => `auto:ttkit:${id}`
+const INDEX = 'auto:ttkit:index'
+export type TikTokKitRow = { id: string; url: string; title: string; meta?: string; coverUrl?: string; created: string; pushes: number; lastStatus?: string }
+/** Short list of the recent kits, so the admin panel can hand them over when the e-mail does not arrive (2026-09-19). */
+export async function listTikTokKits(env: Env): Promise<TikTokKitRow[]> {
+  try { const raw = await env.CACHE.get(INDEX); return raw ? JSON.parse(raw) as TikTokKitRow[] : [] } catch { return [] }
+}
+async function indexKit(env: Env, row: TikTokKitRow): Promise<void> {
+  try {
+    const rows = (await listTikTokKits(env)).filter((r) => r.id !== row.id)
+    rows.unshift(row)
+    await env.CACHE.put(INDEX, JSON.stringify(rows.slice(0, 20)), { expirationTtl: 30 * 86400 })
+  } catch { /* the kit itself is stored, the index is a convenience */ }
+}
 const MAX_PUSHES = 3
 const esc = (s: string) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c] as string))
 
@@ -47,8 +60,11 @@ export function splitCaption(caption: string): { body: string; hashtags: string[
 
 export async function createTikTokKit(env: Env, kit: Omit<TikTokKit, 'created'>): Promise<{ id: string; url: string }> {
   const id = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12)
-  await env.CACHE.put(KEY(id), JSON.stringify({ ...kit, created: new Date().toISOString(), pushes: 0 } satisfies TikTokKit), { expirationTtl: 7 * 86400 })
-  return { id, url: `${SITE}/tiktok-kit/${id}` }   // served through the Pages function so the link matches the sender domain
+  const created = new Date().toISOString()
+  await env.CACHE.put(KEY(id), JSON.stringify({ ...kit, created, pushes: 0 } satisfies TikTokKit), { expirationTtl: 7 * 86400 })
+  const url = `${SITE}/tiktok-kit/${id}`
+  await indexKit(env, { id, url, title: kit.title, meta: kit.meta, coverUrl: kit.coverUrl, created, pushes: 0 })
+  return { id, url }   // served through the Pages function so the link matches the sender domain
 }
 export async function readTikTokKit(env: Env, id: string): Promise<TikTokKit | null> {
   const raw = await env.CACHE.get(KEY(id))
@@ -65,6 +81,7 @@ export async function pushTikTokKit(env: Env, id: string, opts: { mode?: TikTokM
     const r = await tiktokPublish(env, { videoUrl: kit.videoUrl, caption: kit.caption, mode: opts.mode ?? 'inbox', privacy: opts.privacy ?? 'SELF_ONLY' })
     const next: TikTokKit = { ...kit, pushes: (kit.pushes ?? 0) + 1, lastPush: new Date().toISOString(), lastStatus: r.status }
     await env.CACHE.put(KEY(id), JSON.stringify(next), { expirationTtl: 7 * 86400 })
+    await indexKit(env, { id, url: `${SITE}/tiktok-kit/${id}`, title: kit.title, meta: kit.meta, coverUrl: kit.coverUrl, created: kit.created, pushes: next.pushes ?? 1, lastStatus: r.status })
     return { ok: r.ok, status: r.status, note: r.ok ? 'Vidéo envoyée dans TikTok — ouvre l\'app, onglet Boîte de réception, puis colle la légende.' : `TikTok a refusé : ${r.note ?? r.status ?? '?'}` }
   } catch (e) { return { ok: false, note: String(e).slice(0, 200) } }
 }

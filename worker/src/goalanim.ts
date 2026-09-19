@@ -67,9 +67,13 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
       if (job.stage === 'render') {
         // TikTok refuses videos under 23 fps (frame_rate_check_failed, 2026-09-18) → 25 fps whenever TikTok posting is on.
         // Guard against a stale KV read (a manual tick right before the cron tick sent the same render twice on 2026-09-18): one send per item per hour.
+        // The guard protects ONE job against a double tick, so it stores that job's own stamp: a bare flag left by an
+        // earlier job for the same match survived in the KV read cache and silently swallowed the next render
+        // (Brentford, 2026-09-19 — the job then waited for a render nobody had sent).
         const sentKey = `auto:goalanim:sent:${job.item.id}`
-        if (await env.CACHE.get(sentKey)) { job.stage = 'wait'; await saveJob(env, job); return 'already sent' }
-        await env.CACHE.put(sentKey, '1', { expirationTtl: 3600 })
+        const stamp = String(job.startedAt)
+        if ((await env.CACHE.get(sentKey)) === stamp) { job.stage = 'wait'; await saveJob(env, job); return 'already sent' }
+        await env.CACHE.put(sentKey, stamp, { expirationTtl: 3600 })
         const jobId = `goalanim-${job.item.id}-${Date.now().toString(36)}`
         const spec = job.scene!.spec, meta = job.scene!.meta, texts = job.texts!
         const chk = checkCaption(texts.post, { keyword: texts.scorerAr || meta.scorer })   // playbook (2026-09-18): ≤ 5 hashtags, keyword first, CTA
@@ -354,7 +358,7 @@ export function buildScene(m: GoalAnimItem, sum: MatchSummary, g: MatchGoal): Sc
     stack: isBarcaName(teamName) ? ['BARÇA', 'FIRST'] : ['GOAL', 'ANALYSIS'],
     espn: { X: Number(g.x), Y: Number(g.y), X2: g.x2 ?? 100, Y2: g.y2 ?? 50 },
     scorer: S_id, scorerArrive: 'sArrive',
-    gap: 0.3, roar: 0.3, musicGain: 0.16,
+    gap: 0.3, roar: 0.3, musicGain: 0.10, musicDuck: 0.45,   // music under the narration (2026-09-19): lower base level, and ducked again while a voice plays
     voices: [], voiceTexts: [],
     beatStarts: { 7: 'max(B6e+0.2, goal+0.5)' },
     anchors, shot: 'shot', goal: 'goal', end: 'end', trailFrom: opening === 'rebound' ? 'prevShot' : 'rec',

@@ -430,7 +430,11 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   ffr(['-i', scenePath, '-i', cardPath, '-filter_complex', `[0:v][1:v]xfade=transition=fade:duration=${XF}:offset=${(Ds - XF).toFixed(3)},format=yuv420p[v]`, '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-movflags', '+faststart', fullPath])
   const Tt = dur(fullPath)
   const ms = (s) => Math.round(s * 1000)
-  const fc = [`[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=${spec.musicGain ?? 0.16},afade=t=in:st=0:d=0.6,afade=t=out:st=${(Tt - 1.5).toFixed(2)}:d=1.5[m]`]
+  // The music sits under the narration: a lower base level (0.10 instead of 0.16) and a duck over every voice clip —
+  // between two lines it comes back up, so the track still carries the video (Mehdi, 2026-09-19).
+  const DUCK = spec.musicDuck ?? 0.45
+  const ducks = BEATS.map((t, i) => `volume=enable='between(t,${t.toFixed(2)},${(t + VD[i] + 0.35).toFixed(2)})':volume=${DUCK}`).join(',')
+  const fc = [`[1:a]aresample=48000,aformat=channel_layouts=stereo,volume=${spec.musicGain ?? 0.10}${ducks ? ',' + ducks : ''},afade=t=in:st=0:d=0.6,afade=t=out:st=${(Tt - 1.5).toFixed(2)}:d=1.5[m]`]
   const ins = ['-i', fullPath, '-stream_loop', '-1', '-i', music]
   const mix = []
   BEATS.forEach((t, i) => { ins.push('-i', voices[i]); fc.push(`[${i + 2}:a]aresample=48000,aformat=channel_layouts=stereo,adelay=${ms(t)}|${ms(t)}[v${i}]`); mix.push(`[v${i}]`) })

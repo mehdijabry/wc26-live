@@ -3113,6 +3113,40 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     if (job === 'token-check') {
       return { ok: true, note: await checkTokenAndAlert(env, date, 'à la demande (panel admin)') }
     }
+    if (job === 'job-drop') {
+      // Neutralise a render whose callback must be ignored (a duplicate queued in the studio): the studio still calls
+      // back, but with no job record the callback does nothing instead of publishing the same reel twice.
+      const id = String((extra as { jobId?: string }).jobId ?? '')
+      if (!/^[a-z0-9-]{6,80}$/.test(id)) return { ok: false, note: 'jobId required' }
+      const key = `auto:job:${id}`
+      const had = await env.CACHE.get(key)
+      await env.CACHE.delete(key)
+      return { ok: true, note: had ? `${id}: callback record dropped` : `${id}: no record (already consumed or unknown)` }
+    }
+    if (job === 'mail-probe') {
+      // Deliverability bisect (2026-09-19): the kit e-mail is accepted by Resend but never lands, while the plain
+      // token-alert test does. Four messages, one variable each, to find what Gmail drops: remote image, site link,
+      // Arabic subject. Mehdi reports which letters arrived.
+      const base = (body: string) => `<div style="font-family:system-ui,sans-serif;max-width:520px;margin:0 auto;padding:8px"><p>Test de délivrabilité Pressing 90'.</p>${body}</div>`
+      const cover = 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/cover-olise-0100.jpg'
+      const link = 'https://pressing90.live/tiktok-kit/qsi51x22tk9kjdckm7hu'
+      const out: string[] = []
+      const send = async (tag: string, subject: string, html: string, text: string) => { const m = await sendMail(env, subject, html, text); out.push(`${tag}: ${m.ok ? 'accepté ' + (m.note ?? '') : 'REFUSÉ ' + (m.note ?? '')}`) }
+      // Round 2 (only D arrived — the Arabic one, sent last of four in two seconds): E repeats the plain text alone,
+      // F is the exact shape of a kit mail. Sent one at a time, 25 s apart, to rule out a burst being deferred.
+      const only = String((extra as { only?: string }).only ?? '')
+      const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
+      if (only === 'E') { await send('E', 'Pressing 90 — message simple', base('<p>Un seul message, sans image et sans lien.</p>'), 'Un seul message, sans image et sans lien.'); return { ok: true, note: out.join(' · ') } }
+      if (only === 'F') { await send('F', `Kit TikTok prêt : كيف جاء هدف إيغور تياغو؟`, base(`<img src="${cover}" alt="" style="width:100%;max-width:260px;border-radius:12px;display:block;margin:0 0 14px"><a href="${link}" style="display:inline-block;background:#FE2C55;color:#fff;font-weight:700;padding:14px 22px;border-radius:10px;text-decoration:none">Ouvrir le kit</a>`), `Kit TikTok — ouvrir : ${link}`); return { ok: true, note: out.join(' · ') } }
+      await send('A', 'Test A — texte seul', base('<p>Aucune image, aucun lien.</p>'), 'Test A — texte seul.')
+      await wait(25000)
+      await send('B', 'Test B — avec vignette', base(`<img src="${cover}" alt="" style="width:100%;max-width:260px;border-radius:12px">`), 'Test B — avec vignette.')
+      await wait(25000)
+      await send('C', 'Test C — avec bouton', base(`<a href="${link}" style="display:inline-block;background:#FE2C55;color:#fff;font-weight:700;padding:14px 22px;border-radius:10px;text-decoration:none">Ouvrir le kit</a>`), `Test C — avec bouton : ${link}`)
+      await wait(25000)
+      await send('D', 'Test D — كيف جاء هدف إيغور تياغو؟', base('<p style="direction:rtl;text-align:right">نص عربي للاختبار.</p>'), 'Test D — sujet et corps en arabe.')
+      return { ok: true, note: out.join(' · ') }
+    }
     if (job === 'mail-status') {
       // Delivery check (2026-09-19): Resend accepted the kit e-mails but Mehdi saw nothing — this reads back what Resend
       // did with one message (delivered / bounced / complained) without ever exposing the API key.
