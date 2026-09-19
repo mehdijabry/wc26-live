@@ -310,6 +310,17 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     const [bx, by, bl] = ballAt(t); ball(ctx, bx, by, bl)
   }
   // ── static base ──
+  // The closing card is drawn FIRST (Render OOM, 2026-09-19): it needs its own full-size layers and its own slide
+  // animation, and doing that after the frame loop pushed the container past 512 MB every time — even with the loop's
+  // surfaces released (the child still sat at 206 MB). Drawn here it costs the same, but at the lowest point of the run.
+  const cardSpec = await d.drawGoalAnimSpec({ titleLang: 'ar', footer: 'LIVE ON PRESSING90.LIVE', assistLabel: 'صناعة', ...(spec.card.special === 'barca' && confetti ? { special: 'barca', bgVideo: confetti } : {}), ...spec.card })
+  const layers = {}
+  for (const [k, buf] of Object.entries(cardSpec.layers)) { layers[k] = path.join(dir, `card-${k}.png`); fs.writeFileSync(layers[k], buf); cardSpec.layers[k] = null }   // the PNG is on disk — drop the buffer
+  const cardPath = path.join(dir, 'card.mp4')
+  await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5, small: RS < 1 && !upscale })
+  if (global.gc) { global.gc() }
+  console.log('[goal-anim] closing card ready, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
+
   const base = createCanvas(W, H); { const ctx = base.getContext('2d')
     ed.backdrop(ctx, W, H, { tone: 'blue' })
     await ed.stadium(ctx, W, H, { top: H - 420, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 })
@@ -400,13 +411,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   const qaVisual = { frames: N, markerCollisions: QA.markerCollisions, labelMoves: QA.labelMoves, unresolved: QA.unresolved, viewportFits: QA.viewportFits, events: QA.events.slice(0, 20) }
   console.log('[goal-anim] QA visual:', JSON.stringify({ ...qaVisual, events: undefined }))
 
-  // ── card + transition + audio mix + audio QA ──
-  const cardSpec = await d.drawGoalAnimSpec({ titleLang: 'ar', footer: 'LIVE ON PRESSING90.LIVE', assistLabel: 'صناعة', ...(spec.card.special === 'barca' && confetti ? { special: 'barca', bgVideo: confetti } : {}), ...spec.card })
-  const layers = {}
-  for (const [k, buf] of Object.entries(cardSpec.layers)) { layers[k] = path.join(dir, `card-${k}.png`); fs.writeFileSync(layers[k], buf); cardSpec.layers[k] = null }   // the PNG is on disk — drop the buffer
-  if (global.gc) { global.gc() }
-  const cardPath = path.join(dir, 'card.mp4')
-  await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5, small: RS < 1 && !upscale })
+  // ── transition + audio mix + audio QA (the closing card was rendered before the frame loop) ──
   const ffr = (args) => { const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error('ffmpeg ' + String(r.stderr || '').slice(-600)) }
   const Ds = dur(scenePath), XF = 0.4, fullPath = path.join(dir, 'full.mp4')
   ffr(['-i', scenePath, '-i', cardPath, '-filter_complex', `[0:v][1:v]xfade=transition=fade:duration=${XF}:offset=${(Ds - XF).toFixed(3)},format=yuv420p[v]`, '-map', '[v]', '-r', String(FPS), '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '22', '-maxrate', '6M', '-bufsize', '12M', '-movflags', '+faststart', fullPath])
