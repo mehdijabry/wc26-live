@@ -826,8 +826,15 @@ async function bigMatchesTodayUncached(env: Env, ymd: string): Promise<AutoMatch
     const r = await fetch(`${env.STUDIO_URL}/espn/today?date=${ymd}&leagues=${Object.keys(AUTO_LEAGUES).join(',')}`, {
       headers: { 'x-studio-secret': env.STUDIO_SECRET!, 'user-agent': 'p90-worker/1.0' }, signal: AbortSignal.timeout(30000),
     })
-    if (!r.ok) throw new Error(`studio espn proxy ${r.status}`)
-    daily = await r.json() as DailyJson
+    if (r.ok) daily = await r.json() as DailyJson
+    else {
+      // The studio can be down (Render suspended the free instances on 2026-09-19 — 750 h used) while the rest of the
+      // automation is fine, so the worker tries ESPN itself rather than failing the whole day. It works when ESPN lets
+      // the Cloudflare egress through; when it does not, the error says both paths failed.
+      const { fetchDaily } = await import('./index')
+      try { daily = await (await fetchDaily(env, ymd)).json() as DailyJson }
+      catch (e) { throw new Error(`studio espn proxy ${r.status}, direct fetch failed too: ${String(e).slice(0, 90)}`) }
+    }
   } else {
     const { fetchDaily } = await import('./index')
     daily = await (await fetchDaily(env, ymd)).json() as DailyJson
@@ -3146,6 +3153,18 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       await wait(25000)
       await send('D', 'Test D — كيف جاء هدف إيغور تياغو؟', base('<p style="direction:rtl;text-align:right">نص عربي للاختبار.</p>'), 'Test D — sujet et corps en arabe.')
       return { ok: true, note: out.join(' · ') }
+    }
+    if (job === 'espn-direct') {
+      // Can the worker read ESPN itself while the studio is suspended? (2026-09-19) — one league, status + payload size.
+      const slug = String((extra as { slug?: string }).slug ?? 'ita.1')
+      const ymd = String((extra as { date?: string }).date ?? localParts().date).replace(/-/g, '')
+      try {
+        const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/${slug}/scoreboard?dates=${ymd}`, { headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/128 Safari/537.36', accept: 'application/json' }, signal: AbortSignal.timeout(15000) })
+        const t = await r.text()
+        let events = -1
+        try { events = ((JSON.parse(t) as { events?: unknown[] }).events ?? []).length } catch { /* not json */ }
+        return { ok: r.ok, note: `${slug} ${ymd}: HTTP ${r.status}, ${t.length} bytes, ${events} events` }
+      } catch (e) { return { ok: false, note: String(e).slice(0, 160) } }
     }
     if (job === 'mail-status') {
       // Delivery check (2026-09-19): Resend accepted the kit e-mails but Mehdi saw nothing — this reads back what Resend
