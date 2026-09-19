@@ -1313,7 +1313,11 @@ function AutomationPanel() {
   type TT = { ok: boolean; configured: boolean; connected: boolean; username?: string; nickname?: string; scope?: string; expiresAt?: number; refreshExpiresAt?: number; creator?: { privacy_level_options?: string[]; max_video_post_duration_sec?: number }; error?: string; redirectUri: string }
   const [tt, setTt] = useState<TT | null>(null)
   const [ttBusy, setTtBusy] = useState(false)
-  const loadTikTok = useCallback(() => { void adminGet('/admin/tiktok/status').then((d) => setTt(d as TT)).catch(() => {}) }, [])
+  // Hand-off kits (2026-09-19): the e-mail can land in spam, so the panel lists the recent kits with their link.
+  type Kit = { id: string; url: string; title: string; meta?: string; coverUrl?: string; created: string; pushes: number; lastStatus?: string }
+  const [kits, setKits] = useState<Kit[]>([])
+  const loadKits = useCallback(() => { void adminGet('/admin/automation/tiktok-kits').then((d) => setKits(((d as { kits?: Kit[] }).kits ?? []))).catch(() => {}) }, [])
+  const loadTikTok = useCallback(() => { void adminGet('/admin/tiktok/status').then((d) => setTt(d as TT)).catch(() => {}); loadKits() }, [loadKits])
   async function connectTikTok() {
     setTtBusy(true)
     try { const r = await adminPost('/admin/tiktok/connect-url', {}) as { ok: boolean; url?: string; error?: string }; if (r.ok && r.url) window.open(r.url, '_blank', 'noopener'); else setMsg('✗ ' + (r.error ?? 'no url')) } catch (e) { setMsg('✗ ' + String(e)) }
@@ -1559,6 +1563,23 @@ function AutomationPanel() {
                     <option value="MUTUAL_FOLLOW_FRIENDS">friends</option>
                     <option value="PUBLIC_TO_EVERYONE">public (after TikTok audit)</option>
                   </select>
+                </div>
+                {/* Hand-off kits: cover, texts to copy, push to the TikTok drafts — same page the e-mail links to. */}
+                <div className="pt-2 border-t border-slate-200">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-semibold text-slate-700">Kits prêts</div>
+                    <button type="button" onClick={loadKits} className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-[11px] font-mono text-slate-700 hover:bg-slate-100">↻</button>
+                  </div>
+                  {kits.length === 0 && <div className="text-[11px] text-slate-500 mt-1">Aucun kit pour l'instant.</div>}
+                  <ul className="mt-1 space-y-1">
+                    {kits.slice(0, 6).map((k) => (
+                      <li key={k.id} className="flex items-center gap-2">
+                        {k.coverUrl && <img src={k.coverUrl} alt="" className="h-8 w-5 rounded object-cover border border-slate-200" />}
+                        <a href={k.url} target="_blank" rel="noopener" className="text-xs text-blue-700 hover:underline truncate flex-1">{k.title}</a>
+                        <span className="text-[10px] font-mono text-slate-500 whitespace-nowrap">{new Date(k.created).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}{k.pushes > 0 ? ' · envoyé' : ''}</span>
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               </div>
               {/* ── Football Stories: manual controls ─────────────────── */}
