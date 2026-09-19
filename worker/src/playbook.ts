@@ -44,6 +44,11 @@ const CTA_RE = /[👇👉⬇]|تابع|شاركنا|أخبرنا|رأيك|follow
 export function checkCaption(text: string, opts: { keyword?: string; lang?: 'ar' | 'en' | 'fr' } = {}): { text: string; warnings: string[]; hashtags: number } {
   const warnings: string[] = []
   let out = String(text ?? '').replace(/\r/g, '').trim()
+  // The Uppbeat licence block is kept out of every count and every trim (Brentford, 2026-09-19): its "#Uppbeat" was
+  // counted as a hashtag and dropped by the cap, publishing "Music from (free for Creators!)" — the credit is mandatory.
+  const creditAt = out.search(/^\s*Music from/im)
+  const credit = creditAt >= 0 ? out.slice(creditAt) : ''
+  if (creditAt >= 0) out = out.slice(0, creditAt).trimEnd()
   // hashtags: keep the first 5, drop the rest (wherever they are)
   const tags = [...out.matchAll(/(^|\s)(#[^\s#]+)/gu)].map((m) => m[2])
   if (tags.length > HASHTAG_MAX) {
@@ -60,6 +65,7 @@ export function checkCaption(text: string, opts: { keyword?: string; lang?: 'ar'
     if (kws.length && !kws.some((k) => norm(first).includes(k))) warnings.push(`keyword "${opts.keyword}" not in the first sentence`)
   }
   if (!CTA_RE.test(out)) warnings.push('no call to action')
+  if (credit) out = `${out}\n\n${credit.trim()}`
   return { text: out, warnings, hashtags: Math.min(tags.length, HASHTAG_MAX) }
 }
 

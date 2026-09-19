@@ -595,13 +595,13 @@ export async function installUserToken(env: Env, token: string): Promise<FbToken
 // • hourly check (minute 7) + nightly after the auto-renewal;
 // • instant on any Graph error 190 (invalid/expired token), rate-limited 6 h;
 // • advance warnings at 14/10/7/5/3/2/1/0 days (one mail per threshold).
-export async function sendMail(env: Env, subject: string, html: string): Promise<{ ok: boolean; note?: string }> {
+export async function sendMail(env: Env, subject: string, html: string, text?: string): Promise<{ ok: boolean; note?: string }> {
   const ex = env as unknown as { RESEND_API_KEY?: string; RESEND_FROM?: string }
   if (!ex.RESEND_API_KEY || !ex.RESEND_FROM) return { ok: false, note: 'Resend not configured' }
   try {
     const r = await fetch('https://api.resend.com/emails', {
       method: 'POST', headers: { authorization: `Bearer ${ex.RESEND_API_KEY}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ from: ex.RESEND_FROM, to: KIT_EMAIL_TO, subject, html }),
+      body: JSON.stringify({ from: ex.RESEND_FROM, to: KIT_EMAIL_TO, subject, html, ...(text ? { text } : {}) }),   // a plain-text part alongside the HTML reads as a real message, not a bare link
     })
     const j = await r.json().catch(() => ({})) as { id?: string; message?: string }
     return r.ok ? { ok: true, note: `mail ${j.id ?? 'sent'}` } : { ok: false, note: `resend ${r.status} ${j.message ?? ''}` }
@@ -3112,6 +3112,17 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     }
     if (job === 'token-check') {
       return { ok: true, note: await checkTokenAndAlert(env, date, 'à la demande (panel admin)') }
+    }
+    if (job === 'mail-status') {
+      // Delivery check (2026-09-19): Resend accepted the kit e-mails but Mehdi saw nothing — this reads back what Resend
+      // did with one message (delivered / bounced / complained) without ever exposing the API key.
+      const id = String((extra as { id?: string }).id ?? '')
+      if (!id) return { ok: false, note: 'id required' }
+      const ex2 = env as unknown as { RESEND_API_KEY?: string }
+      if (!ex2.RESEND_API_KEY) return { ok: false, note: 'Resend not configured' }
+      const r = await fetch(`https://api.resend.com/emails/${encodeURIComponent(id)}`, { headers: { authorization: `Bearer ${ex2.RESEND_API_KEY}` } })
+      const j = await r.json().catch(() => ({})) as Record<string, unknown>
+      return { ok: r.ok, note: JSON.stringify({ status: r.status, to: j.to, from: j.from, subject: j.subject, created_at: j.created_at, last_event: j.last_event }).slice(0, 600) }
     }
     if (job === 'token-mail-test') {
       // Sends the warning mail as it would look (status appended), regardless of expiry.

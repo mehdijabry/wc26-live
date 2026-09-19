@@ -7,7 +7,7 @@
 // the Facebook stories are: cover to download, texts to copy one tap at a time, and a button that pushes the video to the
 // TikTok drafts when Mehdi taps it (nothing leaves the worker before that tap).
 import type { Env } from './index'
-import { sendMail, WORKER_PUBLIC } from './automation'
+import { sendMail, SITE } from './automation'
 import { tiktokPublish, tiktokConfigured } from './tiktok'
 import type { TikTokMode, TikTokPrivacy } from './tiktok'
 
@@ -48,7 +48,7 @@ export function splitCaption(caption: string): { body: string; hashtags: string[
 export async function createTikTokKit(env: Env, kit: Omit<TikTokKit, 'created'>): Promise<{ id: string; url: string }> {
   const id = Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 12)
   await env.CACHE.put(KEY(id), JSON.stringify({ ...kit, created: new Date().toISOString(), pushes: 0 } satisfies TikTokKit), { expirationTtl: 7 * 86400 })
-  return { id, url: `${WORKER_PUBLIC}/tiktok-kit/${id}` }
+  return { id, url: `${SITE}/tiktok-kit/${id}` }   // served through the Pages function so the link matches the sender domain
 }
 export async function readTikTokKit(env: Env, id: string): Promise<TikTokKit | null> {
   const raw = await env.CACHE.get(KEY(id))
@@ -139,9 +139,10 @@ export async function sendTikTokKitEmail(env: Env, kit: TikTokKit, kitUrl: strin
     <div style="background:#f8fafc;border-radius:10px;padding:12px 14px;margin:14px 0;direction:rtl;text-align:right;font-size:14px;line-height:1.6;color:#0f172a;white-space:pre-wrap">${esc(body)}</div>
     ${tags ? `<p style="font-size:13px;color:#0f172a;margin:0 0 10px">${esc(tags)}</p>` : ''}
     ${credit ? `<pre style="font-size:12px;color:#64748b;margin:0 0 10px;white-space:pre-wrap;font-family:inherit">${esc(credit)}</pre>` : ''}
-    <p style="font-size:12px;color:#94a3b8;margin:0;word-break:break-all">${esc(kit.videoUrl)}</p>
+    <p style="font-size:12px;color:#94a3b8;margin:0">Pressing 90' · ${esc(kit.meta ?? '')}</p>
   </div>`
-  return sendMail(env, `🎬 TikTok prêt : ${kit.title.slice(0, 70)}`, html)
+  const text = [`Pressing 90' — kit TikTok`, kit.title, kit.meta ?? '', '', `Ouvrir le kit : ${kitUrl}`, '', body, tags, credit].filter(Boolean).join('\n')
+  return sendMail(env, `Kit TikTok prêt : ${kit.title.slice(0, 60)}`, html, text)
 }
 
 /** One call from the render callback: store the kit, e-mail it, return the page URL for the ops log. */

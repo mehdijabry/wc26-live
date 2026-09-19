@@ -14,7 +14,7 @@ export type GoalAnimItem = { id: string; slug: string; league: string; home: str
 type Texts = { scorerAr: string; assistAr: string; voices: string[]; captions: Array<[string, string]>; tags: string[]; cover: string; title: string; post: string }
 type Meta = { scorer: string; assist: string; minute: string; distance: number; side: 'home' | 'away'; team: string; opp: string; template: string; opening: string; corner: string; foot: string; scoreLine: string; league: string; venue: string; barca: boolean }
 type Scene = { spec: Record<string, unknown>; storyboard: string[]; meta: Meta }
-type Job = { stage: 'texts' | 'voices' | 'render' | 'wait'; item: GoalAnimItem; startedAt: number; stageAt: number; scene?: Scene; texts?: Texts; voiceUrls?: string[]; jobId?: string }
+type Job = { stage: 'texts' | 'voices' | 'render' | 'wait'; item: GoalAnimItem; startedAt: number; stageAt: number; scene?: Scene; texts?: Texts; voiceUrls?: string[]; jobId?: string; renderRetries?: number }
 type Play = NonNullable<MatchSummary['plays']>[number]
 
 export const MUSIC_CREDIT = 'Music from #Uppbeat (free for Creators!):\nhttps://uppbeat.io/t/aavirall/quake\nLicense code: UHBKKEMPL5OBSULI'
@@ -82,6 +82,25 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
         await saveJob(env, job)
         await log(env, date, 'goal-anim', true, `${meta.scorer} ${meta.minute}: render job ${jobId} sent to the studio (${(job.voiceUrls ?? []).length} voices)`)
         return 'render'
+      }
+      // 'wait' — the studio is rendering. Render's free instance restarts under memory pressure and takes the render
+      // child with it (Brentford preview, 2026-09-19: instance up 9 min while the job had been waiting 32 min), and no
+      // callback ever comes. Comparing the instance uptime with the age of our send detects that and re-sends the same
+      // render (texts and voices are already in the job), at most twice, instead of burning the 110-minute timeout.
+      if (job.stage === 'wait') {
+        const age = Date.now() - (job.stageAt ?? job.startedAt)
+        if (age > 4 * 60_000 && (job.renderRetries ?? 0) < 2) {
+          let uptime = -1
+          try { const h = await fetch(`${env.STUDIO_URL}/health`, { signal: AbortSignal.timeout(10_000) }); if (h.ok) uptime = Number(((await h.json()) as { uptime?: number }).uptime ?? -1) } catch { /* studio unreachable — leave it to the timeout */ }
+          if (uptime >= 0 && uptime * 1000 < age - 60_000) {
+            job.renderRetries = (job.renderRetries ?? 0) + 1
+            job.stage = 'render'; job.stageAt = Date.now()
+            await env.CACHE.delete(`auto:goalanim:sent:${job.item.id}`)
+            await saveJob(env, job)
+            await log(env, date, 'goal-anim', false, `${job.item.home} v ${job.item.away}: the studio restarted ${Math.round(uptime / 60)} min ago, render lost after ${Math.round(age / 60000)} min — resending (try ${job.renderRetries + 1}/3)`)
+            return 'render lost — resent'
+          }
+        }
       }
       return 'waiting'
     } catch (e) {
