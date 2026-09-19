@@ -389,13 +389,22 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   }
   ff.stdin.end()
   await new Promise((res, rej) => ff.on('close', (code) => (code ? rej(new Error('ffmpeg ' + code)) : res())))
+  // Free every drawing surface before the closing card (Render OOM, 2026-09-19): the main loop keeps ~10 full-size
+  // canvases alive (pitch, base, title, world, 9 caption cards, the sprite cache) and the card stage then allocates its
+  // own full-size layers on top — 512 MB was reached every time at this exact point. node-canvas releases the Cairo
+  // surface when a canvas is resized to zero; a manual GC pass (the child runs with --expose-gc) returns it right away.
+  for (const cv of [c, base, baseS, titleC, world, pitchLayer, ...capC, ...sprites.values()]) { try { if (cv) { cv.width = 0; cv.height = 0 } } catch { /* already released */ } }
+  sprites.clear()
+  if (global.gc) { global.gc() }
+  console.log('[goal-anim] surfaces released, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
   const qaVisual = { frames: N, markerCollisions: QA.markerCollisions, labelMoves: QA.labelMoves, unresolved: QA.unresolved, viewportFits: QA.viewportFits, events: QA.events.slice(0, 20) }
   console.log('[goal-anim] QA visual:', JSON.stringify({ ...qaVisual, events: undefined }))
 
   // ── card + transition + audio mix + audio QA ──
   const cardSpec = await d.drawGoalAnimSpec({ titleLang: 'ar', footer: 'LIVE ON PRESSING90.LIVE', assistLabel: 'صناعة', ...(spec.card.special === 'barca' && confetti ? { special: 'barca', bgVideo: confetti } : {}), ...spec.card })
   const layers = {}
-  for (const [k, buf] of Object.entries(cardSpec.layers)) { layers[k] = path.join(dir, `card-${k}.png`); fs.writeFileSync(layers[k], buf) }
+  for (const [k, buf] of Object.entries(cardSpec.layers)) { layers[k] = path.join(dir, `card-${k}.png`); fs.writeFileSync(layers[k], buf); cardSpec.layers[k] = null }   // the PNG is on disk — drop the buffer
+  if (global.gc) { global.gc() }
   const cardPath = path.join(dir, 'card.mp4')
   await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5, small: RS < 1 && !upscale })
   const ffr = (args) => { const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error('ffmpeg ' + String(r.stderr || '').slice(-600)) }

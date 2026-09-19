@@ -261,7 +261,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         await new Promise((resolve, reject) => {
           // `nice -n 19` (2026-09-18): the child still competes for the same 0.1 CPU — at full priority the Express loop lost the race, /health
           // timed out after 5 s and Render restarted the instance mid-render again (Olise, 22:35 UTC). Lowest priority keeps /health answering.
-          const child = spawnChild('nice', ['-n', '19', process.execPath, '--max-old-space-size=256', path.join(__dirname, 'goalanim-cli.js'), jobFile], { stdio: ['ignore', 'inherit', 'inherit'] })
+          const child = spawnChild('nice', ['-n', '19', process.execPath, '--max-old-space-size=256', '--expose-gc', path.join(__dirname, 'goalanim-cli.js'), jobFile], { stdio: ['ignore', 'inherit', 'inherit'] })   // --expose-gc: the engine frees its canvases between the frame loop and the closing card
           const killer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, 100 * 60_000)
           child.on('error', (e) => { clearTimeout(killer); reject(e) })
           child.on('close', (code) => { clearTimeout(killer); code === 0 ? resolve() : reject(new Error('goal-anim child exited ' + code)) })
