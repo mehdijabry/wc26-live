@@ -18,7 +18,11 @@ import { animSlide } from './video.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 /** Render one goal recreation: spec (scene), voices (local mp3 paths, one per beat), music / roar / confetti (local paths), dir (scratch), out (final mp4). */
-export async function renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps = 20, scale = 1, upscale = false }) {
+// `phase` splits the run across two processes (Render OOM, 2026-09-19): 'frames' draws the closing card and every
+// frame, then exits — which is the only way to give back the ~200 MB that node and node-canvas keep for good — and
+// 'finish' re-enters with almost nothing allocated to run the ffmpeg assembly (crossfade, mix, loudnorm, audio QA).
+// Both phases recompute the timings from the spec, which is cheap and needs no canvas. Omitted, the run is monolithic.
+export async function renderGoalRecreation({ spec, voices, music, roar, confetti, dir, out, fps = 20, scale = 1, upscale = false, phase = null }) {
   // scale < 1 (2026-09-18 test): every frame is drawn on a smaller canvas (2/3 → 720×1280) and ffmpeg scales it back to
   // 1080×1920 with lanczos — about half the CPU per frame on the 0.1-CPU studio, slightly softer picture.
   const RS = Math.max(0.4, Math.min(1, Number(scale) || 1)), RW = Math.round(1080 * RS / 2) * 2, RH = Math.round(1920 * RS / 2) * 2
@@ -310,13 +314,16 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     const [bx, by, bl] = ballAt(t); ball(ctx, bx, by, bl)
   }
   // ── static base ──
+  const cardPath = path.join(dir, 'card.mp4')
+  const statePath = path.join(dir, 'state.json')
+  let qaVisual
+  if (phase !== 'finish') {
   // The closing card is drawn FIRST (Render OOM, 2026-09-19): it needs its own full-size layers and its own slide
   // animation, and doing that after the frame loop pushed the container past 512 MB every time — even with the loop's
   // surfaces released (the child still sat at 206 MB). Drawn here it costs the same, but at the lowest point of the run.
   const cardSpec = await d.drawGoalAnimSpec({ titleLang: 'ar', footer: 'LIVE ON PRESSING90.LIVE', assistLabel: 'صناعة', ...(spec.card.special === 'barca' && confetti ? { special: 'barca', bgVideo: confetti } : {}), ...spec.card })
   const layers = {}
   for (const [k, buf] of Object.entries(cardSpec.layers)) { layers[k] = path.join(dir, `card-${k}.png`); fs.writeFileSync(layers[k], buf); cardSpec.layers[k] = null }   // the PNG is on disk — drop the buffer
-  const cardPath = path.join(dir, 'card.mp4')
   await animSlide({ spec: { layers, anims: cardSpec.anims, bgVideo: cardSpec.bgVideo }, seconds: 4.6, fps: FPS, out: cardPath, fadeIn: 0, fadeOut: 0.5, small: RS < 1 && !upscale })
   if (global.gc) { global.gc() }
   console.log('[goal-anim] closing card ready, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
@@ -408,8 +415,14 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   sprites.clear()
   if (global.gc) { global.gc() }
   console.log('[goal-anim] surfaces released, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
-  const qaVisual = { frames: N, markerCollisions: QA.markerCollisions, labelMoves: QA.labelMoves, unresolved: QA.unresolved, viewportFits: QA.viewportFits, events: QA.events.slice(0, 20) }
+  qaVisual = { frames: N, markerCollisions: QA.markerCollisions, labelMoves: QA.labelMoves, unresolved: QA.unresolved, viewportFits: QA.viewportFits, events: QA.events.slice(0, 20) }
   console.log('[goal-anim] QA visual:', JSON.stringify({ ...qaVisual, events: undefined }))
+  fs.writeFileSync(statePath, JSON.stringify(qaVisual))
+  if (phase === 'frames') return { phase: 'frames', seconds: null, qa: { visual: qaVisual } }
+  } else {
+    qaVisual = JSON.parse(fs.readFileSync(statePath, 'utf8'))
+    console.log('[goal-anim] assembly phase, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
+  }
 
   // ── transition + audio mix + audio QA (the closing card was rendered before the frame loop) ──
   const ffr = (args) => { const r = spawnSync('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', ...args], { encoding: 'utf8' }); if (r.status !== 0) throw new Error('ffmpeg ' + String(r.stderr || '').slice(-600)) }

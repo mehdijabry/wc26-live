@@ -4,8 +4,10 @@
 import fs from 'node:fs'
 import { renderGoalRecreation } from './goalanim.js'
 const job = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
+const phase = process.argv[3] || null   // 'frames' then 'finish', run as two processes so the frame loop's memory is gone before ffmpeg assembles
 try {
-  const r = await renderGoalRecreation(job)
+  const r = await renderGoalRecreation({ ...job, phase })
+  if (phase === 'frames') { process.exit(0) }
   fs.writeFileSync(job.out + '.json', JSON.stringify(r))
   process.exit(0)
 } catch (e) {

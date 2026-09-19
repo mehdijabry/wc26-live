@@ -258,14 +258,17 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         // event loop, /health stopped answering and Render restarted the instance mid-render (job lost, no callback).
         const jobFile = path.join(dir, 'job.json')
         await fs.writeFile(jobFile, JSON.stringify({ spec, voices, music, roar, confetti, dir, out, fps: data.fps || 20, scale: data.scale || 1, upscale: !!data.upscale }))
-        await new Promise((resolve, reject) => {
-          // `nice -n 19` (2026-09-18): the child still competes for the same 0.1 CPU — at full priority the Express loop lost the race, /health
-          // timed out after 5 s and Render restarted the instance mid-render again (Olise, 22:35 UTC). Lowest priority keeps /health answering.
-          const child = spawnChild('nice', ['-n', '19', process.execPath, '--max-old-space-size=256', '--expose-gc', path.join(__dirname, 'goalanim-cli.js'), jobFile], { stdio: ['ignore', 'inherit', 'inherit'] })   // --expose-gc: the engine frees its canvases between the frame loop and the closing card
-          const killer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, 100 * 60_000)
+        // Two child processes, one per phase (2026-09-19): node and node-canvas never give back the ~200 MB the frame loop
+        // needs, so running the ffmpeg assembly in the same process kept hitting Render's 512 MB ceiling at the very end.
+        // `nice -n 19` keeps the Express event loop answering /health while a child owns the 0.1 CPU.
+        const runPhase = (phase, minutes) => new Promise((resolve, reject) => {
+          const child = spawnChild('nice', ['-n', '19', process.execPath, '--max-old-space-size=256', '--expose-gc', path.join(__dirname, 'goalanim-cli.js'), jobFile, phase], { stdio: ['ignore', 'inherit', 'inherit'] })
+          const killer = setTimeout(() => { try { child.kill('SIGKILL') } catch { /* ignore */ } }, minutes * 60_000)
           child.on('error', (e) => { clearTimeout(killer); reject(e) })
-          child.on('close', (code) => { clearTimeout(killer); code === 0 ? resolve() : reject(new Error('goal-anim child exited ' + code)) })
+          child.on('close', (code) => { clearTimeout(killer); code === 0 ? resolve() : reject(new Error(`goal-anim ${phase} exited ` + code)) })
         })
+        await runPhase('frames', 80)
+        await runPhase('finish', 25)
         const result = JSON.parse(await fs.readFile(out + '.json', 'utf8'))
         if (result.error) throw new Error('goal-anim: ' + result.error.slice(0, 400))
         const { seconds: len, qa } = result
