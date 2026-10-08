@@ -54,6 +54,10 @@ export interface Env {
   // is skipped and logged.
   STUDIO_URL?: string            // wrangler.toml [vars], e.g. https://p90-studio.onrender.com
   STUDIO_SECRET?: string         // shared with the studio (wrangler secret)
+  // api-sports.io (API-FOOTBALL) — la seule source qui couvre la Botola,
+  // qu'ESPN n'a pas du tout. La clé reste ici : le navigateur ne doit jamais
+  // la voir, sinon n'importe qui brûle le quota. Posée par wrangler secret.
+  APISPORTS_KEY?: string
   TIKTOK_CLIENT_KEY?: string     // TikTok for Developers app (Content Posting API) — wrangler secret, Mehdi (2026-09-18)
   TIKTOK_CLIENT_SECRET?: string
   MAKE_FB_VIDEO_WEBHOOK_URL?: string  // Make scenario 2: webhook → Facebook Pages "Upload a Video"
@@ -468,6 +472,23 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
         const dateParam = rawDate ? safeYmd(rawDate) : ymdUtc(new Date())
         if (!dateParam) return cors(json({ error: 'invalid date' }, 400), req)
         return cors(await fetchDaily(env, dateParam), req)
+      }
+
+
+      // Botola marocaine — via api-sports.io, parce qu'ESPN n'a aucun
+      // championnat marocain dans son catalogue de 219 compétitions.
+      // La clé ne sort jamais d'ici ; le navigateur appelle ces deux routes.
+      if (url.pathname === '/botola/teams') {
+        // `?season=` sert au diagnostic : il permet de distinguer « la chaîne
+        // est cassée » de « le forfait ne couvre pas cette saison ».
+        const sRaw = url.searchParams.get('season')
+        const saison = sRaw && /^(19|20)[0-9]{2}$/.test(sRaw) ? Number(sRaw) : null
+        return cors(await botolaClubs(env, saison), req)
+      }
+      if (url.pathname === '/botola/squad') {
+        const id = (url.searchParams.get('team') || '').trim()
+        if (!/^[0-9]{1,8}$/.test(id)) return cors(json({ error: 'invalid team' }, 400), req)
+        return cors(await botolaEffectif(env, id), req)
       }
 
       // Web Push — opt-in flow + send.
@@ -1338,6 +1359,151 @@ interface EspnScoreboard {
       }>
     }>
   }>
+}
+
+
+/* ─────────────────────────── Botola (api-sports.io) ───────────────────────
+ *
+ * ESPN n'a AUCUN championnat marocain — vérifié sur son catalogue de 219
+ * compétitions, `mar.1` répond vide. api-sports couvre « Botola Pro ».
+ *
+ * Deux contraintes dictent ce code :
+ *
+ *  1. La clé est un secret. Elle ne doit jamais partir dans le navigateur,
+ *     donc ces deux routes existent et le front n'appelle qu'elles.
+ *  2. Le quota se compte à la requête, pas à l'utilisateur. Sans cache,
+ *     chaque visiteur d'une fiche de club consommerait un appel. Avec le
+ *     cache KV ci-dessous, la Botola entière coûte 1 + 16 appels par jour,
+ *     quel que soit le trafic.
+ */
+
+const APISPORTS = 'https://v3.football.api-sports.io'
+/** Un jour : un effectif ne bouge pas plus vite, et c'est le quota qui commande. */
+const BOTOLA_TTL = 86_400
+
+async function apiSports<T>(env: Env, chemin: string, ttl: number): Promise<T> {
+  if (!env.APISPORTS_KEY) throw new Error('APISPORTS_KEY absente')
+  const cle = `apisports:${chemin}`
+  const enCache = await env.CACHE.get(cle)
+  if (enCache) return JSON.parse(enCache) as T
+
+  const r = await fetch(`${APISPORTS}${chemin}`, {
+    headers: { 'x-apisports-key': env.APISPORTS_KEY },
+  })
+  if (!r.ok) throw new Error(`api-sports ${r.status} sur ${chemin}`)
+  const d = (await r.json()) as { errors?: unknown; response?: unknown }
+  // api-sports répond 200 même quand il refuse : l'erreur est dans le corps,
+  // et c'est un objet vide quand tout va bien.
+  const erreurs = d.errors
+  const aDesErreurs = Array.isArray(erreurs) ? erreurs.length > 0 : !!erreurs && Object.keys(erreurs as object).length > 0
+  if (aDesErreurs) throw new Error(`api-sports a refusé : ${JSON.stringify(erreurs)}`)
+
+  env.CACHE.put(cle, JSON.stringify(d), { expirationTtl: ttl }).catch(() => {})
+  return d as T
+}
+
+type LigueApiSports = {
+  response?: Array<{
+    league?: { id?: number; name?: string }
+    seasons?: Array<{ year?: number; current?: boolean }>
+  }>
+}
+
+/**
+ * L'identifiant de la Botola et sa saison en cours, résolus par l'API plutôt
+ * qu'écrits en dur — une saison change tous les ans, un identifiant peut
+ * bouger. Mis en cache une semaine : ça ne coûte qu'un appel.
+ */
+async function botolaLigue(env: Env): Promise<{ id: number; saison: number; nom: string }> {
+  const d = await apiSports<LigueApiSports>(env, '/leagues?country=Morocco', 604_800)
+  const entree =
+    (d.response ?? []).find((x) => (x.league?.name ?? '').toLowerCase() === 'botola pro') ??
+    (d.response ?? []).find((x) => (x.league?.name ?? '').toLowerCase().startsWith('botola pro'))
+  const id = entree?.league?.id
+  if (!id) throw new Error('Botola Pro introuvable chez api-sports')
+  const saisons = entree?.seasons ?? []
+  const saison =
+    saisons.find((x) => x.current)?.year ??
+    saisons.map((x) => x.year ?? 0).sort((a, b) => b - a)[0]
+  if (!saison) throw new Error('saison de la Botola introuvable')
+  return { id, saison, nom: entree?.league?.name ?? 'Botola Pro' }
+}
+
+type EquipesApiSports = {
+  response?: Array<{
+    team?: { id?: number; name?: string; code?: string; logo?: string }
+    venue?: { name?: string }
+  }>
+}
+
+/** La liste des clubs. Le slug n'est PAS calculé ici : `slugDuClub` côté site
+ *  reste la seule source de vérité pour les URL, sinon les deux divergent. */
+async function botolaClubs(env: Env, saisonForcee: number | null = null): Promise<Response> {
+  try {
+    const { id, saison: saisonCourante, nom } = await botolaLigue(env)
+    const saison = saisonForcee ?? saisonCourante
+    const d = await apiSports<EquipesApiSports>(env, `/teams?league=${id}&season=${saison}`, BOTOLA_TTL)
+    const clubs = (d.response ?? [])
+      .filter((x) => x.team?.id && x.team?.name)
+      .map((x) => ({
+        id: String(x.team!.id),
+        nom: x.team!.name!,
+        abbr: x.team!.code ?? '',
+        logo: x.team!.logo ?? null,
+        stade: x.venue?.name ?? null,
+      }))
+    return json({ nomLigue: nom, saison, clubs })
+  } catch (e) {
+    return json({ error: String((e as Error).message) }, 502)
+  }
+}
+
+type EffectifApiSports = {
+  response?: Array<{
+    team?: { id?: number; name?: string; logo?: string }
+    players?: Array<{
+      id?: number
+      name?: string
+      age?: number
+      number?: number
+      position?: string
+    }>
+  }>
+}
+
+/** Un club et son effectif. api-sports donne le poste en toutes lettres
+ *  (« Goalkeeper »), qu'on ramène aux initiales d'ESPN pour que le tri et
+ *  l'affichage soient les mêmes partout. Il ne donne pas la nationalité sur
+ *  cette route — elle coûterait un appel paginé par club. */
+async function botolaEffectif(env: Env, idEquipe: string): Promise<Response> {
+  const POSTES: Record<string, string> = {
+    goalkeeper: 'G',
+    defender: 'D',
+    midfielder: 'M',
+    attacker: 'F',
+  }
+  try {
+    const d = await apiSports<EffectifApiSports>(env, `/players/squads?team=${idEquipe}`, BOTOLA_TTL)
+    const e = (d.response ?? [])[0]
+    if (!e?.team?.id) return json({ error: 'club introuvable' }, 404)
+    return json({
+      id: String(e.team.id),
+      nom: e.team.name ?? '',
+      logo: e.team.logo ?? null,
+      effectif: (e.players ?? [])
+        .filter((j) => j.id && j.name)
+        .map((j) => ({
+          id: String(j.id),
+          nom: j.name!,
+          poste: POSTES[(j.position ?? '').toLowerCase()] ?? null,
+          numero: typeof j.number === 'number' ? String(j.number) : null,
+          age: typeof j.age === 'number' ? j.age : null,
+          nationalite: null as string | null,
+        })),
+    })
+  } catch (e) {
+    return json({ error: String((e as Error).message) }, 502)
+  }
 }
 
 async function cachedFetch(env: Env, key: string, upstream: string, ttl: number): Promise<Response> {

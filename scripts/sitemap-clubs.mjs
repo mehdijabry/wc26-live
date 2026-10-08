@@ -24,7 +24,10 @@ const ORIGINE = 'https://pressing90.live'
 /** Lit la sélection de championnats dans la source, pour n'avoir qu'un seul endroit à tenir. */
 function championnats() {
   const src = readFileSync(join(process.cwd(), 'src', 'lib', 'clubs.ts'), 'utf8')
-  return [...src.matchAll(/\{\s*espn:\s*'([^']+)',\s*slug:\s*'([^']+)'/g)].map((m) => ({
+  // Ancré en début de ligne, sinon une entrée MISE EN COMMENTAIRE est lue
+  // comme active — la Botola commentée faisait réapparaître 18 championnats
+  // au lieu de 17, et le plan du site aurait publié des adresses vides.
+  return [...src.matchAll(/^\s*\{\s*espn:\s*'([^']+)',\s*slug:\s*'([^']+)'/gm)].map((m) => ({
     espn: m[1],
     slug: m[2],
   }))
@@ -40,7 +43,26 @@ function slugDuClub(nom) {
     .replace(/^-+|-+$/g, '')
 }
 
+// L'adresse du worker est lue dans src/lib/api.ts, pas recopiée : deux
+// copies finiraient par diverger le jour d'un changement de domaine.
+function adresseDuWorker() {
+  const src = readFileSync('src/lib/api.ts', 'utf8')
+  const m = src.match(/VITE_API_BASE \?\? '([^']+)'/)
+  if (!m) throw new Error("adresse du worker introuvable dans src/lib/api.ts")
+  return m[1]
+}
+
 async function clubs(espnSlug) {
+  // La Botola passe par le worker : api-sports exige une clé, qui ne sort pas
+  // de là. Même source que `clubsDuChampionnat` côté site.
+  if (espnSlug === 'botola') {
+    const r = await fetch(`${adresseDuWorker()}/botola/teams`)
+    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+    const d = await r.json()
+    if (d.error) throw new Error(d.error)
+    return (d.clubs ?? []).map((c) => c.nom).filter(Boolean)
+  }
+
   const r = await fetch(`${ESPN}/${espnSlug}/standings`)
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
   const d = await r.json()

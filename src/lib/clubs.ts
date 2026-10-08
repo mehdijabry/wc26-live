@@ -21,9 +21,14 @@
  *   • `site.api.espn.com/.../teams/{id}?enable=roster` (le détail) renvoie `*`.
  *     La fiche de club et son effectif passent donc par là.
  *
- * Et pourquoi pas le worker : ESPN répond 403 aux adresses IP de Cloudflare.
- * Vérifié sur la production — `wc26-api.../scoreboard` renvoie « Forbidden ».
- * Un relais côté serveur est donc exclu, ici comme ailleurs sur le site.
+ * Et pourquoi pas un relais par le worker : parce qu'il n'apporte rien ici.
+ * Le classement répond déjà avec le CORS ouvert, donc le navigateur se sert
+ * seul, sans hop supplémentaire ni cache à tenir. (Note : contrairement à ce
+ * qui était noté depuis août 2026, ESPN n'interdit PAS les adresses IP de
+ * Cloudflare — vérifié le 8 octobre, `/tournament` du worker renvoie bien ses
+ * 104 événements. Le « Forbidden » qu'on voyait venait du filtre anti-`curl`
+ * du worker lui-même, pas d'ESPN. Un relais reste donc possible si un jour
+ * une route sans CORS devient nécessaire — c'est ce que fait la Botola.)
  */
 
 /**
@@ -40,6 +45,19 @@
 const ESPN_DETAIL = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer'
 /** Le listing des clubs d'un championnat, via son classement — CORS ouvert. */
 const ESPN_LISTE = 'https://site.web.api.espn.com/apis/v2/sports/soccer'
+
+/**
+ * La Botola n'est pas un slug ESPN : c'est un aiguillage.
+ *
+ * ESPN n'a AUCUN championnat marocain — son catalogue de 219 compétitions
+ * n'en contient pas, `mar.1` répond vide. api-sports.io, lui, couvre
+ * « Botola Pro ». Mais api-sports exige une clé dans chaque requête, et une
+ * clé lisible dans le code de la page est une clé brûlée : c'est donc le
+ * worker qui la détient et qui expose `/botola/teams` et `/botola/squad`.
+ * Il met en cache 24 h, pour que le quota ne dépende pas du trafic.
+ */
+const BOTOLA = 'botola'
+const WORKER = import.meta.env.VITE_API_BASE ?? 'https://wc26-api.nameless-violet-5dc1.workers.dev'
 
 export type Championnat = {
   /** Le slug ESPN, qui sert de clé d'API. */
@@ -83,6 +101,22 @@ export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
   Africa: [
     { espn: 'caf.champions', slug: 'caf-champions-league', pays: '' },
     { espn: 'caf.confed', slug: 'caf-confederation-cup', pays: '' },
+    // LA BOTOLA EST PRÊTE MAIS N'EST PAS PUBLIÉE. Pour l'activer, il suffit
+    // de décommenter la ligne ci-dessous — tout le reste existe déjà : la
+    // route `/botola/teams` et `/botola/squad` du worker, l'aiguillage plus
+    // bas dans ce fichier, et le script du plan du site.
+    //
+    // Ce qui bloque n'est pas technique : le forfait gratuit d'api-sports
+    // s'arrête à la saison 2024, et publier des effectifs vieux de deux ans
+    // sur un site de scores en direct n'a pas de sens. Vérifié le 8 octobre
+    // 2026 — en saison 2024 l'API renvoie bien les 18 clubs avec Raja
+    // Casablanca, Wydad, FAR et leurs stades, donc la chaîne est prouvée.
+    // Il faut un forfait API-FOOTBALL payant (le premier, à 19 $/mois, est
+    // déjà très surdimensionné : le cache 24 h du worker ramène la Botola
+    // entière à une vingtaine de requêtes par jour). Décision de Mehdi,
+    // 8 octobre 2026 : on attend.
+    //
+    // { espn: 'botola', slug: 'botola', pays: 'MAR' },
     { espn: 'rsa.1', slug: 'south-african-premiership', pays: 'RSA' },
     // LE MAROC n'a pas de championnat chez ESPN : le catalogue des 219
     // compétitions ne contient aucune Botola (`mar.1` répond vide). Les clubs
@@ -201,6 +235,24 @@ function versResume(t: EspnTeamRaw): ClubResume {
 export async function clubsDuChampionnat(
   espnSlug: string,
 ): Promise<{ nomLigue: string; clubs: ClubResume[] }> {
+  if (espnSlug === BOTOLA) {
+    const d = await jget<{ nomLigue: string; clubs: Array<{ id: string; nom: string; abbr: string; logo: string | null }> }>(
+      `${WORKER}/botola/teams`,
+    )
+    const clubs = d.clubs
+      .map((c) => ({
+        id: c.id,
+        nom: c.nom,
+        nomCourt: c.nom,
+        abbr: c.abbr,
+        slug: slugDuClub(c.nom),
+        logo: c.logo,
+        couleur: null,
+      }))
+      .sort((a, b) => a.nom.localeCompare(b.nom, 'en'))
+    return { nomLigue: d.nomLigue, clubs }
+  }
+
   const d = await jget<EspnStandings>(`${ESPN_LISTE}/${espnSlug}/standings`)
   // Une coupe range ses clubs dans plusieurs groupes ; un championnat n'en a
   // qu'un. On descend l'arbre dans les deux cas, et on dédoublonne par id —
@@ -227,6 +279,27 @@ export async function clubsDuChampionnat(
  * Pas de stade : ESPN n'en publie pour aucun club, même sur `/teams/{id}`.
  */
 export async function clubAvecEffectif(espnSlug: string, id: string): Promise<ClubDetail> {
+  if (espnSlug === BOTOLA) {
+    const d = await jget<{
+      id: string
+      nom: string
+      logo: string | null
+      effectif: Joueur[]
+    }>(`${WORKER}/botola/squad?team=${encodeURIComponent(id)}`)
+    return {
+      id: d.id,
+      nom: d.nom,
+      nomCourt: d.nom,
+      abbr: '',
+      slug: slugDuClub(d.nom),
+      logo: d.logo,
+      couleur: null,
+      effectif: d.effectif,
+      stade: null,
+      lienOfficiel: null,
+    }
+  }
+
   const d = await jget<{ team: EspnTeamRaw; athletes?: EspnTeamRaw['athletes'] }>(
     `${ESPN_DETAIL}/${espnSlug}/teams/${id}/roster`,
   )

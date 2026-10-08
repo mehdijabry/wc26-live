@@ -149,6 +149,10 @@ export function ClubPage() {
     return Number(a.numero ?? 99) - Number(b.numero ?? 99)
   })
 
+  // La Botola passe par api-sports, dont la route d'effectif ne donne pas la
+  // nationalité. Plutôt qu'une colonne de tirets, on la retire.
+  const avecNationalite = effectif.some((j) => j.nationalite)
+
   return (
     <div className="container max-w-4xl mx-auto px-6 py-10">
       <Link to={`/clubs/${ch.slug}`} className="text-sm text-muted-foreground hover:underline">
@@ -178,7 +182,7 @@ export function ClubPage() {
                   <th className="py-2 pr-3 font-medium">Player</th>
                   <th className="py-2 pr-3 font-medium">Position</th>
                   <th className="py-2 pr-3 font-medium">Age</th>
-                  <th className="py-2 font-medium">Nationality</th>
+                  {avecNationalite && <th className="py-2 font-medium">Nationality</th>}
                 </tr>
               </thead>
               <tbody>
@@ -188,7 +192,7 @@ export function ClubPage() {
                     <td className="py-2 pr-3 font-medium">{j.nom}</td>
                     <td className="py-2 pr-3">{j.poste ?? '—'}</td>
                     <td className="py-2 pr-3 tabular-nums">{j.age ?? '—'}</td>
-                    <td className="py-2">{j.nationalite ?? '—'}</td>
+                    {avecNationalite && <td className="py-2">{j.nationalite ?? '—'}</td>}
                   </tr>
                 ))}
               </tbody>
