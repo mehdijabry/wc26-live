@@ -91,7 +91,7 @@ export const WC_FAQ: FaqEntry[] = [
   },
   {
     slug: 'knockout-rules',
-    question: 'How do extra time and penalty shootouts work in football?',
+    question: 'How do extra time and penalty shootouts work in soccer?',
     short: 'A knockout tie still level after 90 minutes goes to two 15-minute halves of extra time. Level again, it goes to penalties: five alternating kicks each, then sudden death.',
     long: [
       'A knockout match has to produce a winner on the night. If it is level after the regulation 90 minutes plus stoppage time, the teams play extra time: two halves of 15 minutes each, no golden goal. The team with more goals after extra time wins. At the 2026 World Cup this applies from the Round of 32 onwards.',
@@ -104,7 +104,7 @@ export const WC_FAQ: FaqEntry[] = [
   },
   {
     slug: 'var',
-    question: 'How does VAR work in football?',
+    question: 'How does VAR work in soccer?',
     short: 'VAR can only review four things: goals, penalty decisions, direct red cards and mistaken identity. Everything else stands. The referee keeps the final word, after a look at the pitchside monitor.',
     long: [
       "VAR (Video Assistant Referee) has been in the Laws of the Game since 2018 and is now used in every major league and tournament. It is deliberately narrow. Only four categories of incident can be reviewed: (1) goals and the build-up to them, (2) penalty decisions, (3) direct red-card incidents — not second yellows — and (4) mistaken identity when a card is shown. Anything outside those four stands, however wrong it looks on the replay.",
@@ -160,7 +160,7 @@ export const WC_FAQ: FaqEntry[] = [
   // ────────────────────────────────────────────────────────────────
   {
     slug: 'new-rules',
-    question: "What are the new football rules for 2025/26?",
+    question: "What are the new football rules? The 2025/26 changes",
     short: "The 8-second goalkeeper rule with a corner as the penalty, captain-only communication with the referee, semi-automated offside, and VAR decisions announced over the stadium PA. All in the Laws of the Game 2025/26.",
     long: [
       "The IFAB approved the biggest cluster of changes to the Laws of the Game since VAR between 2024 and 2025 — most of them tested at Euro 2024, Copa América 2024 and the Club World Cup 2025 before becoming permanent. They sit in the Laws of the Game 2025/26, so they apply to every competition that follows the Laws, from a Sunday league fixture to the 2026 World Cup.",
@@ -229,7 +229,7 @@ export const WC_FAQ: FaqEntry[] = [
   // ────────────────────────────────────────────────────────────────
   {
     slug: 'offside-explained',
-    question: "How does the offside rule actually work in football?",
+    question: "How does the offside rule work in soccer?",
     short: "A player is offside if any part of their body that can score (not arms/hands) is closer to the opponent's goal line than both the ball AND the second-to-last defender at the moment a teammate plays the ball to them.",
     long: [
       "The offside rule has three parts that all need to be true at once. (1) Position: the attacker is in the opponent's half AND closer to the goal line than the ball AND closer than the second-to-last defender (usually a defender, plus the goalkeeper). (2) Active involvement: the attacker actually plays the ball, interferes with a defender, or gains an advantage from being in that position. (3) The infraction is judged at the moment the ball is played by the attacker's teammate — not when the attacker receives it.",
@@ -242,7 +242,7 @@ export const WC_FAQ: FaqEntry[] = [
   },
   {
     slug: 'handball-rule',
-    question: "When is handball a foul in football?",
+    question: "When is handball a foul in soccer?",
     short: "Deliberate handball is always a foul. Accidental handball is only a foul if (a) it directly leads to a goal by the same player, or (b) the player's arm is in an 'unnaturally large' position making the body bigger. Accidental handball by a teammate that leads to a goal is no longer a foul.",
     long: [
       "The handball rule was tightened in 2021 after years of confusion about 'unintentional' touches. The current Law 12 framework distinguishes deliberate handball (always a foul) from accidental contact (judged on context).",

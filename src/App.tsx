@@ -644,7 +644,7 @@ function TodayPage() {
   // describing a tournament instead of the page, and it tied the one route
   // with year-round search demand to an event that finished in July.
   usePageHead({
-    titre: "Today's football matches — live scores, every competition",
+    titre: 'Football scores today — live results from every competition',
     description:
       "Every match being played today, league by league: kickoff times in your own timezone, live scores as they change, and the final result.",
     chemin: '/today',
