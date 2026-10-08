@@ -43,7 +43,35 @@ const SITEMAP = join(ROOT, 'public', 'sitemap.xml')
 // Dynamic port — 0 lets the OS pick a free port and we read it back
 // after listen(). Avoids collisions with anything else binding 4321.
 let PORT = 0
-const CONCURRENCY = 4 // launch up to N browser tabs at once
+// Deux onglets au lieu de quatre : chaque route attend des données ESPN, et
+// à quatre la machine rendait la main avant que le useEffect de titre ait
+// tourné sur les routes les plus lentes.
+const CONCURRENCY = 2 // launch up to N browser tabs at once
+
+/**
+ * Le titre que porte `dist/index.html`, lu au démarrage.
+ *
+ * Il était écrit en dur ici, et il datait d'avant le changement de marque :
+ * la condition d'attente comparait à « WC26 Live · Pressing 90′ — World Cup
+ * 2026 scores », un titre que la page ne porte plus. La comparaison était donc
+ * vraie dès le premier test et le script n'attendait RIEN. Les routes dont le
+ * titre arrive vite s'en tiraient par chance ; les autres partaient en
+ * production avec le titre de l'accueil. Relevé le 7 octobre 2026 : 15 des 106
+ * URL servaient le même titre et la même description, et Google n'indexait que
+ * 3 pages sur 50.
+ */
+function titreParDefaut() {
+  const html = readFileSync(join(DIST, 'index.html'), 'utf8')
+  const m = html.match(/<title>([^<]*)<\/title>/i)
+  if (!m) throw new Error('dist/index.html has no <title> to compare against')
+  return m[1].replace(/&amp;/g, '&').trim()
+}
+
+/** Routes qui ont gardé le titre par défaut — remplie pendant la passe. */
+const sansTitrePropre = []
+
+/** Renseigné au démarrage de main(), une fois `dist/` confirmé présent. */
+let DEFAUT = ''
 
 // ---------------------------------------------------------------------------
 // Step 1 — Parse sitemap.xml for routes
@@ -162,18 +190,18 @@ async function prerenderRoute(browser, route) {
   // hydration. Wait until the title is no longer the generic landing one.
   try {
     await page.waitForFunction(
-      () => {
-        const t = document.title || ''
-        return (
-          t.length > 0 &&
-          !t.startsWith('WC26 Live · Pressing 90′ — World Cup 2026 scores')
-        )
+      (defaut) => {
+        const t = (document.title || '').replace(/&amp;/g, '&').trim()
+        return t.length > 0 && t !== defaut
       },
-      { timeout: 6_000 }
+      { timeout: 20_000 },
+      DEFAUT
     )
   } catch {
-    // Some routes legitimately use the default title (e.g. the home
-    // page). Don't fail the route just because the title didn't change.
+    // La page d'accueil porte légitimement le titre par défaut. Partout
+    // ailleurs c'est un doublon qui part en production : on ne fait pas
+    // échouer la route, mais on le dit à la fin au lieu de l'avaler.
+    if (route !== '/') sansTitrePropre.push(route)
   }
 
   // Small extra wait so any debounced setMeta / structured-data
@@ -245,6 +273,9 @@ async function main() {
     process.exit(1)
   }
 
+  DEFAUT = titreParDefaut()
+  console.log(`[prerender] Default title to beat: ${DEFAUT}`)
+
   const { routes } = parseSitemap()
   console.log(`[prerender] Found ${routes.length} routes in sitemap.`)
 
@@ -315,6 +346,15 @@ async function main() {
   }
 
   console.log(`[prerender] Done. ${ok} ok, ${failed} failed.`)
+  if (sansTitrePropre.length) {
+    console.log(
+      `[prerender] ATTENTION — ${sansTitrePropre.length} route(s) ont gardé le titre de l'accueil.`
+    )
+    console.log("[prerender] Google les verra comme des doublons et ne les indexera pas :")
+    for (const r of sansTitrePropre) console.log(`  - ${r}`)
+  } else {
+    console.log('[prerender] Chaque route a son propre titre.')
+  }
   if (failures.length) {
     console.log('[prerender] Failures:')
     for (const f of failures) {

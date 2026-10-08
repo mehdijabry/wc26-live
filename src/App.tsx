@@ -13,6 +13,7 @@ import { NewsTicker } from './components/NewsTicker'
 import { PullToRefresh } from './components/PullToRefresh'
 import { useAuth } from './store/auth'
 import { usePredictions } from './store/predictions'
+import { usePageHead } from './lib/head'
 import { LottieLoader } from './components/LottieLoader'
 import { Ad, AdPair } from './components/AdSlot'
 import { AmazonShelf } from './components/AmazonShelf'
@@ -508,6 +509,12 @@ function HomePage() {
 }
 
 function WC26Page() {
+  usePageHead({
+    titre: 'World Cup 2026 — final bracket, groups and squads',
+    description:
+      'The completed 2026 World Cup, kept as it finished: the full knockout bracket, final group tables, every squad and the host venues.',
+    chemin: '/wc26',
+  })
   // Hub layout reads top-down as: who's already through (qualifiers band) →
   // who plays whom on the way to the final (bracket) → current group
   // state (standings). All three pull from the same shared tournament
@@ -592,6 +599,12 @@ function WC26PromoSection() {
  * match predictions live below for fans who want to score every game.
  */
 function PredictionsPage() {
+  usePageHead({
+    titre: 'World Cup 2026 bracket predictor',
+    description:
+      'Fill in the knockout bracket round by round, from the Round of 32 to the final, and compare your calls against what actually happened.',
+    chemin: '/predictions',
+  })
   // 'Bracket complet' on the hub scrolls down to the full BracketWizard
   // rather than navigating elsewhere — keeps the existing flow intact
   // while letting the user pick a focused phase via the hub above.
@@ -625,9 +638,20 @@ function TodayPage() {
   // unindexed since the start of the tournament. The sr-only h1 here
   // gives crawlers the signal without disrupting the existing visual
   // hierarchy.
+  //
+  // The h1 and the title used to say "World Cup 2026". This page has always
+  // shown every competition ESPN publishes for the day — the heading was
+  // describing a tournament instead of the page, and it tied the one route
+  // with year-round search demand to an event that finished in July.
+  usePageHead({
+    titre: "Today's football matches — live scores, every competition",
+    description:
+      "Every match being played today, league by league: kickoff times in your own timezone, live scores as they change, and the final result.",
+    chemin: '/today',
+  })
   return (
     <>
-      <h1 className="sr-only">World Cup 2026 — today's matches, kickoff times and live scores</h1>
+      <h1 className="sr-only">Today's football matches — kickoff times, live scores and results</h1>
       {/* Same broadcast scoreboard as the home — the day's biggest live
           match in giant digits above the full board. */}
       <HeroScoreboard />
@@ -640,6 +664,12 @@ function TodayPage() {
 }
 
 function BoardPage() {
+  usePageHead({
+    titre: 'Prediction leaderboard',
+    description:
+      'Who called the 2026 World Cup best. Points per correct pick, ranked, with every player\u2019s completed bracket open to read.',
+    chemin: '/board',
+  })
   return (
     <>
       <Suspense fallback={<PageSkeleton caption="Loading the leaderboard…" />}>
@@ -651,6 +681,12 @@ function BoardPage() {
 }
 
 function StadiumsPage() {
+  usePageHead({
+    titre: 'The 16 stadiums of the 2026 World Cup',
+    description:
+      'Every host venue across the United States, Mexico and Canada: capacity, city, pitch, roof, and the matches each one staged.',
+    chemin: '/stadiums',
+  })
   return (
     <Suspense fallback={<PageSkeleton caption="Loading host venues…" />}>
       <Stadiums />
