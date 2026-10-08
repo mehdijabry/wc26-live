@@ -104,7 +104,7 @@ export const WC_FAQ: FaqEntry[] = [
   },
   {
     slug: 'var',
-    question: 'How does VAR work in football?',
+    question: 'VAR in football: how it works, and what it can review',
     short: 'VAR can only review four things: goals, penalty decisions, direct red cards and mistaken identity. Everything else stands. The referee keeps the final word, after a look at the pitchside monitor.',
     long: [
       "VAR (Video Assistant Referee) has been in the Laws of the Game since 2018 and is now used in every major league and tournament. It is deliberately narrow. Only four categories of incident can be reviewed: (1) goals and the build-up to them, (2) penalty decisions, (3) direct red-card incidents — not second yellows — and (4) mistaken identity when a card is shown. Anything outside those four stands, however wrong it looks on the replay.",
@@ -242,7 +242,7 @@ export const WC_FAQ: FaqEntry[] = [
   },
   {
     slug: 'handball-rule',
-    question: "When is handball a foul in football?",
+    question: "The handball rule in football: when is it a foul?",
     short: "Deliberate handball is always a foul. Accidental handball is only a foul if (a) it directly leads to a goal by the same player, or (b) the player's arm is in an 'unnaturally large' position making the body bigger. Accidental handball by a teammate that leads to a goal is no longer a foul.",
     long: [
       "The handball rule was tightened in 2021 after years of confusion about 'unintentional' touches. The current Law 12 framework distinguishes deliberate handball (always a foul) from accidental contact (judged on context).",
