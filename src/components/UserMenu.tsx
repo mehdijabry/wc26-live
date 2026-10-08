@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useBracket } from '../store/bracket'
 import { AuthModal } from './AuthModal'
+import { JETON, POINT } from '../lib/jeu'
 
 const TIER_COLORS: Record<string, string> = {
   Rookie: 'text-slate-600',
@@ -89,6 +90,15 @@ export function UserMenu() {
           {alias.slice(0, 1).toUpperCase()}
         </span>
         <span className="hidden sm:block max-w-[100px] truncate">{alias}</span>
+        {/* Le solde se lit sans ouvrir quoi que ce soit. Un score qu'il faut
+            aller chercher dans un menu déroulant n'existe pas pour le joueur
+            — c'est le reproche qui a motivé cette refonte. */}
+        <span className="flex items-center gap-1.5 ps-2 ms-0.5 border-s border-slate-300/40 font-mono tabular-nums text-xs">
+          <span title={JETON.plusieurs}>⚽ {profile?.crampons ?? 0}</span>
+          <span className="text-accent-gold" title={POINT.plusieurs}>
+            {Number(profile?.pressings ?? 0).toLocaleString('fr-FR')}
+          </span>
+        </span>
       </button>
       {menuOpen && (
         <>
@@ -151,9 +161,9 @@ export function UserMenu() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-              <Stat label="Points" value={profile?.total_points ?? 0} />
-              <Stat label="Picks" value={profile?.resolved_predictions ?? 0} suffix={`/ ${profile?.total_predictions ?? 0}`} />
-              <Stat label="Accuracy" value={`${profile?.accuracy_pct ?? 0}%`} />
+              <Stat label={POINT.plusieurs} value={Number(profile?.pressings ?? 0).toLocaleString('fr-FR')} />
+              <Stat label={JETON.plusieurs} value={profile?.crampons ?? 0} />
+              <Stat label="Streak" value={profile?.current_streak ?? 0} />
             </div>
 
             <div className="mt-3 text-[11px] text-slate-500 font-mono flex items-center justify-between">

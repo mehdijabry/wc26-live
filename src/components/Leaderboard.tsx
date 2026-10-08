@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { JETON, POINT, PALIER } from '../lib/jeu'
 import { supabase, type LeaderboardRow } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import { SectionHeader } from './Groups'
@@ -50,8 +51,14 @@ export function Leaderboard() {
     })()
   }, [])
 
+  // Le classement se joue sur les PRESSINGS, pas sur l'ancien total de
+  // points du bracket : c'est la monnaie du jeu vivant. `total_points`
+  // reste en base pour l'archive du Mondial, il n'est simplement plus le
+  // critère. Voir supabase/migrations/004_paris.sql.
   const sorted = [...rows].sort((a, b) =>
-    tab === 'points' ? b.total_points - a.total_points : b.accuracy_pct - a.accuracy_pct
+    tab === 'points'
+      ? Number(b.pressings ?? 0) - Number(a.pressings ?? 0)
+      : b.accuracy_pct - a.accuracy_pct
   )
 
   return (
@@ -61,7 +68,7 @@ export function Leaderboard() {
           niveau={1}
           eyebrow="every player"
           title="Leaderboard"
-          sub="Live ranking of everyone who locked their picks. Scoring: 100 exact · 60 winner+gap · 30 winner · 20 total goals · 0 otherwise."
+          sub={`Live ranking of everyone backing their calls. You stake ${JETON.plusieurs}, you win ${POINT.plusieurs} at the real odds — ${PALIER.points.toLocaleString('fr-FR')} ${POINT.plusieurs} unlock ${PALIER.recompense}.`}
         />
 
         <div className="flex flex-wrap gap-2 mt-8 mb-6">
@@ -76,7 +83,11 @@ export function Leaderboard() {
                   : 'glass glass-hover text-slate-700')
               }
             >
-              {t === 'brackets' ? `Published brackets (${brackets.length})` : t === 'points' ? 'Total points' : 'Accuracy %'}
+              {t === 'brackets'
+                ? `Published brackets (${brackets.length})`
+                : t === 'points'
+                  ? POINT.plusieurs
+                  : 'Accuracy %'}
             </button>
           ))}
         </div>
@@ -198,7 +209,7 @@ export function Leaderboard() {
                   </div>
                   <div className="text-right">
                     <div className="font-display font-bold text-lg text-slate-900 tabular-nums">
-                      {tab === 'points' ? row.total_points : `${row.accuracy_pct}%`}
+                      {tab === 'points' ? Number(row.pressings ?? 0).toLocaleString('fr-FR') : `${row.accuracy_pct}%`}
                     </div>
                     <div className="text-[10px] font-mono text-slate-500">
                       {tab === 'points' ? 'pts' : 'accuracy'}

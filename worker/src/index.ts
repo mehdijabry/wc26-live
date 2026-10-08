@@ -579,6 +579,41 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
     } catch (e) {
       console.log('[auto] tick failed:', e)
     }
+    // ── Ces deux passes ne dépendent PAS du Mondial, et ne doivent pas
+    //    dépendre de sa requête. Juste en dessous, `if (!sb.ok) return`
+    //    interrompt TOUT le cron quand le scoreboard `fifa.world` tousse —
+    //    ce qui emporterait les résultats et les cotes avec lui, alors
+    //    qu'aucun des deux n'a le moindre rapport avec la Coupe du monde.
+    //    Elles sont donc exécutées d'abord, chacune dans son propre garde.
+
+    // Résultats de TOUTES les compétitions. La passe 2 plus bas ne voit que
+    // `fifa.world` et ne sait traduire que les 104 identifiants du Mondial
+    // via une table statique ; celle-ci couvre le reste du football et pousse
+    // chaque match terminé dans `match_results` sous la forme `e<id ESPN>`.
+    try {
+      await syncResultatsToutesCompetitions(env)
+    } catch (e) {
+      console.log('[scoring] passe toutes compétitions échouée:', e)
+    }
+
+    // Cotes des compétitions pariables. Une cote 1X2 ne bouge pas à la
+    // minute et chaque passage coûte 7 requêtes : on espace à 10 minutes.
+    //
+    // La cadence est tenue par KV, PAS par `getUTCMinutes() % 10`. Le cron se
+    // déclenche à la 53e seconde et peut dériver : un test sur la minute rate
+    // des créneaux sans prévenir, et c'est exactement ce qui a fait croire
+    // pendant vingt minutes que la passe était cassée alors qu'elle ne se
+    // déclenchait simplement jamais. Un verrou à expiration ne peut pas
+    // rater : au pire il décale.
+    try {
+      if (!(await env.CACHE.get('cotes:verrou'))) {
+        await env.CACHE.put('cotes:verrou', '1', { expirationTtl: 600 })
+        await syncCotes(env)
+      }
+    } catch (e) {
+      console.log('[cotes] passe échouée:', e)
+    }
+
     try {
       const sb = await fetch(`${ESPN_BASE}/scoreboard?limit=200`)
       if (!sb.ok) return
@@ -636,23 +671,6 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
         } catch {
           // continue with next event on individual failure
         }
-      }
-
-      // --- Pass 2b: résultats de TOUTES les compétitions -------------
-      // La passe 2 ci-dessus ne voit que le scoreboard `fifa.world`, et ne
-      // sait traduire que les 104 identifiants du Mondial via une table
-      // statique. Elle reste telle quelle pour l'archive WC26.
-      //
-      // Celle-ci couvre le reste du football : elle lit le scoreboard « all »
-      // d'hier et d'aujourd'hui, et pousse chaque match terminé dans
-      // `match_results` sous la forme `e<id ESPN>`. C'est ce qui permet de
-      // pronostiquer le calendrier hebdomadaire — le calcul des points, lui,
-      // n'a rien de spécifique au Mondial : `compute_points` ne connaît que
-      // deux scores, et le déclencheur SQL fait le reste.
-      try {
-        await syncResultatsToutesCompetitions(env)
-      } catch (e) {
-        console.log('[scoring] passe toutes compétitions échouée:', e)
       }
 
       // --- Pass 3: kick the LivePoller for sub-cron-cadence updates ---
@@ -2172,6 +2190,132 @@ type EspnEventLike = {
   competitions?: Array<{
     competitors?: Array<{ homeAway?: string; score?: string }>
   }>
+}
+
+/* ───────────────────────────── Cotes du jeu ───────────────────────────────
+ *
+ * Alimente `match_odds` pour les matchs À VENIR des compétitions jouables.
+ *
+ * POURQUOI CÔTÉ SERVEUR. Le navigateur ne doit jamais fournir la cote avec
+ * son pari : il suffirait de poster une cote de 1000 pour se fabriquer un
+ * score. Le déclencheur `place_bet_guard()` en base lit la cote ICI et écrase
+ * ce qu'a envoyé le client. Le client ne dit que deux choses : sur quoi, et
+ * combien.
+ *
+ * LE FILTRE EST PAR IDENTIFIANT DE LIGUE, PAS PAR NOM. Les slugs de saison
+ * changent tous les ans (`2026-27-english-premier-league`) et se chevauchent :
+ * filtrer sur « premier-league » attraperait aussi la Russie, et sur
+ * « bundesliga » la 2. Bundesliga. L'identifiant, lui, est stable — il est
+ * dans `event.uid`, sous la forme `s:600~l:700~e:...`.
+ */
+
+/** Les 5 grands championnats, plus les sélections nationales. */
+const LIGUES_JOUABLES = new Set([
+  '700',   // Premier League
+  '740',   // LaLiga
+  '720',   // Bundesliga
+  '730',   // Serie A
+  '710',   // Ligue 1
+  // Sélections — vides entre deux fenêtres internationales, c'est normal.
+  '3922',  // Matchs amicaux
+  '2395',  // Ligue des nations UEFA
+  '19267', // Ligue des nations CONCACAF
+  '3908',  // Coupe d'Afrique des nations
+  '781',   // Championnat d'Europe
+  '780',   // Copa América
+  '606',   // Coupe du monde
+  '786', '787', '788', '789', '790', // Qualifications, les cinq confédérations
+])
+
+/** Combien de jours à l'avance on publie des cotes. */
+const JOURS_DE_COTES = 7
+
+/** Moneyline américaine → cote décimale européenne. */
+function mlVersDecimal(ml: number | string | undefined | null): number | null {
+  if (ml === undefined || ml === null || ml === '') return null
+  const n = typeof ml === 'number' ? ml : Number(String(ml).replace('+', ''))
+  if (!Number.isFinite(n) || n === 0) return null
+  const d = n > 0 ? n / 100 + 1 : 100 / Math.abs(n) + 1
+  // Les bornes de la table : au-delà, c'est une valeur aberrante, on jette.
+  if (d < 1.01 || d > 100) return null
+  return Math.round(d * 100) / 100
+}
+
+async function syncCotes(env: Env): Promise<void> {
+  type Cote = {
+    homeTeamOdds?: { moneyLine?: number }
+    awayTeamOdds?: { moneyLine?: number }
+    drawOdds?: { moneyLine?: number }
+    moneyline?: {
+      home?: { close?: { odds?: string }; open?: { odds?: string } }
+      away?: { close?: { odds?: string }; open?: { odds?: string } }
+      draw?: { close?: { odds?: string }; open?: { odds?: string } }
+    }
+  }
+  type Ev = {
+    id?: string
+    uid?: string
+    date?: string
+    status?: { type?: { state?: string } }
+    competitions?: Array<{ odds?: Array<Cote | null> }>
+  }
+
+  const lignes: Array<Record<string, unknown>> = []
+
+  for (let i = 0; i < JOURS_DE_COTES; i++) {
+    const d = new Date(Date.now() + i * 86_400_000)
+    const r = await fetch(`${ESPN_SOCCER}/all/scoreboard?dates=${ymdUtc(d)}&limit=300`, {
+      cf: { cacheTtl: 300, cacheEverything: true },
+    })
+    if (!r.ok) continue
+    const data = (await r.json()) as { events?: Ev[] }
+
+    for (const ev of data.events ?? []) {
+      if (!ev.id || ev.status?.type?.state !== 'pre') continue
+      const ligue = /l:(\d+)/.exec(ev.uid ?? '')?.[1]
+      if (!ligue || !LIGUES_JOUABLES.has(ligue)) continue
+
+      const o = (ev.competitions?.[0]?.odds ?? []).find(Boolean)
+      if (!o) continue
+      const cote = (
+        n: number | undefined,
+        s: { close?: { odds?: string }; open?: { odds?: string } } | undefined,
+      ) => mlVersDecimal(n ?? s?.close?.odds ?? s?.open?.odds)
+
+      const home = cote(o.homeTeamOdds?.moneyLine, o.moneyline?.home)
+      const draw = cote(o.drawOdds?.moneyLine, o.moneyline?.draw)
+      const away = cote(o.awayTeamOdds?.moneyLine, o.moneyline?.away)
+      // Les trois ou rien : un marché incomplet ne doit pas être pariable.
+      if (!home || !draw || !away) continue
+
+      lignes.push({
+        match_id: `e${ev.id}`,
+        home,
+        draw,
+        away,
+        kickoff: ev.date ?? null,
+        updated_at: new Date().toISOString(),
+      })
+    }
+  }
+
+  if (!lignes.length) return
+
+  const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/match_odds?on_conflict=match_id`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(lignes),
+  })
+  if (!resp.ok) {
+    console.log('[cotes] upsert refusé:', resp.status, (await resp.text()).slice(0, 180))
+  } else {
+    console.log(`[cotes] ${lignes.length} match(s) pariables mis à jour`)
+  }
 }
 
 async function upsertMatchResult(

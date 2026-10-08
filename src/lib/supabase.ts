@@ -47,6 +47,10 @@ export type Profile = {
   current_streak: number
   best_streak: number
   tier: 'Rookie' | 'Amateur' | 'Pro' | 'Elite' | 'Legend'
+  /** Le portefeuille du jeu — voir src/lib/jeu.ts et la migration 004. */
+  crampons: number
+  pressings: number
+  last_claim: string | null
 }
 
 export type PredictionRow = {
