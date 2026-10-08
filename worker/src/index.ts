@@ -1534,7 +1534,16 @@ function json(data: unknown, status = 200): Response {
 
 function cors(resp: Response, req: Request): Response {
   const origin = req.headers.get('origin') ?? ''
-  const allowed = ALLOW_ORIGINS.includes(origin) ? origin : ALLOW_ORIGINS[0]
+  // N'importe quel port local est accepté, pas seulement 5173/5174 : le
+  // prérendu sert `dist/` sur un port ALÉATOIRE, et sans ça le navigateur
+  // headless ne pouvait atteindre AUCUNE route du worker. Conséquence
+  // concrète, mesurée le 8 octobre 2026 : /wc26 était photographié sans son
+  // tableau final, donc Google n'a jamais vu que la coquille de la page.
+  // Ce n'est pas un relâchement de sécurité — l'API est déjà publique en
+  // lecture (curl l'atteint sans origine), et les routes d'admin sont
+  // protégées par leur propre jeton, pas par le CORS.
+  const localAutorise = /^http:\/\/(localhost|127\.0\.0\.1):\d{1,5}$/.test(origin)
+  const allowed = ALLOW_ORIGINS.includes(origin) || localAutorise ? origin : ALLOW_ORIGINS[0]
   const h = new Headers(resp.headers)
   h.set('access-control-allow-origin', allowed)
   // Push endpoints are POST — must allow it in CORS.

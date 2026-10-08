@@ -143,31 +143,6 @@ export type HistoryResponse = {
   fetchedAt: string
 }
 
-// WC26 tournament window — June 11 → July 19, 2026. Constraining the
-// ESPN scoreboard to this date range avoids contamination from
-// pre-tournament friendlies + CAF/UEFA qualifiers, which is what
-// caused the connected-component group derivation to produce nonsense
-// clusters ("Morocco / Mexico / Canada / Australia" in Group A,
-// Morocco AND Group D both showing) because qualifier games linked
-// teams across groups. With the date filter we only see the 72 actual
-// group-stage matches → clean adjacency map → 12 correct groups.
-const TOURNAMENT_DATE_RANGE = '20260611-20260719'
-
-// ESPN's site.api endpoint allows CORS from any origin (we verified
-// `access-control-allow-origin: *`), so we can call it directly from
-// the browser without going through the proxy worker. The worker
-// doesn't forward query strings, which is why date-filtered calls
-// were returning only 2 events — we bypass it for scoreboard.
-// HÔTE : `site.web.api`, pas `site.api`. Mesuré le 8 octobre 2026 depuis
-// l'origine de production, dans un vrai navigateur : `site.api.espn.com`
-// renvoie 504 sur quatre routes sur cinq (summary, news, fifa.world) et une
-// fois sur six sur `all/scoreboard`, tandis que `site.web.api.espn.com`
-// répond 200 sur les cinq, 4 essais sur 4, avec un corps identique — mêmes
-// 101 matchs. Le tableau des scores en direct était donc en panne la plupart
-// du temps. En ligne de commande les deux hôtes répondent 200 : c'est le
-// navigateur que `site.api` traite différemment, et seule une vérification
-// dans un navigateur le montre.
-const ESPN_DIRECT = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
 
 async function jgetDirect<T>(url: string): Promise<T> {
   const resp = await fetch(url)
@@ -177,6 +152,16 @@ async function jgetDirect<T>(url: string): Promise<T> {
 
 // ESPN "all soccer" endpoint — returns every match across every covered
 // league for the queried date. Doesn't need a CORS proxy.
+//
+// HÔTE : `site.web.api`, pas `site.api`. Mesuré le 8 octobre 2026 depuis
+// l'origine de production, dans un vrai navigateur : `site.api.espn.com`
+// renvoie 504 sur quatre routes sur cinq et ne réussissait qu'une fois sur
+// six sur `all/scoreboard`, tandis que `site.web.api.espn.com` répond 200
+// partout, 4 essais sur 4, avec un corps identique — mêmes 101 matchs. Le
+// tableau des scores en direct était donc en panne la plupart du temps. En
+// ligne de commande les DEUX hôtes répondent 200 : c'est le navigateur que
+// `site.api` traite différemment, et seule une vérification dans un vrai
+// navigateur le montre.
 const ESPN_ALL = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard'
 
 // Per-league label + tier map. Slugs come from event.season.slug.
@@ -1785,9 +1770,23 @@ async function ensureWcGroupMap(): Promise<void> {
   if (wcGroupMapPromise) return wcGroupMapPromise
   wcGroupMapPromise = (async () => {
     try {
-      const raw = await jgetDirect<EspnScoreboard>(
-        `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=300`
-      )
+      // Par le worker, PAS en direct. Depuis octobre 2026 ESPN refuse les
+      // PLAGES de dates sur cette route — `?dates=20260611-20260719` renvoie
+      // 400 « Failed to get events endpoint », une date seule passe. Cet
+      // appel échouait donc à chaque démarrage, sur toutes les pages, et la
+      // carte restait vide : les matchs de la Coupe du monde s'affichaient
+      // « Group stage » au lieu de « Group A » sur le tableau du jour.
+      // La route `/tournament` du worker, elle, interroge déjà jour par jour
+      // et renvoie les 104 événements, en cache KV.
+      //
+      // Le filtrage sur la fenêtre du tournoi (11 juin → 19 juillet 2026)
+      // reste indispensable, et c'est le worker qui l'assure maintenant :
+      // sans lui le scoreboard ramène aussi les amicaux d'avant-tournoi et
+      // les qualifications CAF/UEFA, dont les matchs relient des équipes
+      // entre groupes. La dérivation par composantes connexes produisait
+      // alors des grappes absurdes — « Maroc / Mexique / Canada / Australie »
+      // en groupe A, et le Maroc apparaissant dans deux groupes à la fois.
+      const raw = await jget<TournamentResponse>('/tournament')
       const sorted = [...(raw.events ?? [])].sort(
         (a, b) => (a.date ?? '').localeCompare(b.date ?? '')
       )
@@ -1854,33 +1853,24 @@ function legSuffix(head: string): string | null {
 
 export const api = {
   health: () => jget<{ ok: boolean; service: string; t: string }>('/health'),
-  scoreboard: () => jgetDirect<EspnScoreboard>(
-    `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=200`
-  ),
-  fixtures: () => jgetDirect<EspnScoreboard>(
-    `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=200`
-  ),
-  // Worker first (KV-cached), then DIRECT ESPN fallback from the
-  // browser. Post-tournament (Aug 2026) Akamai started 403-ing ESPN
-  // requests from Cloudflare Workers IPs, so /tournament came back with
-  // 0 events and the whole WC26 archive (bracket, groups, schedule)
-  // rendered as an endless "Fetching the draw…". Browser IPs pass fine
-  // and ESPN's CORS is open — same trick api.today already uses.
-  tournament: async (): Promise<TournamentResponse> => {
-    let viaWorker: TournamentResponse | null = null
-    try { viaWorker = await jget<TournamentResponse>('/tournament') } catch { /* fall through */ }
-    if (viaWorker && (viaWorker.events?.length ?? 0) > 0) return viaWorker
-    const raw = await jgetDirect<EspnScoreboard>(
-      `${ESPN_DIRECT}/scoreboard?dates=${TOURNAMENT_DATE_RANGE}&limit=300`
-    )
-    const events = raw.events ?? []
-    return {
-      total: events.length,
-      hasLive: events.some((e) => e.status?.type?.state === 'in'),
-      events,
-      fetchedAt: new Date().toISOString(),
-    }
-  },
+  // Ni l'une ni l'autre n'est appelée aujourd'hui, mais elles demandaient une
+  // PLAGE de dates qu'ESPN refuse depuis octobre 2026 par un 400 : qui s'en
+  // serait servi aurait hérité d'un piège silencieux. Elles passent donc par
+  // le worker, qui interroge jour par jour et met en cache.
+  scoreboard: (): Promise<EspnScoreboard> => jget<TournamentResponse>('/tournament'),
+  fixtures: (): Promise<EspnScoreboard> => jget<TournamentResponse>('/tournament'),
+  // Le worker, et lui seul.
+  //
+  // Il y avait ici un repli qui rappelait ESPN directement depuis le
+  // navigateur, écrit en août 2026 quand on croyait qu'Akamai bloquait les
+  // IP des Workers Cloudflare. Deux choses l'ont rendu caduc, vérifiées le
+  // 8 octobre 2026 : le worker atteint parfaitement ESPN (`/tournament`
+  // renvoie ses 104 événements), et surtout ce repli ne POUVAIT plus
+  // aboutir, puisqu'il demandait une plage de dates qu'ESPN refuse
+  // désormais par un 400. C'était donc une requête vouée à l'échec avant de
+  // lever la même erreur. Retiré : si le worker tombe, l'erreur remonte
+  // directement, ce qui est plus honnête et plus rapide.
+  tournament: (): Promise<TournamentResponse> => jget<TournamentResponse>('/tournament'),
   standings: () => jget<unknown>('/standings'),
   match: (id: string) => jget<{ header?: unknown; gameInfo?: unknown }>(`/match/${id}`),
   team: (code: string) => jget<unknown>(`/teams/${code}`),
