@@ -99,7 +99,7 @@ export const WC_FAQ: FaqEntry[] = [
       'If the shootout is still level after 5 kicks each, it goes to sudden death: each team takes one more kick, and the first team to lead after equal kicks wins. Any player who hasn\'t shot yet — including the goalkeeper — must shoot before any player can take a second kick.',
       "Substitutions in extra time: FIFA allows one additional substitution per team during extra time on top of the five already permitted during regulation. Squad rules also let coaches name 26 players for the tournament (up from 23 pre-2022) — more depth for the busy knockout stretch.",
     ],
-    related: ['tiebreakers', 'var'],
+    related: ['tiebreakers', 'var', 'extra-time-vs-stoppage-time'],
     tags: ['rules'],
   },
   {
@@ -291,6 +291,25 @@ export const WC_FAQ: FaqEntry[] = [
     ],
     related: ['squad-rules', 'host-cities'],
     tags: ['rules', 'logistics'],
+  },
+  {
+    // Repérée dans les complétions Google le 8 octobre 2026 : « extra time vs
+    // stoppage time » existe tel quel, et la même question revient sous
+    // « vs added time », « vs injury time », « difference between extra time
+    // and overtime »… Trois vocabulaires pour une seule chose, et aucune page
+    // du site n'y répondait. Les synonymes sont tous nommés dans le texte,
+    // sinon la page ne sort que sur un tiers des formulations.
+    slug: 'extra-time-vs-stoppage-time',
+    question: "Extra time vs stoppage time: what's the difference?",
+    short: "Stoppage time is added to the end of every half for time lost — also called added time or injury time. Extra time is two 15-minute halves, only in knockout ties.",
+    long: [
+      "The confusion comes from one thing: in football the clock never stops. A player goes down, the physio comes on, a substitution is made, a goal is celebrated — the clock keeps running through all of it. Stoppage time is how the referee gives that lost time back, at the end of the half. Extra time is something else entirely: a whole extra period of play, added only when a knockout match has to produce a winner.",
+      "STOPPAGE TIME. Law 7 lets the referee add an allowance at the end of each half for time lost to substitutions, injuries and the removal of injured players, cards, drinks and cooling breaks, VAR checks and reviews, goal celebrations, and any other deliberate delay. The fourth official holds up a board showing the MINIMUM to be added — the referee can and does add more on top, for anything that happens during the stoppage itself. It applies to every half of every match, including each half of extra time. Since the 2022 World Cup, FIFA has pushed referees to count lost time far more strictly, which is why eight or ten minutes became ordinary where three or four used to be the norm.",
+      "EXTRA TIME. Only played in a knockout tie that is level once the 90 minutes and their stoppage time are done. Two halves of 15 minutes, and both are played in full — the golden goal, where the first goal ended it, was abolished in 2004. Teams change ends at the interval and get a break of about a minute, taken on the pitch rather than in the dressing room. Competitions that allow five substitutions in regulation allow a sixth during extra time. If it is still level after the 30 minutes, the tie goes to kicks from the penalty mark.",
+      "THE VOCABULARY, because it is most of the problem. Stoppage time, added time, additional time and injury time all mean exactly the same thing — the Laws of the Game say 'allowance for time lost', commentators say whichever they grew up with. 'AET' next to a scoreline means after extra time. 'Overtime' is the North American word for extra time, borrowed from other sports. And a penalty shootout is not part of the match: a tie that finishes 1-1 and is settled on penalties is recorded as 1-1, with the shootout noted separately.",
+    ],
+    related: ['knockout-rules', 'cooling-breaks', 'gk-8-seconds'],
+    tags: ['rules'],
   },
 ]
 
