@@ -80,3 +80,15 @@
 # on the next page load.
 /sw.js
   Cache-Control: no-cache, no-store, must-revalidate
+
+# Ligues privées — hors index, côté serveur.
+#
+# `/l/:slug` est un lien d'invitation entre amis : ça n'a rien à faire dans
+# un moteur. La balise `noindex` posée par usePageHead n'arrive qu'après
+# hydratation, et le HTML statique servi avant, lui, dit `index, follow`.
+# Cet en-tête tranche avant même que le JavaScript s'exécute.
+#
+# Et surtout PAS un `Disallow` dans robots.txt : il empêcherait le robot de
+# LIRE la consigne, et l'adresse resterait indexable sans son contenu.
+/l/*
+  X-Robots-Tag: noindex

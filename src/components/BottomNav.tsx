@@ -36,6 +36,21 @@ const tabs: Tab[] = [
     ),
   },
   {
+    // Le jeu revient dans la barre du bas. Il en était sorti après la finale,
+    // quand pronostiquer voulait encore dire « remplir le bracket du
+    // Mondial » ; il porte maintenant le calendrier de la semaine, donc il a
+    // sa place ici — c'est sur mobile que la barre du bas EST la navigation,
+    // et une fonctionnalité qui n'y figure pas n'existe quasiment pas.
+    to: '/predictions', label: 'Predict',
+    icon: (a) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
+        <circle cx="12" cy="12" r="4.5" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
+        <circle cx="12" cy="12" r="1.2" fill="currentColor" />
+      </svg>
+    ),
+  },
+  {
     // Post-tournament: 'Predict' tab replaced by News — the daily read
     // is now the site's second pillar after live scores.
     to: '/news', label: 'News',

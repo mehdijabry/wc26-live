@@ -40,6 +40,9 @@ const DailyMatches = lazy(() => import('./components/DailyMatches').then((m) => 
 const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) => ({ default: m.BracketWizard })))
 const PhasePickerHub = lazy(() => import('./components/posters/PhasePickerHub').then((m) => ({ default: m.PhasePickerHub })))
 const PublicProfile = lazy(() => import('./components/PublicProfile').then((m) => ({ default: m.PublicProfile })))
+const PredictWeek = lazy(() => import('./components/pages/PredictWeek').then((m) => ({ default: m.PredictWeek })))
+const Leagues = lazy(() => import('./components/pages/Leagues').then((m) => ({ default: m.Leagues })))
+const LeaguePage = lazy(() => import('./components/pages/LeaguePage').then((m) => ({ default: m.LeaguePage })))
 const NewsListPage = lazy(() => import('./components/pages/News').then((m) => ({ default: m.NewsListPage })))
 const NewsArticlePage = lazy(() => import('./components/pages/News').then((m) => ({ default: m.NewsArticlePage })))
 const AtlasLions = lazy(() => import('./components/AtlasLions').then((m) => ({ default: m.AtlasLions })))
@@ -251,12 +254,46 @@ function App() {
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/wc26" element={<WC26Page />} />
-          {/* WC26 Prediction = full bracket wizard + match-by-match
-              predictions stacked in one page. Old /bracket and /predict
-              URLs redirect here so any shared link still works. */}
-          <Route path="/predictions" element={<PredictionsPage />} />
+          {/* /predictions = le jeu vivant : les matchs de la semaine, toutes
+              compétitions. /bracket garde le prédicteur du Mondial, qui est
+              une archive — il invitait encore à « revenir au fil du tournoi »
+              trois mois après la finale quand il occupait /predictions. */}
+          <Route
+            path="/predictions"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading fixtures…" />}>
+                <PredictWeek />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/predict"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading fixtures…" />}>
+                <PredictWeek />
+              </Suspense>
+            }
+          />
           <Route path="/bracket" element={<PredictionsPage />} />
-          <Route path="/predict" element={<PredictionsPage />} />
+          {/* Ligues privées. /l/:slug est le lien d'invitation : volontairement
+              court, lisible à l'oral, et hors index — c'est le slug lui-même
+              qui en garde l'accès. */}
+          <Route
+            path="/leagues"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading your leagues…" />}>
+                <Leagues />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/l/:slug"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading the league…" />}>
+                <LeaguePage />
+              </Suspense>
+            }
+          />
           <Route path="/today" element={<TodayPage />} />
           {/* /squads (the player WC26-Live-Score grid) was removed in the
               2026-06-09 reorg. Redirecting any bookmark/old-link traffic
@@ -629,10 +666,10 @@ function WC26PromoSection() {
  */
 function PredictionsPage() {
   usePageHead({
-    titre: 'World Cup 2026 bracket predictor',
+    titre: 'World Cup 2026 bracket — fill it in and compare with what happened',
     description:
-      'Fill in the knockout bracket round by round, from the Round of 32 to the final, and compare your calls against what actually happened.',
-    chemin: '/predictions',
+      'The archived World Cup 2026 bracket. Fill in the knockout rounds, from the Round of 32 to the final, and compare your calls against what actually happened.',
+    chemin: '/bracket',
   })
   // 'Bracket complet' on the hub scrolls down to the full BracketWizard
   // rather than navigating elsewhere — keeps the existing flow intact
@@ -694,9 +731,9 @@ function TodayPage() {
 
 function BoardPage() {
   usePageHead({
-    titre: 'Prediction leaderboard',
+    titre: 'Football prediction leaderboard — who calls it best',
     description:
-      'Who called the 2026 World Cup best. Points per correct pick, ranked, with every player\u2019s completed bracket open to read.',
+      'The best callers on Pressing 90, ranked on points won across every competition. Exact score 100, right winner and goal difference 60, right winner 30.',
     chemin: '/board',
   })
   return (

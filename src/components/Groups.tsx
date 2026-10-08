@@ -349,11 +349,20 @@ export function SectionHeader({
   eyebrow,
   title,
   sub,
+  niveau = 2,
 }: {
   eyebrow: string
   title: string
   sub?: string
+  /**
+   * 1 quand ce bandeau EST le titre de la page, 2 sinon — le défaut, pour
+   * ne rien changer aux dizaines d'endroits qui s'en servent comme en-tête
+   * de section. /board n'avait aucun h1 : une page entière sans titre
+   * principal, ce que Google lit comme une page sans sujet.
+   */
+  niveau?: 1 | 2
 }) {
+  const Titre = niveau === 1 ? 'h1' : 'h2'
   return (
     <motion.div
       initial={{ y: 20, opacity: 0 }}
@@ -364,9 +373,9 @@ export function SectionHeader({
       <div className="text-xs uppercase tracking-widest text-accent-gold font-mono mb-3">
         {eyebrow}
       </div>
-      <h2 className="font-display text-4xl sm:text-5xl font-bold tracking-tight mb-3">
+      <Titre className="font-display text-4xl sm:text-5xl font-bold tracking-tight mb-3">
         {title}
-      </h2>
+      </Titre>
       {sub && <p className="text-slate-600 max-w-3xl text-base sm:text-lg leading-relaxed">{sub}</p>}
     </motion.div>
   )

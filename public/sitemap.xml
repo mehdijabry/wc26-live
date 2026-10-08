@@ -31,6 +31,12 @@
     <priority>0.85</priority>
   </url>
   <url>
+    <loc>https://pressing90.live/bracket</loc>
+  </url>
+  <url>
+    <loc>https://pressing90.live/leagues</loc>
+  </url>
+  <url>
     <loc>https://pressing90.live/board</loc>
     <lastmod>2026-07-15</lastmod>
     <changefreq>hourly</changefreq>

@@ -24,6 +24,17 @@ export type PageHead = {
   chemin: string
   /** Set when the title already carries the brand and must not be suffixed. */
   brut?: boolean
+  /**
+   * Pose `noindex, follow` sur la page. Pour ce qui est public mais n'a rien
+   * à faire dans un moteur — une ligue privée entre amis, par exemple, dont
+   * le lien lui-même est la seule protection.
+   *
+   * Noter `follow` et pas `nofollow` : on veut que le robot suive les liens
+   * sortants, on veut juste qu'il n'indexe pas CETTE adresse. Et surtout, il
+   * faut que la page reste explorable — un `Disallow` dans robots.txt
+   * empêcherait de LIRE la consigne et l'adresse resterait indexable.
+   */
+  horsIndex?: boolean
 }
 
 const ORIGINE = 'https://pressing90.live'
@@ -42,11 +53,12 @@ const ORIGINE = 'https://pressing90.live'
  * prérendu devient exactement « la donnée est arrivée ».
  */
 export function usePageHead(entree: PageHead | null) {
-  const { titre, description, chemin, brut } = entree ?? {
+  const { titre, description, chemin, brut, horsIndex } = entree ?? {
     titre: '',
     description: '',
     chemin: '',
     brut: false,
+    horsIndex: false,
   }
   const actif = entree !== null
   useEffect(() => {
@@ -69,7 +81,21 @@ export function usePageHead(entree: PageHead | null) {
       document.head.appendChild(lien)
     }
     lien.href = url
-  }, [actif, titre, description, chemin, brut])
+
+    // La balise robots est posée ou retirée à chaque navigation : sans ça,
+    // une page hors index contaminerait la suivante dans une application
+    // d'une seule page, où l'en-tête n'est jamais reconstruit.
+    const existante = document.querySelector('meta[name="robots"][data-page]')
+    if (horsIndex) {
+      const m = (existante as HTMLMetaElement | null) ?? document.createElement('meta')
+      m.setAttribute('name', 'robots')
+      m.setAttribute('data-page', '1')
+      m.setAttribute('content', 'noindex, follow')
+      if (!existante) document.head.appendChild(m)
+    } else if (existante) {
+      existante.remove()
+    }
+  }, [actif, titre, description, chemin, brut, horsIndex])
 }
 
 /**

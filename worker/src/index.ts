@@ -638,6 +638,23 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
         }
       }
 
+      // --- Pass 2b: résultats de TOUTES les compétitions -------------
+      // La passe 2 ci-dessus ne voit que le scoreboard `fifa.world`, et ne
+      // sait traduire que les 104 identifiants du Mondial via une table
+      // statique. Elle reste telle quelle pour l'archive WC26.
+      //
+      // Celle-ci couvre le reste du football : elle lit le scoreboard « all »
+      // d'hier et d'aujourd'hui, et pousse chaque match terminé dans
+      // `match_results` sous la forme `e<id ESPN>`. C'est ce qui permet de
+      // pronostiquer le calendrier hebdomadaire — le calcul des points, lui,
+      // n'a rien de spécifique au Mondial : `compute_points` ne connaît que
+      // deux scores, et le déclencheur SQL fait le reste.
+      try {
+        await syncResultatsToutesCompetitions(env)
+      } catch (e) {
+        console.log('[scoring] passe toutes compétitions échouée:', e)
+      }
+
       // --- Pass 3: kick the LivePoller for sub-cron-cadence updates ---
       // Cloudflare cron's minimum cadence is 1 min, but goals can be
       // missed by 30-50s. Spin up the LivePoller DO when there's a
@@ -2095,6 +2112,66 @@ async function fetchTeamHistory(env: Env, code: string): Promise<Response> {
       'cache-control': 'public, max-age=900',
     },
   })
+}
+
+/**
+ * Pousse dans `match_results` les matchs terminés d'hier et d'aujourd'hui,
+ * toutes compétitions confondues.
+ *
+ * Identifiant : `e<id ESPN>`. Pas de table de correspondance — il y a des
+ * milliers de matchs par saison, et l'id ESPN est stable et unique d'une
+ * compétition à l'autre. Le préfixe évite toute collision avec les `M01`…
+ * `M104` du Mondial, qui gardent leur propre passe.
+ *
+ * Idempotence : on tient dans KV la liste des matchs déjà poussés, pour ne
+ * pas réécrire les mêmes lignes à chaque minute. Même sans ce garde-fou le
+ * déclencheur SQL serait inoffensif — il ne note que les pronostics dont
+ * `points` est encore nul — mais autant ne pas écrire pour rien.
+ */
+async function syncResultatsToutesCompetitions(env: Env): Promise<void> {
+  const hier = new Date(Date.now() - 86_400_000)
+  const jours = [ymdUtc(hier), ymdUtc(new Date())]
+
+  for (const jour of jours) {
+    const r = await fetch(`${ESPN_SOCCER}/all/scoreboard?dates=${jour}&limit=300`, {
+      cf: { cacheTtl: 120, cacheEverything: true },
+    })
+    if (!r.ok) continue
+    const d = (await r.json()) as { events?: EspnEventLike[] }
+
+    for (const ev of d.events ?? []) {
+      if (ev.status?.type?.state !== 'post') continue
+      const comp = ev.competitions?.[0]
+      const home = comp?.competitors?.find((c) => c.homeAway === 'home')
+      const away = comp?.competitors?.find((c) => c.homeAway === 'away')
+      if (!home || !away || !ev.id) continue
+
+      const matchId = `e${ev.id}`
+      const cle = `res:${matchId}`
+      if (await env.CACHE.get(cle)) continue
+
+      await upsertMatchResult(env, {
+        match_id: matchId,
+        home_score: parseInt(home.score ?? '0', 10),
+        away_score: parseInt(away.score ?? '0', 10),
+        scorer_ids: [],
+        card_player_ids: [],
+        finished_at: ev.date ?? new Date().toISOString(),
+      })
+      // 30 jours : bien au-delà du moment où un score peut encore bouger.
+      await env.CACHE.put(cle, '1', { expirationTtl: 2_592_000 }).catch(() => {})
+    }
+  }
+}
+
+/** La forme minimale dont la passe ci-dessus a besoin. */
+type EspnEventLike = {
+  id?: string
+  date?: string
+  status?: { type?: { state?: string } }
+  competitions?: Array<{
+    competitors?: Array<{ homeAway?: string; score?: string }>
+  }>
 }
 
 async function upsertMatchResult(

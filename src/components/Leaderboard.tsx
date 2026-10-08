@@ -58,7 +58,8 @@ export function Leaderboard() {
     <section id="leaderboard" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         <SectionHeader
-          eyebrow="all bracketers"
+          niveau={1}
+          eyebrow="every player"
           title="Leaderboard"
           sub="Live ranking of everyone who locked their picks. Scoring: 100 exact · 60 winner+gap · 30 winner · 20 total goals · 0 otherwise."
         />

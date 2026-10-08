@@ -18,6 +18,11 @@ const BASE_LINKS: Array<{ label: string; to: string }> = [
   // être trouvées : un lien depuis chaque page du site vaut mieux.
   { label: 'Clubs', to: '/clubs' },
   { label: 'News', to: '/news' },
+  // Le jeu et son classement sont le produit, pas une annexe : ils méritent
+  // d'être dans la navigation principale, pas seulement dans un lien de pied
+  // de page. Le classement vivait à /board sans qu'aucun lien n'y mène.
+  { label: 'Predict', to: '/predictions' },
+  { label: 'Table', to: '/board' },
 ]
 const WC26_LINK = { label: 'WC26 Archive', to: '/wc26' }
 
