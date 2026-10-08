@@ -4,6 +4,7 @@ import { useAuth } from '../../store/auth'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
 import { creerLigue, mesLigues, type Ligue } from '../../lib/leagues'
+import { useT } from '../../lib/i18n'
 
 /**
  * /leagues — créer une ligue, retrouver les siennes.
@@ -16,6 +17,7 @@ export function Leagues() {
   const user = useAuth((s) => s.user)
   const initialized = useAuth((s) => s.initialized)
   const navigate = useNavigate()
+  const t = useT()
   const [ligues, setLigues] = useState<Ligue[] | null>(null)
   const [nom, setNom] = useState('')
   const [occupe, setOccupe] = useState(false)
@@ -60,7 +62,7 @@ export function Leagues() {
     const l = await creerLigue(propre, user.id)
     setOccupe(false)
     if (!l) {
-      setErreur("The league could not be created. Try again in a moment.")
+      setErreur(t('The league could not be created. Try again in a moment.'))
       return
     }
     navigate(`/l/${l.slug}`)
@@ -68,11 +70,9 @@ export function Leagues() {
 
   return (
     <div className="container max-w-3xl mx-auto px-6 py-10">
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Private leagues</h1>
+      <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{t('Private leagues')}</h1>
       <p className="mt-3 text-muted-foreground max-w-2xl">
-        Create a league, send one link, and settle the argument once and for all — who actually
-        knows their football? Everyone starts level: points only count from the day each member
-        joins.
+        {t('Create a league, send one link, and settle the argument once and for all — who actually knows their football? Everyone starts level: points only count from the day each member joins.')}
       </p>
 
       <div className="mt-8 flex flex-wrap gap-2">
@@ -83,7 +83,7 @@ export function Leagues() {
             if (e.key === 'Enter') void onCreer()
           }}
           maxLength={60}
-          placeholder="League name — « Les potes du mardi »"
+          placeholder={t('League name')}
           className="flex-1 min-w-[16rem] px-4 py-2 rounded-full bg-slate-100 text-slate-900 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-accent-gold/50"
         />
         <button
@@ -92,14 +92,14 @@ export function Leagues() {
           disabled={occupe || !nom.trim()}
           className="px-5 py-2 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm disabled:opacity-40"
         >
-          {user ? 'Create' : 'Sign in and create'}
+          {user ? t('Create') : t('Sign in and create')}
         </button>
       </div>
       {erreur && <p className="mt-2 text-sm text-red-500">{erreur}</p>}
 
       {user && ligues && ligues.length > 0 && (
         <section className="mt-10">
-          <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400">Your leagues</h2>
+          <h2 className="text-xs font-mono uppercase tracking-wider text-slate-400">{t('Your leagues')}</h2>
           <ul className="mt-3 grid gap-2 sm:grid-cols-2">
             {ligues.map((l) => (
               <li key={l.id}>
@@ -117,18 +117,19 @@ export function Leagues() {
 
       {user && ligues && ligues.length === 0 && (
         <p className="mt-8 text-sm text-slate-500">
-          You are not in any league yet. Create one above, or open an invite link a friend sent you.
+          {t('You are not in any league yet. Create one above, or open an invite link a friend sent you.')}
         </p>
       )}
 
       <p className="mt-12 text-sm text-muted-foreground">
-        Points come from your picks on the{' '}
+        {t('Points come from your bets on the')}{' '}
         <Link to="/predictions" className="underline">
-          predictions page
+          {t('predictions page')}
         </Link>
-        , and the global table lives on{' '}
+        {', '}
+        {t('and the global table lives on')}{' '}
         <Link to="/board" className="underline">
-          the leaderboard
+          {t('the leaderboard')}
         </Link>
         .
       </p>

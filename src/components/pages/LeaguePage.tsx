@@ -13,6 +13,7 @@ import {
   type LigneDeLigue,
 } from '../../lib/leagues'
 import { cn } from '../../lib/utils'
+import { localeOf, useLang, useT } from '../../lib/i18n'
 
 /**
  * /l/:slug — une ligue privée et son classement.
@@ -33,6 +34,8 @@ import { cn } from '../../lib/utils'
 export function LeaguePage() {
   const { slug = '' } = useParams()
   const user = useAuth((s) => s.user)
+  const t = useT()
+  const lang = useLang((s) => s.lang)
   const [ligue, setLigue] = useState<Ligue | null | 'introuvable'>(null)
   const [lignes, setLignes] = useState<LigneDeLigue[]>([])
   const [occupe, setOccupe] = useState(false)
@@ -61,18 +64,18 @@ export function LeaguePage() {
   }, [charger])
 
   if (ligue === null) {
-    return <div className="container max-w-3xl mx-auto px-6 py-16 text-sm text-slate-400">Loading…</div>
+    return <div className="container max-w-3xl mx-auto px-6 py-16 text-sm text-slate-400">{t('Loading…')}</div>
   }
 
   if (ligue === 'introuvable') {
     return (
       <div className="container max-w-3xl mx-auto px-6 py-16">
-        <h1 className="text-2xl font-bold">League not found</h1>
+        <h1 className="text-2xl font-bold">{t('League not found')}</h1>
         <p className="mt-3 text-muted-foreground">
-          That invite link is wrong, or the league was deleted.
+          {t('That invite link is wrong, or the league was deleted.')}
         </p>
         <Link to="/leagues" className="mt-4 inline-block underline">
-          Your leagues
+          {t('Your leagues')}
         </Link>
       </div>
     )
@@ -103,13 +106,13 @@ export function LeaguePage() {
   return (
     <div className="container max-w-3xl mx-auto px-6 py-10">
       <Link to="/leagues" className="text-sm text-muted-foreground hover:underline">
-        ← Your leagues
+        ← {t('Your leagues')}
       </Link>
 
       <h1 className="mt-3 text-3xl font-bold tracking-tight">{ligue.name}</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        {lignes.length} {lignes.length === 1 ? 'member' : 'members'} · points counted from the day
-        each member joined, so everyone starts level.
+        {lignes.length} {lignes.length === 1 ? t('member') : t('members')} ·{' '}
+        {t('points counted from the day each member joined, so everyone starts level.')}
       </p>
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
@@ -120,7 +123,7 @@ export function LeaguePage() {
             disabled={occupe}
             className="px-4 py-2 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm disabled:opacity-50"
           >
-            {user ? 'Join this league' : 'Sign in and join'}
+            {user ? t('Join this league') : t('Sign in and join')}
           </button>
         )}
         <button
@@ -132,7 +135,7 @@ export function LeaguePage() {
           }}
           className="px-4 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm transition-colors"
         >
-          {copie ? 'Link copied' : 'Copy invite link'}
+          {copie ? t('Link copied') : t('Copy invite link')}
         </button>
         {membre && (
           <button
@@ -141,7 +144,7 @@ export function LeaguePage() {
             disabled={occupe}
             className="text-xs text-slate-400 hover:text-slate-600 underline disabled:opacity-50"
           >
-            Leave
+            {t('Leave')}
           </button>
         )}
       </div>
@@ -150,17 +153,16 @@ export function LeaguePage() {
 
       {lignes.length === 0 ? (
         <p className="mt-10 text-sm text-slate-500">
-          Nobody has joined yet. Share the link above — anyone who opens it can see the league
-          before signing up.
+          {t('Nobody has joined yet. Share the link above — anyone who opens it can see the league before signing up.')}
         </p>
       ) : (
         <table className="mt-8 w-full text-sm">
           <thead>
             <tr className="text-start text-xs font-mono uppercase tracking-wider text-slate-400 border-b border-slate-200/60">
               <th className="py-2 pr-3 font-medium text-start">#</th>
-              <th className="py-2 pr-3 font-medium text-start">Player</th>
-              <th className="py-2 pr-3 font-medium text-end">Resolved</th>
-              <th className="py-2 font-medium text-end">Points</th>
+              <th className="py-2 pr-3 font-medium text-start">{t('Player')}</th>
+              <th className="py-2 pr-3 font-medium text-end">{t('Settled')}</th>
+              <th className="py-2 font-medium text-end">{t('Points')}</th>
             </tr>
           </thead>
           <tbody>
@@ -173,9 +175,11 @@ export function LeaguePage() {
                 )}
               >
                 <td className="py-2 pr-3 font-mono tabular-nums text-slate-400">{i + 1}</td>
-                <td className="py-2 pr-3">{r.alias || 'anonymous'}</td>
+                <td className="py-2 pr-3">{r.alias || t('anonymous')}</td>
                 <td className="py-2 pr-3 text-end font-mono tabular-nums text-slate-500">{r.resolved}</td>
-                <td className="py-2 text-end font-mono tabular-nums font-semibold">{r.points}</td>
+                <td className="py-2 text-end font-mono tabular-nums font-semibold">
+                  {r.points.toLocaleString(localeOf(lang))}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -183,11 +187,11 @@ export function LeaguePage() {
       )}
 
       <p className="mt-10 text-sm text-muted-foreground">
-        Points come from your picks on the{' '}
+        {t('Points come from your bets on the')}{' '}
         <Link to="/predictions" className="underline">
-          predictions page
+          {t('predictions page')}
         </Link>
-        . Exact score 100, right winner and goal difference 60, right winner 30, right total goals 20.
+        .
       </p>
 
       <AuthModal open={modale} onClose={() => { setModale(false); void charger() }} />

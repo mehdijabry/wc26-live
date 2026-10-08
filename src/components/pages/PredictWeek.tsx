@@ -5,8 +5,10 @@ import { useAuth } from '../../store/auth'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
 import { teamBadgeFallback, cn } from '../../lib/utils'
+import { localeOf, trLeague, useLang, useT, type Lang } from '../../lib/i18n'
 import {
   JETON,
+  JETONS_PAR_JOUR,
   POINT,
   MISE_MINIMUM,
   PALIER,
@@ -48,10 +50,27 @@ const JOURS = 7
 /** Les mises proposées d'un geste. Un pas-à-pas demandait sept appuis. */
 const MISES = [3, 5, 10]
 
-function libelleJour(d: Date, i: number): string {
-  if (i === 0) return "Auj."
-  if (i === 1) return 'Demain'
-  return d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' })
+/**
+ * Les chaînes de ce fichier sont EN ANGLAIS, parce que c'est la langue source
+ * du dictionnaire (`src/lib/i18n.ts` est indexé par la phrase anglaise).
+ * Écrire en français en dur, comme je l'avais fait, affiche du français à un
+ * visiteur anglophone ou arabophone.
+ *
+ * `avec()` injecte les valeurs APRÈS traduction : la clé reste une phrase
+ * anglaise stable avec des marqueurs `{x}`, et chaque langue place ses
+ * variables où sa grammaire l'exige.
+ */
+function avec(phrase: string, valeurs: Record<string, string | number>): string {
+  return Object.entries(valeurs).reduce(
+    (acc, [cle, v]) => acc.split(`{${cle}}`).join(String(v)),
+    phrase,
+  )
+}
+
+function libelleJour(d: Date, i: number, lang: Lang, t: (s: string) => string): string {
+  if (i === 0) return t('Today')
+  if (i === 1) return t('Tomorrow')
+  return d.toLocaleDateString(localeOf(lang), { weekday: 'short', day: 'numeric' })
 }
 
 type Camp = { nom: string; logo?: string; score?: string }
@@ -76,8 +95,10 @@ function etat(ev: EspnEvent): 'avant' | 'direct' | 'fini' {
   return 'avant'
 }
 
-function heure(ev: EspnEvent): string {
-  return ev.date ? new Date(ev.date).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : ''
+function heure(ev: EspnEvent, lang: Lang): string {
+  return ev.date
+    ? new Date(ev.date).toLocaleTimeString(localeOf(lang), { hour: '2-digit', minute: '2-digit' })
+    : ''
 }
 
 const LIBELLE: Record<Choix, string> = { home: '1', draw: 'X', away: '2' }
@@ -104,12 +125,16 @@ function CarteMatch({
   pari,
   selection,
   onChoisir,
+  lang,
+  t,
 }: {
   ev: EspnEvent
   cote: Cote
   pari: Pari | undefined
   selection: Selection | null
   onChoisir: (s: Selection | null) => void
+  lang: Lang
+  t: (s: string) => string
 }) {
   const c = camps(ev)
   if (!c) return null
@@ -136,10 +161,10 @@ function CarteMatch({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-accent-red opacity-75" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent-red" />
               </span>
-              EN DIRECT
+              {t('LIVE')}
             </span>
           ) : (
-            heure(ev)
+            heure(ev, lang)
           )}
         </span>
 
@@ -147,15 +172,18 @@ function CarteMatch({
           <span className="font-mono text-[11px]">
             {pari.status === 'open' && (
               <span className="text-slate-500">
-                {pari.stake} engagés · {Math.round(pari.stake * pari.odds).toLocaleString('fr-FR')} possible
+                {avec(t('{n} staked · {g} to win'), {
+                  n: pari.stake,
+                  g: Math.round(pari.stake * pari.odds).toLocaleString(localeOf(lang)),
+                })}
               </span>
             )}
             {pari.status === 'won' && (
               <span className="px-2 py-0.5 rounded-full bg-accent-gold/15 text-accent-gold font-semibold">
-                +{(pari.payout ?? 0).toLocaleString('fr-FR')}
+                +{(pari.payout ?? 0).toLocaleString(localeOf(lang))}
               </span>
             )}
-            {pari.status === 'lost' && <span className="text-slate-500">perdu</span>}
+            {pari.status === 'lost' && <span className="text-slate-500">{t('lost')}</span>}
           </span>
         )}
       </div>
@@ -169,7 +197,7 @@ function CarteMatch({
             e === 'avant' ? 'text-[11px] text-slate-400' : 'text-base font-bold text-slate-900',
           )}
         >
-          {e === 'avant' ? 'vs' : `${c.dom.score ?? '-'} - ${c.ext.score ?? '-'}`}
+          {e === 'avant' ? t('vs') : `${c.dom.score ?? '-'} - ${c.ext.score ?? '-'}`}
         </span>
         <Equipe camp={c.ext} cote />
       </div>
@@ -216,6 +244,8 @@ function Bulletin({
   erreur,
   onMiser,
   onFermer,
+  lang,
+  t,
 }: {
   selection: Selection
   solde: number
@@ -223,6 +253,8 @@ function Bulletin({
   erreur: string | null
   onMiser: (mise: number) => void
   onFermer: () => void
+  lang: Lang
+  t: (s: string) => string
 }) {
   const [mise, setMise] = useState(MISE_MINIMUM)
   const max = Math.max(MISE_MINIMUM, solde)
@@ -236,14 +268,15 @@ function Bulletin({
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">{selection.titre}</div>
             <div className="mt-0.5 font-mono text-[11px] text-slate-500">
-              Ton choix : <span className="text-accent-gold font-semibold">{LIBELLE[selection.choix]}</span> à{' '}
-              {selection.cote.toFixed(2)}
+              {t('Your pick')} :{' '}
+              <span className="text-accent-gold font-semibold">{LIBELLE[selection.choix]}</span>{' '}
+              @ {selection.cote.toFixed(2)}
             </div>
           </div>
           <button
             type="button"
             onClick={onFermer}
-            aria-label="Fermer"
+            aria-label={t('Close')}
             className="shrink-0 w-7 h-7 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 leading-none"
           >
             ×
@@ -280,7 +313,7 @@ function Bulletin({
               solde < MISE_MINIMUM && 'opacity-30',
             )}
           >
-            tout
+            {t('all')}
           </button>
         </div>
 
@@ -291,8 +324,8 @@ function Bulletin({
           className="mt-3 w-full py-3 rounded-xl bg-accent-gold text-ink-900 font-semibold disabled:opacity-40 active:scale-[0.99] transition-transform"
         >
           {solde < MISE_MINIMUM
-            ? `Il te faut ${MISE_MINIMUM} ${JETON.plusieurs}`
-            : `Miser ${utilisable} · gagner ${gain.toLocaleString('fr-FR')}`}
+            ? avec(t('You need {n} {jeton}'), { n: MISE_MINIMUM, jeton: JETON.plusieurs })
+            : avec(t('Stake {n} · win {g}'), { n: utilisable, g: gain.toLocaleString(localeOf(lang)) })}
         </button>
 
         {erreur && <p className="mt-2 text-center text-xs text-accent-red">{erreur}</p>}
@@ -317,6 +350,8 @@ export function PredictWeek() {
   const [erreurPari, setErreurPari] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const user = useAuth((s) => s.user)
+  const t = useT()
+  const lang = useLang((s) => s.lang)
 
   const dates = useMemo(
     () =>
@@ -426,7 +461,7 @@ export function PredictWeek() {
     await rafraichirJoueur()
     if (r.ok) {
       setSelection(null)
-      setMessage('Pari enregistré')
+      setMessage(t('Bet placed'))
       setTimeout(() => setMessage(null), 3000)
     } else {
       setErreurPari(r.raison)
@@ -438,10 +473,10 @@ export function PredictWeek() {
     await rafraichirJoueur()
     setMessage(
       !r
-        ? 'Impossible de réclamer pour le moment.'
+        ? t('Could not claim right now.')
         : r.dejaReclame
-          ? 'Déjà réclamés aujourd’hui — reviens demain.'
-          : `+5 ${JETON.plusieurs} · solde ${r.solde}`,
+          ? t('Already claimed today — come back tomorrow.')
+          : avec(t('+{d} {jeton} · balance {n}'), { d: JETONS_PAR_JOUR, jeton: JETON.plusieurs, n: r.solde }),
     )
     setTimeout(() => setMessage(null), 4000)
   }
@@ -469,24 +504,30 @@ export function PredictWeek() {
 
   return (
     <div className={cn('container max-w-2xl mx-auto px-4 sm:px-6 py-8', selection && 'pb-56')}>
-      <h1 className="font-display text-4xl sm:text-5xl tracking-tight">Pronostics</h1>
+      <h1 className="font-display text-4xl sm:text-5xl tracking-tight">{t('Predictions')}</h1>
       <p className="mt-2 text-slate-600 text-[15px]">
-        Choisis un camp, décide ta mise, la cote fait le reste.
+        {t('Pick a side, set your stake, the odds do the rest.')}
       </p>
 
       {/* Les règles sont là pour qui les cherche, pas en travers du chemin. */}
       <details className="mt-3 group">
         <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-slate-500 hover:text-accent-gold transition-colors">
-          Comment ça marche
+          {t('How it works')}
         </summary>
         <p className="mt-2 text-sm text-slate-600 leading-relaxed">
-          Tu reçois 5 {JETON.plusieurs} par jour, à réclamer en te connectant — non réclamés, ils
-          sont perdus. Tu en mises au moins {MISE_MINIMUM} sur un résultat, à la cote réelle du
-          match : plus le favori est net, moins ça rapporte. Tes gains sont des {POINT.plusieurs},
-          et {PALIER.points.toLocaleString('fr-FR')} {POINT.plusieurs} débloquent{' '}
-          {PALIER.recompense}. Rien à déposer, aucun bookmaker. Tous les matchs pour lesquels une
-          cote existe sont jouables — championnats, coupes et sélections, les plus grandes
-          compétitions en tête.
+          {avec(
+            t(
+              'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.',
+            ),
+            {
+              d: JETONS_PAR_JOUR,
+              jeton: JETON.plusieurs,
+              min: MISE_MINIMUM,
+              point: POINT.plusieurs,
+              palier: PALIER.points.toLocaleString(localeOf(lang)),
+              prix: PALIER.recompense,
+            },
+          )}
         </p>
       </details>
 
@@ -506,7 +547,7 @@ export function PredictWeek() {
                 {POINT.plusieurs}
               </div>
               <div className="font-display text-2xl leading-none tabular-nums text-accent-gold">
-                {Number(pf?.pressings ?? 0).toLocaleString('fr-FR')}
+                {Number(pf?.pressings ?? 0).toLocaleString(localeOf(lang))}
               </div>
             </div>
             <div className="ms-auto">
@@ -516,10 +557,10 @@ export function PredictWeek() {
                   onClick={() => void onReclamer()}
                   className="px-4 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm active:scale-[0.98] transition-transform"
                 >
-                  +5 gratuits
+                  {avec(t('+{d} free'), { d: JETONS_PAR_JOUR })}
                 </button>
               ) : (
-                <span className="font-mono text-[11px] text-slate-500">réclamés ✓</span>
+                <span className="font-mono text-[11px] text-slate-500">{t('claimed')} ✓</span>
               )}
             </div>
           </div>
@@ -528,7 +569,7 @@ export function PredictWeek() {
               <div className="h-full bg-accent-gold transition-all" style={{ width: `${progression}%` }} />
             </div>
             <div className="mt-1 font-mono text-[10px] text-slate-500 tabular-nums">
-              {PALIER.points.toLocaleString('fr-FR')} {POINT.plusieurs} → {PALIER.recompense}
+              {PALIER.points.toLocaleString(localeOf(lang))} {POINT.plusieurs} → {PALIER.recompense}
             </div>
           </div>
         </div>
@@ -538,8 +579,11 @@ export function PredictWeek() {
           onClick={() => setModale(true)}
           className="mt-5 w-full glass glass-hover rounded-2xl px-4 py-3.5 text-start"
         >
-          <span className="font-semibold">Connecte-toi</span>
-          <span className="text-slate-600"> pour recevoir 5 {JETON.plusieurs} gratuits chaque jour.</span>
+          <span className="font-semibold">{t('Sign in')}</span>
+          <span className="text-slate-600">
+            {' '}
+            {avec(t('to get {d} free {jeton} every day.'), { d: JETONS_PAR_JOUR, jeton: JETON.plusieurs })}
+          </span>
         </button>
       )}
 
@@ -561,7 +605,7 @@ export function PredictWeek() {
                 : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100',
             )}
           >
-            {libelleJour(d, i)}
+            {libelleJour(d, i, lang, t)}
           </button>
         ))}
       </div>
@@ -582,7 +626,7 @@ export function PredictWeek() {
                 : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100',
             )}
           >
-            Tout · {totalJouables}
+            {t('All')} · {totalJouables}
           </button>
           {jouables.map((c) => (
             <button
@@ -596,7 +640,7 @@ export function PredictWeek() {
                   : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100',
               )}
             >
-              {c.label} · {c.events.length}
+              {trLeague(c.label, lang)} · {c.events.length}
             </button>
           ))}
         </div>
@@ -604,16 +648,15 @@ export function PredictWeek() {
 
       {erreurChargement && (
         <p className="mt-10 text-center text-sm text-slate-500">
-          Les matchs ne répondent pas. Réessaie dans un instant.
+          {t('Fixtures are not responding. Try again in a moment.')}
         </p>
       )}
       {!comps && !erreurChargement && (
-        <p className="mt-10 text-center text-sm text-slate-500">Chargement…</p>
+        <p className="mt-10 text-center text-sm text-slate-500">{t('Loading…')}</p>
       )}
       {comps && jouables.length === 0 && (
         <p className="mt-10 text-center text-sm text-slate-500">
-          Rien à parier ce jour-là — aucune cote publiée. Essaie un autre jour : le week-end
-          en concentre le plus.
+          {t('Nothing to back that day — no odds published. Try another day: the weekend has the most.')}
         </p>
       )}
 
@@ -621,7 +664,7 @@ export function PredictWeek() {
         <section key={c.slug} className="mt-7">
           <div className="flex items-center gap-3">
             <h2 className="font-mono text-[11px] uppercase tracking-wider text-accent-gold/80 whitespace-nowrap">
-              {c.label}
+              {trLeague(c.label, lang)}
             </h2>
             <span className="h-px flex-1 bg-slate-200" />
           </div>
@@ -634,6 +677,8 @@ export function PredictWeek() {
                 pari={paris.get(idDePronostic(ev))}
                 selection={selection}
                 onChoisir={onChoisir}
+                lang={lang}
+                t={t}
               />
             ))}
           </ul>
@@ -641,17 +686,19 @@ export function PredictWeek() {
       ))}
 
       <p className="mt-12 text-sm text-slate-600">
-        Règle le débat avec tes potes dans une{' '}
+        {t('Settle it with your mates in a')}{' '}
         <Link to="/leagues" className="text-accent-gold hover:underline">
-          ligue privée
+          {t('private league')}
         </Link>
-        , ou vois où tu en es au{' '}
+        {', '}
+        {t('or see where you stand on')}{' '}
         <Link to="/board" className="text-accent-gold hover:underline">
-          classement
+          {t('the table')}
         </Link>
-        . Le tableau du Mondial 2026 reste consultable sur la{' '}
+        {'. '}
+        {t('The World Cup 2026 bracket is kept on the')}{' '}
         <Link to="/bracket" className="text-accent-gold hover:underline">
-          page bracket
+          {t('bracket page')}
         </Link>
         .
       </p>
@@ -664,6 +711,8 @@ export function PredictWeek() {
           erreur={erreurPari}
           onMiser={(m) => void onMiser(m)}
           onFermer={() => { setSelection(null); setErreurPari(null) }}
+          lang={lang}
+          t={t}
         />
       )}
 
