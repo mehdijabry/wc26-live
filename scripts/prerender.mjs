@@ -158,6 +158,15 @@ function startServer() {
 
 async function prerenderRoute(browser, route) {
   const page = await browser.newPage()
+
+  // ESPN renvoie 403 à tout ce qui s'annonce « HeadlessChrome » — vérifié le
+  // 8 octobre 2026 sur `/{ligue}/teams/{id}?enable=roster`, qui est justement
+  // ce que la fiche de club appelle. Sans cette ligne les 334 fiches se
+  // rendent vides, et le plan du site publie 334 adresses creuses.
+  await page.setUserAgent(
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' +
+      ' (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+  )
   // Block heavy 3rd-party stuff at crawl time so the snapshot doesn't
   // bake Adsterra iframes / Cloudflare analytics into static HTML.
   await page.setRequestInterception(true)

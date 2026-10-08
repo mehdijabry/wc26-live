@@ -14,6 +14,9 @@ import { useLang, useT } from '../lib/i18n'
 const BASE_LINKS: Array<{ label: string; to: string }> = [
   { label: 'Home', to: '/' },
   { label: 'Matches', to: '/today' },
+  // Les 363 pages clubs ne doivent pas dépendre du seul plan du site pour
+  // être trouvées : un lien depuis chaque page du site vaut mieux.
+  { label: 'Clubs', to: '/clubs' },
   { label: 'News', to: '/news' },
 ]
 const WC26_LINK = { label: 'WC26 Archive', to: '/wc26' }

@@ -32,6 +32,9 @@ import { sendHit } from './lib/beacon'
 // DOM, which is why "My Bracket" navigation appeared to do nothing.
 const Stadiums = lazy(() => import('./components/Stadiums').then((m) => ({ default: m.Stadiums })))
 const Predictions = lazy(() => import('./components/Predictions').then((m) => ({ default: m.Predictions })))
+const Clubs = lazy(() => import('./components/pages/Clubs').then((m) => ({ default: m.Clubs })))
+const ClubsLeague = lazy(() => import('./components/pages/ClubsLeague').then((m) => ({ default: m.ClubsLeague })))
+const ClubPage = lazy(() => import('./components/pages/ClubPage').then((m) => ({ default: m.ClubPage })))
 const Leaderboard = lazy(() => import('./components/Leaderboard').then((m) => ({ default: m.Leaderboard })))
 const DailyMatches = lazy(() => import('./components/DailyMatches').then((m) => ({ default: m.DailyMatches })))
 const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) => ({ default: m.BracketWizard })))
@@ -264,6 +267,32 @@ function App() {
           <Route path="/news" element={<NewsListPage />} />
           <Route path="/news/:slug" element={<NewsArticlePage />} />
           <Route path="/stadiums" element={<StadiumsPage />} />
+          {/* Clubs — continent → pays → championnat → club. Les trois routes
+              ne connaissent aucun club : tout vient de l'API au rendu. */}
+          <Route
+            path="/clubs"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading leagues…" />}>
+                <Clubs />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/clubs/:league"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading clubs…" />}>
+                <ClubsLeague />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/club/:league/:club"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading squad…" />}>
+                <ClubPage />
+              </Suspense>
+            }
+          />
           <Route path="/u/:slug" element={<ProfilePage />} />
           {/* /watch + /watch/:country — SEO trap for the 'where to watch
               world cup 2026 in <country>' search wave. Index + 22

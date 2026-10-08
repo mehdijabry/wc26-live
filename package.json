@@ -6,10 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:prerender": "tsc -b && vite build && node scripts/prerender.mjs",
+    "build:prerender": "tsc -b && node scripts/sitemap-clubs.mjs && vite build && node scripts/prerender.mjs",
     "prerender": "node scripts/prerender.mjs",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "sitemap:clubs": "node scripts/sitemap-clubs.mjs"
   },
   "dependencies": {
     "@lottiefiles/dotlottie-react": "^0.19.4",

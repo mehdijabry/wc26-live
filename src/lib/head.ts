@@ -28,8 +28,29 @@ export type PageHead = {
 
 const ORIGINE = 'https://pressing90.live'
 
-export function usePageHead({ titre, description, chemin, brut }: PageHead) {
+/**
+ * Passer `null` tant que la donnée n'est pas arrivée — c'est volontaire et
+ * c'est ce qui fait marcher le prérendu.
+ *
+ * Les pages clubs posaient un titre de repli (« Club squad ») en attendant la
+ * réponse d'ESPN. Or `scripts/prerender.mjs` photographie la page dès que le
+ * titre cesse d'être celui de `index.html` : le repli satisfaisait la condition
+ * et les 363 pages clubs partaient avec un titre générique et sans JSON-LD.
+ * Vérifié sur `dist/club/laliga/barcelona.html` avant déploiement.
+ *
+ * En ne posant rien avant d'avoir la donnée, la condition d'attente du
+ * prérendu devient exactement « la donnée est arrivée ».
+ */
+export function usePageHead(entree: PageHead | null) {
+  const { titre, description, chemin, brut } = entree ?? {
+    titre: '',
+    description: '',
+    chemin: '',
+    brut: false,
+  }
+  const actif = entree !== null
   useEffect(() => {
+    if (!actif) return
     const titreComplet = brut ? titre : `${titre} · Pressing 90`
     const url = `${ORIGINE}${chemin}`
 
@@ -48,7 +69,31 @@ export function usePageHead({ titre, description, chemin, brut }: PageHead) {
       document.head.appendChild(lien)
     }
     lien.href = url
-  }, [titre, description, chemin, brut])
+  }, [actif, titre, description, chemin, brut])
+}
+
+/**
+ * Pose un bloc JSON-LD identifié par une clé, en remplaçant le précédent.
+ *
+ * La clé évite d'empiler les blocs quand on navigue d'une page à l'autre sans
+ * recharger : sans elle, une visite de trois clubs laisserait trois
+ * `SportsTeam` dans le head, et Google lirait le mauvais.
+ */
+export function useJsonLd(cle: string, donnees: unknown | null) {
+  useEffect(() => {
+    const id = `ld-${cle}`
+    document.getElementById(id)?.remove()
+    if (!donnees) return
+    const el = document.createElement('script')
+    el.type = 'application/ld+json'
+    el.id = id
+    // `<` neutralisé : une chaîne contenant « </script> » fermerait la balise.
+    el.textContent = JSON.stringify(donnees).replace(/</g, '\\u003c')
+    document.head.appendChild(el)
+    return () => {
+      document.getElementById(id)?.remove()
+    }
+  }, [cle, donnees])
 }
 
 function poserMeta(cle: 'name' | 'property', valeur: string, contenu: string) {
