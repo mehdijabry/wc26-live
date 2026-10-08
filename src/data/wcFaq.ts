@@ -160,7 +160,7 @@ export const WC_FAQ: FaqEntry[] = [
   // ────────────────────────────────────────────────────────────────
   {
     slug: 'new-rules',
-    question: "What are the new football rules? The 2025/26 changes",
+    question: "What changed in the Laws of the Game in 2025/26?",
     short: "The 8-second goalkeeper rule with a corner as the penalty, captain-only communication with the referee, semi-automated offside, and VAR decisions announced over the stadium PA. All in the Laws of the Game 2025/26.",
     long: [
       "The IFAB approved the biggest cluster of changes to the Laws of the Game since VAR between 2024 and 2025 — most of them tested at Euro 2024, Copa América 2024 and the Club World Cup 2025 before becoming permanent. They sit in the Laws of the Game 2025/26, so they apply to every competition that follows the Laws, from a Sunday league fixture to the 2026 World Cup.",
@@ -168,7 +168,7 @@ export const WC_FAQ: FaqEntry[] = [
       "Quieter but important: concussion substitutes remain available without counting against the 5 normal subs. Cooling breaks are mandatory at ≥30°C (relevant for Dallas, Houston, Atlanta in the US summer). The squad cap stays at 26 players — an injured GK can be replaced even after the first match, with FIFA medical approval.",
       "Not in play at WC2026: 'sin bins' for dissent (still in trial at lower levels), the 'Wenger offside rule' (any part of body forward), and rolling subs. They've been discussed but not approved for the senior international game.",
     ],
-    related: ['gk-8-seconds', 'captain-rule', 'connected-ball', 'var-transparency', 'var'],
+    related: ['new-rules-2026-27', 'gk-8-seconds', 'captain-rule', 'connected-ball', 'var'],
     tags: ['new-rules', 'rules'],
   },
   {
@@ -310,6 +310,23 @@ export const WC_FAQ: FaqEntry[] = [
     ],
     related: ['knockout-rules', 'cooling-breaks', 'gk-8-seconds'],
     tags: ['rules'],
+  },
+  {
+    // Écrite sur la source primaire : « Law changes 2026/27 », le document de
+    // l'IFAB mis à jour en juillet 2026, pas sur des reprises de presse.
+    // Chaque sanction citée ici est dans son résumé officiel.
+    slug: 'new-rules-2026-27',
+    question: "What are the new football rules for 2026/27?",
+    short: "Five-second countdowns on throw-ins and goal kicks, ten seconds to leave the pitch when substituted, a minute off after treatment. In force since 1 July 2026.",
+    long: [
+      "The IFAB approved this set for the 2026/27 Laws of the Game, in force since 1 July 2026 — competitions that kicked off before that date were allowed to adopt it early. Where 2025/26 went after the goalkeeper and after who may speak to the referee, 2026/27 is almost entirely about one thing: how long a restart takes.",
+      "THE FIVE-SECOND COUNTDOWNS. If a player or a team is delaying a throw-in, the referee now shows a visual five-second countdown — and if it runs out, the throw-in is awarded to the opposing team. The same countdown applies to a goal kick, with a heavier punishment: the opposition gets a corner. It is the device that worked on goalkeepers in 2025/26 — a count everyone can see, and the restart handed to the other side — extended to the two restarts most used to run down a clock.",
+      "TEN SECONDS TO WALK OFF, A MINUTE OFF AFTER TREATMENT. A substituted player must be off the field within ten seconds of the board going up; if he takes longer, his replacement cannot come on until the first stoppage after a minute of play has elapsed. Where several players go off in the same stoppage, the ten seconds run from the last one indicated. And barring certain exceptions, any player who receives assessment or treatment on the pitch, or who causes play to be stopped through injury, must leave and stay off for one minute after the restart. The intent is plain: going down should cost your own team, not the opposition.",
+      "THE VAR'S REMIT WIDENS. It may now review a red card that came from a clearly wrong second yellow, and mistaken identity — a yellow or red shown to the wrong player, of either team. As a competition option it may also review a corner kick clearly awarded in error, provided the call can be corrected immediately and without delaying the restart. Competitions may also fit referees, assistant referees and fourth officials with body cameras.",
+      "AND THE REST. No caution for denying an obvious goalscoring opportunity if the referee plays advantage and the goal is scored anyway. The automatic caution for a penalty taker disappears when the kicker and the goalkeeper offend at the same moment. Accessories are allowed if they are not dangerous and are safely covered. Friendlies between senior national teams may use eight substitutes, or eleven if both teams agree and tell the referee beforehand, within three substitution windows. One to diarise: the 'only the captain' guidelines, optional so far, become a compulsory protocol in every competition from 1 July 2027.",
+    ],
+    related: ['new-rules', 'captain-rule', 'gk-8-seconds', 'var'],
+    tags: ['new-rules', 'rules'],
   },
 ]
 
