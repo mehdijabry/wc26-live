@@ -237,7 +237,7 @@ export const WC_FAQ: FaqEntry[] = [
       "What VAR + semi-automated offside check: not whether the attacker is interfering (that's still subjective and on the on-field referee) but whether the position was offside at the moment the pass was played. The Trionda ball's sensor pins the exact pass moment to the millisecond; the AI limb-tracking from multiple cameras builds a 3D skeleton of every player at that frame. If any part of the attacker's body that can legally score is ahead of the second-to-last defender, it's offside.",
       "Common myths busted: hand/arm offside doesn't exist (you can't score with your hand, so it doesn't count for offside either). And the 'daylight rule' (gap between attacker and defender) was never a real law — it's just a TV term for clearly offside positions.",
     ],
-    related: ['var', 'connected-ball'],
+    related: ['var', 'football-pitch-size', 'connected-ball'],
     tags: ['rules'],
   },
   {
@@ -308,7 +308,7 @@ export const WC_FAQ: FaqEntry[] = [
       "EXTRA TIME. Only played in a knockout tie that is level once the 90 minutes and their stoppage time are done. Two halves of 15 minutes, and both are played in full — the golden goal, where the first goal ended it, was abolished in 2004. Teams change ends at the interval and get a break of about a minute, taken on the pitch rather than in the dressing room. Competitions that allow five substitutions in regulation allow a sixth during extra time. If it is still level after the 30 minutes, the tie goes to kicks from the penalty mark.",
       "THE VOCABULARY, because it is most of the problem. Stoppage time, added time, additional time and injury time all mean exactly the same thing — the Laws of the Game say 'allowance for time lost', commentators say whichever they grew up with. 'AET' next to a scoreline means after extra time. 'Overtime' is the North American word for extra time, borrowed from other sports. And a penalty shootout is not part of the match: a tie that finishes 1-1 and is settled on penalties is recorded as 1-1, with the shootout noted separately.",
     ],
-    related: ['knockout-rules', 'cooling-breaks', 'gk-8-seconds'],
+    related: ['how-long-is-a-football-match', 'knockout-rules', 'cooling-breaks'],
     tags: ['rules'],
   },
   {
@@ -327,6 +327,52 @@ export const WC_FAQ: FaqEntry[] = [
     ],
     related: ['new-rules', 'captain-rule', 'gk-8-seconds', 'var'],
     tags: ['new-rules', 'rules'],
+  },
+  {
+    // Keyword Planner, tous pays : « how long is a football match » 10 k – 100 k.
+    slug: 'how-long-is-a-football-match',
+    question: "How long is a football match?",
+    short: "Ninety minutes, in two halves of 45, plus the stoppage time the referee adds to each half. With the interval, about two hours from kick-off to the final whistle.",
+    long: [
+      "The playing time is 90 minutes: two halves of 45. What makes the answer longer than that is Law 7 — the clock never stops, so the referee adds an allowance at the end of each half for the time play was actually lost. Substitutions, treatment on the pitch, cards, goal celebrations, VAR reviews and any deliberate delay all come back as stoppage time, and since the 2022 World Cup referees have been told to count it far more strictly. Eight or ten minutes at the end of a half is no longer unusual.",
+      "Add the interval and you have the real answer. Half-time may not exceed 15 minutes, it is fixed in the competition rules, and the referee can only change its length with everyone's agreement. So a league match that kicks off at three o'clock finishes a little before five: 45 + stoppage, 15 off, 45 + stoppage. Around two hours, give or take the kind of afternoon it has been.",
+      "A knockout tie can run much longer. If it is level after 90 minutes it goes to extra time — two halves of 15, each with its own stoppage time, separated by a break of about a minute taken on the pitch. Still level and it goes to kicks from the penalty mark, which have no fixed length at all. A tie that goes all the way can keep you in your seat for two and a half hours.",
+      "Ninety is not universal. The Laws let youth, veterans, women's and disability football agree shorter halves before kick-off, and many youth competitions do. What never changes is who holds the watch: the referee is the sole timekeeper, the fourth official's board shows the MINIMUM to be added, and play stops when the referee says it stops — not when the broadcast clock reaches 90:00.",
+    ],
+    related: ['extra-time-vs-stoppage-time', 'knockout-rules', 'cooling-breaks'],
+    tags: ['rules'],
+  },
+  {
+    // « football pitch size » 10 k – 100 k, et stable sur trois mois — aucune
+    // dépendance au tournoi, contrairement à presque tout le reste du site.
+    slug: 'football-pitch-size',
+    question: "Football pitch size: every dimension in the Laws",
+    short: "There is no single size. A pitch is 90–120 m long and 45–90 m wide; internationals narrow it to 100–110 by 64–75. The goal is 7.32 by 2.44 m.",
+    long: [
+      "Football is unusual among major sports in not fixing the size of its field. Law 1 gives ranges: the touchline between 90 and 120 metres, the goal line between 45 and 90, and the touchline must always be longer than the goal line. For international matches the range narrows to 100–110 metres by 64–75. Competitions are free to fix a single size inside that — UEFA requires 105 by 68 metres for its club competitions, which is why almost every modern stadium is built to it.",
+      "The markings, all measured from the Laws. The penalty area runs 16.5 metres from the inside of each goalpost and 16.5 metres into the field. The goal area — the six-yard box — is 5.5 metres on the same pattern. The penalty mark sits 11 metres from the goal line, midway between the posts. The arc outside the box is a 9.15-metre radius drawn from that mark, and it exists for one reason: to show where the other players must stand. The centre circle has the same 9.15-metre radius, and each corner arc is one metre.",
+      "The goal: 7.32 metres between the inside of the posts, 2.44 metres from the ground to the underside of the crossbar. Posts and crossbar must be the same width as the goal line and no more than 12 centimetres thick, white, and of a shape that cannot injure a player.",
+      "If those numbers look arbitrary, it is because they are conversions. The Laws were written in yards: an 8-yard goal 8 feet high, an 18-yard box, a 6-yard box, a 12-yard spot, a 10-yard arc. Metric football inherited the imperial pitch and rounded it to the centimetre, which is how 10 yards became 9.15 metres.",
+    ],
+    related: ['offside-explained', 'penalty-kick-rules', 'how-long-is-a-football-match'],
+    tags: ['rules'],
+  },
+  {
+    // « penalty kick rules » 1 k – 10 k. Le détail du circulaire n° 31 sur le
+    // double contact n'est PAS repris : le document de l'IFAB le mentionne sans
+    // en donner le texte, et je ne l'ai pas lu. On dit qu'il existe, pas ce
+    // qu'il dit.
+    slug: 'penalty-kick-rules',
+    question: "Penalty kick rules: the spot, the keeper's line and retakes",
+    short: "Ball on the 11 m spot, every other player 9.15 m away and outside the box, and the goalkeeper with part of one foot on the line until the ball is kicked.",
+    long: [
+      "A penalty is awarded when a player commits a direct-free-kick offence inside their own penalty area, whether or not the ball was in that area at the time. The ball goes on the penalty mark, 11 metres out. The kicker must be clearly identified — no running up in a crowd and letting someone else strike it. Every other player stands inside the field, outside the penalty area, behind the ball and at least 9.15 metres from the mark. That is what the arc outside the box is for.",
+      "The goalkeeper is the detail most people get wrong. They must face the kicker, stay between the posts, and have at least part of one foot touching, in line with, or behind the goal line at the moment the ball is kicked. One foot may be off the ground, and they may move along the line — what they may not do is come off it early, or stand behind it. They also may not touch the goalposts, the crossbar or the net.",
+      "The kick itself must go forward. A backheel is legal, provided the ball travels forward. Feinting during the run-up is allowed and always has been; feinting once the run-up is complete is not, and it costs a caution. And the kicker may not play the ball a second time until someone else has touched it — a deliberate double touch gives the defending team an indirect free kick. The 2026/27 Laws added an explicit clarification for ACCIDENTAL double touches, the kind where a slip sends the standing foot into the ball.",
+      "Who offended decides what happens next. Goalkeeper infringes and the kick is saved or missed: retake. Goalkeeper infringes and it goes in: goal. A team-mate of the kicker encroaches and the kick scores: retake; if it misses, indirect free kick to the defending team. A defender encroaches and the kick scores: goal; if it misses, retake. Both teams encroach: retake, whatever the outcome. One thing changed in 2026/27 — the kicker is no longer automatically cautioned when they and the goalkeeper offend at the same moment.",
+    ],
+    related: ['football-pitch-size', 'knockout-rules', 'new-rules-2026-27'],
+    tags: ['rules'],
   },
 ]
 
