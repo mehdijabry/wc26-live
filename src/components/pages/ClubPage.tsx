@@ -24,6 +24,9 @@ export function ClubPage() {
   const ch = league ? championnatParSlug(league) : null
   const [detail, setDetail] = useState<ClubDetail | null>(null)
   const [introuvable, setIntrouvable] = useState(false)
+  // Le vrai nom du championnat (« Spanish LALIGA ») plutôt que son slug
+  // d'URL (« laliga ») : il arrive dans la même réponse que la liste.
+  const [nomLigue, setNomLigue] = useState('')
 
   usePageHead(
     detail
@@ -38,6 +41,33 @@ export function ClubPage() {
   // SportsTeam : le schéma que Google comprend pour un club, avec l'effectif
   // en `athlete`. C'est la seule chose de cette page qu'il ne trouve pas déjà
   // formatée ailleurs, donc c'est elle qui lui donne une raison de l'indexer.
+  // Fil d'Ariane structuré : les trois niveaux apparaissent dans les
+  // resultats Google au lieu de l'adresse brute.
+  useJsonLd(
+    'fil',
+    ch && detail
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Clubs', item: 'https://pressing90.live/clubs' },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: nomLigue || ch.slug.replace(/-/g, ' '),
+              item: `https://pressing90.live/clubs/${ch.slug}`,
+            },
+            {
+              '@type': 'ListItem',
+              position: 3,
+              name: detail.nom,
+              item: `https://pressing90.live/club/${ch.slug}/${detail.slug}`,
+            },
+          ],
+        }
+      : null,
+  )
+
   useJsonLd(
     'club',
     detail
@@ -55,7 +85,7 @@ export function ClubPage() {
             ? {
                 memberOf: {
                   '@type': 'SportsOrganization',
-                  name: ch.slug.replace(/-/g, ' '),
+                  name: nomLigue || ch.slug.replace(/-/g, ' '),
                   url: `https://pressing90.live/clubs/${ch.slug}`,
                 },
               }
@@ -80,7 +110,8 @@ export function ClubPage() {
     let vivant = true
     ;(async () => {
       try {
-        const { clubs } = await clubsDuChampionnat(cleLigue)
+        const { clubs, nomLigue: nl } = await clubsDuChampionnat(cleLigue)
+        if (vivant) setNomLigue(nl)
         const trouve = clubs.find((c) => c.slug === club)
         if (!trouve) {
           if (vivant) setIntrouvable(true)
@@ -121,7 +152,7 @@ export function ClubPage() {
   return (
     <div className="container max-w-4xl mx-auto px-6 py-10">
       <Link to={`/clubs/${ch.slug}`} className="text-sm text-muted-foreground hover:underline">
-        ← {ch.slug.replace(/-/g, ' ')}
+        ← {nomLigue || ch.slug.replace(/-/g, ' ')}
       </Link>
 
       <header className="mt-3 flex items-center gap-4">

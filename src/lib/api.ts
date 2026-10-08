@@ -158,7 +158,16 @@ const TOURNAMENT_DATE_RANGE = '20260611-20260719'
 // the browser without going through the proxy worker. The worker
 // doesn't forward query strings, which is why date-filtered calls
 // were returning only 2 events — we bypass it for scoreboard.
-const ESPN_DIRECT = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
+// HÔTE : `site.web.api`, pas `site.api`. Mesuré le 8 octobre 2026 depuis
+// l'origine de production, dans un vrai navigateur : `site.api.espn.com`
+// renvoie 504 sur quatre routes sur cinq (summary, news, fifa.world) et une
+// fois sur six sur `all/scoreboard`, tandis que `site.web.api.espn.com`
+// répond 200 sur les cinq, 4 essais sur 4, avec un corps identique — mêmes
+// 101 matchs. Le tableau des scores en direct était donc en panne la plupart
+// du temps. En ligne de commande les deux hôtes répondent 200 : c'est le
+// navigateur que `site.api` traite différemment, et seule une vérification
+// dans un navigateur le montre.
+const ESPN_DIRECT = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
 
 async function jgetDirect<T>(url: string): Promise<T> {
   const resp = await fetch(url)
@@ -168,7 +177,7 @@ async function jgetDirect<T>(url: string): Promise<T> {
 
 // ESPN "all soccer" endpoint — returns every match across every covered
 // league for the queried date. Doesn't need a CORS proxy.
-const ESPN_ALL = 'https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard'
+const ESPN_ALL = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard'
 
 // Per-league label + tier map. Slugs come from event.season.slug.
 // Anything not in this map falls into a generic "Other" bucket.
@@ -599,7 +608,7 @@ async function ensureLeagueNames(events: EspnEvent[]): Promise<void> {
     const evId = sampleEvent.get(id)
     if (!evId) return
     try {
-      const r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/soccer/all/summary?event=${evId}`, {
+      const r = await fetch(`https://site.web.api.espn.com/apis/site/v2/sports/soccer/all/summary?event=${evId}`, {
         signal: AbortSignal.timeout(5000),
       })
       const d = await r.json() as { header?: { league?: { name?: string; abbreviation?: string; slug?: string } } }
@@ -2026,7 +2035,7 @@ export async function fetchNews(perLeague = 4): Promise<NewsArticle[]> {
   const all = await Promise.all(
     NEWS_LEAGUES.map(async (lg) => {
       try {
-        const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${lg.slug}/news?limit=${perLeague}`
+        const url = `https://site.web.api.espn.com/apis/site/v2/sports/soccer/${lg.slug}/news?limit=${perLeague}`
         const r = await fetch(url, { signal: AbortSignal.timeout(4000) })
         if (!r.ok) return []
         const d = await r.json() as { articles?: EspnArticle[] }

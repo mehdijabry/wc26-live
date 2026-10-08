@@ -25,6 +25,27 @@ export function ClubsLeague() {
       : null,
   )
 
+  // Fil d'Ariane structuré : fait afficher « pressing90.live > Clubs > LaLiga »
+  // dans les resultats Google au lieu de l'adresse brute.
+  useJsonLd(
+    'fil',
+    nomLigue
+      ? {
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Clubs', item: 'https://pressing90.live/clubs' },
+            {
+              '@type': 'ListItem',
+              position: 2,
+              name: nomLigue,
+              item: `https://pressing90.live/clubs/${ch?.slug ?? ''}`,
+            },
+          ],
+        }
+      : null,
+  )
+
   // La liste des clubs en ItemList : Google découvre les 20 adresses sans
   // dépendre du plan du site ni de son exploration des liens.
   useJsonLd(

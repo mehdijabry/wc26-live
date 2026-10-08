@@ -139,7 +139,8 @@ export function MatchSheet({
     async function load() {
       try {
         const r = await fetch(
-          `https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=${eventId}`
+          // Hôte `site.web.api` : voir la note sur ESPN_DIRECT dans src/lib/api.ts.
+          `https://site.web.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=${eventId}`
         )
         if (!r.ok) throw new Error(`ESPN ${r.status}`)
         const j = (await r.json()) as SummaryResponse
