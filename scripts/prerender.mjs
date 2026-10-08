@@ -196,7 +196,17 @@ async function prerenderRoute(browser, route) {
       url.includes('turbulentrefreshments') ||
       url.includes('cloudflareinsights') ||
       url.includes('googletagmanager') ||
-      url.includes('google-analytics')
+      url.includes('google-analytics') ||
+      // AdSense. Le <script> chargeur reste dans le HTML — il est écrit en
+      // dur dans index.html et l'examinateur doit le voir — mais ses
+      // scripts d'exécution ne doivent JAMAIS être figés : `adsbygoogle.js`
+      // injecte `show_ads_impl_fy2021.js` dont l'URL contient un numéro de
+      // build daté (m202610010101). Gelé dans 465 pages statiques, il se
+      // met à répondre 404 le jour où Google fait tourner ce chemin, et il
+      // duplique le chargeur au passage. Mesuré le 8 octobre 2026 : deux
+      // balises au lieu d'une dans chaque page.
+      url.includes('googlesyndication') ||
+      url.includes('/pagead/')
     ) {
       req.abort()
     } else {
@@ -238,6 +248,43 @@ async function prerenderRoute(browser, route) {
 
   let html = await page.content()
   await page.close()
+
+  // ── Retirer TOUT ce qu'AdSense injecte à l'exécution ───────────────
+  //
+  // Bloquer la requête réseau ne suffit pas : le nœud existe dans le DOM dès
+  // que le navigateur l'a inséré, et `page.content()` sérialise le DOM, pas
+  // le réseau. Les annonces automatiques étant actives sur le compte, une
+  // annonce entière se retrouvait figée dans chaque page : un <ins> marqué
+  // `data-load-complete`, un <iframe> d'annonce, et `show_ads_impl.js` avec
+  // un numéro de build daté dans l'URL (m202610050101).
+  //
+  // Trois dégâts, tous silencieux :
+  //   • l'URL datée répond 404 le jour où Google fait tourner ce chemin ;
+  //   • un <ins> déjà marqué « chargé » n'est plus rempli chez le visiteur ;
+  //   • du balisage d'annonce servi en statique n'est pas un appel réel.
+  //
+  // On nettoie donc le HTML sérialisé. Seul le chargeur officiel survit :
+  // il est écrit en dur dans index.html et l'examinateur AdSense doit le
+  // voir dans le HTML servi. Chez le visiteur, c'est lui qui réinjectera
+  // tout le reste, frais.
+  const CHARGEUR = 'adsbygoogle.js?client=ca-pub-4325585331982020'
+  const estPub = (src) => /googlesyndication|doubleclick/i.test(src)
+
+  html = html
+    // scripts injectés (show_ads_impl, etc.), sauf le chargeur
+    .replace(
+      /<script\b[^>]*\bsrc="([^"]*)"[^>]*>\s*<\/script>/gi,
+      (balise, src) => (estPub(src) && !src.includes(CHARGEUR) ? '' : balise),
+    )
+    // iframes d'annonce
+    .replace(
+      /<iframe\b[^>]*\bsrc="([^"]*)"[^>]*>[\s\S]*?<\/iframe>/gi,
+      (balise, src) => (estPub(src) ? '' : balise),
+    )
+    // l'iframe technique qu'AdSense colle après </body>
+    .replace(/<iframe\b[^>]*\bid="google_esf"[^>]*>[\s\S]*?<\/iframe>/gi, '')
+    // les conteneurs d'annonces automatiques, entièrement
+    .replace(/<ins\b[^>]*class="[^"]*adsbygoogle[^"]*"[^>]*>[\s\S]*?<\/ins>/gi, '')
 
   // Force the canonical link to match the actual route. Many React
   // pages don't override the default <link rel="canonical" href="/">

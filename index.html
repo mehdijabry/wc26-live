@@ -7,6 +7,26 @@
     <link rel="icon" type="image/svg+xml" href="/p90-logo.svg" />
     <link rel="canonical" href="https://pressing90.live/" />
 
+    <!-- AdSense — chargeur, posé le 8 octobre 2026.
+         Éditeur pub-4325585331982020, site pressing90.live.
+
+         Il est ICI, en dur dans le document, et non rendu par React :
+         l'examinateur AdSense lit le HTML servi, et un script injecté
+         après hydratation peut lui échapper. C'est aussi ce que Google
+         attend pendant l'état « En préparation » — sans code sur le site,
+         l'examen ne peut pas aboutir.
+
+         Ce script seul N'AFFICHE RIEN : tant que le site n'est pas
+         approuvé il ne remplit aucun emplacement, et les annonces
+         automatiques restent pilotées depuis la console AdSense. Les
+         emplacements manuels, eux, passeront par src/components/AdSlot.tsx
+         et son interrupteur, comme Adsterra. -->
+    <script
+      async
+      src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-4325585331982020"
+      crossorigin="anonymous"
+    ></script>
+
     <!-- PWA manifest + iOS "Add to Home Screen" support.
          iOS doesn't honor manifest.json fully, so we duplicate the
          critical metadata via apple-* tags so the saved icon + standalone
