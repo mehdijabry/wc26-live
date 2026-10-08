@@ -251,9 +251,32 @@ export function PredictWeek() {
   )
 
   // Les cotes ne dependent pas du jour affiche : une seule lecture.
+  //
+  // Elles servent aussi a CHOISIR le jour d'ouverture. Sans ca la page
+  // s'ouvre sur aujourd'hui, et un jour creux — une treve internationale,
+  // un lundi — l'affiche vide alors qu'il y a des matchs a parier demain.
+  // Les coups d'envoi etant deja dans `match_odds`, le bon jour se deduit
+  // sans la moindre requete supplementaire.
+  const [jourChoisi, setJourChoisi] = useState(false)
   useEffect(() => {
-    void chargerCotes().then(setCotes)
-  }, [])
+    void chargerCotes().then((c) => {
+      setCotes(c)
+      if (jourChoisi) return
+      const jours = new Set<string>()
+      for (const x of c.values()) if (x.kickoff) jours.add(ymdLocal(new Date(x.kickoff)))
+      for (let i = 0; i < JOURS; i++) {
+        const d = new Date()
+        d.setDate(d.getDate() + i)
+        if (jours.has(ymdLocal(d))) {
+          setJour(i)
+          break
+        }
+      }
+      setJourChoisi(true)
+    })
+    // `jourChoisi` garde le saut a la premiere lecture : si le visiteur
+    // choisit ensuite un jour vide, on respecte son choix.
+  }, [jourChoisi])
 
   const rafraichirJoueur = useCallback(async () => {
     if (!user) {
