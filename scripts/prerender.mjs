@@ -163,6 +163,25 @@ async function prerenderRoute(browser, route) {
   // 8 octobre 2026 sur `/{ligue}/teams/{id}?enable=roster`, qui est justement
   // ce que la fiche de club appelle. Sans cette ligne les 334 fiches se
   // rendent vides, et le plan du site publie 334 adresses creuses.
+  // L'anglais, imposé avant l'exécution du moindre script de la page.
+  //
+  // `readInitial()` (src/lib/i18n.ts) lit `navigator.languages` et bascule le
+  // site en français si la machine est française — ce qui était le cas, et
+  // photographiait TOUTES les pages en `<html lang="fr">` avec une navigation
+  // française alors que titres et contenus sont anglais.
+  //
+  // Ni `--lang=en-US` au lancement ni l'en-tête `Accept-Language` ne changent
+  // `navigator.languages` en headless : vérifié, les deux laissaient le
+  // français. Seule la surcharge de l'objet `navigator` avant le premier
+  // script est fiable. On vide aussi la clé de langue en stockage local, que
+  // la page précédente aurait pu écrire.
+  await page.setExtraHTTPHeaders({ 'Accept-Language': 'en-US,en;q=0.9' })
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] })
+    Object.defineProperty(navigator, 'language', { get: () => 'en-US' })
+    try { window.localStorage.removeItem('p90.lang') } catch { /* rien */ }
+  })
+
   await page.setUserAgent(
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' +
       ' (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
@@ -293,7 +312,14 @@ async function main() {
 
   const browser = await puppeteer.launch({
     headless: 'new',
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    // --lang force `navigator.languages` à l'anglais. Sans ça le Chromium
+    // headless hérite de la langue de la machine — le français ici — et
+    // `readInitial()` dans src/lib/i18n.ts bascule tout le site en français.
+    // Conséquence mesurée le 8 octobre 2026 : TOUTES les pages étaient
+    // photographiées avec `<html lang="fr">` et une navigation française,
+    // alors que leurs titres et leur contenu sont anglais. Google lisait
+    // donc un site qui se déclare français et parle anglais.
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--lang=en-US'],
   })
   console.log('[prerender] Headless Chromium up.')
 
