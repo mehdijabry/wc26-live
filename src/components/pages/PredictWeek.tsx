@@ -311,6 +311,8 @@ export function PredictWeek() {
   const [pf, setPf] = useState<Portefeuille | null>(null)
   const [modale, setModale] = useState(false)
   const [selection, setSelection] = useState<Selection | null>(null)
+  /** `null` = toutes les compétitions. */
+  const [filtreComp, setFiltreComp] = useState<string | null>(null)
   const [occupe, setOccupe] = useState(false)
   const [erreurPari, setErreurPari] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
@@ -330,7 +332,7 @@ export function PredictWeek() {
     comps
       ? {
           titre: 'Football predictions — back your call at real odds',
-          description: `Back the winner across the five big leagues and the national teams, at real odds. Free ${JETON.plusieurs} every day, nothing to deposit, no bookmaker. Climb the table.`,
+          description: `Back the winner on hundreds of matches a week, at the real odds — every league we have a price for. Free ${JETON.plusieurs} every day, nothing to deposit, no bookmaker.`,
           chemin: '/predictions',
         }
       : null,
@@ -391,6 +393,9 @@ export function PredictWeek() {
     setComps(null)
     setErreurChargement(false)
     setSelection(null)
+    // Une compétition choisie un jour n'existe pas forcément le lendemain :
+    // garder le filtre afficherait une page vide sans raison apparente.
+    setFiltreComp(null)
     api
       .today(ymdLocal(dates[jour]!))
       .then((d) => {
@@ -449,6 +454,15 @@ export function PredictWeek() {
       .filter((c) => c.events.length > 0)
   }, [comps, cotes])
 
+  const affichees = useMemo(
+    () => (filtreComp ? jouables.filter((c) => c.slug === filtreComp) : jouables),
+    [jouables, filtreComp],
+  )
+  const totalJouables = useMemo(
+    () => jouables.reduce((a, c) => a + c.events.length, 0),
+    [jouables],
+  )
+
   const solde = pf?.crampons ?? 0
   const aReclamer = reclamableAujourdhui(pf)
   const progression = pf ? Math.min(100, (Number(pf.pressings) / PALIER.points) * 100) : 0
@@ -470,8 +484,9 @@ export function PredictWeek() {
           sont perdus. Tu en mises au moins {MISE_MINIMUM} sur un résultat, à la cote réelle du
           match : plus le favori est net, moins ça rapporte. Tes gains sont des {POINT.plusieurs},
           et {PALIER.points.toLocaleString('fr-FR')} {POINT.plusieurs} débloquent{' '}
-          {PALIER.recompense}. Rien à déposer, aucun bookmaker. Cinq grands championnats et les
-          sélections nationales.
+          {PALIER.recompense}. Rien à déposer, aucun bookmaker. Tous les matchs pour lesquels une
+          cote existe sont jouables — championnats, coupes et sélections, les plus grandes
+          compétitions en tête.
         </p>
       </details>
 
@@ -551,6 +566,42 @@ export function PredictWeek() {
         ))}
       </div>
 
+      {/* Filtre par compétition. Un samedi ramène plus de 180 matchs dans une
+          quarantaine de compétitions : tout afficher d'un bloc est illisible.
+          Les compétitions arrivent déjà triées par importance depuis
+          `api.today()`, donc les grandes sortent en tête de cette rangée. */}
+      {jouables.length > 1 && (
+        <div className="mt-3 flex gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+          <button
+            type="button"
+            onClick={() => setFiltreComp(null)}
+            className={cn(
+              'px-3 py-1.5 rounded-lg font-mono text-[11px] whitespace-nowrap transition-colors border',
+              filtreComp === null
+                ? 'bg-slate-100 border-accent-gold/50 text-slate-900 font-semibold'
+                : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100',
+            )}
+          >
+            Tout · {totalJouables}
+          </button>
+          {jouables.map((c) => (
+            <button
+              key={c.slug}
+              type="button"
+              onClick={() => setFiltreComp(c.slug === filtreComp ? null : c.slug)}
+              className={cn(
+                'px-3 py-1.5 rounded-lg font-mono text-[11px] whitespace-nowrap transition-colors border',
+                filtreComp === c.slug
+                  ? 'bg-slate-100 border-accent-gold/50 text-slate-900 font-semibold'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100',
+              )}
+            >
+              {c.label} · {c.events.length}
+            </button>
+          ))}
+        </div>
+      )}
+
       {erreurChargement && (
         <p className="mt-10 text-center text-sm text-slate-500">
           Les matchs ne répondent pas. Réessaie dans un instant.
@@ -561,12 +612,12 @@ export function PredictWeek() {
       )}
       {comps && jouables.length === 0 && (
         <p className="mt-10 text-center text-sm text-slate-500">
-          Rien à parier ce jour-là. Seuls les cinq grands championnats et les sélections sont
-          jouables, et les sélections ne jouent que pendant les trêves internationales.
+          Rien à parier ce jour-là — aucune cote publiée. Essaie un autre jour : le week-end
+          en concentre le plus.
         </p>
       )}
 
-      {jouables.map((c) => (
+      {affichees.map((c) => (
         <section key={c.slug} className="mt-7">
           <div className="flex items-center gap-3">
             <h2 className="font-mono text-[11px] uppercase tracking-wider text-accent-gold/80 whitespace-nowrap">

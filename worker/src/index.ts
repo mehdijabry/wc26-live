@@ -2202,30 +2202,23 @@ type EspnEventLike = {
  * ce qu'a envoyé le client. Le client ne dit que deux choses : sur quoi, et
  * combien.
  *
- * LE FILTRE EST PAR IDENTIFIANT DE LIGUE, PAS PAR NOM. Les slugs de saison
- * changent tous les ans (`2026-27-english-premier-league`) et se chevauchent :
- * filtrer sur « premier-league » attraperait aussi la Russie, et sur
- * « bundesliga » la 2. Bundesliga. L'identifiant, lui, est stable — il est
- * dans `event.uid`, sous la forme `s:600~l:700~e:...`.
+ * LE CRITÈRE EST LA QUALITÉ DE LA DONNÉE, PAS UNE LISTE DE LIGUES.
+ *
+ * Au départ on ne retenait que cinq championnats et les sélections, par une
+ * liste d'identifiants. Résultat mesuré : 47 matchs pariables sur sept jours,
+ * et des journées entièrement vides. Or ce qui rend un match pariable n'est
+ * pas son prestige, c'est d'avoir de quoi parier — une cote 1X2 complète, et
+ * assez d'informations pour que la carte tienne debout.
+ *
+ * On retient donc tout match qui a : les trois cotes, les deux écussons, les
+ * deux noms, et une heure de coup d'envoi. Mesuré le 8 octobre 2026 sur sept
+ * jours : 1 086 matchs à venir, 432 avec une cote complète, 423 avec tout le
+ * reste en plus. Le goulot est la cote, pas les logos — exiger écussons, noms
+ * et date ne coûte que neuf matchs, et évite des cartes bancales.
+ *
+ * Les compétitions restent triées par importance à l'affichage : `api.today()`
+ * ordonne déjà par `tier`, donc les grands championnats sortent en tête.
  */
-
-/** Les 5 grands championnats, plus les sélections nationales. */
-const LIGUES_JOUABLES = new Set([
-  '700',   // Premier League
-  '740',   // LaLiga
-  '720',   // Bundesliga
-  '730',   // Serie A
-  '710',   // Ligue 1
-  // Sélections — vides entre deux fenêtres internationales, c'est normal.
-  '3922',  // Matchs amicaux
-  '2395',  // Ligue des nations UEFA
-  '19267', // Ligue des nations CONCACAF
-  '3908',  // Coupe d'Afrique des nations
-  '781',   // Championnat d'Europe
-  '780',   // Copa América
-  '606',   // Coupe du monde
-  '786', '787', '788', '789', '790', // Qualifications, les cinq confédérations
-])
 
 /** Combien de jours à l'avance on publie des cotes. */
 const JOURS_DE_COTES = 7
@@ -2254,26 +2247,38 @@ async function syncCotes(env: Env): Promise<void> {
   }
   type Ev = {
     id?: string
-    uid?: string
     date?: string
     status?: { type?: { state?: string } }
-    competitions?: Array<{ odds?: Array<Cote | null> }>
+    competitions?: Array<{
+      odds?: Array<Cote | null>
+      competitors?: Array<{
+        homeAway?: string
+        team?: { displayName?: string; shortDisplayName?: string; logo?: string }
+      }>
+    }>
   }
 
   const lignes: Array<Record<string, unknown>> = []
 
   for (let i = 0; i < JOURS_DE_COTES; i++) {
     const d = new Date(Date.now() + i * 86_400_000)
-    const r = await fetch(`${ESPN_SOCCER}/all/scoreboard?dates=${ymdUtc(d)}&limit=300`, {
+    const r = await fetch(`${ESPN_SOCCER}/all/scoreboard?dates=${ymdUtc(d)}&limit=400`, {
       cf: { cacheTtl: 300, cacheEverything: true },
     })
     if (!r.ok) continue
     const data = (await r.json()) as { events?: Ev[] }
 
     for (const ev of data.events ?? []) {
-      if (!ev.id || ev.status?.type?.state !== 'pre') continue
-      const ligue = /l:(\d+)/.exec(ev.uid ?? '')?.[1]
-      if (!ligue || !LIGUES_JOUABLES.has(ligue)) continue
+      if (!ev.id || !ev.date || ev.status?.type?.state !== 'pre') continue
+
+      // Assez d'informations pour une carte de pari honnête : deux équipes
+      // identifiables, avec leur écusson. Sans ça la carte afficherait un
+      // trou à la place d'un logo, ou « ? » à la place d'un nom.
+      const eq = ev.competitions?.[0]?.competitors ?? []
+      const dom = eq.find((x) => x.homeAway === 'home')?.team
+      const ext = eq.find((x) => x.homeAway === 'away')?.team
+      if (!dom?.logo || !ext?.logo) continue
+      if (!(dom.displayName || dom.shortDisplayName) || !(ext.displayName || ext.shortDisplayName)) continue
 
       const o = (ev.competitions?.[0]?.odds ?? []).find(Boolean)
       if (!o) continue
