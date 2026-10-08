@@ -154,7 +154,14 @@ export function TeamPage() {
   useEffect(() => {
     if (!abbr) return
     const niceName = team?.displayName ?? displayNameFallback
-    const title = `${niceName} at FIFA World Cup 2026 · Squad, Schedule & Stats`
+    // Keyword Planner, tous pays, sept. 2025 – août 2026 : « france national
+    // football team », « france squad » et « france football team » sont tous
+    // à 1 M – 10 M de recherches par mois, « brazil national football team »
+    // aussi. « france world cup 2026 » : 10 k – 100 k. Le titre précédent —
+    // « France at FIFA World Cup 2026 » — visait donc la formulation cent fois
+    // plus petite, et l'accrochait à un tournoi fini en juillet. Celui-ci
+    // contient les deux termes de tête et ne se périme pas.
+    const title = `${niceName} national football team — squad, fixtures and results`
     document.title = title
 
     // SEO description: first sentence of the editorial narrative if we
@@ -173,7 +180,7 @@ export function TeamPage() {
     ].filter(Boolean).join(' · ')
     const desc = narrativeFirst
       ? `${narrativeFirst} ${dataDigest}`.trim()
-      : `Everything on ${niceName} for the FIFA World Cup 2026: ${dataDigest}`
+      : `${niceName} national football team: squad, recent results, upcoming fixtures and World Cup record. ${dataDigest}`
     setMeta('description', desc)
 
     setLink('canonical', `https://pressing90.live/team/${abbr.toLowerCase()}`)
