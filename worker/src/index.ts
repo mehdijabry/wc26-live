@@ -828,11 +828,23 @@ export interface SiteSettings {
   // EN/AR toggle on each article, and the Facebook auto-post publishes
   // BOTH languages (two posts).
   arabicArticles: boolean
+
+  // Régie Adsterra. Coupée le 8 octobre 2026 le temps de l'examen AdSense :
+  // les examinateurs ouvrent le site en vrai, et un inventaire de popunders
+  // est une cause classique de refus. Si Google accepte, on reste sur
+  // AdSense ; s'il refuse, il suffit de rebasculer cet interrupteur depuis
+  // l'admin — aucune reconstruction, aucun déploiement.
+  //
+  // Le défaut est FALSE, et c'est délibéré : même avant que le réglage soit
+  // lu, aucune publicité ne se charge. L'examen ne peut pas tomber sur une
+  // fenêtre où la régie serait encore active.
+  adsterraEnabled: boolean
 }
 
 export const DEFAULT_SITE_SETTINGS: SiteSettings = {
   wc26Visible: false,
   arabicArticles: false,
+  adsterraEnabled: false,
 }
 
 const SITE_SETTINGS_KEY = 'site:settings'
@@ -845,6 +857,7 @@ export async function loadSiteSettings(env: Env): Promise<SiteSettings> {
     return {
       wc26Visible: p.wc26Visible ?? DEFAULT_SITE_SETTINGS.wc26Visible,
       arabicArticles: p.arabicArticles ?? DEFAULT_SITE_SETTINGS.arabicArticles,
+      adsterraEnabled: p.adsterraEnabled ?? DEFAULT_SITE_SETTINGS.adsterraEnabled,
     }
   } catch {
     return DEFAULT_SITE_SETTINGS
@@ -856,6 +869,8 @@ export async function saveSiteSettings(env: Env, s: Partial<SiteSettings>): Prom
   const next: SiteSettings = {
     wc26Visible: typeof s.wc26Visible === 'boolean' ? s.wc26Visible : cur.wc26Visible,
     arabicArticles: typeof s.arabicArticles === 'boolean' ? s.arabicArticles : cur.arabicArticles,
+    adsterraEnabled:
+      typeof s.adsterraEnabled === 'boolean' ? s.adsterraEnabled : cur.adsterraEnabled,
   }
   await env.CACHE.put(SITE_SETTINGS_KEY, JSON.stringify(next))
   return next

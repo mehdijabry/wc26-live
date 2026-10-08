@@ -7,6 +7,7 @@ import { create } from 'zustand'
  *
  *  - wc26Visible     → show/hide every in-site WC26 archive entry point
  *  - arabicArticles  → EN/AR toggle on articles that carry a translation
+ *  - adsterraEnabled → coupe TOUTE la régie Adsterra d'un seul interrupteur
  *
  * Defaults mirror the Worker's DEFAULT_SITE_SETTINGS so the first paint
  * (before the fetch resolves) already matches the post-tournament state.
@@ -14,12 +15,17 @@ import { create } from 'zustand'
 export type SiteSettings = {
   wc26Visible: boolean
   arabicArticles: boolean
+  adsterraEnabled: boolean
 }
 
 const WORKER = 'https://wc26-api.nameless-violet-5dc1.workers.dev'
 const LS_KEY = 'p90.siteSettings.v1'
 
-const DEFAULTS: SiteSettings = { wc26Visible: false, arabicArticles: false }
+// `adsterraEnabled` est FAUX par défaut, volontairement : le premier rendu,
+// avant même que le réglage soit lu, ne doit charger aucune publicité. Sinon
+// l'examen AdSense pourrait tomber sur la fraction de seconde où la régie
+// serait encore active.
+const DEFAULTS: SiteSettings = { wc26Visible: false, arabicArticles: false, adsterraEnabled: false }
 
 function readCached(): SiteSettings {
   try {
@@ -42,6 +48,7 @@ export const useSiteSettings = create<State>((set) => ({
       const next: SiteSettings = {
         wc26Visible: !!s.wc26Visible,
         arabicArticles: !!s.arabicArticles,
+        adsterraEnabled: !!s.adsterraEnabled,
       }
       try { localStorage.setItem(LS_KEY, JSON.stringify(next)) } catch { /* ignore */ }
       set({ ...next, loaded: true })

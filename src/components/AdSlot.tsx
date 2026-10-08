@@ -1,7 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
+import { useSiteSettings } from '../store/siteSettings'
 
 /**
  * AdSlot — Adsterra ad placement, lazy-loaded via IntersectionObserver.
+ *
+ * INTERRUPTEUR GÉNÉRAL. Tous les points d'entrée de ce fichier s'éteignent
+ * quand le réglage `adsterraEnabled` est faux — il l'est depuis le 8 octobre
+ * 2026, le temps de l'examen AdSense. Le garde est posé sur CHAQUE export et
+ * pas seulement sur `Ad()` : il y a quatre portes d'entrée, et en oublier une
+ * laisserait un script de régie se charger pendant l'examen.
+ *
+ * Pour rallumer : admin → Actions → Adsterra. Aucune reconstruction.
  *
  * Two Adsterra integration patterns:
  *   1. Standard Banner (iframe) — uses atOptions + invoke.js loader
@@ -36,6 +45,7 @@ const BANNER_SIZE: Record<Exclude<AdFormat, 'native'>, { w: number; h: number }>
 const INVOKE_DOMAIN = 'https://turbulentrefreshments.com'
 
 export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
+  const actif = useSiteSettings((s) => s.adsterraEnabled)
   const containerRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
   const [empty, setEmpty] = useState(false)
@@ -71,6 +81,10 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
   // window.atOptions scope. Native banners already use a unique
   // `container-{KEY}` div so they're fine in the parent document.
   useEffect(() => {
+    // Coupe-circuit : aucun script de régie n'est injecté quand l'interrupteur
+    // est éteint. Le garde est ICI, dans l'effet, et pas seulement au rendu —
+    // c'est ce qui garantit qu'aucune requête ne part.
+    if (!actif) return
     if (!visible || !containerRef.current) return
     const host = containerRef.current.querySelector<HTMLDivElement>('.ad-host')
     if (!host || host.dataset.injected === '1') return
@@ -153,8 +167,11 @@ export function AdSlot({ zoneKey, format, className }: AdSlotProps) {
       }
     }, timeoutMs)
     return () => clearTimeout(t)
-  }, [visible, zoneKey, format])
+  }, [actif, visible, zoneKey, format])
 
+  // Régie coupée : on ne réserve pas non plus l'espace, sinon la page garde
+  // un rectangle vide à la place de chaque bannière.
+  if (!actif) return null
   if (empty) return null
 
   // Reserve space: native is flex-width with min height; banners are fixed
@@ -265,8 +282,9 @@ const SLOT_TO_ZONE: Record<SlotName, { key: string; format: AdFormat }> = {
 }
 
 export function Ad({ slot, className }: { slot: SlotName; className?: string }) {
+  const actif = useSiteSettings((s) => s.adsterraEnabled)
   const cfg = SLOT_TO_ZONE[slot]
-  if (!cfg.key) return null
+  if (!actif || !cfg.key) return null
   return <AdSlot zoneKey={cfg.key} format={cfg.format} className={className} />
 }
 
@@ -281,6 +299,7 @@ export function Ad({ slot, className }: { slot: SlotName; className?: string }) 
  * formats also work here, falling through to the existing AdSlot path
  * for predictable sizing.
  */
+/** Même coupe-circuit que `AdSlot` : voir l'en-tête du fichier. */
 export function AdsterraZone({
   zoneKey,
   variant,
@@ -292,6 +311,10 @@ export function AdsterraZone({
   height?: number
   className?: string
 }) {
+  const actif = useSiteSettings((s) => s.adsterraEnabled)
+  // Avant toute construction d'URL de script : coupé, rien ne part.
+  if (!actif) return null
+
   // The 'banner-*' variants reuse the existing AdSlot pipeline (better
   // visibility-gated lazy-load + iframe-srcDoc isolation already proven
   // out in earlier passes).
@@ -342,6 +365,8 @@ export function AdsterraZone({
  * native format. Fits cleanly inside the standard max-w-6xl container.
  */
 export function AdPair({ className }: { className?: string }) {
+  const actif = useSiteSettings((s) => s.adsterraEnabled)
+  if (!actif) return null
   return (
     <div className={'flex flex-col sm:flex-row items-stretch justify-center gap-3 sm:gap-6 ' + (className ?? '')}>
       <AdSlot

@@ -1219,7 +1219,7 @@ function SiteHealth() {
  * read by every visitor at boot. Each toggle saves immediately.
  */
 function SiteSwitches() {
-  type S = { wc26Visible: boolean; arabicArticles: boolean }
+  type S = { wc26Visible: boolean; arabicArticles: boolean; adsterraEnabled: boolean }
   const [s, setS] = useState<S | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   useEffect(() => {
@@ -1239,7 +1239,7 @@ function SiteSwitches() {
     }
   }
   return (
-    <Section title="Site switches" eyebrow="Visibility · Languages">
+    <Section title="Site switches" eyebrow="Visibility · Languages · Ads">
       {!s && <Loading />}
       {s && (
         <>
@@ -1255,6 +1255,13 @@ function SiteSwitches() {
             sub="ON → every article you Approve is also translated to Modern Standard Arabic (gpt-oss-120b, sports-journalism register); the article page gets an EN / عربي toggle; the Facebook auto-post publishes TWO posts (English, then Arabic linking to ?lang=ar). Articles published while OFF stay EN-only — use “Translate → AR” in the News tab to add Arabic later."
             checked={s.arabicArticles}
             onChange={(v) => toggle('arabicArticles', v)}
+          />
+          <div className="border-t border-slate-200 my-4" />
+          <ToggleRow
+            label="💰 Adsterra ads"
+            sub="OFF depuis le 8 octobre 2026, le temps de l'examen AdSense : les examinateurs ouvrent le site en vrai, et un inventaire de popunders est une cause classique de refus. ON → toutes les bannières reviennent partout, sans reconstruction. Si Google accepte, laisser OFF et poser le code AdSense ; s'il refuse, rallumer ici."
+            checked={s.adsterraEnabled}
+            onChange={(v) => toggle('adsterraEnabled', v)}
           />
           {msg && (
             <div className={'mt-3 text-xs font-mono ' + (msg.startsWith('✓') ? 'text-emerald-700' : msg.startsWith('✗') ? 'text-rose-700' : 'text-slate-500')}>
