@@ -1,0 +1,7 @@
+# ads.txt — Pressing 90'
+# Déclare qui a le droit de vendre l'inventaire publicitaire de ce domaine.
+# Exigé par Google pour la demande programmatique, et sert aussi à valider
+# la propriété du site dans AdSense. Toute régie ajoutée plus tard se
+# DÉCLARE EN PLUS ici, sur sa propre ligne — ne jamais remplacer ce fichier,
+# une ligne manquante coupe la demande de la régie concernée.
+google.com, pub-4325585331982020, DIRECT, f08c47fec0942fa0
