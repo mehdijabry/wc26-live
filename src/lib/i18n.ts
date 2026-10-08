@@ -188,6 +188,13 @@ const AR: Record<string, string> = {
   'Settled': 'محسومة',
   'anonymous': 'مجهول',
   'Points': 'النقاط',
+  // ── الجداول المنشورة (أرشيف كأس العالم) ───────────────────────────
+  'Published brackets': 'الجداول المنشورة',
+  'Who called the 2026 World Cup, and how it actually went. Open one to read the full bracket.':
+    'من توقّع كأس العالم 2026 بدقة، وكيف جرت الأمور فعلًا. افتح واحدًا لقراءة الجدول كاملًا.',
+  'you': 'أنت',
+  'Their champion': 'بطله',
+  '3rd': 'الثالث',
   'Predict': 'توقّع',
   'Table': 'الترتيب',
   'Clubs': 'الأندية',
@@ -424,6 +431,13 @@ const FR: Record<string, string> = {
   'Settled': 'Réglés',
   'anonymous': 'anonyme',
   'Points': 'Points',
+  // ── Brackets publiés (archive Mondial, sur /bracket) ──────────────
+  'Published brackets': 'Brackets publiés',
+  'Who called the 2026 World Cup, and how it actually went. Open one to read the full bracket.':
+    'Qui avait vu juste pour le Mondial 2026, et ce qui s’est réellement passé. Ouvre-en un pour lire le tableau complet.',
+  'you': 'toi',
+  'Their champion': 'Son champion',
+  '3rd': '3e',
   // Entrées de navigation ajoutées avec les clubs et le jeu.
   'Predict': 'Pronos',
   'Table': 'Classement',

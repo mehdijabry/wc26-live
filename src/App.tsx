@@ -36,6 +36,9 @@ const Clubs = lazy(() => import('./components/pages/Clubs').then((m) => ({ defau
 const ClubsLeague = lazy(() => import('./components/pages/ClubsLeague').then((m) => ({ default: m.ClubsLeague })))
 const ClubPage = lazy(() => import('./components/pages/ClubPage').then((m) => ({ default: m.ClubPage })))
 const Leaderboard = lazy(() => import('./components/Leaderboard').then((m) => ({ default: m.Leaderboard })))
+// Les brackets publiés du Mondial : archive, montée sur /bracket et plus
+// sur /board, où ils étaient l'onglet par défaut du classement.
+const BracketsPublies = lazy(() => import('./components/BracketsPublies').then((m) => ({ default: m.BracketsPublies })))
 const DailyMatches = lazy(() => import('./components/DailyMatches').then((m) => ({ default: m.DailyMatches })))
 const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) => ({ default: m.BracketWizard })))
 const PhasePickerHub = lazy(() => import('./components/posters/PhasePickerHub').then((m) => ({ default: m.PhasePickerHub })))
@@ -693,6 +696,14 @@ function PredictionsPage() {
       </div>
       <Suspense fallback={<PageSkeleton caption="Loading match predictions…" />}>
         <Predictions />
+      </Suspense>
+      {/* Les brackets publiés par les joueurs. Ils étaient l'onglet par
+          défaut de /board : cliquer « Table » dans la navigation montrait
+          donc un pronostic de Coupe du monde trois mois après la finale.
+          Ils vivent ici, avec le reste de l'archive. Rien n'est supprimé —
+          les adresses /u/:slug restent valides. */}
+      <Suspense fallback={null}>
+        <BracketsPublies />
       </Suspense>
     </>
   )
