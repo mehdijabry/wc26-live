@@ -383,7 +383,15 @@ function Bulletin({
 
         {/* Les sélections. La liste défile au-delà de trois : le bulletin ne
             doit jamais manger l'écran sous lequel on choisit ses matchs. */}
-        <ul className="mt-2.5 max-h-36 overflow-y-auto no-scrollbar divide-y divide-slate-200/50">
+        <ul
+          className={cn(
+            'mt-2.5 max-h-36 overflow-y-auto no-scrollbar divide-y divide-slate-200/50',
+            // Au-delà de trois, la liste défile. Sans ce fondu, la quatrième
+            // ligne est tranchée net et se lit comme un défaut d'affichage,
+            // pas comme « il y en a d'autres en dessous ».
+            selections.length > 3 && '[mask-image:linear-gradient(to_bottom,black_78%,transparent)]',
+          )}
+        >
           {selections.map((s) => (
             <li key={s.matchId} className="flex items-center gap-2 py-1.5">
               <div className="min-w-0 flex-1">
