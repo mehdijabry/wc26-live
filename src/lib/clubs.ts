@@ -158,6 +158,30 @@ export type ClubResume = {
   couleur: string | null
 }
 
+/**
+ * La ligne statistique d'un joueur sur la saison en cours.
+ *
+ * Elle arrive DÉJÀ dans la réponse `/roster` que la page de club télécharge
+ * — on la jetait. Zéro requête de plus pour l'afficher.
+ *
+ * Tout est nullable : ESPN ne renseigne pas les mêmes catégories partout, et
+ * une valeur absente n'est pas un zéro. Un attaquant sans ligne de tirs n'a
+ * pas tiré zéro fois : on ne sait pas.
+ */
+export type StatsJoueur = {
+  matchs: number | null
+  buts: number | null
+  passes: number | null
+  tirs: number | null
+  tirsCadres: number | null
+  jaunes: number | null
+  rouges: number | null
+  fautes: number | null
+  /** Gardiens seulement. */
+  arrets: number | null
+  encaisses: number | null
+}
+
 export type Joueur = {
   id: string
   nom: string
@@ -165,6 +189,8 @@ export type Joueur = {
   numero: string | null
   age: number | null
   nationalite: string | null
+  /** Nulle quand ESPN ne publie aucune statistique pour ce joueur. */
+  stats: StatsJoueur | null
 }
 
 export type ClubDetail = ClubResume & {
@@ -215,7 +241,47 @@ type EspnTeamRaw = {
     position?: { abbreviation?: string }
     citizenship?: string
     birthPlace?: { country?: string }
+    statistics?: {
+      splits?: {
+        categories?: Array<{ stats?: Array<{ name?: string; value?: number }> }>
+      }
+    }
   }>
+}
+
+/**
+ * Pioche une statistique nommée dans la réponse ESPN.
+ *
+ * Les valeurs sont rangées par catégorie — « general », « offensive »,
+ * « goalKeeping » — et on ne peut pas se fier à l'ordre : on cherche par nom
+ * à travers toutes les catégories.
+ */
+function valeurStat(
+  a: NonNullable<EspnTeamRaw['athletes']>[number],
+  nom: string,
+): number | null {
+  for (const c of a.statistics?.splits?.categories ?? []) {
+    for (const x of c.stats ?? []) if (x.name === nom) return x.value ?? null
+  }
+  return null
+}
+
+function statsDe(a: NonNullable<EspnTeamRaw['athletes']>[number]): StatsJoueur | null {
+  if (!a.statistics) return null
+  const s: StatsJoueur = {
+    matchs: valeurStat(a, 'appearances'),
+    buts: valeurStat(a, 'totalGoals'),
+    passes: valeurStat(a, 'goalAssists'),
+    tirs: valeurStat(a, 'totalShots'),
+    tirsCadres: valeurStat(a, 'shotsOnTarget'),
+    jaunes: valeurStat(a, 'yellowCards'),
+    rouges: valeurStat(a, 'redCards'),
+    fautes: valeurStat(a, 'foulsCommitted'),
+    arrets: valeurStat(a, 'saves'),
+    encaisses: valeurStat(a, 'goalsConceded'),
+  }
+  // Une ligne entièrement vide ne vaut pas la peine d'être affichée.
+  return Object.values(s).some((v) => v !== null) ? s : null
 }
 
 function versResume(t: EspnTeamRaw): ClubResume {
@@ -286,6 +352,9 @@ export async function clubAvecEffectif(espnSlug: string, id: string): Promise<Cl
       logo: string | null
       effectif: Joueur[]
     }>(`${WORKER}/botola/squad?team=${encodeURIComponent(id)}`)
+    // api-sports ne donne pas de statistiques sur cette route : on le dit
+    // explicitement plutôt que de laisser le champ absent.
+    d.effectif = d.effectif.map((j) => ({ ...j, stats: j.stats ?? null }))
     return {
       id: d.id,
       nom: d.nom,
@@ -311,6 +380,7 @@ export async function clubAvecEffectif(espnSlug: string, id: string): Promise<Cl
     numero: a.jersey ?? null,
     age: typeof a.age === 'number' ? a.age : null,
     nationalite: a.citizenship ?? a.birthPlace?.country ?? null,
+    stats: statsDe(a),
   }))
   return {
     ...versResume(t),

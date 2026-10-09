@@ -5,6 +5,7 @@ import {
   clubAvecEffectif,
   clubsDuChampionnat,
   type ClubDetail,
+  type Joueur,
 } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
 
@@ -27,12 +28,14 @@ export function ClubPage() {
   // Le vrai nom du championnat (« Spanish LALIGA ») plutôt que son slug
   // d'URL (« laliga ») : il arrive dans la même réponse que la liste.
   const [nomLigue, setNomLigue] = useState('')
+  /** Le joueur dont la ligne statistique est dépliée, s'il y en a un. */
+  const [ouvert, setOuvert] = useState<string | null>(null)
 
   usePageHead(
     detail
       ? {
           titre: `${detail.nom} squad, players and numbers`,
-          description: `The current ${detail.nom} squad: ${detail.effectif.length} players with shirt numbers, positions and ages${detail.stade ? `. Home ground: ${detail.stade}` : ''}.`,
+          description: `The current ${detail.nom} squad: ${detail.effectif.length} players with shirt numbers, positions, ages and this season's goals, assists and appearances${detail.stade ? `. Home ground: ${detail.stade}` : ''}.`,
           chemin: `/club/${league ?? ''}/${club ?? ''}`,
         }
       : null,
@@ -152,6 +155,10 @@ export function ClubPage() {
   // La Botola passe par api-sports, dont la route d'effectif ne donne pas la
   // nationalité. Plutôt qu'une colonne de tirets, on la retire.
   const avecNationalite = effectif.some((j) => j.nationalite)
+  // Les statistiques arrivent dans la même réponse que l'effectif, mais tous
+  // les championnats ne les renseignent pas. Pas une seule ligne remplie :
+  // on retire les colonnes plutôt que d'afficher un mur de tirets.
+  const avecStats = effectif.some((j) => j.stats)
 
   return (
     <div className="container max-w-4xl mx-auto px-6 py-10">
@@ -174,6 +181,11 @@ export function ClubPage() {
           <h2 className="mt-10 text-xl font-semibold">
             Squad — {effectif.length} players
           </h2>
+          {avecStats && (
+            <p className="mt-1 text-sm text-muted-foreground">
+              Tap a name for their full season line.
+            </p>
+          )}
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -181,19 +193,29 @@ export function ClubPage() {
                   <th className="py-2 pr-3 font-medium">#</th>
                   <th className="py-2 pr-3 font-medium">Player</th>
                   <th className="py-2 pr-3 font-medium">Position</th>
-                  <th className="py-2 pr-3 font-medium">Age</th>
-                  {avecNationalite && <th className="py-2 font-medium">Nationality</th>}
+                  <th className="py-2 pr-3 font-medium hidden sm:table-cell">Age</th>
+                  {avecNationalite && (
+                    <th className="py-2 pr-3 font-medium hidden md:table-cell">Nationality</th>
+                  )}
+                  {avecStats && (
+                    <>
+                      <th className="py-2 pr-3 font-medium text-right" title="Appearances">MP</th>
+                      <th className="py-2 pr-3 font-medium text-right" title="Goals">G</th>
+                      <th className="py-2 font-medium text-right" title="Assists">A</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {effectif.map((j) => (
-                  <tr key={j.id} className="border-b last:border-0">
-                    <td className="py-2 pr-3 tabular-nums text-muted-foreground">{j.numero ?? '—'}</td>
-                    <td className="py-2 pr-3 font-medium">{j.nom}</td>
-                    <td className="py-2 pr-3">{j.poste ?? '—'}</td>
-                    <td className="py-2 pr-3 tabular-nums">{j.age ?? '—'}</td>
-                    {avecNationalite && <td className="py-2">{j.nationalite ?? '—'}</td>}
-                  </tr>
+                  <LigneJoueur
+                    key={j.id}
+                    joueur={j}
+                    avecNationalite={avecNationalite}
+                    avecStats={avecStats}
+                    ouvert={ouvert === j.id}
+                    onBasculer={() => setOuvert((v) => (v === j.id ? null : j.id))}
+                  />
                 ))}
               </tbody>
             </table>
@@ -202,9 +224,119 @@ export function ClubPage() {
       )}
 
       <p className="mt-10 text-sm text-muted-foreground">
-        Squad data comes from ESPN's public soccer API and changes when they update it. Numbers and
-        positions are theirs, not ours — nothing on this page is typed by hand.
+        Squad data comes from ESPN's public soccer API and changes when they update it. Numbers,
+        positions and season statistics are theirs, not ours — nothing on this page is typed by
+        hand, and a blank figure means ESPN publishes none, not zero.
       </p>
+    </div>
+  )
+}
+
+/**
+ * Une ligne d'effectif, dépliable sur la saison du joueur.
+ *
+ * POURQUOI UN DÉPLIAGE ET PAS UNE PAGE PAR JOUEUR. Trois cent trente-quatre
+ * clubs à une trentaine de joueurs feraient dix mille pages dont le seul
+ * contenu serait sept nombres venus d'ESPN — exactement ce que Google
+ * appelle du contenu mince, et un prérendu qui passerait de 465 pages à plus
+ * de dix mille. Les chiffres utiles sont donc en colonnes, visibles sans un
+ * clic, et le détail s'ouvre sur place.
+ *
+ * Le nom est un vrai bouton : c'est ce qui se voit, se survole et s'atteint
+ * au clavier. Un joueur sans statistique n'en est pas un — il n'y a rien à
+ * ouvrir, et un bouton qui ne fait rien est pire que pas de bouton.
+ */
+function LigneJoueur({
+  joueur,
+  avecNationalite,
+  avecStats,
+  ouvert,
+  onBasculer,
+}: {
+  joueur: Joueur
+  avecNationalite: boolean
+  avecStats: boolean
+  ouvert: boolean
+  onBasculer: () => void
+}) {
+  const s = joueur.stats
+  const gardien = joueur.poste === 'G'
+  const colonnes = 3 + (avecNationalite ? 1 : 0) + 1 + (avecStats ? 3 : 0)
+  const nb = (v: number | null) => (v === null ? '—' : String(v))
+
+  return (
+    <>
+      <tr className={'border-b last:border-0 ' + (ouvert ? 'bg-muted/40' : '')}>
+        <td className="py-2 pr-3 tabular-nums text-muted-foreground">{joueur.numero ?? '—'}</td>
+        <td className="py-2 pr-3 font-medium">
+          {s ? (
+            <button
+              type="button"
+              onClick={onBasculer}
+              aria-expanded={ouvert}
+              className="text-left hover:text-accent-gold hover:underline underline-offset-2 transition-colors"
+            >
+              {joueur.nom}
+            </button>
+          ) : (
+            joueur.nom
+          )}
+        </td>
+        <td className="py-2 pr-3">{joueur.poste ?? '—'}</td>
+        <td className="py-2 pr-3 tabular-nums hidden sm:table-cell">{joueur.age ?? '—'}</td>
+        {avecNationalite && (
+          <td className="py-2 pr-3 hidden md:table-cell">{joueur.nationalite ?? '—'}</td>
+        )}
+        {avecStats && (
+          <>
+            <td className="py-2 pr-3 tabular-nums text-right text-muted-foreground">{nb(s?.matchs ?? null)}</td>
+            <td className="py-2 pr-3 tabular-nums text-right font-semibold">{nb(s?.buts ?? null)}</td>
+            <td className="py-2 tabular-nums text-right">{nb(s?.passes ?? null)}</td>
+          </>
+        )}
+      </tr>
+
+      {ouvert && s && (
+        <tr className="border-b last:border-0 bg-muted/40">
+          <td colSpan={colonnes} className="py-3 pl-3 pr-3">
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              <Chiffre nom="Appearances" valeur={s.matchs} />
+              <Chiffre nom="Goals" valeur={s.buts} />
+              <Chiffre nom="Assists" valeur={s.passes} />
+              <Chiffre nom="Shots" valeur={s.tirs} />
+              <Chiffre nom="On target" valeur={s.tirsCadres} />
+              <Chiffre nom="Fouls" valeur={s.fautes} />
+              <Chiffre nom="Yellow" valeur={s.jaunes} />
+              <Chiffre nom="Red" valeur={s.rouges} />
+              {/* Arrêts et buts encaissés existent sur TOUS les joueurs chez
+                  ESPN, à zéro pour les joueurs de champ. Les montrer là
+                  n'apprendrait rien et laisserait croire à une donnée. */}
+              {gardien && <Chiffre nom="Saves" valeur={s.arrets} />}
+              {gardien && <Chiffre nom="Conceded" valeur={s.encaisses} />}
+            </div>
+            {/* Le ratio ne se calcule que s'il veut dire quelque chose. */}
+            {s.tirs !== null && s.tirs > 0 && s.buts !== null && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                {s.buts} goal{s.buts === 1 ? '' : 's'} from {s.tirs} shot
+                {s.tirs === 1 ? '' : 's'} — {Math.round((s.buts / s.tirs) * 100)}% conversion
+                {s.matchs !== null && s.matchs > 0 && (
+                  <> · {(s.buts / s.matchs).toFixed(2)} per appearance</>
+                )}
+                .
+              </p>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
+function Chiffre({ nom, valeur }: { nom: string; valeur: number | null }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground font-mono">{nom}</div>
+      <div className="text-base font-semibold tabular-nums">{valeur === null ? '—' : valeur}</div>
     </div>
   )
 }
