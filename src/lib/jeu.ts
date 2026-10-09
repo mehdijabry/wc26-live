@@ -16,7 +16,16 @@ export const JETON = { un: 'crampon', plusieurs: 'crampons' } as const
 export const POINT = { un: 'pressing', plusieurs: 'pressings' } as const
 
 export const JETONS_PAR_JOUR = 5
-export const MISE_MINIMUM = 3
+/**
+ * Le plancher d'une mise. À 3, un joueur qui reçoit 5 crampons par jour ne
+ * pouvait placer qu'UN pari : les 2 crampons restants étaient inutilisables
+ * et perdus le lendemain. À 1, toute la dotation est jouable — cinq petits
+ * paris ou un gros, c'est lui qui arbitre.
+ *
+ * Le même plancher est posé en base (contrainte `bets_stake_check`,
+ * migration 005) : les deux doivent bouger ensemble.
+ */
+export const MISE_MINIMUM = 1
 
 /**
  * Le palier de récompense. Volontairement une constante unique et affichée
@@ -28,11 +37,24 @@ export const MISE_MINIMUM = 3
  * sur des mises à cotes réelles, même sans argent qui entre, c'est la zone
  * où il faut un règlement écrit (voir ce que fait Gamby : 13 articles,
  * exclusion de quatre États américains, vérification d'identité obligatoire).
+ *
+ * POURQUOI 7 500 ET PLUS 50 000. Le premier seuil avait été posé au doigt
+ * mouillé, et il était hors d'atteinte : à cinq crampons par jour et des
+ * cotes autour de 2, il demandait des mois de jeu quotidien sans faute —
+ * autrement dit une barre que personne n'atteint jamais, ce qui revient à
+ * ne rien promettre du tout. 7 500 se gagne, mais se mérite : il faut
+ * jouer régulièrement et viser juste. Un objectif qu'on voit approcher
+ * tient le joueur ; un objectif inaccessible le fait partir.
  */
-export const PALIER = { points: 50_000, recompense: '5 $' } as const
+export const PALIER = { points: 7_500, recompense: '5 $' } as const
 
-export function nombreDe(n: number, mot: { un: string; plusieurs: string }): string {
-  return `${n.toLocaleString('fr-FR')} ${n === 1 ? mot.un : mot.plusieurs}`
+export function nombreDe(
+  n: number,
+  mot: { un: string; plusieurs: string },
+  /** Passer localeOf(lang) : sans ça, un nombre anglais s'écrit à la française. */
+  locale?: string,
+): string {
+  return `${n.toLocaleString(locale)} ${n === 1 ? mot.un : mot.plusieurs}`
 }
 
 export type Portefeuille = {

@@ -53,10 +53,16 @@ if (typeof window !== 'undefined') applyLang(useLang.getState().lang)
 
 /** Date/number locale — Arabic with WESTERN digits (user rule: scores
  *  and times keep 0-9), Morocco/Maghreb convention. */
-export function localeOf(l: Lang): string | undefined {
+export function localeOf(l: Lang): string {
   if (l === 'ar') return 'ar-u-nu-latn'
   if (l === 'fr') return 'fr'
-  return undefined
+  // Et surtout PAS `undefined`. Rendre undefined laissait `toLocaleString`
+  // et `toLocaleDateString` retomber sur la langue de la MACHINE : sur un
+  // Mac réglé en français, la page anglaise affichait « 7 500 » au lieu de
+  // « 7,500 », y compris dans le HTML prérendu que lit Google. Le site est
+  // en anglais : ses nombres et ses dates le sont aussi, quel que soit
+  // l'appareil.
+  return 'en-US'
 }
 
 // ─── UI strings (keyed by the English source string) ─────────────────

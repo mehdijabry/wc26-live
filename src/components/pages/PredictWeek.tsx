@@ -48,8 +48,10 @@ export function idDePronostic(ev: EspnEvent): string {
 }
 
 const JOURS = 7
-/** Les mises proposées d'un geste. Un pas-à-pas demandait sept appuis. */
-const MISES = [3, 5, 10]
+/** Les mises proposées d'un geste. Un pas-à-pas demandait sept appuis.
+ *  Le 1 ouvre la série depuis que le plancher est tombé à un crampon : avec
+ *  cinq crampons par jour, c'est la mise qui permet de jouer cinq matchs. */
+const MISES = [1, 3, 5, 10]
 
 /**
  * Les chaînes de ce fichier sont EN ANGLAIS, parce que c'est la langue source

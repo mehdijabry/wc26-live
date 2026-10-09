@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { JETON, POINT, PALIER } from '../lib/jeu'
 import { Jeton } from './Jeton'
+import { localeOf, useLang } from '../lib/i18n'
 import { supabase, type LeaderboardRow } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import { SectionHeader } from './Groups'
@@ -17,6 +18,9 @@ const TIER_COLORS: Record<string, string> = {
 
 export function Leaderboard() {
   const { user } = useAuth()
+  // Les nombres suivent la langue affichée. Ils étaient figés en « fr-FR »,
+  // ce qui écrivait « 7 500 » au milieu d'une phrase anglaise.
+  const lang = useLang((s) => s.lang)
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
   // Les brackets du Mondial ont quitté cette page — ils étaient l'onglet
@@ -55,7 +59,7 @@ export function Leaderboard() {
           niveau={1}
           eyebrow="every player"
           title="Leaderboard"
-          sub={`Live ranking of everyone backing their calls. You stake ${JETON.plusieurs}, you win ${POINT.plusieurs} at the real odds — ${PALIER.points.toLocaleString('fr-FR')} ${POINT.plusieurs} unlock ${PALIER.recompense}.`}
+          sub={`Live ranking of everyone backing their calls. You stake ${JETON.plusieurs}, you win ${POINT.plusieurs} at the real odds — ${PALIER.points.toLocaleString(localeOf(lang))} ${POINT.plusieurs} unlock ${PALIER.recompense}.`}
         />
 
         <div className="flex flex-wrap gap-2 mt-8 mb-6">
@@ -154,7 +158,7 @@ export function Leaderboard() {
                   </div>
                   <div className="text-right">
                     <div className="font-display font-bold text-lg text-slate-900 tabular-nums">
-                      {tab === 'points' ? Number(row.pressings ?? 0).toLocaleString('fr-FR') : `${row.accuracy_pct}%`}
+                      {tab === 'points' ? Number(row.pressings ?? 0).toLocaleString(localeOf(lang)) : `${row.accuracy_pct}%`}
                     </div>
                     <div className="text-[10px] font-mono text-slate-500">
                       {tab === 'points' ? 'pts' : 'accuracy'}

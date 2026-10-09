@@ -5,6 +5,7 @@ import { useBracket } from '../store/bracket'
 import { AuthModal } from './AuthModal'
 import { JETON, POINT } from '../lib/jeu'
 import { Jeton } from './Jeton'
+import { localeOf, useLang } from '../lib/i18n'
 
 const TIER_COLORS: Record<string, string> = {
   Rookie: 'text-slate-600',
@@ -16,6 +17,8 @@ const TIER_COLORS: Record<string, string> = {
 
 export function UserMenu() {
   const { user, profile, signOut, initialized, updateAlias } = useAuth()
+  // Le solde suit la langue affichée, il était figé en « fr-FR ».
+  const lang = useLang((s) => s.lang)
   const isPublished = useBracket((s) => s.isPublished)
   const shareSlug = useBracket((s) => s.shareSlug)
   const loadBracket = useBracket((s) => s.load)
@@ -101,7 +104,7 @@ export function UserMenu() {
           </span>
           <span className="flex items-center gap-1 text-accent-violet" title={POINT.plusieurs}>
             <Jeton type="pressing" />
-            {Number(profile?.pressings ?? 0).toLocaleString('fr-FR')}
+            {Number(profile?.pressings ?? 0).toLocaleString(localeOf(lang))}
           </span>
         </span>
       </button>
@@ -166,7 +169,7 @@ export function UserMenu() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-              <Stat label={POINT.plusieurs} value={Number(profile?.pressings ?? 0).toLocaleString('fr-FR')} jeton="pressing" />
+              <Stat label={POINT.plusieurs} value={Number(profile?.pressings ?? 0).toLocaleString(localeOf(lang))} jeton="pressing" />
               <Stat label={JETON.plusieurs} value={profile?.crampons ?? 0} jeton="crampon" />
               <Stat label="Streak" value={profile?.current_streak ?? 0} />
             </div>
