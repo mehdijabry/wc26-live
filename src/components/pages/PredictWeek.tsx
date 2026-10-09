@@ -6,6 +6,7 @@ import { usePageHead, useJsonLd } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
 import { teamBadgeFallback, cn } from '../../lib/utils'
 import { localeOf, trLeague, useLang, useT, type Lang } from '../../lib/i18n'
+import { Jeton } from '../Jeton'
 import {
   JETON,
   JETONS_PAR_JOUR,
@@ -536,17 +537,19 @@ export function PredictWeek() {
         <div className="mt-5 glass rounded-2xl px-4 py-3.5">
           <div className="flex items-center gap-5">
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <Jeton type="crampon" taille={11} />
                 {JETON.plusieurs}
               </div>
               <div className="font-display text-2xl leading-none tabular-nums">{solde}</div>
             </div>
             <div className="w-px self-stretch bg-slate-200" />
             <div>
-              <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                <Jeton type="pressing" taille={11} />
                 {POINT.plusieurs}
               </div>
-              <div className="font-display text-2xl leading-none tabular-nums text-accent-gold">
+              <div className="font-display text-2xl leading-none tabular-nums text-accent-violet">
                 {Number(pf?.pressings ?? 0).toLocaleString(localeOf(lang))}
               </div>
             </div>
@@ -566,7 +569,7 @@ export function PredictWeek() {
           </div>
           <div className="mt-3">
             <div className="h-1 rounded-full bg-slate-50 overflow-hidden">
-              <div className="h-full bg-accent-gold transition-all" style={{ width: `${progression}%` }} />
+              <div className="h-full bg-accent-violet transition-all" style={{ width: `${progression}%` }} />
             </div>
             <div className="mt-1 font-mono text-[10px] text-slate-500 tabular-nums">
               {PALIER.points.toLocaleString(localeOf(lang))} {POINT.plusieurs} → {PALIER.recompense}

@@ -44,6 +44,11 @@ export default {
         },
         accent: {
           gold: '#D9B54A',
+          // Les pressings — la monnaie qu'on GAGNE. Le mauve est la seule
+          // couleur de la palette qui ne soit pas déjà prise par un sens :
+          // le doré est la marque, le rouge veut dire « en direct », le vert
+          // « pari gagné ». Voir src/components/Jeton.tsx.
+          violet: '#8B6CF5',
           green: '#41C97C',
           red: '#FF4D5E',
           blue: '#5B8DEF',       // brightened for dark ground

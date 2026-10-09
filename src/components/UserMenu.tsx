@@ -4,6 +4,7 @@ import { useAuth } from '../store/auth'
 import { useBracket } from '../store/bracket'
 import { AuthModal } from './AuthModal'
 import { JETON, POINT } from '../lib/jeu'
+import { Jeton } from './Jeton'
 
 const TIER_COLORS: Record<string, string> = {
   Rookie: 'text-slate-600',
@@ -94,8 +95,12 @@ export function UserMenu() {
             aller chercher dans un menu déroulant n'existe pas pour le joueur
             — c'est le reproche qui a motivé cette refonte. */}
         <span className="flex items-center gap-1.5 ps-2 ms-0.5 border-s border-slate-300/40 font-mono tabular-nums text-xs">
-          <span title={JETON.plusieurs}>⚽ {profile?.crampons ?? 0}</span>
-          <span className="text-accent-gold" title={POINT.plusieurs}>
+          <span className="flex items-center gap-1" title={JETON.plusieurs}>
+            <Jeton type="crampon" />
+            {profile?.crampons ?? 0}
+          </span>
+          <span className="flex items-center gap-1 text-accent-violet" title={POINT.plusieurs}>
+            <Jeton type="pressing" />
             {Number(profile?.pressings ?? 0).toLocaleString('fr-FR')}
           </span>
         </span>
@@ -161,8 +166,8 @@ export function UserMenu() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-              <Stat label={POINT.plusieurs} value={Number(profile?.pressings ?? 0).toLocaleString('fr-FR')} />
-              <Stat label={JETON.plusieurs} value={profile?.crampons ?? 0} />
+              <Stat label={POINT.plusieurs} value={Number(profile?.pressings ?? 0).toLocaleString('fr-FR')} jeton="pressing" />
+              <Stat label={JETON.plusieurs} value={profile?.crampons ?? 0} jeton="crampon" />
               <Stat label="Streak" value={profile?.current_streak ?? 0} />
             </div>
 
@@ -205,14 +210,19 @@ export function UserMenu() {
   )
 }
 
-function Stat({ label, value, suffix }: { label: string; value: number | string; suffix?: string }) {
+function Stat({ label, value, suffix, jeton }: {
+  label: string; value: number | string; suffix?: string; jeton?: 'crampon' | 'pressing'
+}) {
   return (
     <div className="rounded-lg bg-slate-50 px-2 py-2">
       <div className="font-display font-bold text-base text-slate-900 tabular-nums">
         {value}
         {suffix && <span className="text-[10px] text-slate-500 ml-1">{suffix}</span>}
       </div>
-      <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5">{label}</div>
+      <div className="text-[9px] uppercase tracking-widest text-slate-500 mt-0.5 flex items-center justify-center gap-1">
+        {jeton && <Jeton type={jeton} taille={10} />}
+        {label}
+      </div>
     </div>
   )
 }

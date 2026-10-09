@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { JETON, POINT, PALIER } from '../lib/jeu'
+import { Jeton } from './Jeton'
 import { supabase, type LeaderboardRow } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import { SectionHeader } from './Groups'
@@ -69,7 +70,14 @@ export function Leaderboard() {
                   : 'glass glass-hover text-slate-700')
               }
             >
-              {t === 'points' ? POINT.plusieurs : 'Accuracy %'}
+              {t === 'points' ? (
+                <span className="flex items-center gap-1.5">
+                  <Jeton type="pressing" taille={12} />
+                  {POINT.plusieurs}
+                </span>
+              ) : (
+                'Accuracy %'
+              )}
             </button>
           ))}
         </div>
