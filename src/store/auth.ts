@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase, withTimeout, type Profile } from '../lib/supabase'
+import { effacerRefresh, lireRefresh, sauverRefresh } from '../lib/sessionBackup'
 
 type AuthState = {
   user: User | null
@@ -109,6 +110,10 @@ export const useAuth = create<AuthState>((set, get) => ({
     // Subscribe FIRST so we never miss SIGNED_IN from the URL exchange.
     supabase.auth.onAuthStateChange(async (event, session) => {
       set({ session, user: session?.user ?? null, completingSignIn: false })
+      // Toute session qui passe ici — connexion, rafraîchissement horaire —
+      // laisse son jeton dans un cookie. C'est la copie qui survit quand iOS
+      // vide le localStorage de l'app. Voir src/lib/sessionBackup.ts.
+      if (session?.refresh_token) sauverRefresh(session.refresh_token)
       if (session) await get().refreshProfile()
       else set({ profile: null })
 
@@ -154,16 +159,53 @@ export const useAuth = create<AuthState>((set, get) => ({
       5_000,
       { data: { session: null }, error: null } as Awaited<ReturnType<typeof supabase.auth.getSession>>,
     )
+    // NE JAMAIS écraser une session déjà livrée par onAuthStateChange.
+    // `withTimeout` rend `session: null` quand le délai expire — et il expire
+    // pour de bon au démarrage à froid d'un téléphone, parce que getSession()
+    // doit alors renégocier un jeton d'accès périmé (une heure de validité)
+    // sur un réseau qui se réveille. Écrire ce null par-dessus la vraie
+    // session affichait « Se connecter » à quelqu'un de parfaitement connecté.
+    let session = data.session ?? get().session
+
+    // Dernier recours : plus rien dans le stockage local. Soit iOS l'a purgé,
+    // soit auth-js travaillait en mémoire depuis le début faute d'avoir pu y
+    // écrire. Le cookie, lui, a peut-être survécu — un seul jeton de
+    // rafraîchissement suffit à reconstruire une session complète.
+    if (!session) {
+      const jeton = lireRefresh()
+      if (jeton) {
+        const reprise = await withTimeout<{ session: Session | null; statut: number | null } | 'delai'>(
+          supabase.auth
+            .refreshSession({ refresh_token: jeton })
+            .then((r) => ({
+              session: r.data.session,
+              statut: (r.error as { status?: number } | null)?.status ?? null,
+            })),
+          8_000,
+          'delai',
+        )
+        if (reprise !== 'delai') {
+          if (reprise.session) session = reprise.session
+          // Le serveur a REFUSÉ le jeton (révoqué, remplacé) : on l'oublie,
+          // sinon on le repropose à chaque démarrage. Une panne réseau, elle,
+          // ne donne pas de statut HTTP — on garde le jeton dans ce cas.
+          else if (reprise.statut === 400 || reprise.statut === 401 || reprise.statut === 403) {
+            effacerRefresh()
+          }
+        }
+      }
+    }
+
     set({
-      session: data.session,
-      user: data.session?.user ?? null,
+      session,
+      user: session?.user ?? null,
       loading: false,
       initialized: true,
-      completingSignIn: callback && !data.session,
+      completingSignIn: callback && !session,
     })
-    if (data.session) await get().refreshProfile()
+    if (session) await get().refreshProfile()
 
-    if (callback && !data.session) {
+    if (callback && !session) {
       setTimeout(() => set({ completingSignIn: false }), 4000)
     }
   },
@@ -247,7 +289,12 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   async signOut() {
     if (!supabase) return
+    // Avant ET après : un TOKEN_REFRESHED encore en vol pourrait réécrire le
+    // cookie entre les deux, et le prochain démarrage reconnecterait
+    // quelqu'un qui vient justement de demander à partir.
+    effacerRefresh()
     await supabase.auth.signOut()
+    effacerRefresh()
     set({ user: null, session: null, profile: null })
   },
 

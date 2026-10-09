@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { cleSupabase, lireRefresh, localStorageUtilisable } from '../../lib/sessionBackup'
 
 /**
  * /install-debug — surface every signal the install-button logic relies on.
@@ -32,6 +33,11 @@ export function InstallDebugPage() {
   const [appInstalledFired, setAppInstalledFired] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [installResult, setInstallResult] = useState<string>('')
+  // Bloc « pourquoi la session ne survit pas à la fermeture de l'app ».
+  const [lsOk, setLsOk] = useState<boolean | null>(null)
+  const [sessionStockee, setSessionStockee] = useState('checking…')
+  const [cookieRt, setCookieRt] = useState('checking…')
+  const [cookiesActifs, setCookiesActifs] = useState<boolean | null>(null)
 
   useEffect(() => {
     const u = navigator.userAgent
@@ -72,6 +78,32 @@ export function InstallDebugPage() {
     } else {
       setInstalledApps('getInstalledRelatedApps unavailable')
     }
+
+    // ── Persistance de la session ──────────────────────────────────
+    // Les trois mesures qui séparent les causes possibles d'une
+    // déconnexion à chaque fermeture de l'app. Voir src/lib/sessionBackup.ts.
+    const ecrivable = localStorageUtilisable()
+    setLsOk(ecrivable)
+    setCookiesActifs(navigator.cookieEnabled === true)
+    const cle = cleSupabase()
+    if (!cle) {
+      setSessionStockee('VITE_SUPABASE_URL absente du build')
+    } else {
+      try {
+        const brut = localStorage.getItem(cle)
+        if (!brut) {
+          setSessionStockee(`ABSENTE de localStorage (clé ${cle})`)
+        } else {
+          const exp = (JSON.parse(brut) as { expires_at?: number }).expires_at
+          const quand = exp ? new Date(exp * 1000).toISOString() : 'sans expires_at'
+          setSessionStockee(`présente, ${brut.length} octets, expire ${quand}`)
+        }
+      } catch (e) {
+        setSessionStockee('illisible: ' + String(e))
+      }
+    }
+    const rt = lireRefresh()
+    setCookieRt(rt ? `présent (${rt.length} caractères)` : 'ABSENT')
 
     function onBip(e: Event) {
       e.preventDefault()
@@ -116,6 +148,23 @@ export function InstallDebugPage() {
         <Row k="getInstalledRelatedApps" v={installedApps} />
         <Row k="beforeinstallprompt fired" v={String(promptFired)} good={promptFired} />
         <Row k="appinstalled fired" v={String(appInstalledFired)} />
+      </div>
+
+      <h2 className="text-base font-bold mt-6 mb-3">Persistance de la session</h2>
+      <div className="space-y-1.5 bg-white p-3 rounded-lg border border-slate-200">
+        <Row k="localStorage inscriptible" v={lsOk === null ? '…' : String(lsOk)} good={lsOk ?? undefined} />
+        <Row k="navigator.cookieEnabled" v={cookiesActifs === null ? '…' : String(cookiesActifs)} good={cookiesActifs ?? undefined} />
+        <Row k="session Supabase en localStorage" v={sessionStockee} good={sessionStockee.startsWith('présente')} />
+        <Row k="cookie de secours p90.rt" v={cookieRt} good={cookieRt.startsWith('présent')} />
+      </div>
+      <div className="mt-3 p-3 bg-sky-50 border border-sky-200 rounded text-[11px] leading-relaxed">
+        <strong>Comment lire ce bloc, connecté puis après avoir fermé l'app :</strong>
+        <ul className="list-disc ml-4 mt-1 space-y-1">
+          <li><strong>localStorage inscriptible = false</strong> → auth-js garde la session en mémoire : elle meurt à chaque fermeture. C'est la cause nº 1.</li>
+          <li><strong>session ABSENTE mais cookie présent</strong> → iOS a purgé le stockage ; le cookie prend le relais au démarrage suivant.</li>
+          <li><strong>les deux absents alors qu'on était connecté</strong> → tout le conteneur a été vidé : il faudra un cookie posé par le serveur.</li>
+          <li><strong>les deux présents et pourtant déconnecté</strong> → le serveur refuse le jeton ; regarder les journaux d'authentification Supabase.</li>
+        </ul>
       </div>
 
       <div className="mt-4 space-y-2">
