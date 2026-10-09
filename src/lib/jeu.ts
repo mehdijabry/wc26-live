@@ -68,12 +68,6 @@ export type Cote = {
   home: number
   draw: number
   away: number
-  /**
-   * La grille des scores exacts, { "2-1": 9.00, … }, dérivée des cotes 1X2
-   * par le worker. Nulle tant qu'elle n'a pas été calculée : pas de grille,
-   * pas de marché du score exact sur ce match.
-   */
-  exact: Record<string, number> | null
   kickoff: string | null
 }
 
@@ -185,13 +179,37 @@ export function reclamableAujourdhui(p: Portefeuille | null): boolean {
 /** Les cotes publiées par le worker pour les matchs à venir. */
 export async function cotes(): Promise<Map<string, Cote>> {
   if (!supabase) return new Map()
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('match_odds')
-    .select('match_id, home, draw, away, exact, kickoff')
+    .select('match_id, home, draw, away, kickoff')
     .order('kickoff', { ascending: true })
+  // On REMONTE l'erreur au lieu de rendre une carte vide. La page n'affiche
+  // que les matchs présents dans cette carte : une requête ratée silencieuse
+  // donnait « aucun match ce jour-là », c'est-à-dire un mensonge, et la page
+  // restait vide pour toujours puisque rien ne la relançait.
+  if (error) throw new Error(error.message)
   const m = new Map<string, Cote>()
   for (const c of (data as Cote[]) ?? []) m.set(c.match_id, c)
   return m
+}
+
+/**
+ * La grille des scores exacts d'UN match, à la demande.
+ *
+ * Elle voyageait avec les cotes 1X2 de tous les matchs, et faisait passer ce
+ * chargement — dont dépend l'affichage même des cartes — de 47 Ko à 223 Ko.
+ * Sur un réseau lent, la page restait vide le temps que ça descende. Une
+ * grille que presque personne n'ouvre n'a pas à retarder la liste que tout
+ * le monde regarde : même traitement que les buteurs.
+ */
+export async function grilleDuMatch(matchId: string): Promise<Record<string, number>> {
+  if (!supabase) return {}
+  const { data } = await supabase
+    .from('match_odds')
+    .select('exact')
+    .eq('match_id', matchId)
+    .maybeSingle()
+  return ((data as { exact?: Record<string, number> | null } | null)?.exact ?? {})
 }
 
 /**

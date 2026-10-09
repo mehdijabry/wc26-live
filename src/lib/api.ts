@@ -1911,13 +1911,32 @@ export const api = {
     // — by the time we group + render, roundContext() can look up team
     // abbreviations synchronously and label WC matches 'Group D' instead
     // of just 'Group stage'. All promises typically finish under 250ms.
+    // Un échec d'ESPN NE DOIT PAS passer pour une journée sans match.
+    // Avant, chaque seau était catché individuellement et rendait une liste
+    // vide : quand ESPN ne répondait pas, la page affichait tranquillement
+    // « aucun match ce jour-là », ce qui est un mensonge, et son message
+    // d'erreur — pourtant écrit — ne pouvait littéralement jamais sortir.
+    // Un nouvel essai, puis on laisse l'échec remonter s'ils ratent TOUS.
+    let echecs = 0
+    const chercher = async (b: string): Promise<EspnScoreboard> => {
+      const url = `${ESPN_ALL}?dates=${b}&limit=300`
+      try {
+        return await jgetDirect<EspnScoreboard>(url)
+      } catch {
+        try {
+          await new Promise((r) => setTimeout(r, 500))
+          return await jgetDirect<EspnScoreboard>(url)
+        } catch {
+          echecs++
+          return { events: [] as EspnEvent[] } as EspnScoreboard
+        }
+      }
+    }
     const [raws] = await Promise.all([
-      Promise.all(buckets.map((b) =>
-        jgetDirect<EspnScoreboard>(`${ESPN_ALL}?dates=${b}&limit=300`)
-          .catch(() => ({ events: [] as EspnEvent[] }))
-      )),
+      Promise.all(buckets.map(chercher)),
       ensureWcGroupMap(),
     ])
+    if (echecs === buckets.length) throw new Error('ESPN injoignable')
     const seen = new Set<string>()
     const events: EspnEvent[] = []
     const startMs = start.getTime()

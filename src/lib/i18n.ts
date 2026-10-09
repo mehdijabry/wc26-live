@@ -153,6 +153,8 @@ const AR: Record<string, string> = {
   'You need {n} {jeton}': 'تحتاج {n} {jeton}',
   // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──
   'Goalscorer': 'الهداف',
+  'No exact-score market on this match.': 'لا يوجد سوق نتيجة مضبوطة في هذه المباراة.',
+  'Odds are not responding. Reload the page in a moment.': 'الاحتمالات لا تستجيب. أعد تحميل الصفحة بعد قليل.',
   'No goalscorer market on this competition.': 'لا يوجد سوق هدافين في هذه المسابقة.',
   'Draw': 'تعادل',
   'won': 'رابح',
@@ -413,6 +415,8 @@ const FR: Record<string, string> = {
   'You need {n} {jeton}': 'Il te faut {n} {jeton}',
   // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──
   'Goalscorer': 'Buteur',
+  'No exact-score market on this match.': 'Pas de marché score exact sur ce match.',
+  'Odds are not responding. Reload the page in a moment.': 'Les cotes ne répondent pas. Recharge la page dans un instant.',
   'No goalscorer market on this competition.': 'Pas de marché buteur sur cette compétition.',
   'Draw': 'Nul',
   'won': 'gagné',

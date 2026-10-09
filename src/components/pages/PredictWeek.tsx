@@ -17,6 +17,7 @@ import {
   coteCombinee,
   cotes as chargerCotes,
   buteursDuMatch,
+  grilleDuMatch,
   jambesParMatch,
   mesBulletins,
   poserBulletin,
@@ -150,20 +151,26 @@ function CarteMatch({
   const [buteursOuverts, setButeursOuverts] = useState(false)
   // `null` tant qu'on n'a rien demandé, [] quand le match n'a pas de marché.
   const [buteurs, setButeurs] = useState<Buteur[] | null>(null)
-  // La grille des scores, du plus probable au plus fou. Elle n'existe que si
-  // le worker a pu la calculer : pas de grille, pas de marché.
-  //
-  // Ce useMemo doit rester AVANT le `return null` plus bas : React exige que
-  // les hooks soient appelés dans le même ordre à chaque rendu, et un match
-  // mal formé fait sortir la fonction par ce retour anticipé.
-  const grille = useMemo(
-    () => Object.entries(cote.exact ?? {}).sort((a, b) => a[1] - b[1]),
-    [cote.exact],
-  )
+  const [grille, setGrille] = useState<Array<[string, number]> | null>(null)
   const id0 = idDePronostic(ev)
-  // La liste des buteurs ne part qu'au premier dépliage : vingt-huit joueurs
-  // par match, sur cent quatre-vingts matchs, ne doivent pas voyager pour
-  // une liste que presque personne n'ouvrira.
+
+  // La grille des scores et la liste des buteurs se chargent AU DÉPLIAGE,
+  // match par match. Elles voyageaient avec les cotes 1X2 de tous les
+  // matchs, et faisaient passer ce chargement — celui qui commande
+  // l'affichage même des cartes — de 47 Ko à 223 Ko. Sur un réseau lent, la
+  // page restait vide le temps que ça descende, et affichait « aucun match ».
+  //
+  // Ces hooks restent AVANT le `return null` plus bas : React exige le même
+  // ordre d'appel à chaque rendu, et un match mal formé sort par ce retour.
+  useEffect(() => {
+    if (!scoresOuverts || grille !== null) return
+    let vivant = true
+    void grilleDuMatch(id0).then((g) => {
+      if (vivant) setGrille(Object.entries(g).sort((a, b) => a[1] - b[1]))
+    })
+    return () => { vivant = false }
+  }, [scoresOuverts, grille, id0])
+
   useEffect(() => {
     if (!buteursOuverts || buteurs !== null) return
     let vivant = true
@@ -273,7 +280,7 @@ function CarteMatch({
       {/* Le score exact, replié. Déplié d'office, vingt-cinq boutons par
           match rendraient la liste illisible — c'est le marché d'un joueur
           qui le cherche, pas celui qu'on met en travers du chemin. */}
-      {ouvert && grille.length > 0 && (
+      {ouvert && (
         <div className="mt-2">
           <button
             type="button"
@@ -296,7 +303,15 @@ function CarteMatch({
             <span className="text-slate-400">{scoresOuverts ? '−' : '+'}</span>
           </button>
 
-          {scoresOuverts && (
+          {scoresOuverts && grille === null && (
+            <p className="px-3 py-2 font-mono text-[11px] text-slate-500">{t('Loading…')}</p>
+          )}
+          {scoresOuverts && grille !== null && grille.length === 0 && (
+            <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
+              {t('No exact-score market on this match.')}
+            </p>
+          )}
+          {scoresOuverts && grille !== null && grille.length > 0 && (
             <div className="mt-2 grid grid-cols-4 sm:grid-cols-6 gap-1.5">
               {grille.map(([score, c2]) => {
                 const actif = selection?.marche === 'exact' && selection.pick === score
@@ -578,6 +593,9 @@ export function PredictWeek() {
   const [comps, setComps] = useState<DailyComp[] | null>(null)
   const [erreurChargement, setErreurChargement] = useState(false)
   const [cotes, setCotes] = useState<Map<string, Cote>>(new Map())
+  /** Sans les cotes, AUCUNE carte ne s'affiche : il faut savoir si elles
+   *  manquent parce qu'il n'y en a pas, ou parce que le chargement a raté. */
+  const [cotesEtat, setCotesEtat] = useState<'chargement' | 'ok' | 'erreur'>('chargement')
   const [jambes, setJambes] = useState<Map<string, Jambe[]>>(new Map())
   const [pf, setPf] = useState<Portefeuille | null>(null)
   const [modale, setModale] = useState(false)
@@ -630,21 +648,41 @@ export function PredictWeek() {
   // Les cotes servent aussi à choisir le jour d'ouverture : sans ça la page
   // s'ouvre un jour creux et paraît vide alors qu'il y a des matchs demain.
   useEffect(() => {
-    void chargerCotes().then((c) => {
-      setCotes(c)
-      if (jourChoisi) return
-      const jours = new Set<string>()
-      for (const x of c.values()) if (x.kickoff) jours.add(ymdLocal(new Date(x.kickoff)))
-      for (let i = 0; i < JOURS; i++) {
-        const d = new Date()
-        d.setDate(d.getDate() + i)
-        if (jours.has(ymdLocal(d))) {
-          setJour(i)
-          break
+    let vivant = true
+    const charger = async () => {
+      // Deux essais. Cette requête commande l'affichage de TOUTES les cartes :
+      // si elle rate une fois, la page reste vide et rien ne la relance — le
+      // visiteur lit « aucun match ce jour-là », ce qui est faux.
+      for (let essai = 0; essai < 2; essai++) {
+        try {
+          const c = await chargerCotes()
+          if (!vivant) return
+          setCotes(c)
+          setCotesEtat('ok')
+          if (jourChoisi) return
+          const jours = new Set<string>()
+          for (const x of c.values()) if (x.kickoff) jours.add(ymdLocal(new Date(x.kickoff)))
+          for (let i = 0; i < JOURS; i++) {
+            const d = new Date()
+            d.setDate(d.getDate() + i)
+            if (jours.has(ymdLocal(d))) {
+              setJour(i)
+              break
+            }
+          }
+          setJourChoisi(true)
+          return
+        } catch {
+          if (essai === 0) await new Promise((r) => setTimeout(r, 800))
         }
       }
-      setJourChoisi(true)
-    })
+      if (vivant) {
+        setCotesEtat('erreur')
+        setJourChoisi(true)
+      }
+    }
+    void charger()
+    return () => { vivant = false }
   }, [jourChoisi])
 
   const rafraichirJoueur = useCallback(async () => {
@@ -915,7 +953,17 @@ export function PredictWeek() {
       {!comps && !erreurChargement && (
         <p className="mt-10 text-center text-sm text-slate-500">{t('Loading…')}</p>
       )}
-      {comps && jouables.length === 0 && (
+      {/* Les cotes n'ont pas pu être chargées : le dire, au lieu de laisser
+          croire qu'aucun match ne se joue. */}
+      {cotesEtat === 'erreur' && (
+        <p className="mt-10 text-center text-sm text-slate-500">
+          {t('Odds are not responding. Reload the page in a moment.')}
+        </p>
+      )}
+      {comps && cotesEtat === 'chargement' && jouables.length === 0 && (
+        <p className="mt-10 text-center text-sm text-slate-500">{t('Loading…')}</p>
+      )}
+      {comps && cotesEtat === 'ok' && jouables.length === 0 && (
         <p className="mt-10 text-center text-sm text-slate-500">
           {t('Nothing to back that day — no odds published. Try another day: the weekend has the most.')}
         </p>
