@@ -2496,6 +2496,26 @@ export function cotesButeurs(
     .sort((a, b) => a.cote - b.cote)
 }
 
+/**
+ * L'effectif porte-t-il de VRAIES statistiques ?
+ *
+ * Sans ce contrôle, le modèle dégénère en silence. Mesuré en production sur
+ * un match de championnat mineur : effectif sans aucun but ni match
+ * enregistré, donc même facteur pour tout le monde, donc SEPT joueurs à
+ * exactement ×11,90 — une liste qui n'apprend rien au parieur et le fait
+ * payer trop cher un milieu qui ne marque jamais. Et un autre match sans le
+ * moindre attaquant, signe d'un effectif incomplet.
+ *
+ * Mieux vaut pas de marché qu'un marché inventé.
+ */
+function effectifExploitable(j: JoueurBrut[]): boolean {
+  if (j.length < 12) return false
+  const maxMatchs = Math.max(0, ...j.map((x) => x.matchs))
+  const totalButs = j.reduce((t, x) => t + x.buts, 0)
+  const attaquants = j.filter((x) => x.poste === 'F').length
+  return maxMatchs >= 2 && totalButs >= 2 && attaquants >= 1
+}
+
 /** La statistique nommée d'un joueur dans la réponse ESPN, ou null. */
 function statJoueur(p: unknown, nom: string): number | null {
   const cats = (p as { statistics?: { splits?: { categories?: Array<{ stats?: Array<{ name?: string; value?: number }> }> } } })
@@ -2620,7 +2640,16 @@ async function syncButeurs(env: Env): Promise<void> {
     if (!slug) continue
 
     const [jd, je] = await Promise.all([effectif(env, slug, dom), effectif(env, slug, ext)])
-    if (!jd.length && !je.length) continue
+    // Les DEUX effectifs doivent être exploitables : une liste où une seule
+    // équipe est pariable serait bancale, et une liste sans statistiques
+    // donne le même prix à tout le monde.
+    if (!effectifExploitable(jd) || !effectifExploitable(je)) {
+      // On retient la réponse six heures : inutile de redemander ces deux
+      // effectifs à chaque tour pour reconstater qu'ils sont vides.
+      await env.CACHE.put(`buteurs:fait:${matchId}`, '1', { expirationTtl: 21_600 })
+      traites++
+      continue
+    }
 
     const joueurs = [...cotesButeurs(jd, lam.dom, 'dom'), ...cotesButeurs(je, lam.ext, 'ext')]
       .sort((x, y) => x.cote - y.cote)
