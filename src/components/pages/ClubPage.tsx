@@ -274,7 +274,11 @@ function LigneJoueur({
               type="button"
               onClick={onBasculer}
               aria-expanded={ouvert}
-              className="text-left hover:text-accent-gold hover:underline underline-offset-2 transition-colors"
+              // Le soulignement pointillé est PERMANENT, pas au survol : sur
+              // un téléphone il n'y a pas de survol, et une affordance
+              // invisible revient à pas d'affordance. C'est exactement ce
+              // qui a été signalé — « les joueurs ne sont pas cliquables ».
+              className="text-left underline decoration-dotted decoration-slate-400 underline-offset-4 hover:decoration-solid hover:text-accent-gold hover:decoration-accent-gold transition-colors"
             >
               {joueur.nom}
             </button>

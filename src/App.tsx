@@ -16,7 +16,6 @@ import { usePredictions } from './store/predictions'
 import { usePageHead } from './lib/head'
 import { LottieLoader } from './components/LottieLoader'
 import { Ad, AdPair } from './components/AdSlot'
-import { AmazonShelf } from './components/AmazonShelf'
 import { PushOptIn } from './components/PushOptIn'
 import { IosInstallPrompt } from './components/IosInstallPrompt'
 import { InstallDebugPage } from './components/pages/InstallDebug'
@@ -567,10 +566,6 @@ function HomePage() {
           <NewsTicker />
         </div>
       </section>
-      {/* Amazon affiliate shelf — editorial 'gear we like' row. Replaces
-          one Adsterra footer slot. Direct CPA, no third-party creative
-          review needed (we hand-pick every product). */}
-      <AmazonShelf heading="Football gear we like" />
       <WC26PromoGate />
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="home-footer" /></div>
     </>
