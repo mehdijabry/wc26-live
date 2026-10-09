@@ -254,14 +254,15 @@ async function prerenderRoute(browser, route) {
   // onglet en arrière-plan, fichier en cache abîmé — le visiteur restait
   // devant un calque opaque qui avalait tous les clics, sur /today, /news et
   // toutes les routes pré-rendues sauf l'accueil (Mehdi, 2026-10-09).
-  try {
-    await page.waitForFunction(
-      () => !document.querySelector('[class*="z-[80]"]'),
-      { timeout: 6_000 },
-    )
-  } catch {
-    voileRestant.push(route)   // retiré du HTML plus bas, et signalé à la fin
-  }
+  // On ne l'ATTEND pas — il part au bout de 1,8 s, ce qui coûtait une seconde et
+  // demie par route, dix minutes sur les 465. On le retire du DOM juste avant la
+  // photo : c'est instantané, et surtout ça ne dépend d'aucune minuterie.
+  const voilesRetires = await page.evaluate(() => {
+    const n = document.querySelectorAll('[class*="z-[80]"]')
+    n.forEach((x) => x.remove())
+    return n.length
+  })
+  if (voilesRetires > 0) voileRestant.push(route)
 
   // Small extra wait so any debounced setMeta / structured-data
   // injection lands before we snapshot.
@@ -454,14 +455,9 @@ async function main() {
   console.log(`[prerender] Done. ${ok} ok, ${failed} failed.`)
   // Le voile retiré à la main veut dire que l'attente n'a pas suffi : ça se dit,
   // parce qu'une page livrée avec ce calque bloque tout si React tarde.
-  if (voileRestant.length) {
-    console.log(
-      `[prerender] ATTENTION — ${voileRestant.length} route(s) photographiées pendant le splash (voile retiré du HTML).`
-    )
-    for (const r of voileRestant.slice(0, 10)) console.log(`  - ${r}`)
-  } else {
-    console.log('[prerender] Aucune page ne porte le voile d\'introduction.')
-  }
+  console.log(
+    `[prerender] Voile d'introduction retiré de ${voileRestant.length} page(s) avant la photo — aucune page livrée ne le porte.`
+  )
 
   if (sansTitrePropre.length) {
     console.log(

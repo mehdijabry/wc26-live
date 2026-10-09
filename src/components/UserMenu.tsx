@@ -179,12 +179,8 @@ export function UserMenu() {
               <span>★ best {profile?.best_streak ?? 0}</span>
             </div>
 
-            {/* Quick links — surface the user's own bracket so they
-                can actually find what they published. */}
+            {/* Raccourcis — ce que le joueur vient réellement chercher ici. */}
             <div className="mt-4 space-y-1.5">
-              {/* Mes paris passe devant : c'est le jeu vivant. Le bracket, lui,
-                  est l'archive du Mondial, et un joueur qui cherchait son
-                  combiné atterrissait dessus (Mehdi, 2026-10-09). */}
               <Link
                 to="/my-bets"
                 onClick={() => setMenuOpen(false)}
@@ -192,13 +188,10 @@ export function UserMenu() {
               >
                 🎟️ My bets
               </Link>
-              <Link
-                to="/bracket"
-                onClick={() => setMenuOpen(false)}
-                className="block w-full px-3 py-2 rounded-lg bg-slate-200/60 hover:bg-slate-200 text-xs text-slate-800 transition-colors"
-              >
-                🏆 My WC26 bracket
-              </Link>
+              {/* Le bracket du Mondial n'a plus sa place dans ce menu : le jeu
+                  vivant, ce sont les paris (Mehdi, 2026-10-09). La PAGE reste en
+                  ligne et la route /bracket est intacte — seul le raccourci
+                  disparaît. Les liens déjà partagés continuent de fonctionner. */}
               {isPublished && shareSlug && (
                 <Link
                   to={`/u/${shareSlug}`}
