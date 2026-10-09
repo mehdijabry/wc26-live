@@ -6,6 +6,7 @@ import { useMatchOdds } from '../lib/useMatchOdds'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
 import { localeOf, trLeague, useLang, useT } from '../lib/i18n'
 import { Link } from 'react-router-dom'
+import { SectionHeader } from './Groups'
 import { MatchSheet } from './MatchSheet'
 
 /**
@@ -27,16 +28,34 @@ import { MatchSheet } from './MatchSheet'
  */
 
 /**
- * Les six compétitions de l'accueil, DANS CET ORDRE.
+ * Les compétitions de l'accueil, DANS CET ORDRE.
  *
  * L'accueil et la page Matchs affichaient exactement la même liste, ce qui
  * rendait l'onglet Matchs inutile. L'accueil montre désormais une vitrine —
- * les six grandes, deux matchs chacune — et Matchs garde la totalité.
+ * deux matchs par compétition — et Matchs garde la totalité.
  *
- * L'ordre est VOULU, pas calculé : il ne suit ni l'alphabet ni le barème de
- * prestige interne. Ne pas le « corriger ».
+ * L'ordre est VOULU, pas calculé : il ne suit ni l'alphabet, ni le barème de
+ * prestige interne, ni les identifiants. Ne pas le « corriger ».
+ *
+ * Les coupes passent AVANT les championnats, et c'est le point de l'ordre :
+ * une soirée de Coupe de France est l'événement du jour, pas la vingtième
+ * journée de Ligue 1. Elles ne jouent que quelques semaines par an — les
+ * jours sans, elles disparaissent d'elles-mêmes, puisqu'on ne retient que
+ * les compétitions qui ont des matchs.
  */
-const VITRINE = ['uefa.champions', 'esp.1', 'eng.1', 'fra.1', 'ger.1', 'ita.1']
+const VITRINE = [
+  'uefa.champions',        // Ligue des champions
+  'esp.copa_del_rey',      // Copa del Rey
+  'eng.fa',                // FA Cup
+  'fra.coupe_de_france',   // Coupe de France
+  'ger.dfb_pokal',         // DFB-Pokal
+  'ita.coppa_italia',      // Coppa Italia
+  'esp.1',                 // LaLiga
+  'eng.1',                 // Premier League
+  'fra.1',                 // Ligue 1
+  'ger.1',                 // Bundesliga
+  'ita.1',                 // Serie A
+]
 /** Combien de matchs par compétition avant le « voir plus ». */
 const VITRINE_PAR_COMPETITION = 2
 
@@ -211,17 +230,18 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
   return (
     <section id="today" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
-        {/* Le titre de section est retiré À L'ŒIL mais pas au code : sans
-            lui, cette partie de l'accueil n'aurait plus d'intitulé dans la
-            structure de la page, ni pour un lecteur d'écran ni pour Google.
-            Le sélecteur de jour juste en dessous dit déjà de quoi il
-            s'agit, donc le montrer en double n'apportait rien. */}
-        <h2 className="sr-only">{t('Every match, everywhere')}</h2>
+        {/* Le titre était passé en sr-only quand la section répétait la
+            page Matchs ; il redevient visible maintenant qu'elle a un rôle
+            à elle — la vitrine des grandes compétitions. */}
+        <SectionHeader
+          eyebrow={t('football today')}
+          title={t('Every match, everywhere')}
+        />
 
         {/* Day navigator — minimal: ‹ chevron · date (tappable date picker) · chevron ›.
             No glass box, no extra padding. Tap the date to jump to ANY day.
             'Jump to today' only surfaces when off-day, and it's a tiny pill. */}
-        <div className="flex items-center justify-center gap-4 sm:gap-6">
+        <div className="mt-8 flex items-center justify-center gap-4 sm:gap-6">
           <button
             onClick={() => setOffset((o) => o - 1)}
             className="w-11 h-11 flex items-center justify-center text-slate-500 hover:text-accent-gold transition-colors shrink-0"
@@ -378,7 +398,7 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
               publicité, et on croirait le site cassé. */}
           {vitrine && !loading && data && filteredComps.length === 0 && data.total > 0 && (
             <div className="glass p-6 text-center">
-              <p className="text-slate-500 text-sm">{t('None of the big six are playing today.')}</p>
+              <p className="text-slate-500 text-sm">{t('None of the featured competitions are playing today.')}</p>
               <Link
                 to="/today"
                 className="mt-3 inline-flex items-center gap-2 min-h-[44px] px-5 font-mono text-[11px] uppercase tracking-widest text-accent-gold hover:underline"
