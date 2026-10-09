@@ -1,5 +1,4 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
 import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { Hero, HeroScoreboard } from './components/Hero'
@@ -43,6 +42,7 @@ const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) =
 const PhasePickerHub = lazy(() => import('./components/posters/PhasePickerHub').then((m) => ({ default: m.PhasePickerHub })))
 const PublicProfile = lazy(() => import('./components/PublicProfile').then((m) => ({ default: m.PublicProfile })))
 const PredictWeek = lazy(() => import('./components/pages/PredictWeek').then((m) => ({ default: m.PredictWeek })))
+const MesParis = lazy(() => import('./components/pages/MesParis'))
 const Leagues = lazy(() => import('./components/pages/Leagues').then((m) => ({ default: m.Leagues })))
 const LeaguePage = lazy(() => import('./components/pages/LeaguePage').then((m) => ({ default: m.LeaguePage })))
 const NewsListPage = lazy(() => import('./components/pages/News').then((m) => ({ default: m.NewsListPage })))
@@ -92,17 +92,31 @@ function App() {
   // its foreground tab). Without this guard, every article click on
   // the home opens a new tab that boots from scratch and replays the
   // 1.2 s splash — feels like the whole app is reloading mid-flow.
-  const [intro, setIntro] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return false
+  //
+  // DEUX RÈGLES DE SÛRETÉ, APPRISES LE 09/10/2026. Le voile est décoratif, et
+  // pourtant il couvrait l'écran entier en captant les clics : quand sa sortie
+  // ne se terminait pas, le site devenait inutilisable — bouton de connexion
+  // compris — sans aucune erreur dans la console.
+  //   1. `pointer-events-none` : il ne peut plus rien intercepter, jamais.
+  //   2. Son retrait ne dépend plus d'une animation. Deux minuteries le font
+  //      passer de « visible » à « en fondu » puis à « retiré ». L'animation de
+  //      sortie de Framer Motion a besoin de `requestAnimationFrame`, qui est
+  //      gelé dans un onglet d'arrière-plan : le voile restait alors figé à
+  //      mi-fondu, pour toujours. Le fondu est maintenant une transition CSS,
+  //      et le retrait est garanti par la seconde minuterie même si elle
+  //      n'aboutit pas.
+  const [intro, setIntro] = useState<'visible' | 'fondu' | 'retire'>(() => {
+    if (typeof window === 'undefined') return 'retire'
     try {
-      if (new URLSearchParams(window.location.search).get('ad') === 'ok') return false
+      if (new URLSearchParams(window.location.search).get('ad') === 'ok') return 'retire'
     } catch {}
-    return true
+    return 'visible'
   })
   useEffect(() => {
-    if (!intro) return
-    const t = setTimeout(() => setIntro(false), 1200)
-    return () => clearTimeout(t)
+    if (intro === 'retire') return
+    const fondu = setTimeout(() => setIntro('fondu'), 1200)
+    const retrait = setTimeout(() => setIntro('retire'), 1800)
+    return () => { clearTimeout(fondu); clearTimeout(retrait) }
   }, [intro])
 
   // Init auth on mount
@@ -174,40 +188,29 @@ function App() {
 
   return (
     <div className="min-h-svh pb-20 md:pb-0">
-      {/* Intro splash — original cream-themed reveal. */}
-      <AnimatePresence>
-        {intro && (
-          <motion.div
-            key="wc26-intro"
-            initial={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.4, ease: 'easeOut' }}
-            className="fixed inset-0 z-[80] bg-paper flex flex-col items-center justify-center"
-          >
-            <motion.img
-              src="/p90-logo.svg"
-              alt=""
-              initial={{ scale: 0.85, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              transition={{ duration: 0.5, ease: 'easeOut' }}
-              className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.25)]"
-            />
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.45, delay: 0.25 }}
-              className="mt-5 text-center"
-            >
-              <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-slate-900">
-                Pressing <span className="text-accent-gold">90’</span>
-              </div>
-              <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase text-slate-600">
-                live football scores
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {/* Intro splash — décoratif, et incapable de bloquer l'écran (voir plus haut). */}
+      {intro !== 'retire' && (
+        <div
+          aria-hidden
+          className={`fixed inset-0 z-[80] bg-paper flex flex-col items-center justify-center pointer-events-none transition-opacity duration-500 ease-out ${
+            intro === 'fondu' ? 'opacity-0' : 'opacity-100'
+          }`}
+        >
+          <img
+            src="/p90-logo.svg"
+            alt=""
+            className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.25)]"
+          />
+          <div className="mt-5 text-center">
+            <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-slate-900">
+              Pressing <span className="text-accent-gold">90’</span>
+            </div>
+            <div className="mt-1.5 font-mono text-[10px] sm:text-xs tracking-brand uppercase text-slate-600">
+              live football scores
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* The admin panel is a self-contained operator console with its
           own header, footer, and theme — it should NOT render the main
@@ -273,6 +276,17 @@ function App() {
             element={
               <Suspense fallback={<PageSkeleton caption="Loading fixtures…" />}>
                 <PredictWeek />
+              </Suspense>
+            }
+          />
+          {/* /my-bets — relire ses paris. Le moteur de bulletins était sorti sans
+              écran de relecture : les crampons partaient et le joueur ne
+              retrouvait son combiné nulle part (Mehdi, 2026-10-09). */}
+          <Route
+            path="/my-bets"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading your bets…" />}>
+                <MesParis />
               </Suspense>
             }
           />

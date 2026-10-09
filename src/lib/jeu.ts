@@ -242,11 +242,14 @@ export async function buteursDuMatch(matchId: string): Promise<Buteur[]> {
  */
 export async function mesBulletins(): Promise<Bulletin[]> {
   if (!supabase) return []
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('bet_slips')
     .select('id, stake, odds, status, payout, created_at, legs:bet_legs(match_id, market, pick, odds, status)')
     .order('created_at', { ascending: false })
     .limit(50)
+  // Une requête ratée ne doit jamais ressembler à « aucun pari » : l'écran
+  // doit pouvoir distinguer « rien joué » de « la liste n'a pas pu être lue ».
+  if (error) throw new Error(error.message)
   return (data as Bulletin[]) ?? []
 }
 

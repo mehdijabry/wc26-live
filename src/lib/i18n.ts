@@ -67,6 +67,25 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  // Mes paris (/my-bets), 2026-10-09.
+  'Away': 'خارج الديار',
+  'My bets': 'رهاناتي',
+  'Every slip you have placed': 'كل القسائم التي راهنت بها',
+  'Sign in to see your bets.': 'سجّل الدخول لرؤية رهاناتك.',
+  'Your bets could not be loaded. They are safe — this is a display problem.': 'تعذّر تحميل رهاناتك. إنها سليمة — المشكلة في العرض فقط.',
+  'Try again': 'أعد المحاولة',
+  'You have not placed a bet yet.': 'لم تضع أي رهان بعد.',
+  'Place your first bet': 'ضع رهانك الأول',
+  'open': 'قيد الانتظار',
+  'selections': 'اختيارات',
+  'Stake': 'الرهان',
+  'Odds': 'المعامل',
+  'Paid': 'مدفوع',
+  'To win': 'الربح المحتمل',
+  'Won': 'رابح',
+  'Lost': 'خاسر',
+  'Void': 'ملغى',
+  'Open': 'قيد الانتظار',
   // Nav / shell
   'Home': 'الرئيسية',
   'Matches': 'المباريات',
@@ -333,6 +352,25 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // Mes paris (/my-bets), 2026-10-09.
+  'Away': 'Extérieur',
+  'My bets': 'Mes paris',
+  'Every slip you have placed': 'Tous les bulletins que vous avez posés',
+  'Sign in to see your bets.': 'Connectez-vous pour voir vos paris.',
+  'Your bets could not be loaded. They are safe — this is a display problem.': 'Vos paris n’ont pas pu être chargés. Ils sont intacts : c’est un problème d’affichage.',
+  'Try again': 'Réessayer',
+  'You have not placed a bet yet.': 'Vous n’avez pas encore posé de pari.',
+  'Place your first bet': 'Poser mon premier pari',
+  'open': 'en cours',
+  'selections': 'sélections',
+  'Stake': 'Mise',
+  'Odds': 'Cote',
+  'Paid': 'Payé',
+  'To win': 'Gain possible',
+  'Won': 'Gagné',
+  'Lost': 'Perdu',
+  'Void': 'Annulé',
+  'Open': 'En cours',
   // Nav / shell
   'Home': 'Accueil',
   'Matches': 'Matchs',

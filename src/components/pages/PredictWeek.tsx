@@ -27,6 +27,7 @@ import {
   type Choix,
   type Buteur,
   type Cote,
+  type Bulletin,
   type Jambe,
   type Portefeuille,
   type Selection,
@@ -719,7 +720,13 @@ export function PredictWeek() {
       setJambes(new Map())
       return
     }
-    const [p, b] = await Promise.all([chargerPortefeuille(user.id), mesBulletins()])
+    // Les deux lectures sont indépendantes : si la liste des bulletins échoue,
+    // le portefeuille doit quand même s'afficher. On perd seulement les repères
+    // « déjà joué » sur les cartes, et la page Mes paris, elle, dira l'erreur.
+    const [p, b] = await Promise.all([
+      chargerPortefeuille(user.id),
+      mesBulletins().catch(() => [] as Bulletin[]),
+    ])
     setPf(p)
     setJambes(jambesParMatch(b))
   }, [user])

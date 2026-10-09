@@ -182,12 +182,22 @@ export function UserMenu() {
             {/* Quick links — surface the user's own bracket so they
                 can actually find what they published. */}
             <div className="mt-4 space-y-1.5">
+              {/* Mes paris passe devant : c'est le jeu vivant. Le bracket, lui,
+                  est l'archive du Mondial, et un joueur qui cherchait son
+                  combiné atterrissait dessus (Mehdi, 2026-10-09). */}
               <Link
-                to="/bracket"
+                to="/my-bets"
                 onClick={() => setMenuOpen(false)}
                 className="block w-full px-3 py-2 rounded-lg bg-accent-gold/10 hover:bg-accent-gold/20 text-xs text-slate-800 transition-colors"
               >
-                🏆 My bracket
+                🎟️ My bets
+              </Link>
+              <Link
+                to="/bracket"
+                onClick={() => setMenuOpen(false)}
+                className="block w-full px-3 py-2 rounded-lg bg-slate-200/60 hover:bg-slate-200 text-xs text-slate-800 transition-colors"
+              >
+                🏆 My WC26 bracket
               </Link>
               {isPublished && shareSlug && (
                 <Link
