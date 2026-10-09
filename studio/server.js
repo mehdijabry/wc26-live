@@ -224,17 +224,22 @@ app.post('/render/image', async (req, res) => {
 /** Full reel render (scenes → ffmpeg → upload). Shared by sync + async modes. */
 // Generated assets for the Barça special (rendered locally, hosted on Supabase; cached on disk per boot).
 const GOAL_ASSETS = {
-  music: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/music-quake-aavirall.mp3',   // « Quake » (aavirall, Uppbeat) — credit line required in every caption (see worker)
+  music: 'https://pressing90.live/media/music-quake-aavirall.mp3',   // « Quake » (aavirall, Uppbeat) — credit line required in every caption (see worker)
 }
 const BARCA_ASSETS = {
-  confetti: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-confetti-paper.mp4',   // paper-toned loops (editorial redesign, 2026-09-14)
-  roar: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/sfx-goal-roar.mp3',
-  calm: 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-bokeh-paper.mp4',
+  confetti: 'https://pressing90.live/media/barca-confetti-paper.mp4',   // paper-toned loops (editorial redesign, 2026-09-14)
+  roar: 'https://pressing90.live/media/sfx-goal-roar.mp3',
+  calm: 'https://pressing90.live/media/barca-bokeh-paper.mp4',
 }
 async function cachedAsset(url, name) {
   const p = path.join(os.tmpdir(), name)
   try { const st = await fs.stat(p); if (st.size > 1000) return p } catch { /* download */ }
   const r = await fetch(url); if (!r.ok) throw new Error(`asset ${name} fetch failed ${r.status}`)
+  // The assets are served by the site, whose SPA fallback answers 200 with index.html for an unknown path
+  // (2026-10-09). Without this check a missing asset is cached as 40 kB of HTML named .mp3 and ffmpeg fails
+  // later with something unreadable — say plainly that the file is not on the site.
+  const ct = r.headers.get('content-type') || ''
+  if (/^text\/html/.test(ct)) throw new Error(`asset ${name} missing: ${url} answered HTML, the file is not deployed on the site`)
   await fs.writeFile(p, Buffer.from(await r.arrayBuffer()))
   return p
 }

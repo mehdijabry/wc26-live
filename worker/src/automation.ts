@@ -226,7 +226,23 @@ export async function cleanupMedia(env: Env, days = 7): Promise<number> {
   if (!r.ok) throw new Error(`storage list ${r.status}`)
   const items = await r.json() as Array<{ name: string; created_at?: string }>
   const cutoff = Date.now() - days * 86_400_000
-  const old = items.filter((i) => i.created_at && Date.parse(i.created_at) < cutoff && !i.name.startsWith('P90-')).map((i) => i.name)
+  // Delete by an ALLOW-list, never by a deny-list (2026-10-09). The old rule removed everything that did
+  // not start with an upper-case 'P90-', which wiped the six permanent render assets — they are named in
+  // lower case — and also the illustrations of every story older than a week. Goal animations then failed
+  // with `asset p90-music-quake.mp3 fetch failed 400` and the Barça reel lost its fallback image, so
+  // articles without a usable photo rendered blank. Permanent assets now live on the site instead
+  // (public/media/README.md); here we only ever remove what we can positively recognise as disposable:
+  //   · a render or a voice clip — every producer stamps the date in the file name — after `days`;
+  //   · a story illustration, which a published article still points at, only after a year.
+  const jetable = /\d{4}-\d{2}-\d{2}/                      // reel-matchday-2026-10-09-x.mp4, voice-2026-10-09-x.mp3…
+  const vieux = Date.now() - 365 * 86_400_000
+  const aJeter = (i: { name: string; created_at?: string }) => {
+    const t = i.created_at ? Date.parse(i.created_at) : NaN
+    if (!Number.isFinite(t)) return false
+    if (/^tale-img-/.test(i.name)) return t < vieux
+    return t < cutoff && jetable.test(i.name)
+  }
+  const old = items.filter(aJeter).map((i) => i.name)
   if (old.length === 0) return 0
   const d = await fetch(`${env.SUPABASE_URL}/storage/v1/object/${BUCKET}`, {
     method: 'DELETE', headers: sbHeaders(env, { 'content-type': 'application/json' }),
@@ -1722,13 +1738,34 @@ export async function runBarcaDigest(env: Env, s: AutomationSettings, date: stri
   list = list.slice(0, 3)
   if (!list.length) { await log(env, date, 'barca-digest', false, 'no Barça article on the site — nothing to publish'); return 'no article' }
   const items: Array<{ title: string; slug: string; image_url?: string | null; excerpt: string }> = []
-  const FALLBACK_IMG = 'https://ssvvojhxyotlbcdosiog.supabase.co/storage/v1/object/public/media/barca-news-fallback.jpg'
-  // Images go through the worker's proxy (a source served WebP to the studio, which node-canvas cannot decode → blank frame,
-  // 2026-09-14); an image that does not come back as JPEG/PNG is replaced by the blaugrana fallback visual.
-  const usable = async (u: string) => { try { const r = await fetch(u, { headers: { accept: 'image/jpeg,image/png' }, signal: AbortSignal.timeout(8000) }); const ct = r.headers.get('content-type') ?? ''; r.body?.cancel().catch(() => {}); return r.ok && /^image\/(jpeg|png)/.test(ct) } catch { return false } }
+  const FALLBACK_IMG = 'https://pressing90.live/media/barca-news-fallback.jpg'   // served by the site, not Supabase: the nightly cleanup deleted it from the bucket (2026-10-09, see public/media/README.md)
+  // Checked THROUGH the proxy, delivered DIRECT (2026-10-09). The check has to go through the proxy: several
+  // CDNs, ESPN first among them, answer 403 to Cloudflare Worker IPs, so the worker cannot see the real
+  // content-type on its own. But the studio must receive the ORIGINAL url: its loader announces itself as
+  // Chrome, and a browser user-agent coming from Render's datacentre addresses does not get through to our
+  // own worker — every article photo came back empty while the club crests, fetched straight from ESPN,
+  // drew perfectly (the Barça digest of 8 October had three blank frames out of three). An image that does
+  // not come back as a decodable JPEG or PNG is replaced by the blaugrana fallback visual, because
+  // node-canvas cannot decode WebP or AVIF (blank digest frame, 2026-09-14).
+  // Kept character for character in step with loadImg() in studio/draw.js.
+  const UA_STUDIO = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
+  // The check asks the source exactly what the studio's loader asks it, so that what we verify is what the
+  // studio will actually be served: same browser user-agent, same accept header. Measured on 9 October 2026
+  // over the six most recent articles: with this accept header imgfoot and yimg answer WebP, which
+  // node-canvas cannot decode — those get the fallback rather than an empty frame. Once studio/draw.js
+  // ships its corrected accept ('image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5', already written but waiting
+  // on a Render deploy), change the line below to match and those sources will serve JPEG again.
+  // THE TWO HEADERS MUST ALWAYS BE CHANGED TOGETHER.
+  const usable = async (u: string) => {
+    try {
+      const r = await fetch(u, { headers: { 'user-agent': UA_STUDIO, accept: 'image/avif,image/webp,image/png,image/jpeg,*/*' }, signal: AbortSignal.timeout(8000) })
+      const ct = r.headers.get('content-type') ?? ''
+      r.body?.cancel().catch(() => {})
+      return r.ok && /^image\/(jpeg|png)/.test(ct)
+    } catch { return false }
+  }
   for (const a of list) {
-    const proxied = a.image_url ? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(a.image_url)}` : ''
-    const image_url = proxied && (await usable(proxied)) ? proxied : FALLBACK_IMG
+    const image_url = a.image_url && (await usable(a.image_url)) ? a.image_url : FALLBACK_IMG
     items.push({ title: (a.title_ar || '').trim() || await arabicHeadline(env, a.title), slug: a.slug, image_url, excerpt: (a.excerpt_ar || a.excerpt || '').trim() })
   }
   const ord = ['أولاً', 'ثانياً', 'ثالثاً']
@@ -2381,12 +2418,40 @@ export async function runTaleSupply(env: Env, s: AutomationSettings, date: strin
   const lastBarca = await env.CACHE.get('auto:tales:barca:last')
   const barcaDue = s.barcaDaily && (!lastBarca || Date.parse(date) - Date.parse(lastBarca) >= 6 * 86400_000)
   const next = (barcaDue ? unused.find((x) => x.tag === 'barca') : unused.find((x) => x.tag !== 'barca')) ?? unused[0]
+  // The bank emptying is the one failure that silently stops the main reel engine: three stories a day
+  // burn three subjects a day, and from 2 to 9 October 2026 it failed eight times a day into a KV log
+  // nobody reads, while the page dropped to one reel a day. It now writes to Mehdi instead (once a day).
+  await alerteBanqueSujets(env, date, unused.length - (next ? 1 : 0), s.talesPerDay || 1)
   if (!next) { await log(env, date, 'tale-generate', false, 'subject bank exhausted — add subjects to worker/src/tales.ts'); return 'subject bank exhausted' }
   if (next.tag === 'barca') await env.CACHE.put('auto:tales:barca:last', date)
   await env.CACHE.put('auto:tales:subjects_done', JSON.stringify([...used, next.id]))
   await env.CACHE.put('auto:tale:gen', JSON.stringify({ subject: next.subject, brief: next.brief, stage: 'en', startedAt: Date.now(), barca: next.tag === 'barca' } as TaleGen), { expirationTtl: 3600 })
   await log(env, date, 'tale-generate', true, `supply: drafting "${next.subject}" (reserve ${reserve})`)
   return `drafting "${next.subject}"`
+}
+
+/**
+ * Warns by e-mail while there is still time to act: below a week of supply, then every day it is empty.
+ * One mail a day at most (KV gate), and nothing at all while the stock is comfortable.
+ */
+async function alerteBanqueSujets(env: Env, date: string, restants: number, parJour: number): Promise<void> {
+  const jours = restants / Math.max(1, parJour)
+  if (jours > 7) return
+  const gate = `auto:tales:alerte:${date}`
+  if (await env.CACHE.get(gate)) return
+  await env.CACHE.put(gate, '1', { expirationTtl: 36 * 3600 })
+  const vide = restants <= 0
+  const sujet = vide
+    ? '🚨 Banque de sujets vide — plus aucune Football Story ne se crée'
+    : `⚠️ Banque de sujets presque vide — ${restants} sujet(s), environ ${Math.floor(jours)} jour(s)`
+  const corps = vide
+    ? ['Le générateur d\'histoires n\'a plus un seul sujet à traiter. Tant que la banque reste vide, aucune Football Story n\'est écrite, donc aucun article d\'histoire et aucun reel d\'histoire : il ne reste que le reel des matchs du jour, celui des résultats et le résumé Barça.',
+       `À faire : ajouter des fiches dans TALE_SUBJECTS (worker/src/tales.ts), puis redéployer le worker. Chaque fiche est un sujet, et ${parJour} sujets partent par jour.`]
+    : [`Il reste ${restants} sujet(s) dans TALE_SUBJECTS, soit environ ${Math.floor(jours)} jour(s) au rythme de ${parJour} histoires par jour.`,
+       'Ajouter des fiches dans worker/src/tales.ts avant la panne sèche, puis redéployer le worker.']
+  const html = `<div style="font-family:system-ui,sans-serif;max-width:560px;margin:0 auto;padding:16px;line-height:1.55"><h2 style="margin:0 0 12px;font-size:18px">${vide ? 'La banque de sujets est vide' : 'La banque de sujets s\'épuise'}</h2>${corps.map((x) => `<p style="margin:0 0 10px">${x}</p>`).join('')}</div>`
+  const m = await sendMail(env, sujet, html, corps.join('\n\n'))
+  await log(env, date, 'tale-stock', m.ok, `${restants} sujet(s) restant(s) — mail ${m.ok ? 'envoyé' : 'échoué: ' + (m.note ?? '')}`)
 }
 
 /** Per-minute entry point (from scheduled()). Cheap when idle. */

@@ -68,9 +68,17 @@ const imgCache = new Map()
 export async function loadImg(src) {
   if (!src) return null
   if (imgCache.has(src)) return imgCache.get(src)
+  // A browser user-agent coming from Render's datacentre addresses does not get through to our own worker,
+  // so for our own hosts we say who we really are, exactly as the media upload does (2026-10-09). The
+  // browser UA stays for everyone else: ESPN's CDN and the press sites 403 bare clients. And never ask for
+  // webp or avif — node-canvas cannot decode either, and the frame comes out blank.
+  const notre = /^https:\/\/(wc26-api\.nameless-violet-5dc1\.workers\.dev|pressing90\.live)\//.test(src)
   try {
     const r = await fetch(src, {
-      headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36', accept: 'image/avif,image/webp,image/png,image/jpeg,*/*' },
+      headers: {
+        'user-agent': notre ? 'p90-studio/1.0' : 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36',
+        accept: 'image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5',
+      },
       signal: AbortSignal.timeout(15000),
     })
     if (!r.ok) throw new Error('http ' + r.status)
