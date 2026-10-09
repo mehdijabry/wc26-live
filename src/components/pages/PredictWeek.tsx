@@ -595,17 +595,20 @@ export function PredictWeek() {
       setModale(true)
       return
     }
-    setErreurPari(null)
-    const autres = selections.filter((x) => x.matchId !== matchId)
-    if (!s) {
-      setSelections(autres)
-      return
-    }
-    if (autres.length >= JAMBES_MAX) {
+    if (s && selections.length >= JAMBES_MAX && !selections.some((x) => x.matchId === matchId)) {
       setErreurPari(avec(t('Up to {n} selections in one slip.'), { n: JAMBES_MAX }))
       return
     }
-    setSelections([...autres, s])
+    setErreurPari(null)
+    // Forme fonctionnelle, et pas `[...selections, s]` : deux appels dans le
+    // même tick liraient tous deux la valeur d'avant, et le second écraserait
+    // le premier. Un humain ne tape pas deux fois assez vite, mais le script
+    // de vérification y est arrivé du premier coup — et une liste qui perd
+    // silencieusement une sélection dans un jeu d'argent, non.
+    setSelections((prev) => {
+      const autres = prev.filter((x) => x.matchId !== matchId)
+      return s ? [...autres, s] : autres
+    })
   }
 
   const onMiser = async (mise: number) => {
