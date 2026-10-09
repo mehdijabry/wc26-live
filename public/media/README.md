@@ -22,3 +22,9 @@ the cleanup job and the Supabase quota.
 
 Anything added here must keep its name: both the studio and the worker
 reference these files by URL.
+
+## Vidéos de promotion
+
+| fichier | usage |
+|---|---|
+| `promo-pronostics-ar.mp4` | promo arabe des pronostics (09/10/2026), 1080×1920, 48,8 s. Publiée en reel Facebook via Make et servie au kit TikTok. **L'URL doit rester vivante tant que le kit est utilisé** — Make et TikTok vont chercher le fichier ici. |
