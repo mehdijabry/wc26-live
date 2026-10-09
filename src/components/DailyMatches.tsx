@@ -4,7 +4,6 @@ import { api, competitionLogo, eventTeams, liveClock, roundContext, statusLabel,
 import { Cotes1X2 } from './Cotes1X2'
 import { useMatchOdds } from '../lib/useMatchOdds'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
-import { SectionHeader } from './Groups'
 import { localeOf, trLeague, useLang, useT } from '../lib/i18n'
 import { MatchSheet } from './MatchSheet'
 
@@ -189,18 +188,20 @@ export function DailyMatches() {
   return (
     <section id="today" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
-        <SectionHeader
-          eyebrow={t('football today')}
-          title={t('Every match, everywhere')}
-        />
+        {/* Le titre de section est retiré À L'ŒIL mais pas au code : sans
+            lui, cette partie de l'accueil n'aurait plus d'intitulé dans la
+            structure de la page, ni pour un lecteur d'écran ni pour Google.
+            Le sélecteur de jour juste en dessous dit déjà de quoi il
+            s'agit, donc le montrer en double n'apportait rien. */}
+        <h2 className="sr-only">{t('Every match, everywhere')}</h2>
 
         {/* Day navigator — minimal: ‹ chevron · date (tappable date picker) · chevron ›.
             No glass box, no extra padding. Tap the date to jump to ANY day.
             'Jump to today' only surfaces when off-day, and it's a tiny pill. */}
-        <div className="mt-8 flex items-center justify-center gap-4 sm:gap-6">
+        <div className="flex items-center justify-center gap-4 sm:gap-6">
           <button
             onClick={() => setOffset((o) => o - 1)}
-            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-700 transition-colors shrink-0"
+            className="w-11 h-11 flex items-center justify-center text-slate-500 hover:text-accent-gold transition-colors shrink-0"
             aria-label={t('Previous day')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -245,7 +246,7 @@ export function DailyMatches() {
 
           <button
             onClick={() => setOffset((o) => o + 1)}
-            className="w-9 h-9 rounded-full bg-slate-100 hover:bg-slate-200 active:bg-slate-300 flex items-center justify-center text-slate-700 transition-colors shrink-0"
+            className="w-11 h-11 flex items-center justify-center text-slate-500 hover:text-accent-gold transition-colors shrink-0"
             aria-label={t('Next day')}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none">

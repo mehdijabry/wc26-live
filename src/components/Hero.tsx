@@ -240,7 +240,7 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
                 <button
                   onClick={() => go((cur - 1 + feats.length) % feats.length)}
                   aria-label={t('Previous featured match')}
-                  className="w-9 h-9 rounded-full glass glass-hover flex items-center justify-center text-slate-600 hover:text-slate-900"
+                  className="w-11 h-11 flex items-center justify-center text-2xl leading-none text-slate-500 hover:text-accent-gold transition-colors"
                 >
                   ‹
                 </button>
@@ -250,7 +250,7 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
                 <button
                   onClick={() => go((cur + 1) % feats.length)}
                   aria-label={t('Next featured match')}
-                  className="w-9 h-9 rounded-full glass glass-hover flex items-center justify-center text-slate-600 hover:text-slate-900"
+                  className="w-11 h-11 flex items-center justify-center text-2xl leading-none text-slate-500 hover:text-accent-gold transition-colors"
                 >
                   ›
                 </button>
@@ -261,20 +261,17 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
           <div className="h-[220px] sm:h-[260px] rounded-2xl glass animate-pulse" />
         )}
 
-        {/* quick jumps — home only */}
-        {home && (
+        {/* Les deux raccourcis « Today's matches ↓ » et « Articles ↓ » ont
+            été retirés : les matchs du jour sont juste en dessous, et un
+            bouton qui fait défiler de deux écrans n'apprend rien. Ne reste
+            que l'archive du Mondial, et seulement quand elle est affichée —
+            sans cette condition on laisserait une rangée vide avec sa
+            marge sous le score. */}
+        {home && wc26Visible && (
         <div className="mt-8 flex flex-wrap gap-3 justify-center">
-          <a href="#today" className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-accent-gold text-ink-900 font-semibold text-sm hover:bg-yellow-300 transition-colors">
-            {t("Today's matches ↓")}
-          </a>
-          <a href="#articles" className="inline-flex items-center gap-2 px-6 py-3 rounded-full glass glass-hover text-sm font-semibold">
-            {t('Articles ↓')}
-          </a>
-          {wc26Visible && (
-            <Link to="/wc26" className="inline-flex items-center gap-2 px-6 py-3 rounded-full glass glass-hover text-sm font-semibold">
-              {t('WC26 archive →')}
-            </Link>
-          )}
+          <Link to="/wc26" className="inline-flex items-center gap-2 px-6 py-3 rounded-full glass glass-hover text-sm font-semibold">
+            {t('WC26 archive →')}
+          </Link>
         </div>
         )}
       </div>
