@@ -68,19 +68,71 @@ export type Cote = {
   home: number
   draw: number
   away: number
+  /**
+   * La grille des scores exacts, { "2-1": 9.00, … }, dérivée des cotes 1X2
+   * par le worker. Nulle tant qu'elle n'a pas été calculée : pas de grille,
+   * pas de marché du score exact sur ce match.
+   */
+  exact: Record<string, number> | null
   kickoff: string | null
 }
 
 export type Choix = 'home' | 'draw' | 'away'
 
-export type Pari = {
-  id: number
+/** Les marchés ouverts. Le buteur viendra s'ajouter ici. */
+export type Marche = '1x2' | 'exact'
+
+/** Au plus dix sélections par bulletin — au-delà, plus personne ne suit. */
+export const JAMBES_MAX = 10
+/** Plafond de la cote d'un bulletin, posé aussi en base (migration 006). */
+export const COTE_MAX = 10_000
+
+/** Une sélection en cours de composition, côté écran. */
+export type Selection = {
+  matchId: string
+  marche: Marche
+  /** 'home' | 'draw' | 'away', ou '2-1' pour un score exact. */
+  pick: string
+  cote: number
+  /** « Lyon — Lens », pour l'afficher dans le bulletin. */
+  titre: string
+  /** « Domicile », « Nul », « 2-1 » : le choix, en clair. */
+  libelle: string
+}
+
+/** Une sélection déjà jouée, telle qu'elle revient de la base. */
+export type Jambe = {
   match_id: string
-  pick: Choix
+  market: Marche
+  pick: string
+  odds: number
+  status: 'open' | 'won' | 'lost' | 'void'
+}
+
+/** Un bulletin posé. */
+export type Bulletin = {
+  id: number
   stake: number
   odds: number
   status: 'open' | 'won' | 'lost' | 'void'
   payout: number | null
+  created_at: string
+  legs: Jambe[]
+}
+
+/**
+ * La cote d'un bulletin : le produit de ses cotes. C'est tout l'intérêt du
+ * combiné — trois matchs à 2,00 ne paient pas 2,00 mais 8,00 — et c'est
+ * aussi tout son risque, puisqu'une seule erreur fait tout tomber.
+ *
+ * Cette fonction n'est qu'un AFFICHAGE. La cote qui compte est recalculée
+ * par place_slip() en base ; si les deux divergent, c'est la base qui a
+ * raison, et c'est voulu.
+ */
+export function coteCombinee(sel: Selection[]): number {
+  if (!sel.length) return 0
+  const p = sel.reduce((t, s) => t * s.cote, 1)
+  return Math.min(p, COTE_MAX)
 }
 
 export async function portefeuille(utilisateur: string): Promise<Portefeuille | null> {
@@ -119,50 +171,79 @@ export async function cotes(): Promise<Map<string, Cote>> {
   if (!supabase) return new Map()
   const { data } = await supabase
     .from('match_odds')
-    .select('match_id, home, draw, away, kickoff')
+    .select('match_id, home, draw, away, exact, kickoff')
     .order('kickoff', { ascending: true })
   const m = new Map<string, Cote>()
   for (const c of (data as Cote[]) ?? []) m.set(c.match_id, c)
   return m
 }
 
-export async function mesParis(utilisateur: string): Promise<Map<string, Pari>> {
-  if (!supabase) return new Map()
+/**
+ * Les bulletins du joueur, les plus récents d'abord, avec leurs sélections.
+ *
+ * Une seule requête : PostgREST imbrique bet_legs grâce à la clé étrangère.
+ * Les politiques de lecture font le filtrage — on ne demande donc même pas
+ * « les miens », on ne peut de toute façon voir que les siens.
+ */
+export async function mesBulletins(): Promise<Bulletin[]> {
+  if (!supabase) return []
   const { data } = await supabase
-    .from('bets')
-    .select('id, match_id, pick, stake, odds, status, payout')
-    .eq('user_id', utilisateur)
-  const m = new Map<string, Pari>()
-  for (const b of (data as Pari[]) ?? []) m.set(b.match_id, b)
+    .from('bet_slips')
+    .select('id, stake, odds, status, payout, created_at, legs:bet_legs(match_id, market, pick, odds, status)')
+    .order('created_at', { ascending: false })
+    .limit(50)
+  return (data as Bulletin[]) ?? []
+}
+
+/**
+ * Les matchs déjà joués, pour les signaler sur les cartes.
+ * Un même match peut apparaître dans plusieurs bulletins (un simple et un
+ * combiné) : on garde la liste, pas seulement la dernière.
+ */
+export function jambesParMatch(bulletins: Bulletin[]): Map<string, Jambe[]> {
+  const m = new Map<string, Jambe[]>()
+  for (const b of bulletins) {
+    for (const j of b.legs ?? []) {
+      const l = m.get(j.match_id) ?? []
+      l.push(j)
+      m.set(j.match_id, l)
+    }
+  }
   return m
 }
 
 /**
- * Pose un pari. On n'envoie PAS la cote : le déclencheur en base la lit dans
- * `match_odds` et écrase tout ce que le client prétendrait. Il vérifie aussi
- * le coup d'envoi et le solde, puis débite les jetons — le tout dans la même
- * transaction, donc un refus ne laisse jamais de débit orphelin.
+ * Pose un bulletin.
+ *
+ * LE POINT DE SÉCURITÉ, INCHANGÉ ET RENFORCÉ : on n'envoie ni cote ni
+ * identité. Seulement, pour chaque sélection, sur quel match et quel choix —
+ * plus la mise. `place_slip()` lit auth.uid() elle-même, va chercher chaque
+ * cote en base, vérifie chaque coup d'envoi, calcule le produit et débite,
+ * dans une seule transaction. Un refus ne laisse jamais de débit orphelin.
  */
-export async function parier(
-  utilisateur: string,
-  matchId: string,
-  choix: Choix,
+export async function poserBulletin(
+  sel: Selection[],
   mise: number,
-): Promise<{ ok: true } | { ok: false; raison: string }> {
+): Promise<{ ok: true; id: number } | { ok: false; raison: string }> {
   if (!supabase) return { ok: false, raison: 'Hors ligne' }
+  if (!sel.length) return { ok: false, raison: 'Aucune sélection' }
+  if (sel.length > JAMBES_MAX) return { ok: false, raison: `${JAMBES_MAX} sélections au maximum` }
   if (mise < MISE_MINIMUM) return { ok: false, raison: `Mise minimum : ${MISE_MINIMUM}` }
 
-  const { error } = await supabase
-    .from('bets')
-    .insert({ user_id: utilisateur, match_id: matchId, pick: choix, stake: mise })
+  const { data, error } = await supabase.rpc('place_slip', {
+    p_legs: sel.map((s) => ({ match_id: s.matchId, market: s.marche, pick: s.pick })),
+    p_stake: mise,
+  })
 
-  if (!error) return { ok: true }
+  if (!error) return { ok: true, id: Number(data) }
 
-  // Les messages viennent des `raise exception` de place_bet_guard().
+  // Les messages viennent des `raise exception` de place_slip().
   const m = error.message || ''
   if (m.includes('Crampons insuffisants')) return { ok: false, raison: 'Pas assez de crampons' }
-  if (m.includes('Le match a commencé')) return { ok: false, raison: 'Le match a commencé' }
-  if (m.includes('Aucune cote')) return { ok: false, raison: 'Match non pariable' }
-  if (error.code === '23505') return { ok: false, raison: 'Tu as déjà parié sur ce match' }
-  return { ok: false, raison: 'Pari refusé' }
+  if (m.includes('Le match a commencé')) return { ok: false, raison: 'Un match a déjà commencé' }
+  if (m.includes('Aucune cote')) return { ok: false, raison: 'Un match n’est plus pariable' }
+  if (m.includes('Un seul pari par match')) return { ok: false, raison: 'Un seul pari par match dans un bulletin' }
+  if (m.includes('Connexion requise')) return { ok: false, raison: 'Connexion requise' }
+  if (m.includes('sélections par bulletin')) return { ok: false, raison: `De 1 à ${JAMBES_MAX} sélections` }
+  return { ok: false, raison: 'Bulletin refusé' }
 }

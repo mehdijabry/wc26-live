@@ -13,16 +13,20 @@ import {
   POINT,
   MISE_MINIMUM,
   PALIER,
+  JAMBES_MAX,
+  coteCombinee,
   cotes as chargerCotes,
-  mesParis,
-  parier,
+  jambesParMatch,
+  mesBulletins,
+  poserBulletin,
   portefeuille as chargerPortefeuille,
   reclamableAujourdhui,
   reclamerDuJour,
   type Choix,
   type Cote,
-  type Pari,
+  type Jambe,
   type Portefeuille,
+  type Selection,
 } from '../../lib/jeu'
 
 /**
@@ -106,7 +110,6 @@ function heure(ev: EspnEvent, lang: Lang): string {
 
 const LIBELLE: Record<Choix, string> = { home: '1', draw: 'X', away: '2' }
 
-type Selection = { matchId: string; choix: Choix; cote: number; titre: string }
 
 /** Un camp : écusson + nom, aligné vers l'extérieur de la carte. */
 function Equipe({ camp, cote }: { camp: Camp; cote: boolean }) {
@@ -125,7 +128,7 @@ function Equipe({ camp, cote }: { camp: Camp; cote: boolean }) {
 function CarteMatch({
   ev,
   cote,
-  pari,
+  jambes,
   selection,
   onChoisir,
   lang,
@@ -133,26 +136,45 @@ function CarteMatch({
 }: {
   ev: EspnEvent
   cote: Cote
-  pari: Pari | undefined
-  selection: Selection | null
-  onChoisir: (s: Selection | null) => void
+  /** Ce que le joueur a DÉJÀ joué sur ce match, tous bulletins confondus. */
+  jambes: Jambe[] | undefined
+  /** Ce qu'il est en train d'y mettre, dans le bulletin en cours. */
+  selection: Selection | undefined
+  onChoisir: (matchId: string, s: Selection | null) => void
   lang: Lang
   t: (s: string) => string
 }) {
+  const [scoresOuverts, setScoresOuverts] = useState(false)
+  // La grille des scores, du plus probable au plus fou. Elle n'existe que si
+  // le worker a pu la calculer : pas de grille, pas de marché.
+  //
+  // Ce useMemo doit rester AVANT le `return null` plus bas : React exige que
+  // les hooks soient appelés dans le même ordre à chaque rendu, et un match
+  // mal formé fait sortir la fonction par ce retour anticipé.
+  const grille = useMemo(
+    () => Object.entries(cote.exact ?? {}).sort((a, b) => a[1] - b[1]),
+    [cote.exact],
+  )
   const c = camps(ev)
   if (!c) return null
 
   const id = idDePronostic(ev)
   const e = etat(ev)
-  const ouvert = e === 'avant' && !pari
+  const ouvert = e === 'avant'
   const valeur = (ch: Choix) => (ch === 'home' ? cote.home : ch === 'draw' ? cote.draw : cote.away)
   const titre = `${c.dom.nom} — ${c.ext.nom}`
+  const nomDuChoix = (ch: Choix) => (ch === 'home' ? c.dom.nom : ch === 'away' ? c.ext.nom : t('Draw'))
+
+  const choisir = (marche: Selection['marche'], pick: string, valeurCote: number, libelle: string) => {
+    const actif = selection?.marche === marche && selection.pick === pick
+    onChoisir(id, actif ? null : { matchId: id, marche, pick, cote: valeurCote, titre, libelle })
+  }
 
   return (
     <li
       className={cn(
         'glass rounded-2xl p-3.5 transition-all',
-        selection?.matchId === id && 'ring-glow border-accent-gold/50',
+        selection && 'ring-glow border-accent-gold/50',
       )}
     >
       {/* Bandeau : l'heure, ou l'état du match */}
@@ -171,22 +193,20 @@ function CarteMatch({
           )}
         </span>
 
-        {pari && (
-          <span className="font-mono text-[11px]">
-            {pari.status === 'open' && (
-              <span className="text-slate-500">
-                {avec(t('{n} staked · {g} to win'), {
-                  n: pari.stake,
-                  g: Math.round(pari.stake * pari.odds).toLocaleString(localeOf(lang)),
-                })}
-              </span>
-            )}
-            {pari.status === 'won' && (
+        {/* Ce qui est déjà joué sur ce match. Un même match peut être dans
+            plusieurs bulletins — un simple et un combiné — donc on compte. */}
+        {jambes && jambes.length > 0 && (
+          <span className="font-mono text-[11px] flex items-center gap-1.5">
+            {jambes.some((j) => j.status === 'won') && (
               <span className="px-2 py-0.5 rounded-full bg-accent-gold/15 text-accent-gold font-semibold">
-                +{(pari.payout ?? 0).toLocaleString(localeOf(lang))}
+                {t('won')}
               </span>
             )}
-            {pari.status === 'lost' && <span className="text-slate-500">{t('lost')}</span>}
+            <span className="text-slate-500">
+              {jambes.length === 1
+                ? avec(t('backed at {c}'), { c: Number(jambes[0]!.odds).toFixed(2) })
+                : avec(t('in {n} slips'), { n: jambes.length })}
+            </span>
           </span>
         )}
       </div>
@@ -205,25 +225,23 @@ function CarteMatch({
         <Equipe camp={c.ext} cote />
       </div>
 
-      {/* Les trois cotes — la seule commande de la carte */}
+      {/* Les trois cotes */}
       <div className="mt-3 grid grid-cols-3 gap-2">
         {(['home', 'draw', 'away'] as Choix[]).map((ch) => {
-          const actif = pari ? pari.pick === ch : selection?.matchId === id && selection.choix === ch
-          const eteint = !ouvert && !actif
+          const actif = selection?.marche === '1x2' && selection.pick === ch
           return (
             <button
               key={ch}
               type="button"
               disabled={!ouvert}
               aria-pressed={actif}
-              onClick={() => onChoisir(actif ? null : { matchId: id, choix: ch, cote: valeur(ch), titre })}
+              onClick={() => choisir('1x2', ch, valeur(ch), nomDuChoix(ch))}
               className={cn(
-                'rounded-xl py-2 flex flex-col items-center justify-center gap-0.5 transition-all',
-                'border',
+                'rounded-xl py-2 flex flex-col items-center justify-center gap-0.5 transition-all border',
                 actif
                   ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
                   : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50 hover:bg-slate-100',
-                eteint && 'opacity-35',
+                !ouvert && !actif && 'opacity-35',
                 ouvert && 'active:scale-[0.97]',
               )}
             >
@@ -235,56 +253,165 @@ function CarteMatch({
           )
         })}
       </div>
+
+      {/* Le score exact, replié. Déplié d'office, vingt-cinq boutons par
+          match rendraient la liste illisible — c'est le marché d'un joueur
+          qui le cherche, pas celui qu'on met en travers du chemin. */}
+      {ouvert && grille.length > 0 && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setScoresOuverts((v) => !v)}
+            className={cn(
+              'w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-[11px] transition-colors',
+              selection?.marche === 'exact'
+                ? 'bg-accent-gold/15 text-accent-gold'
+                : 'text-slate-500 hover:bg-slate-50',
+            )}
+          >
+            <span className="uppercase tracking-wider">
+              {t('Exact score')}
+              {selection?.marche === 'exact' && (
+                <span className="ms-2 font-semibold normal-case tracking-normal">
+                  {selection.pick} @ {selection.cote.toFixed(2)}
+                </span>
+              )}
+            </span>
+            <span className="text-slate-400">{scoresOuverts ? '−' : '+'}</span>
+          </button>
+
+          {scoresOuverts && (
+            <div className="mt-2 grid grid-cols-4 sm:grid-cols-6 gap-1.5">
+              {grille.map(([score, c2]) => {
+                const actif = selection?.marche === 'exact' && selection.pick === score
+                return (
+                  <button
+                    key={score}
+                    type="button"
+                    aria-pressed={actif}
+                    onClick={() => choisir('exact', score, c2, score)}
+                    className={cn(
+                      'rounded-lg py-1.5 flex flex-col items-center gap-0.5 border transition-all active:scale-[0.97]',
+                      actif
+                        ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50',
+                    )}
+                  >
+                    <span className="font-mono text-[12px] tabular-nums leading-none">{score}</span>
+                    <span
+                      className={cn(
+                        'font-mono text-[10px] tabular-nums leading-none',
+                        actif ? 'text-ink-700' : 'text-slate-500',
+                      )}
+                    >
+                      ×{c2.toFixed(2)}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </li>
   )
 }
 
-/** Le bulletin : tout ce qui concerne la mise, au même endroit, en bas. */
+/**
+ * Le bulletin : tout ce qui concerne la mise, au même endroit, en bas.
+ *
+ * Il porte maintenant PLUSIEURS sélections. Un combiné, c'est un seul enjeu
+ * réparti sur plusieurs matchs : la cote est le produit des cotes — trois
+ * matchs à 2,00 paient 8,00 — et une seule erreur fait tout tomber. Les deux
+ * moitiés de ce marché doivent se voir d'un coup d'œil, d'où la cote totale
+ * en gros et l'avertissement « tout doit tomber » dès la deuxième sélection.
+ */
 function Bulletin({
-  selection,
+  selections,
   solde,
   occupe,
   erreur,
   onMiser,
-  onFermer,
+  onRetirer,
+  onVider,
   lang,
   t,
 }: {
-  selection: Selection
+  selections: Selection[]
   solde: number
   occupe: boolean
   erreur: string | null
   onMiser: (mise: number) => void
-  onFermer: () => void
+  onRetirer: (matchId: string) => void
+  onVider: () => void
   lang: Lang
   t: (s: string) => string
 }) {
   const [mise, setMise] = useState(MISE_MINIMUM)
   const max = Math.max(MISE_MINIMUM, solde)
   const utilisable = Math.min(mise, max)
-  const gain = Math.round(utilisable * selection.cote)
+  const cote = coteCombinee(selections)
+  const gain = Math.round(utilisable * cote)
+  const combine = selections.length > 1
 
   return (
     <div className="fixed inset-x-0 bottom-[4.5rem] md:bottom-4 z-40 px-4 pointer-events-none">
       <div className="pointer-events-auto mx-auto max-w-lg glass ring-glow rounded-2xl p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <div className="truncate text-sm font-medium">{selection.titre}</div>
-            <div className="mt-0.5 font-mono text-[11px] text-slate-500">
-              {t('Your pick')} :{' '}
-              <span className="text-accent-gold font-semibold">{LIBELLE[selection.choix]}</span>{' '}
-              @ {selection.cote.toFixed(2)}
-            </div>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-baseline gap-2 min-w-0">
+            <span className="font-display text-base">
+              {combine ? t('Accumulator') : t('Single')}
+            </span>
+            <span className="font-mono text-[11px] text-slate-500 tabular-nums">
+              {avec(t('{n} selections'), { n: selections.length })}
+            </span>
           </div>
-          <button
-            type="button"
-            onClick={onFermer}
-            aria-label={t('Close')}
-            className="shrink-0 w-7 h-7 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 leading-none"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="font-display text-xl leading-none tabular-nums text-accent-gold">
+              ×{cote.toFixed(2)}
+            </span>
+            <button
+              type="button"
+              onClick={onVider}
+              aria-label={t('Clear slip')}
+              className="w-7 h-7 rounded-full bg-slate-50 hover:bg-slate-100 text-slate-500 leading-none"
+            >
+              ×
+            </button>
+          </div>
         </div>
+
+        {/* Les sélections. La liste défile au-delà de trois : le bulletin ne
+            doit jamais manger l'écran sous lequel on choisit ses matchs. */}
+        <ul className="mt-2.5 max-h-36 overflow-y-auto no-scrollbar divide-y divide-slate-200/50">
+          {selections.map((s) => (
+            <li key={s.matchId} className="flex items-center gap-2 py-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] leading-tight">{s.titre}</div>
+                <div className="font-mono text-[10px] text-slate-500 truncate">
+                  {s.marche === 'exact' ? t('Exact score') : t('Winner')} · {s.libelle}
+                </div>
+              </div>
+              <span className="font-mono text-[12px] tabular-nums text-accent-gold shrink-0">
+                {s.cote.toFixed(2)}
+              </span>
+              <button
+                type="button"
+                onClick={() => onRetirer(s.matchId)}
+                aria-label={t('Remove')}
+                className="shrink-0 w-5 h-5 rounded-full text-slate-400 hover:text-slate-900 hover:bg-slate-50 leading-none text-xs"
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+
+        {combine && (
+          <p className="mt-1.5 font-mono text-[10px] text-slate-500">
+            {t('Every selection must land, or the slip is lost.')}
+          </p>
+        )}
 
         <div className="mt-3 flex items-center gap-2">
           {MISES.map((m) => (
@@ -343,10 +470,11 @@ export function PredictWeek() {
   const [comps, setComps] = useState<DailyComp[] | null>(null)
   const [erreurChargement, setErreurChargement] = useState(false)
   const [cotes, setCotes] = useState<Map<string, Cote>>(new Map())
-  const [paris, setParis] = useState<Map<string, Pari>>(new Map())
+  const [jambes, setJambes] = useState<Map<string, Jambe[]>>(new Map())
   const [pf, setPf] = useState<Portefeuille | null>(null)
   const [modale, setModale] = useState(false)
-  const [selection, setSelection] = useState<Selection | null>(null)
+  /** Le bulletin en cours de composition. Plusieurs matchs = un combiné. */
+  const [selections, setSelections] = useState<Selection[]>([])
   /** `null` = toutes les compétitions. */
   const [filtreComp, setFiltreComp] = useState<string | null>(null)
   const [occupe, setOccupe] = useState(false)
@@ -414,12 +542,12 @@ export function PredictWeek() {
   const rafraichirJoueur = useCallback(async () => {
     if (!user) {
       setPf(null)
-      setParis(new Map())
+      setJambes(new Map())
       return
     }
-    const [p, b] = await Promise.all([chargerPortefeuille(user.id), mesParis(user.id)])
+    const [p, b] = await Promise.all([chargerPortefeuille(user.id), mesBulletins()])
     setPf(p)
-    setParis(b)
+    setJambes(jambesParMatch(b))
   }, [user])
 
   useEffect(() => {
@@ -430,7 +558,9 @@ export function PredictWeek() {
     let vivant = true
     setComps(null)
     setErreurChargement(false)
-    setSelection(null)
+    // On ne vide PAS le bulletin en changeant de jour : un combiné se
+    // compose justement sur plusieurs journées, et perdre ses sélections
+    // en allant voir demain rendrait le marché inutilisable.
     // Une compétition choisie un jour n'existe pas forcément le lendemain :
     // garder le filtre afficherait une page vide sans raison apparente.
     setFiltreComp(null)
@@ -447,24 +577,39 @@ export function PredictWeek() {
     }
   }, [jour, dates])
 
-  const onChoisir = (s: Selection | null) => {
+  /**
+   * Ajoute, remplace ou retire une sélection. Un seul choix par match dans
+   * un bulletin : reprendre le même match remplace, puisque deux paris
+   * contradictoires sur un même match n'auraient aucun sens.
+   */
+  const onChoisir = (matchId: string, s: Selection | null) => {
     if (s && !user) {
       setModale(true)
       return
     }
     setErreurPari(null)
-    setSelection(s)
+    const autres = selections.filter((x) => x.matchId !== matchId)
+    if (!s) {
+      setSelections(autres)
+      return
+    }
+    if (autres.length >= JAMBES_MAX) {
+      setErreurPari(avec(t('Up to {n} selections in one slip.'), { n: JAMBES_MAX }))
+      return
+    }
+    setSelections([...autres, s])
   }
 
   const onMiser = async (mise: number) => {
-    if (!user || !selection) return
+    if (!user || !selections.length) return
     setOccupe(true)
-    const r = await parier(user.id, selection.matchId, selection.choix, mise)
+    const r = await poserBulletin(selections, mise)
     setOccupe(false)
     await rafraichirJoueur()
     if (r.ok) {
-      setSelection(null)
-      setMessage(t('Bet placed'))
+      const combine = selections.length > 1
+      setSelections([])
+      setMessage(combine ? t('Accumulator placed') : t('Bet placed'))
       setTimeout(() => setMessage(null), 3000)
     } else {
       setErreurPari(r.raison)
@@ -506,7 +651,7 @@ export function PredictWeek() {
   const progression = pf ? Math.min(100, (Number(pf.pressings) / PALIER.points) * 100) : 0
 
   return (
-    <div className={cn('container max-w-2xl mx-auto px-4 sm:px-6 py-8', selection && 'pb-56')}>
+    <div className={cn('container max-w-2xl mx-auto px-4 sm:px-6 py-8', selections.length > 0 && 'pb-72')}>
       <h1 className="font-display text-4xl sm:text-5xl tracking-tight">{t('Predictions')}</h1>
       <p className="mt-2 text-slate-600 text-[15px]">
         {t('Pick a side, set your stake, the odds do the rest.')}
@@ -679,8 +824,8 @@ export function PredictWeek() {
                 key={ev.id}
                 ev={ev}
                 cote={cotes.get(idDePronostic(ev))!}
-                pari={paris.get(idDePronostic(ev))}
-                selection={selection}
+                jambes={jambes.get(idDePronostic(ev))}
+                selection={selections.find((x) => x.matchId === idDePronostic(ev))}
                 onChoisir={onChoisir}
                 lang={lang}
                 t={t}
@@ -708,14 +853,15 @@ export function PredictWeek() {
         .
       </p>
 
-      {selection && (
+      {selections.length > 0 && (
         <Bulletin
-          selection={selection}
+          selections={selections}
           solde={solde}
           occupe={occupe}
           erreur={erreurPari}
           onMiser={(m) => void onMiser(m)}
-          onFermer={() => { setSelection(null); setErreurPari(null) }}
+          onRetirer={(id) => onChoisir(id, null)}
+          onVider={() => { setSelections([]); setErreurPari(null) }}
           lang={lang}
           t={t}
         />
