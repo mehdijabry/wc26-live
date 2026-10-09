@@ -385,11 +385,13 @@ function Bulletin({
             doit jamais manger l'écran sous lequel on choisit ses matchs. */}
         <ul
           className={cn(
-            'mt-2.5 max-h-36 overflow-y-auto no-scrollbar divide-y divide-slate-200/50',
-            // Au-delà de trois, la liste défile. Sans ce fondu, la quatrième
-            // ligne est tranchée net et se lit comme un défaut d'affichage,
-            // pas comme « il y en a d'autres en dessous ».
-            selections.length > 3 && '[mask-image:linear-gradient(to_bottom,black_78%,transparent)]',
+            'mt-2.5 max-h-48 overflow-y-auto no-scrollbar divide-y divide-slate-200/50',
+            // Quatre sélections tiennent en entier — c'est la taille d'un
+            // combiné courant, et on ne veut pas faire défiler pour ça.
+            // Au-delà, la liste défile, et un fondu dit qu'il y a une suite :
+            // sans lui, la ligne du bas est tranchée net et se lit comme un
+            // défaut d'affichage plutôt que comme « continuez à faire défiler ».
+            selections.length > 4 && '[mask-image:linear-gradient(to_bottom,black_84%,transparent)]',
           )}
         >
           {selections.map((s) => (
