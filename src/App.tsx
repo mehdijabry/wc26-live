@@ -546,8 +546,11 @@ function HomePage() {
       <PushOptIn />
       {/* Today's matches FIRST — per user request the day's scoreboard
           now outranks the articles in reading order. */}
+      {/* VITRINE : les six grandes, deux matchs chacune. La liste
+          complète vit sur /today — sans ça les deux pages montraient
+          exactement la même chose et l'onglet Matchs ne servait à rien. */}
       <Suspense fallback={<PageSkeleton caption="Loading today's matches…" />}>
-        <DailyMatches />
+        <DailyMatches vitrine />
       </Suspense>
       {/* Mid-page slot: double 300x250 banner pair instead of a single
           slot. Doubles impressions-per-pageview to compensate for the

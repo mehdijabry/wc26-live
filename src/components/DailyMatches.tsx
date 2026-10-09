@@ -5,6 +5,7 @@ import { Cotes1X2 } from './Cotes1X2'
 import { useMatchOdds } from '../lib/useMatchOdds'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
 import { localeOf, trLeague, useLang, useT } from '../lib/i18n'
+import { Link } from 'react-router-dom'
 import { MatchSheet } from './MatchSheet'
 
 /**
@@ -25,7 +26,21 @@ import { MatchSheet } from './MatchSheet'
  * flagged as 'no score shown'.
  */
 
-export function DailyMatches() {
+/**
+ * Les six compétitions de l'accueil, DANS CET ORDRE.
+ *
+ * L'accueil et la page Matchs affichaient exactement la même liste, ce qui
+ * rendait l'onglet Matchs inutile. L'accueil montre désormais une vitrine —
+ * les six grandes, deux matchs chacune — et Matchs garde la totalité.
+ *
+ * L'ordre est VOULU, pas calculé : il ne suit ni l'alphabet ni le barème de
+ * prestige interne. Ne pas le « corriger ».
+ */
+const VITRINE = ['uefa.champions', 'esp.1', 'eng.1', 'fra.1', 'ger.1', 'ita.1']
+/** Combien de matchs par compétition avant le « voir plus ». */
+const VITRINE_PAR_COMPETITION = 2
+
+export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
   const t = useT()
   const lang = useLang((s) => s.lang)
   const [offset, setOffset] = useState(0) // can go -∞ to +∞
@@ -158,9 +173,17 @@ export function DailyMatches() {
 
   const filteredComps = useMemo(() => {
     if (!data) return []
+    // Vitrine : les six grandes, dans l'ordre voulu, et rien d'autre. On
+    // parcourt VITRINE plutôt que de filtrer la liste du jour, sinon on
+    // hériterait de l'ordre d'ESPN au lieu du nôtre.
+    if (vitrine) {
+      return VITRINE
+        .map((slug) => data.competitions.find((c) => c.slug === slug))
+        .filter((c): c is NonNullable<typeof c> => !!c && c.events.length > 0)
+    }
     if (!activeSlugs) return data.competitions
     return data.competitions.filter((c) => activeSlugs.has(c.slug))
-  }, [data, activeSlugs])
+  }, [data, activeSlugs, vitrine])
 
   function toggleSlug(slug: string) {
     setActiveSlugs((prev) => {
@@ -264,7 +287,7 @@ export function DailyMatches() {
             (one pill per competition, ~80 on a busy day) ate half the
             mobile viewport before the first match card. Multi-select is
             preserved: rows toggle, 'All' resets. */}
-        {data && data.competitions.length > 0 && (
+        {!vitrine && data && data.competitions.length > 0 && (
           <div className="mt-5 flex justify-center">
             <div className="relative" ref={filterRef}>
               <button
@@ -344,9 +367,39 @@ export function DailyMatches() {
                 key={comp.slug}
                 comp={comp}
                 fetchedAt={fetchedAt}
+                limite={vitrine ? VITRINE_PAR_COMPETITION : undefined}
                 onPick={(id) => setOpenMatch({ id, slug: comp.slug })}
               />
             ))}
+
+          {/* Jour creux pour les six grandes alors que le reste du monde
+              joue — trêve internationale, mardi de janvier. Sans ce mot,
+              l'accueil montrerait un trou entre le sélecteur de jour et la
+              publicité, et on croirait le site cassé. */}
+          {vitrine && !loading && data && filteredComps.length === 0 && data.total > 0 && (
+            <div className="glass p-6 text-center">
+              <p className="text-slate-500 text-sm">{t('None of the big six are playing today.')}</p>
+              <Link
+                to="/today"
+                className="mt-3 inline-flex items-center gap-2 min-h-[44px] px-5 font-mono text-[11px] uppercase tracking-widest text-accent-gold hover:underline"
+              >
+                {avecNombre(t('See the other {n} matches'), data.total)} →
+              </Link>
+            </div>
+          )}
+
+          {/* La sortie vers la page Matchs : c'est elle qui justifie que
+              l'accueil ne montre que six compétitions. */}
+          {vitrine && !loading && filteredComps.length > 0 && (
+            <div className="pt-2 text-center">
+              <Link
+                to="/today"
+                className="inline-flex items-center gap-2 min-h-[44px] px-5 font-mono text-[11px] uppercase tracking-widest text-slate-500 hover:text-accent-gold transition-colors"
+              >
+                {t('See more matches')} →
+              </Link>
+            </div>
+          )}
         </div>
       </div>
 
@@ -365,15 +418,21 @@ export function DailyMatches() {
 function CompetitionBlock({
   comp,
   fetchedAt,
+  limite,
   onPick,
 }: {
   comp: { slug: string; label: string; tier: number; events: EspnEvent[] }
   fetchedAt: number
+  /** Vitrine : n'en montrer que `limite`, le reste derrière un bouton. */
+  limite?: number
   onPick: (eventId: string) => void
 }) {
   const t = useT()
   const lang = useLang((s) => s.lang)
+  const [tout, setTout] = useState(false)
   if (!comp.events?.length) return null
+  const caches = limite === undefined ? 0 : Math.max(0, comp.events.length - limite)
+  const visibles = limite === undefined || tout ? comp.events : comp.events.slice(0, limite)
   return (
     <div>
       <div className="flex items-center justify-between mb-3">
@@ -403,13 +462,29 @@ function CompetitionBlock({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         <AnimatePresence>
-          {comp.events.map((ev) => (
+          {visibles.map((ev) => (
             <MatchCard key={ev.id} ev={ev} slug={comp.slug} fetchedAt={fetchedAt} onPick={() => onPick(ev.id)} />
           ))}
         </AnimatePresence>
       </div>
+
+      {caches > 0 && !tout && (
+        <button
+          type="button"
+          onClick={() => setTout(true)}
+          className="mt-3 w-full min-h-[44px] border border-slate-200 hover:border-accent-gold/50 text-slate-500 hover:text-accent-gold font-mono text-[11px] uppercase tracking-widest transition-colors"
+        >
+          {avecNombre(t('See {n} more'), caches)}
+        </button>
+      )}
     </div>
   )
+}
+
+/** Injecte un nombre APRÈS traduction : chaque langue place {n} où sa
+ *  grammaire l'exige. */
+function avecNombre(phrase: string, n: number): string {
+  return phrase.split('{n}').join(String(n))
 }
 
 function scoreOf(c: unknown): number | null {

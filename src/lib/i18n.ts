@@ -153,6 +153,10 @@ const AR: Record<string, string> = {
   'You need {n} {jeton}': 'تحتاج {n} {jeton}',
   // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──
   'Goalscorer': 'الهداف',
+  'See more matches': 'عرض المزيد من المباريات',
+  'See {n} more': 'عرض {n} أخرى',
+  'None of the big six are playing today.': 'لا تلعب أي من المسابقات الست الكبرى اليوم.',
+  'See the other {n} matches': 'عرض المباريات الـ{n} الأخرى',
   'Back': 'راهن على',
   'No exact-score market on this match.': 'لا يوجد سوق نتيجة مضبوطة في هذه المباراة.',
   'Odds are not responding. Reload the page in a moment.': 'الاحتمالات لا تستجيب. أعد تحميل الصفحة بعد قليل.',
@@ -416,6 +420,10 @@ const FR: Record<string, string> = {
   'You need {n} {jeton}': 'Il te faut {n} {jeton}',
   // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──
   'Goalscorer': 'Buteur',
+  'See more matches': 'Voir plus de matchs',
+  'See {n} more': 'Voir {n} de plus',
+  'None of the big six are playing today.': 'Aucune des six grandes ne joue aujourd’hui.',
+  'See the other {n} matches': 'Voir les {n} autres matchs',
   'Back': 'Parier sur',
   'No exact-score market on this match.': 'Pas de marché score exact sur ce match.',
   'Odds are not responding. Reload the page in a moment.': 'Les cotes ne répondent pas. Recharge la page dans un instant.',
