@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api, eventTeams, liveClock, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
+import { Cotes1X2 } from './Cotes1X2'
 import { useMatchOdds } from '../lib/useMatchOdds'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
 import { useSiteSettings } from '../store/siteSettings'
@@ -216,28 +217,7 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
                   </div>
                 )}
                 {oddsView && (
-                  // 1X2 odds — pre-match, in-play (red dot), or greyed
-                  // closing line once finished. dir=ltr so the order
-                  // never mirrors in Arabic mode.
-                  <div
-                    dir="ltr"
-                    className={'mt-2.5 flex items-center justify-center gap-1.5 font-mono text-[11px]' + (oddsView.mode === 'closing' ? ' opacity-50' : '')}
-                    title={oddsView.odds.provider ? `Odds · ${oddsView.odds.provider}` : 'Odds'}
-                  >
-                    {oddsView.mode === 'live' && (
-                      <span className="relative flex h-1.5 w-1.5" aria-label="Live odds">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
-                      </span>
-                    )}
-                    {([['1', oddsView.odds.home], ['X', oddsView.odds.draw], ['2', oddsView.odds.away]] as const).map(([k, v]) => (
-                      <span key={k} className="inline-flex items-center gap-1.5 rounded-md border border-slate-200/60 bg-white/5 px-2 py-1">
-                        <span className="text-slate-500">{k}</span>
-                        <span className="text-slate-900 font-semibold tabular-nums">{v}</span>
-                      </span>
-                    ))}
-                    <span className="text-[9px] text-slate-500">{oddsView.mode === 'closing' ? t('pre-match') : '18+'}</span>
-                  </div>
+                  <Cotes1X2 vue={oddsView} eventId={f?.ev.id} variante="hero" t={t} />
                 )}
               </div>
               <TeamSide n={view.a.n} logo={view.a.l} />

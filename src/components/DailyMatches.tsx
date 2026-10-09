@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, competitionLogo, eventTeams, liveClock, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
+import { Cotes1X2 } from './Cotes1X2'
 import { useMatchOdds } from '../lib/useMatchOdds'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
@@ -515,30 +516,7 @@ function MatchCard({ ev, slug, fetchedAt, onPick }: { ev: EspnEvent; slug: strin
         <TeamRow comp={away} showScore={showScore} scoreClass={aCol} />
       </div>
 
-      {oddsView && (
-        // 1X2 odds — pre-match, in-play (red dot), or the remembered
-        // closing line greyed out on finished games. dir=ltr so the
-        // 1/X/2 order never mirrors in Arabic mode.
-        <div
-          dir="ltr"
-          className={'mt-2 flex items-center gap-1 font-mono text-[10px]' + (oddsView.mode === 'closing' ? ' opacity-50' : '')}
-          title={oddsView.odds.provider ? `Odds · ${oddsView.odds.provider}` : 'Odds'}
-        >
-          {oddsView.mode === 'live' && (
-            <span className="relative flex h-1.5 w-1.5 mx-0.5" aria-label="Live odds">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
-            </span>
-          )}
-          {([['1', oddsView.odds.home], ['X', oddsView.odds.draw], ['2', oddsView.odds.away]] as const).map(([k, v]) => (
-            <span key={k} className="flex-1 inline-flex items-center justify-center gap-1 rounded-md border border-slate-200/60 bg-slate-50 px-1.5 py-1">
-              <span className="text-slate-500">{k}</span>
-              <span className="text-slate-900 font-semibold tabular-nums">{v}</span>
-            </span>
-          ))}
-          <span className="text-[8px] text-slate-500">{oddsView.mode === 'closing' ? t('pre-match') : '18+'}</span>
-        </div>
-      )}
+      {oddsView && <Cotes1X2 vue={oddsView} eventId={ev.id} variante="carte" t={t} />}
 
       <div className="mt-2.5 pt-2 border-t border-slate-200/60 text-[10px] font-mono text-accent-gold/80 flex items-center justify-end gap-1">
         {t('View stats →')}

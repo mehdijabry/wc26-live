@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, ymdLocal, type DailyComp, type EspnEvent } from '../../lib/api'
 import { useAuth } from '../../store/auth'
 import { usePageHead, useJsonLd } from '../../lib/head'
@@ -195,6 +195,7 @@ function CarteMatch({
 
   return (
     <li
+      id={`m-${id}`}
       className={cn(
         'glass rounded-2xl p-3.5 transition-all',
         selection && 'ring-glow border-accent-gold/50',
@@ -601,6 +602,16 @@ export function PredictWeek() {
   const [modale, setModale] = useState(false)
   /** Le bulletin en cours de composition. Plusieurs matchs = un combiné. */
   const [selections, setSelections] = useState<Selection[]>([])
+  // Arrivée depuis une cote cliquée sur l'accueil ou une carte du jour :
+  // ?match=e123&pick=home. On ouvre le bon jour, on va à la carte, et on
+  // pose le choix. Consommé une seule fois — un rechargement ne doit pas
+  // re-remplir le bulletin tout seul.
+  const [params, setParams] = useSearchParams()
+  const [aRejoindre, setARejoindre] = useState<{ match: string; pick: string } | null>(() => {
+    const m = params.get('match')
+    const p = params.get('pick')
+    return m ? { match: m, pick: p ?? '' } : null
+  })
   /** `null` = toutes les compétitions. */
   const [filtreComp, setFiltreComp] = useState<string | null>(null)
   const [occupe, setOccupe] = useState(false)
@@ -660,6 +671,23 @@ export function PredictWeek() {
           setCotes(c)
           setCotesEtat('ok')
           if (jourChoisi) return
+          // Venu d'une cote cliquée ailleurs : on ouvre le jour de CE match,
+          // pas la première journée garnie.
+          const vouluId = aRejoindre?.match
+          const voulu = vouluId ? c.get(vouluId) : undefined
+          if (voulu?.kickoff) {
+            const cible = ymdLocal(new Date(voulu.kickoff))
+            for (let i = 0; i < JOURS; i++) {
+              const d = new Date()
+              d.setDate(d.getDate() + i)
+              if (ymdLocal(d) === cible) {
+                setJour(i)
+                break
+              }
+            }
+            setJourChoisi(true)
+            return
+          }
           const jours = new Set<string>()
           for (const x of c.values()) if (x.kickoff) jours.add(ymdLocal(new Date(x.kickoff)))
           for (let i = 0; i < JOURS; i++) {
@@ -683,7 +711,7 @@ export function PredictWeek() {
     }
     void charger()
     return () => { vivant = false }
-  }, [jourChoisi])
+  }, [jourChoisi, aRejoindre])
 
   const rafraichirJoueur = useCallback(async () => {
     if (!user) {
@@ -785,6 +813,55 @@ export function PredictWeek() {
       .map((c) => ({ ...c, events: c.events.filter((ev) => cotes.has(idDePronostic(ev))) }))
       .filter((c) => c.events.length > 0)
   }, [comps, cotes])
+
+  /**
+   * L'atterrissage depuis une cote cliquée ailleurs.
+   *
+   * On attend que le jour soit chargé ET que la carte existe dans le DOM —
+   * sans quoi on ferait défiler vers rien. Une fois posé, le paramètre est
+   * retiré de l'adresse : recharger la page ne doit pas re-remplir le
+   * bulletin tout seul, et l'adresse partagée doit rester propre.
+   */
+  useEffect(() => {
+    if (!aRejoindre || !comps) return
+    const noeud = document.getElementById(`m-${aRejoindre.match}`)
+    if (!noeud) return
+
+    noeud.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    // Le halo est posé SUR LE NŒUD, pas par un état : passer par un état
+    // re-rendrait les cent quatre-vingts cartes de la journée pour un
+    // anneau qui s'efface au bout de quatre secondes. Quand le visiteur est
+    // connecté, la sélection qu'on pose juste après allume de toute façon
+    // sa propre bordure.
+    const halo = ['ring-2', 'ring-accent-gold']
+    noeud.classList.add(...halo)
+    const minuteur = setTimeout(() => noeud.classList.remove(...halo), 4000)
+
+    const cote = cotes.get(aRejoindre.match)
+    const pick = aRejoindre.pick
+    if (user && cote && (pick === 'home' || pick === 'draw' || pick === 'away')) {
+      const ev = jouables.flatMap((c) => c.events).find((e) => idDePronostic(e) === aRejoindre.match)
+      const c2 = ev ? camps(ev) : null
+      if (c2) {
+        onChoisir(aRejoindre.match, {
+          matchId: aRejoindre.match,
+          marche: '1x2',
+          pick,
+          cote: pick === 'home' ? cote.home : pick === 'draw' ? cote.draw : cote.away,
+          titre: `${c2.dom.nom} — ${c2.ext.nom}`,
+          libelle: pick === 'home' ? c2.dom.nom : pick === 'away' ? c2.ext.nom : t('Draw'),
+        })
+      }
+    }
+
+    setARejoindre(null)
+    const p = new URLSearchParams(params)
+    p.delete('match')
+    p.delete('pick')
+    setParams(p, { replace: true })
+    return () => clearTimeout(minuteur)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aRejoindre, comps, cotes, user])
 
   const affichees = useMemo(
     () => (filtreComp ? jouables.filter((c) => c.slug === filtreComp) : jouables),
