@@ -16,6 +16,7 @@ import {
   JAMBES_MAX,
   coteCombinee,
   cotes as chargerCotes,
+  buteursDuMatch,
   jambesParMatch,
   mesBulletins,
   poserBulletin,
@@ -23,6 +24,7 @@ import {
   reclamableAujourdhui,
   reclamerDuJour,
   type Choix,
+  type Buteur,
   type Cote,
   type Jambe,
   type Portefeuille,
@@ -145,6 +147,9 @@ function CarteMatch({
   t: (s: string) => string
 }) {
   const [scoresOuverts, setScoresOuverts] = useState(false)
+  const [buteursOuverts, setButeursOuverts] = useState(false)
+  // `null` tant qu'on n'a rien demandé, [] quand le match n'a pas de marché.
+  const [buteurs, setButeurs] = useState<Buteur[] | null>(null)
   // La grille des scores, du plus probable au plus fou. Elle n'existe que si
   // le worker a pu la calculer : pas de grille, pas de marché.
   //
@@ -155,6 +160,17 @@ function CarteMatch({
     () => Object.entries(cote.exact ?? {}).sort((a, b) => a[1] - b[1]),
     [cote.exact],
   )
+  const id0 = idDePronostic(ev)
+  // La liste des buteurs ne part qu'au premier dépliage : vingt-huit joueurs
+  // par match, sur cent quatre-vingts matchs, ne doivent pas voyager pour
+  // une liste que presque personne n'ouvrira.
+  useEffect(() => {
+    if (!buteursOuverts || buteurs !== null) return
+    let vivant = true
+    void buteursDuMatch(id0).then((l) => { if (vivant) setButeurs(l) })
+    return () => { vivant = false }
+  }, [buteursOuverts, buteurs, id0])
+
   const c = camps(ev)
   if (!c) return null
 
@@ -313,6 +329,88 @@ function CarteMatch({
           )}
         </div>
       )}
+
+      {/* Le buteur. Même repli que le score exact, même raison. */}
+      {ouvert && (
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() => setButeursOuverts((v) => !v)}
+            className={cn(
+              'w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-[11px] transition-colors',
+              selection?.marche === 'scorer'
+                ? 'bg-accent-gold/15 text-accent-gold'
+                : 'text-slate-500 hover:bg-slate-50',
+            )}
+          >
+            <span className="uppercase tracking-wider">
+              {t('Goalscorer')}
+              {selection?.marche === 'scorer' && (
+                <span className="ms-2 font-semibold normal-case tracking-normal">
+                  {selection.libelle} @ {selection.cote.toFixed(2)}
+                </span>
+              )}
+            </span>
+            <span className="text-slate-400">{buteursOuverts ? '−' : '+'}</span>
+          </button>
+
+          {buteursOuverts && (
+            <div className="mt-2">
+              {buteurs === null ? (
+                <p className="px-3 py-2 font-mono text-[11px] text-slate-500">{t('Loading…')}</p>
+              ) : buteurs.length === 0 ? (
+                // Pas une panne : ESPN ne publie les buteurs que sur une
+                // partie des compétitions, et on n'ouvre le marché que là
+                // où ils le sont vraiment.
+                <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
+                  {t('No goalscorer market on this competition.')}
+                </p>
+              ) : (
+                <ul className="max-h-60 overflow-y-auto no-scrollbar grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {buteurs.map((b) => {
+                    const actif = selection?.marche === 'scorer' && selection.pick === b.id
+                    return (
+                      <li key={b.id}>
+                        <button
+                          type="button"
+                          aria-pressed={actif}
+                          onClick={() => choisir('scorer', b.id, b.cote, b.nom)}
+                          className={cn(
+                            'w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg border transition-all active:scale-[0.98] text-start',
+                            actif
+                              ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
+                              : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50',
+                          )}
+                        >
+                          {/* L'écusson dit pour quelle équipe il joue —
+                              indispensable quand deux listes se mélangent. */}
+                          {(b.equipe === 'dom' ? c.dom.logo : c.ext.logo) && (
+                            <img
+                              src={(b.equipe === 'dom' ? c.dom.logo : c.ext.logo)!}
+                              alt=""
+                              className="w-4 h-4 object-contain shrink-0"
+                              loading="lazy"
+                            />
+                          )}
+                          <span className="flex-1 min-w-0 truncate text-[12px] leading-tight">{b.nom}</span>
+                          <span
+                            className={cn(
+                              'font-mono text-[11px] tabular-nums shrink-0',
+                              actif ? 'text-ink-700' : 'text-accent-gold',
+                            )}
+                          >
+                            {b.cote.toFixed(2)}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
     </li>
   )
 }
@@ -399,7 +497,7 @@ function Bulletin({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] leading-tight">{s.titre}</div>
                 <div className="font-mono text-[10px] text-slate-500 truncate">
-                  {s.marche === 'exact' ? t('Exact score') : t('Winner')} · {s.libelle}
+                  {s.marche === 'exact' ? t('Exact score') : s.marche === 'scorer' ? t('Goalscorer') : t('Winner')} · {s.libelle}
                 </div>
               </div>
               <span className="font-mono text-[12px] tabular-nums text-accent-gold shrink-0">

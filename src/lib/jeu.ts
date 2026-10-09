@@ -79,8 +79,24 @@ export type Cote = {
 
 export type Choix = 'home' | 'draw' | 'away'
 
-/** Les marchés ouverts. Le buteur viendra s'ajouter ici. */
-export type Marche = '1x2' | 'exact'
+/** Les marchés ouverts. */
+export type Marche = '1x2' | 'exact' | 'scorer'
+
+/**
+ * Un joueur pariable sur un match, avec sa cote.
+ *
+ * Elle est calculée par le worker à partir de trois choses : l'espérance de
+ * buts de son équipe (dérivée des cotes 1X2), son poste, et son rendement
+ * réel. Voir `cotesButeurs` dans worker/src/index.ts.
+ */
+export type Buteur = {
+  id: string
+  nom: string
+  /** F, M, D — ESPN n'en distingue pas davantage. */
+  poste: string
+  equipe: 'dom' | 'ext'
+  cote: number
+}
 
 /** Au plus dix sélections par bulletin — au-delà, plus personne ne suit. */
 export const JAMBES_MAX = 10
@@ -176,6 +192,27 @@ export async function cotes(): Promise<Map<string, Cote>> {
   const m = new Map<string, Cote>()
   for (const c of (data as Cote[]) ?? []) m.set(c.match_id, c)
   return m
+}
+
+/**
+ * Les buteurs pariables d'un match, du plus probable au plus improbable.
+ *
+ * Chargé À LA DEMANDE, match par match : la page des pronostics affiche
+ * jusqu'à cent quatre-vingts rencontres, et vingt-huit joueurs par match
+ * feraient passer son chargement de quelques centaines de kilo-octets à
+ * plusieurs méga-octets pour une liste que presque personne n'ouvrira.
+ *
+ * Une liste vide est une réponse normale : le marché n'existe que sur les
+ * compétitions dont ESPN publie vraiment les buteurs.
+ */
+export async function buteursDuMatch(matchId: string): Promise<Buteur[]> {
+  if (!supabase) return []
+  const { data } = await supabase
+    .from('match_scorers')
+    .select('players')
+    .eq('match_id', matchId)
+    .maybeSingle()
+  return ((data as { players?: Buteur[] } | null)?.players ?? [])
 }
 
 /**

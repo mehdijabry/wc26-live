@@ -151,7 +151,9 @@ const AR: Record<string, string> = {
   'all': 'الكل',
   'Stake {n} · win {g}': 'راهن بـ {n} · اربح {g}',
   'You need {n} {jeton}': 'تحتاج {n} {jeton}',
-  // ── Le bulletin : combinés et score exact (marchés ouverts le 09/10) ──
+  // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──
+  'Goalscorer': 'الهداف',
+  'No goalscorer market on this competition.': 'لا يوجد سوق هدافين في هذه المسابقة.',
   'Draw': 'تعادل',
   'won': 'رابح',
   'backed at {c}': 'مُراهَن عليه بـ {c}',
@@ -409,7 +411,9 @@ const FR: Record<string, string> = {
   'all': 'tout',
   'Stake {n} · win {g}': 'Miser {n} · gagner {g}',
   'You need {n} {jeton}': 'Il te faut {n} {jeton}',
-  // ── Le bulletin : combinés et score exact (marchés ouverts le 09/10) ──
+  // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──
+  'Goalscorer': 'Buteur',
+  'No goalscorer market on this competition.': 'Pas de marché buteur sur cette compétition.',
   'Draw': 'Nul',
   'won': 'gagné',
   'backed at {c}': 'joué à {c}',
