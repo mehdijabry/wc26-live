@@ -627,6 +627,26 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
     // coup. Le verrou de 90 s laisse passer une tranche toutes les deux
     // minutes environ, soit la semaine entière couverte en une heure.
     // Dans son propre garde : une panne ici ne doit rien emporter d'autre.
+    // Le balai : les paris buteur dont la donnée n'est jamais venue sont
+    // annulés et remboursés au bout de 48 h (migration 008). Une fois par
+    // heure suffit largement.
+    try {
+      if (!(await env.CACHE.get('balai:verrou'))) {
+        await env.CACHE.put('balai:verrou', '1', { expirationTtl: 3600 })
+        await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/purger_paris_buteur_en_attente`, {
+          method: 'POST',
+          headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            'content-type': 'application/json',
+          },
+          body: '{}',
+        })
+      }
+    } catch (e) {
+      console.log('[balai] passe échouée:', e)
+    }
+
     try {
       if (!(await env.CACHE.get('buteurs:verrou'))) {
         await env.CACHE.put('buteurs:verrou', '1', { expirationTtl: 90 })
@@ -2186,8 +2206,15 @@ async function fetchTeamHistory(env: Env, code: string): Promise<Response> {
 async function syncResultatsToutesCompetitions(env: Env): Promise<void> {
   const hier = new Date(Date.now() - 86_400_000)
   const jours = [ymdUtc(hier), ymdUtc(new Date())]
+  // Plafond par tour. Un worker ne peut émettre qu'un nombre limité de
+  // sous-requêtes, et chaque résultat en coûte une. Sans ce plafond, un
+  // rattrapage — par exemple après avoir remis en file les matchs dont les
+  // buteurs manquaient — tenterait cent cinquante écritures d'un coup et
+  // ferait échouer toute la passe. Le reste part au tour suivant.
+  let ecrits = 0
 
   for (const jour of jours) {
+    if (ecrits >= 40) break
     const r = await fetch(`${ESPN_SOCCER}/all/scoreboard?dates=${jour}&limit=300`, {
       cf: { cacheTtl: 120, cacheEverything: true },
     })
@@ -2195,6 +2222,7 @@ async function syncResultatsToutesCompetitions(env: Env): Promise<void> {
     const d = (await r.json()) as { events?: EspnEventLike[] }
 
     for (const ev of d.events ?? []) {
+      if (ecrits >= 40) break
       if (ev.status?.type?.state !== 'post') continue
       const comp = ev.competitions?.[0]
       const home = comp?.competitors?.find((c) => c.homeAway === 'home')
@@ -2246,8 +2274,21 @@ async function syncResultatsToutesCompetitions(env: Env): Promise<void> {
         card_player_ids: [],
         finished_at: ev.date ?? new Date().toISOString(),
       })
-      // 30 jours : bien au-delà du moment où un score peut encore bouger.
-      await env.CACHE.put(cle, '1', { expirationTtl: 2_592_000 }).catch(() => {})
+      // ESPN NE PUBLIE PAS LES BUTEURS TOUT DE SUITE. Le détail des buts
+      // arrive quelques minutes après la fin du match, et on lit la
+      // rencontre à la seconde où elle passe « terminée ». Mesuré en
+      // production : 4 matchs sur 112 avec des buts avaient leurs buteurs.
+      //
+      // Donc : un match à buts dont on n'a pas encore les noms n'est PAS
+      // classé. On le remet en file pour dix minutes, et le prochain
+      // passage complétera `scorer_ids`. Le ré-enregistrement redéclenche
+      // le règlement, qui paie alors les paris buteur restés ouverts
+      // (voir migration 008). Les matchs sans but, eux, sont définitifs.
+      ecrits++
+      const incomplet = butsDom + butsExt > 0 && buteurs.length === 0
+      await env.CACHE
+        .put(cle, '1', { expirationTtl: incomplet ? 600 : 2_592_000 })
+        .catch(() => {})
     }
   }
 }
@@ -2598,23 +2639,46 @@ async function syncButeurs(env: Env): Promise<void> {
   if (!r.ok) return
   const data = (await r.json()) as { events?: Array<Record<string, unknown>> }
 
+  // CE QUI SE FAIT UNE SEULE FOIS, ET PAS UNE FOIS PAR MATCH.
+  //
+  // La version précédente lisait le KV deux fois par événement — jusqu'à
+  // huit cents lectures séquentielles par tour, sur un scoreboard de
+  // quatre cents matchs. L'exécution s'épuisait avant d'avoir traité ses
+  // cinq matchs : mesuré en production, 117 matchs couverts en dix heures
+  // au lieu de la totalité. On lit donc d'un coup la liste déjà publiée
+  // (une requête), et la couverture des seules ligues PRÉSENTES ce jour-là
+  // (une quarantaine, pas quatre cents).
+  const dejaPublies = new Set<string>()
+  try {
+    const r2 = await fetch(`${env.SUPABASE_URL}/rest/v1/match_scorers?select=match_id`, {
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+    })
+    if (r2.ok) for (const x of (await r2.json()) as Array<{ match_id: string }>) dejaPublies.add(x.match_id)
+  } catch { /* au pire on republie : l'upsert est idempotent */ }
+
+  const candidats = (data.events ?? []).filter((ev) => {
+    const statut = (ev.status as { type?: { state?: string } } | undefined)?.type?.state
+    return ev.id && statut === 'pre' && !dejaPublies.has(`e${ev.id}`)
+  })
+
+  const ligues = new Map<string, boolean>()
+  for (const lid of new Set(candidats.map((ev) => (String(ev.uid ?? '').match(/l:(\d+)/) ?? [])[1]).filter(Boolean))) {
+    ligues.set(lid as string, !!(await env.CACHE.get(`couv:${lid}`)))
+  }
+
   const lignes: Array<Record<string, unknown>> = []
   let traites = 0
 
-  for (const ev of data.events ?? []) {
+  for (const ev of candidats) {
     if (traites >= 5) break
     const id = String(ev.id ?? '')
     const uid = String(ev.uid ?? '')
-    const statut = (ev.status as { type?: { state?: string } } | undefined)?.type?.state
-    if (!id || statut !== 'pre') continue
 
     const matchId = `e${id}`
     if (await env.CACHE.get(`buteurs:fait:${matchId}`)) continue
 
     const ligueId = (uid.match(/l:(\d+)/) ?? [])[1]
-    if (!ligueId) continue
-    // Pas de couverture prouvée, pas de marché.
-    if (!(await env.CACHE.get(`couv:${ligueId}`))) continue
+    if (!ligueId || !ligues.get(ligueId)) continue
 
     const comp = (ev.competitions as Array<Record<string, unknown>> | undefined)?.[0]
     const eq = (comp?.competitors as Array<{ homeAway?: string; team?: { id?: string } }> | undefined) ?? []
