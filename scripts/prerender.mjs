@@ -70,6 +70,9 @@ function titreParDefaut() {
 /** Routes qui ont gardé le titre par défaut — remplie pendant la passe. */
 const sansTitrePropre = []
 
+/** Routes où le voile d'introduction était encore là au moment de la photo. */
+const voileRestant = []
+
 /** Renseigné au démarrage de main(), une fois `dist/` confirmé présent. */
 let DEFAUT = ''
 
@@ -242,6 +245,24 @@ async function prerenderRoute(browser, route) {
     if (route !== '/') sansTitrePropre.push(route)
   }
 
+  // ── Attendre que le voile d'introduction soit parti ────────────────
+  //
+  // Le titre change dès le montage, bien avant la fin du splash (1,2 s puis
+  // un fondu) : on photographiait donc les pages AVEC le voile, figé à
+  // `opacity: 1`, cuit dans le HTML livré. Tant que React démarrait, il le
+  // remplaçait et personne ne voyait rien. Mais le jour où React tardait —
+  // onglet en arrière-plan, fichier en cache abîmé — le visiteur restait
+  // devant un calque opaque qui avalait tous les clics, sur /today, /news et
+  // toutes les routes pré-rendues sauf l'accueil (Mehdi, 2026-10-09).
+  try {
+    await page.waitForFunction(
+      () => !document.querySelector('[class*="z-[80]"]'),
+      { timeout: 6_000 },
+    )
+  } catch {
+    voileRestant.push(route)   // retiré du HTML plus bas, et signalé à la fin
+  }
+
   // Small extra wait so any debounced setMeta / structured-data
   // injection lands before we snapshot.
   await new Promise((r) => setTimeout(r, 400))
@@ -285,6 +306,9 @@ async function prerenderRoute(browser, route) {
     .replace(/<iframe\b[^>]*\bid="google_esf"[^>]*>[\s\S]*?<\/iframe>/gi, '')
     // les conteneurs d'annonces automatiques, entièrement
     .replace(/<ins\b[^>]*class="[^"]*adsbygoogle[^"]*"[^>]*>[\s\S]*?<\/ins>/gi, '')
+    // Le voile d'introduction : décoratif, et jamais dans une page livrée.
+    // L'attente ci-dessus suffit presque toujours ; ceci garantit le reste.
+    .replace(/<div\b[^>]*class="[^"]*z-\[80\][^"]*"[^>]*>[\s\S]*?<\/div>\s*<\/div>\s*<\/div>/i, '')
 
   // Force the canonical link to match the actual route. Many React
   // pages don't override the default <link rel="canonical" href="/">
@@ -428,6 +452,17 @@ async function main() {
   }
 
   console.log(`[prerender] Done. ${ok} ok, ${failed} failed.`)
+  // Le voile retiré à la main veut dire que l'attente n'a pas suffi : ça se dit,
+  // parce qu'une page livrée avec ce calque bloque tout si React tarde.
+  if (voileRestant.length) {
+    console.log(
+      `[prerender] ATTENTION — ${voileRestant.length} route(s) photographiées pendant le splash (voile retiré du HTML).`
+    )
+    for (const r of voileRestant.slice(0, 10)) console.log(`  - ${r}`)
+  } else {
+    console.log('[prerender] Aucune page ne porte le voile d\'introduction.')
+  }
+
   if (sansTitrePropre.length) {
     console.log(
       `[prerender] ATTENTION — ${sansTitrePropre.length} route(s) ont gardé le titre de l'accueil.`
