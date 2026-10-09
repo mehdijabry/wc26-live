@@ -2249,6 +2249,103 @@ function mlVersDecimal(ml: number | string | undefined | null): number | null {
   return Math.round(d * 100) / 100
 }
 
+// ─── Cotes des scores exacts, dérivées des cotes 1X2 ────────────────────
+//
+// Notre fournisseur ne publie que le 1X2. Pour ouvrir le marché du score
+// exact, on remonte des trois cotes au MODÈLE qui les produit : on cherche
+// le couple d'espérances de buts (λ domicile, λ extérieur) dont la loi de
+// Poisson reproduit au mieux les probabilités 1X2 du marché, puis chaque
+// score en découle.
+//
+// POURQUOI PAS UN ×10 FIXE. Un multiplicateur plat sur n'importe quel score
+// est une faille : un 1-0 dans un match fermé arrive une fois sur sept, un
+// 4-3 une fois sur mille. À ×10 pour les deux, le joueur n'a qu'à toujours
+// prendre le score probable pour gagner sur la durée — et les pressings se
+// convertissent en argent. Ici, le prix suit la probabilité : les scores
+// courants sortent autour de 7 à 10, les folies bien au-delà.
+//
+// LA LIMITE, ASSUMÉE. Deux lois de Poisson indépendantes sous-estiment un
+// peu les matchs nuls serrés (pas de correction de Dixon-Coles). Comme on
+// ajuste λ sur la VRAIE probabilité de nul du marché, l'écart est largement
+// absorbé. Et une marge de 12 % couvre le reste.
+const MARGE_EXACT = 0.12
+/** On publie les scores jusqu'à 5-5. Au-delà, personne ne parie. */
+const BUTS_MAX = 5
+const FACT = [1, 1, 2, 6, 24, 120, 720, 5040, 40320]
+
+function poisson(l: number, k: number): number {
+  return (Math.exp(-l) * Math.pow(l, k)) / FACT[k]
+}
+
+/** Les probabilités 1X2 qu'impliquent deux espérances de buts. */
+function issuesDe(lh: number, la: number): [number, number, number] {
+  let h = 0
+  let d = 0
+  let a = 0
+  for (let i = 0; i <= 8; i++) {
+    const pi = poisson(lh, i)
+    for (let j = 0; j <= 8; j++) {
+      const p = pi * poisson(la, j)
+      if (i > j) h += p
+      else if (i === j) d += p
+      else a += p
+    }
+  }
+  return [h, d, a]
+}
+
+export function grilleScoresExacts(
+  home: number,
+  draw: number,
+  away: number,
+): Record<string, number> | null {
+  // Les cotes contiennent la marge du bookmaker : la somme des inverses
+  // dépasse 1. On la retire pour retrouver des probabilités qui se somment
+  // à 1, sinon le modèle s'ajusterait sur un marché truqué.
+  const somme = 1 / home + 1 / draw + 1 / away
+  if (!isFinite(somme) || somme <= 0) return null
+  const ph = 1 / home / somme
+  const pd = 1 / draw / somme
+  const pa = 1 / away / somme
+
+  const erreur = (lh: number, la: number): number => {
+    const [h, d, a] = issuesDe(lh, la)
+    return (h - ph) ** 2 + (d - pd) ** 2 + (a - pa) ** 2
+  }
+
+  // Balayage grossier puis affinage autour du meilleur point. Deux passes
+  // valent mieux qu'une grille fine sur tout l'intervalle : ~75 000
+  // opérations par match au lieu d'un million.
+  let mh = 1.3
+  let ma = 1.1
+  let min = Infinity
+  for (let lh = 0.2; lh <= 4.4; lh += 0.2) {
+    for (let la = 0.2; la <= 4.4; la += 0.2) {
+      const e = erreur(lh, la)
+      if (e < min) { min = e; mh = lh; ma = la }
+    }
+  }
+  for (let lh = Math.max(0.05, mh - 0.2); lh <= mh + 0.2; lh += 0.02) {
+    for (let la = Math.max(0.05, ma - 0.2); la <= ma + 0.2; la += 0.02) {
+      const e = erreur(lh, la)
+      if (e < min) { min = e; mh = lh; ma = la }
+    }
+  }
+
+  const grille: Record<string, number> = {}
+  for (let i = 0; i <= BUTS_MAX; i++) {
+    for (let j = 0; j <= BUTS_MAX; j++) {
+      const p = poisson(mh, i) * poisson(ma, j)
+      // Sous ce seuil la cote dépasse 600 : un prix que personne ne joue et
+      // qui ne ferait qu'encombrer la grille.
+      if (p < 0.0015) continue
+      const c = Math.round(((1 - MARGE_EXACT) / p) * 100) / 100
+      if (c >= 1.01 && c <= 1000) grille[`${i}-${j}`] = c
+    }
+  }
+  return Object.keys(grille).length ? grille : null
+}
+
 async function syncCotes(env: Env): Promise<void> {
   type Cote = {
     homeTeamOdds?: { moneyLine?: number }
@@ -2313,6 +2410,10 @@ async function syncCotes(env: Env): Promise<void> {
         home,
         draw,
         away,
+        // La grille des scores exacts voyage avec les cotes 1X2 : même
+        // ligne, même instant, donc jamais une grille qui décrirait un
+        // marché différent de celui affiché.
+        exact: grilleScoresExacts(home, draw, away),
         kickoff: ev.date ?? null,
         updated_at: new Date().toISOString(),
       })
