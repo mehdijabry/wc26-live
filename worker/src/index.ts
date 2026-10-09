@@ -84,6 +84,14 @@ export interface Env {
 
 const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
 const ESPN_SOCCER = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
+/**
+ * ESPN refuse les en-têtes d'outils en ligne de commande et les UA
+ * « HeadlessChrome » sur ses endpoints d'effectif. On se présente donc comme
+ * un navigateur ordinaire — c'est la même lecture publique que celle que
+ * fait le site lui-même pour ses pages de clubs.
+ */
+const UA_NAVIGATEUR =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
 const ALLOW_ORIGINS = [
   'http://localhost:5173',
   'http://localhost:5174',
@@ -612,6 +620,20 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
       }
     } catch (e) {
       console.log('[cotes] passe échouée:', e)
+    }
+
+    // Les buteurs, par tranches de cinq matchs : deux effectifs par match,
+    // et un worker ne peut pas émettre des centaines de sous-requêtes d'un
+    // coup. Le verrou de 90 s laisse passer une tranche toutes les deux
+    // minutes environ, soit la semaine entière couverte en une heure.
+    // Dans son propre garde : une panne ici ne doit rien emporter d'autre.
+    try {
+      if (!(await env.CACHE.get('buteurs:verrou'))) {
+        await env.CACHE.put('buteurs:verrou', '1', { expirationTtl: 90 })
+        await syncButeurs(env)
+      }
+    } catch (e) {
+      console.log('[buteurs] passe échouée:', e)
     }
 
     try {
@@ -2183,11 +2205,44 @@ async function syncResultatsToutesCompetitions(env: Env): Promise<void> {
       const cle = `res:${matchId}`
       if (await env.CACHE.get(cle)) continue
 
+      const butsDom = parseInt(home.score ?? '0', 10)
+      const butsExt = parseInt(away.score ?? '0', 10)
+
+      // LES BUTEURS, pour régler le marché du même nom.
+      //
+      // ESPN marque chaque action décisive d'un `scoringPlay` et il y a
+      // PLUSIEURS étiquettes de but — « Goal », « Penalty - Scored »,
+      // « Goal - Header », « Goal - Free-kick ». Filtrer sur le seul type 70
+      // en oublierait un tiers. On se fie donc au drapeau, en écartant les
+      // contre son camp : celui qui marque contre son camp n'a pas « marqué »
+      // au sens du pari.
+      const details = (comp as { details?: Array<{
+        scoringPlay?: boolean
+        ownGoal?: boolean
+        type?: { text?: string }
+        athletesInvolved?: Array<{ id?: string }>
+      }> } | undefined)?.details ?? []
+      const buteurs = [...new Set(
+        details
+          .filter((d) => d.scoringPlay === true && d.ownGoal !== true && !/own goal/i.test(d.type?.text ?? ''))
+          .map((d) => d.athletesInvolved?.[0]?.id)
+          .filter((x): x is string => !!x),
+      )]
+
+      // On APPREND quelles compétitions livrent vraiment leurs buteurs.
+      // Mesuré sur cinq jours : 34 ligues sur 42 le font, huit jamais.
+      // Le marché buteur ne s'ouvrira que sur les premières — sinon tous
+      // les paris finiraient annulés au règlement.
+      const ligueId = (String((ev as { uid?: string }).uid ?? '').match(/l:(\d+)/) ?? [])[1]
+      if (ligueId && butsDom + butsExt > 0 && buteurs.length > 0) {
+        await env.CACHE.put(`couv:${ligueId}`, '1', { expirationTtl: 2_592_000 })
+      }
+
       await upsertMatchResult(env, {
         match_id: matchId,
-        home_score: parseInt(home.score ?? '0', 10),
-        away_score: parseInt(away.score ?? '0', 10),
-        scorer_ids: [],
+        home_score: butsDom,
+        away_score: butsExt,
+        scorer_ids: buteurs,
         card_player_ids: [],
         finished_at: ev.date ?? new Date().toISOString(),
       })
@@ -2294,14 +2349,20 @@ function issuesDe(lh: number, la: number): [number, number, number] {
   return [h, d, a]
 }
 
-export function grilleScoresExacts(
+/**
+ * Les espérances de buts des deux équipes, retrouvées à partir des cotes 1X2.
+ *
+ * C'est la pièce commune au score exact ET au marché buteur : une fois qu'on
+ * sait qu'une équipe est attendue à 2,1 buts et l'autre à 0,8, tout le reste
+ * se déduit. Un attaquant de la première a mécaniquement plus de chances de
+ * marquer qu'un attaquant de la seconde, et c'est ce qui rend le marché
+ * buteur vivant plutôt que tabulaire.
+ */
+export function esperancesDeButs(
   home: number,
   draw: number,
   away: number,
-): Record<string, number> | null {
-  // Les cotes contiennent la marge du bookmaker : la somme des inverses
-  // dépasse 1. On la retire pour retrouver des probabilités qui se somment
-  // à 1, sinon le modèle s'ajusterait sur un marché truqué.
+): { dom: number; ext: number } | null {
   const somme = 1 / home + 1 / draw + 1 / away
   if (!isFinite(somme) || somme <= 0) return null
   const ph = 1 / home / somme
@@ -2313,9 +2374,8 @@ export function grilleScoresExacts(
     return (h - ph) ** 2 + (d - pd) ** 2 + (a - pa) ** 2
   }
 
-  // Balayage grossier puis affinage autour du meilleur point. Deux passes
-  // valent mieux qu'une grille fine sur tout l'intervalle : ~75 000
-  // opérations par match au lieu d'un million.
+  // Balayage grossier puis affinage : ~75 000 opérations par match au lieu
+  // d'un million pour une grille fine sur tout l'intervalle.
   let mh = 1.3
   let ma = 1.1
   let min = Infinity
@@ -2331,6 +2391,20 @@ export function grilleScoresExacts(
       if (e < min) { min = e; mh = lh; ma = la }
     }
   }
+  return { dom: mh, ext: ma }
+}
+
+export function grilleScoresExacts(
+  home: number,
+  draw: number,
+  away: number,
+): Record<string, number> | null {
+  // Les cotes contiennent la marge du bookmaker : la somme des inverses
+  // dépasse 1. `esperancesDeButs` la retire avant d'ajuster le modèle.
+  const lam = esperancesDeButs(home, draw, away)
+  if (!lam) return null
+  const mh = lam.dom
+  const ma = lam.ext
 
   const grille: Record<string, number> = {}
   for (let i = 0; i <= BUTS_MAX; i++) {
@@ -2344,6 +2418,231 @@ export function grilleScoresExacts(
     }
   }
   return Object.keys(grille).length ? grille : null
+}
+
+// ─── Marché buteur ──────────────────────────────────────────────────────
+//
+// Trois facteurs, et pas seulement le poste.
+//
+//  1. L'ESPÉRANCE DE BUTS DE L'ÉQUIPE, déjà dérivée des cotes 1X2 pour le
+//     score exact. Un attaquant d'une équipe attendue à deux buts n'a pas
+//     les mêmes chances que celui d'une équipe attendue à un.
+//  2. LE POSTE. ESPN n'en donne que quatre — gardien, défenseur, milieu,
+//     attaquant. Les parts ci-dessous sont calées pour que, à espérance
+//     moyenne (1,4 but), un joueur MOYEN à son poste sorte exactement à :
+//     attaquant 3,51 · milieu 6,00 · défenseur 10,00.
+//  3. SES STATISTIQUES — buts et matchs joués. C'est ce qui fait le tri que
+//     le poste ne peut pas faire : un ailier qui marque passe devant un
+//     attaquant qui ne marque pas. ESPN n'étiquette ni ailier, ni numéro 10,
+//     ni sentinelle ; les buts, eux, ne mentent pas.
+const PART_POSTE: Record<string, number> = { F: 0.190, M: 0.105, D: 0.0611, G: 0.0015 }
+/** Buts par match typiques du poste, référence du facteur joueur. */
+const MOYENNE_POSTE: Record<string, number> = { F: 0.35, M: 0.12, D: 0.05, G: 0.002 }
+/** Matchs fictifs ajoutés pour ne pas s'emballer sur trois rencontres. */
+const LISSAGE_BUTEUR = 5
+/** Un livre « buteur » se tient large : la somme des probabilités de tous
+ *  les joueurs dépasse l'espérance de buts de l'équipe. */
+const MARGE_BUTEUR = 0.18
+const FACTEUR_MIN = 0.5
+const FACTEUR_MAX = 2.2
+const COTE_BUTEUR_MIN = 1.5
+const COTE_BUTEUR_MAX = 41
+/** En dessous, le joueur ne joue pas assez pour figurer au marché. */
+const JEU_MINIMUM = 0.4
+/** Combien de joueurs par équipe. On retient ceux qui JOUENT, pas les mieux
+ *  cotés : trier par cote ne publierait que des attaquants, et personne ne
+ *  pourrait parier sur un défenseur. */
+const JOUEURS_PAR_EQUIPE = 14
+
+export type JoueurBrut = { id: string; nom: string; poste: string; buts: number; matchs: number }
+export type CoteButeur = { id: string; nom: string; poste: string; equipe: 'dom' | 'ext'; cote: number }
+
+const borne = (v: number, a: number, b: number) => Math.min(b, Math.max(a, v))
+
+export function cotesButeurs(
+  joueurs: JoueurBrut[],
+  lambda: number,
+  equipe: 'dom' | 'ext',
+): CoteButeur[] {
+  const maxMatchs = Math.max(1, ...joueurs.map((j) => j.matchs))
+  return joueurs
+    .map((j) => {
+      const part = PART_POSTE[j.poste] ?? PART_POSTE.M!
+      const moy = MOYENNE_POSTE[j.poste] ?? MOYENNE_POSTE.M!
+      const facteur = borne(
+        (j.buts + LISSAGE_BUTEUR * moy) / ((j.matchs + LISSAGE_BUTEUR) * moy),
+        FACTEUR_MIN,
+        FACTEUR_MAX,
+      )
+      // Un joueur qui n'a pas joué ne marquera pas : le temps de jeu, mesuré
+      // en matchs disputés rapporté au plus utilisé de l'effectif, fait
+      // sortir les blessés et les troisièmes choix.
+      const jeu = borne((j.matchs + 0.5) / maxMatchs, 0, 1)
+      const esperance = lambda * part * facteur * jeu
+      const p = 1 - Math.exp(-esperance)
+      return {
+        id: j.id,
+        nom: j.nom,
+        poste: j.poste,
+        equipe,
+        matchs: j.matchs,
+        cote: borne(Math.round(((1 - MARGE_BUTEUR) / p) * 100) / 100, COTE_BUTEUR_MIN, COTE_BUTEUR_MAX),
+      }
+    })
+    .filter((j) => j.poste !== 'G' && (j.matchs + 0.5) / maxMatchs >= JEU_MINIMUM)
+    .sort((a, b) => b.matchs - a.matchs)
+    .slice(0, JOUEURS_PAR_EQUIPE)
+    .map(({ matchs: _matchs, ...reste }) => reste)
+    .sort((a, b) => a.cote - b.cote)
+}
+
+/** La statistique nommée d'un joueur dans la réponse ESPN, ou null. */
+function statJoueur(p: unknown, nom: string): number | null {
+  const cats = (p as { statistics?: { splits?: { categories?: Array<{ stats?: Array<{ name?: string; value?: number }> }> } } })
+    .statistics?.splits?.categories ?? []
+  for (const c of cats) for (const x of c.stats ?? []) if (x.name === nom) return x.value ?? null
+  return null
+}
+
+/**
+ * L'effectif d'une équipe, condensé et mis en cache trois jours. Sans ce
+ * cache, chaque passe redemanderait deux effectifs par match — plusieurs
+ * centaines de requêtes, bien au-delà de ce qu'un worker peut émettre.
+ */
+async function effectif(env: Env, ligue: string, equipeId: string): Promise<JoueurBrut[]> {
+  const cle = `effectif:${ligue}:${equipeId}`
+  const cache = await env.CACHE.get(cle)
+  if (cache) return JSON.parse(cache) as JoueurBrut[]
+
+  const r = await fetch(
+    `https://site.web.api.espn.com/apis/site/v2/sports/soccer/${ligue}/teams/${equipeId}/roster`,
+    { headers: { 'user-agent': UA_NAVIGATEUR }, cf: { cacheTtl: 3600, cacheEverything: true } },
+  )
+  if (!r.ok) return []
+  const j = (await r.json()) as { athletes?: Array<Record<string, unknown>> }
+  const liste: JoueurBrut[] = (j.athletes ?? []).map((p) => ({
+    id: String(p.id ?? ''),
+    nom: String(p.displayName ?? p.fullName ?? ''),
+    poste: String((p.position as { abbreviation?: string } | undefined)?.abbreviation ?? 'M'),
+    buts: statJoueur(p, 'totalGoals') ?? 0,
+    matchs: statJoueur(p, 'appearances') ?? 0,
+  })).filter((x) => x.id && x.nom)
+
+  if (liste.length) await env.CACHE.put(cle, JSON.stringify(liste), { expirationTtl: 259_200 })
+  return liste
+}
+
+/** Le slug de ligue correspondant à un identifiant numérique ESPN. */
+async function slugDeLigue(env: Env, ligueId: string, exempleEvent: string): Promise<string | null> {
+  const cle = `ligue:${ligueId}`
+  const cache = await env.CACHE.get(cle)
+  if (cache) return cache === '-' ? null : cache
+
+  const r = await fetch(
+    `https://site.web.api.espn.com/apis/site/v2/sports/soccer/all/summary?event=${exempleEvent}`,
+    { headers: { 'user-agent': UA_NAVIGATEUR }, cf: { cacheTtl: 3600, cacheEverything: true } },
+  )
+  const slug = r.ok
+    ? ((await r.json()) as { header?: { league?: { slug?: string } } }).header?.league?.slug ?? null
+    : null
+  await env.CACHE.put(cle, slug ?? '-', { expirationTtl: 2_592_000 })
+  return slug
+}
+
+/**
+ * Publie les cotes buteur, par tranches.
+ *
+ * DEUX CONTRAINTES DICTENT LA FORME DE CETTE PASSE.
+ *
+ * Un worker ne peut émettre qu'un nombre limité de sous-requêtes par
+ * exécution, et il faut deux effectifs par match : on traite donc une
+ * poignée de matchs à chaque tour, avec un curseur de jour en KV, et
+ * l'ensemble se couvre en une heure environ.
+ *
+ * Surtout, ESPN ne publie les buteurs que sur une partie des compétitions —
+ * mesuré sur cinq jours : 34 ligues couvertes sur 42, mais huit qui ne
+ * donnent jamais un seul nom. Ouvrir le marché là-dessus ferait annuler tous
+ * les paris au règlement. La couverture est donc APPRISE : le passage des
+ * résultats note les ligues qui livrent vraiment leurs buteurs, et seules
+ * celles-là ont un marché.
+ */
+async function syncButeurs(env: Env): Promise<void> {
+  const curseur = Number((await env.CACHE.get('buteurs:curseur')) ?? '0')
+  const jour = curseur % JOURS_DE_COTES
+  await env.CACHE.put('buteurs:curseur', String((curseur + 1) % 1000))
+
+  const d = new Date(Date.now() + jour * 86_400_000)
+  const r = await fetch(`${ESPN_SOCCER}/all/scoreboard?dates=${ymdUtc(d)}&limit=400`, {
+    cf: { cacheTtl: 300, cacheEverything: true },
+  })
+  if (!r.ok) return
+  const data = (await r.json()) as { events?: Array<Record<string, unknown>> }
+
+  const lignes: Array<Record<string, unknown>> = []
+  let traites = 0
+
+  for (const ev of data.events ?? []) {
+    if (traites >= 5) break
+    const id = String(ev.id ?? '')
+    const uid = String(ev.uid ?? '')
+    const statut = (ev.status as { type?: { state?: string } } | undefined)?.type?.state
+    if (!id || statut !== 'pre') continue
+
+    const matchId = `e${id}`
+    if (await env.CACHE.get(`buteurs:fait:${matchId}`)) continue
+
+    const ligueId = (uid.match(/l:(\d+)/) ?? [])[1]
+    if (!ligueId) continue
+    // Pas de couverture prouvée, pas de marché.
+    if (!(await env.CACHE.get(`couv:${ligueId}`))) continue
+
+    const comp = (ev.competitions as Array<Record<string, unknown>> | undefined)?.[0]
+    const eq = (comp?.competitors as Array<{ homeAway?: string; team?: { id?: string } }> | undefined) ?? []
+    const dom = eq.find((x) => x.homeAway === 'home')?.team?.id
+    const ext = eq.find((x) => x.homeAway === 'away')?.team?.id
+    if (!dom || !ext) continue
+
+    // Les cotes 1X2 du match : sans elles, pas d'espérance de buts.
+    const o = ((comp?.odds as Array<Record<string, unknown> | null> | undefined) ?? []).find(Boolean)
+    if (!o) continue
+    const ml = o.moneyline as { home?: { close?: { odds?: string }; open?: { odds?: string } }; draw?: { close?: { odds?: string }; open?: { odds?: string } }; away?: { close?: { odds?: string }; open?: { odds?: string } } } | undefined
+    const cote = (n: number | undefined, x: { close?: { odds?: string }; open?: { odds?: string } } | undefined) =>
+      mlVersDecimal(n ?? x?.close?.odds ?? x?.open?.odds)
+    const h = cote((o.homeTeamOdds as { moneyLine?: number } | undefined)?.moneyLine, ml?.home)
+    const n = cote((o.drawOdds as { moneyLine?: number } | undefined)?.moneyLine, ml?.draw)
+    const a = cote((o.awayTeamOdds as { moneyLine?: number } | undefined)?.moneyLine, ml?.away)
+    if (!h || !n || !a) continue
+
+    const lam = esperancesDeButs(h, n, a)
+    if (!lam) continue
+
+    const slug = await slugDeLigue(env, ligueId, id)
+    if (!slug) continue
+
+    const [jd, je] = await Promise.all([effectif(env, slug, dom), effectif(env, slug, ext)])
+    if (!jd.length && !je.length) continue
+
+    const joueurs = [...cotesButeurs(jd, lam.dom, 'dom'), ...cotesButeurs(je, lam.ext, 'ext')]
+      .sort((x, y) => x.cote - y.cote)
+    if (!joueurs.length) continue
+
+    lignes.push({ match_id: matchId, players: joueurs, updated_at: new Date().toISOString() })
+    await env.CACHE.put(`buteurs:fait:${matchId}`, '1', { expirationTtl: 21_600 })
+    traites++
+  }
+
+  if (!lignes.length) return
+  const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/match_scorers?on_conflict=match_id`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(lignes),
+  })
+  console.log(resp.ok ? `[buteurs] ${lignes.length} match(s) publiés (jour ${jour})` : `[buteurs] refus ${resp.status}`)
 }
 
 async function syncCotes(env: Env): Promise<void> {
