@@ -34,9 +34,12 @@ self.addEventListener('fetch', (event) => {
     // dinosaur. Stops at HTML — assets fall through to error.
     if (event.request.mode === 'navigate') {
       return new Response(
-        '<!doctype html><meta charset="utf-8"><title>WC26 Live — offline</title>' +
-        '<div style="font-family:system-ui;padding:48px;text-align:center;color:#0a2540">' +
-        '<h1>WC26 Live</h1><p>You appear to be offline. Reconnect to see live scores.</p></div>',
+        '<!doctype html><meta charset="utf-8"><title>Pressing 90 — offline</title>' +
+        // Fond sombre POSÉ, pas hérité : sans lui le texte craie serait
+        // invisible sur le blanc par défaut du navigateur.
+        '<body style="margin:0;background:#0B0F0D">' +
+        '<div style="font-family:system-ui;padding:48px;text-align:center;color:#ECEFE8">' +
+        '<h1>Pressing 90\u2019</h1><p>You appear to be offline. Reconnect to see live scores.</p></div>',
         { headers: { 'content-type': 'text/html; charset=utf-8' } }
       )
     }

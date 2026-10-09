@@ -4,59 +4,80 @@ export default {
   theme: {
     extend: {
       colors: {
-        // ── "MATCH NIGHT" palette (2026-08 redesign) ──────────────────
-        // The site is dark-first: deep navy ground, gold as floodlight,
-        // red strictly = live. The slate scale below is INVERTED so the
-        // whole codebase (written light-first with text-slate-900 on
-        // bg-white) flips to night without touching every component:
-        // slate-900 now means "primary text (cream)", bg-slate-50/100
-        // now mean "subtle dark surface". Hover/opacity variants follow
-        // automatically because Tailwind derives them from these hexes.
-        paper: '#071B30',        // page ground (was white)
-        night: '#071B30',
-        card: '#0D2C4B',
-        cream: '#F3EFE6',
-        marine: { 950: '#0A2540' },
+        // ── « STOPPAGE TIME » (refonte du 09/10/2026) ─────────────────
+        // Le fond quitte le bleu marine pour un NOIR-VERT de pelouse sous
+        // projecteurs : le marine est ce que fait tout site de scores, le
+        // vert est la couleur du sujet.
+        //
+        // LA RÈGLE QUI TIENT TOUT : la couleur a un sens, une seule.
+        //   rouge  = en direct, maintenant, et rien d'autre
+        //   doré   = le jeu (cotes, crampons, marque)
+        //   mauve  = les pressings
+        // Tout le reste est monochrome. C'est ce qui permet de repérer un
+        // match en cours au milieu de quarante lignes sans rien lire.
+        //
+        // L'échelle slate reste INVERSÉE, comme avant : slate-900 est le
+        // texte clair, slate-50/100 des surfaces sombres. Tout le code
+        // écrit en clair-d'abord continue de fonctionner.
+        paper: '#0B0F0D',        // le sol de la page
+        night: '#0B0F0D',
+        card: '#121916',         // surface surélevée
+        cream: '#ECEFE8',        // blanc de craie, pas blanc pur
+        marine: { 950: '#0E1411' },
         slate: {
-          50:  '#0B2745',        // subtle surface
-          100: '#10325A',        // chip / hover surface
-          200: '#1A4370',        // border
-          300: '#23517F',        // border (hover)
-          400: '#64809A',        // faint text
-          500: '#7E95AB',        // secondary text
-          600: '#9FB2C4',
-          700: '#C9D4DE',
-          800: '#DFE6EC',
-          900: '#F3EFE6',        // primary text (cream)
+          50:  '#0E1411',        // surface discrète
+          100: '#161E1A',        // pastille / survol
+          200: '#212B26',        // filet
+          300: '#2B3832',        // filet au survol
+          400: '#5A6560',        // texte très effacé
+          500: '#7C8A83',        // texte secondaire
+          600: '#93A099',
+          700: '#AEBAB3',
+          800: '#D2D8D1',
+          900: '#ECEFE8',        // texte principal (craie)
         },
-        // Semantic banner tints, re-tuned for the dark ground
-        amber:   { 50: '#20304E', 100: '#2A3A58', 200: '#6B5B2E', 300: '#8A7439', 700: '#D9B54A', 900: '#E9CD7E' },
-        emerald: { 50: '#0E3328', 100: '#14402F', 200: '#1F5A42', 500: '#10B981', 600: '#0EA371', 700: '#6FDCA0', 800: '#8FE6B4' },
-        rose:    { 50: '#3A1620', 100: '#4A1B27', 300: '#7A2E3D', 600: '#E11D48', 700: '#FF8A96', 800: '#FFA3AC' },
-        red:     { 50: '#3A1620', 200: '#6B2430', 400: '#FF6B78', 500: '#FF4D5E', 600: '#E11D48', 700: '#C4172F', 900: '#7A0E1E' },
+        // Teintes sémantiques, réaccordées sur le sol noir-vert : sur
+        // l'ancienne base bleue elles tiraient toutes au marine.
+        amber:   { 50: '#1E2318', 100: '#262C1D', 200: '#5C5126', 300: '#7E6E33', 700: '#D9B54A', 900: '#E9CD7E' },
+        emerald: { 50: '#0D2219', 100: '#12301F', 200: '#1C4A33', 500: '#10B981', 600: '#0EA371', 700: '#6FDCA0', 800: '#8FE6B4' },
+        rose:    { 50: '#2A1512', 100: '#371A16', 300: '#6B2E26', 600: '#E11D48', 700: '#FF8A96', 800: '#FFA3AC' },
+        red:     { 50: '#2A1512', 200: '#5C2821', 400: '#FF6B5C', 500: '#FF4A3D', 600: '#E13B2D', 700: '#B82E22', 900: '#6B1810' },
         yellow:  { 300: '#E9CD7E', 700: '#B99433' },
         ink: {
-          900: '#0f172a',        // dark text ON gold buttons — unchanged
-          800: '#1e293b',
-          700: '#334155',
-          600: '#475569',
-          500: '#64748b',
+          900: '#0B0F0D',        // texte sombre SUR le doré — inchangé de rôle
+          800: '#141A17',
+          700: '#2B3832',
+          600: '#47524C',
+          500: '#5A6560',
         },
         accent: {
           gold: '#D9B54A',
-          // Les pressings — la monnaie qu'on GAGNE. Le mauve est la seule
-          // couleur de la palette qui ne soit pas déjà prise par un sens :
-          // le doré est la marque, le rouge veut dire « en direct », le vert
-          // « pari gagné ». Voir src/components/Jeton.tsx.
-          violet: '#8B6CF5',
           green: '#41C97C',
-          red: '#FF4D5E',
-          blue: '#5B8DEF',       // brightened for dark ground
+          red: '#FF4A3D',        // LE DIRECT, et seulement lui
+          blue: '#5B8DEF',
+          violet: '#8B6CF5',     // les pressings
         },
+      },
+      // Les angles se referment. C'est ce qui fait basculer la page du
+      // registre « application » vers celui du journal de résultats.
+      // `rounded-full` n'est PAS touché : pastilles rondes, avatars,
+      // écussons et points du direct en dépendent.
+      borderRadius: {
+        none: '0',
+        sm: '2px',
+        DEFAULT: '2px',
+        md: '3px',
+        lg: '3px',
+        xl: '4px',
+        '2xl': '4px',
+        '3xl': '6px',
+        full: '9999px',
       },
       fontFamily: {
         sans: ['"Archivo"', 'system-ui', 'sans-serif'],
-        display: ['"Anton"', 'Impact', '"Arial Narrow"', 'sans-serif'],
+        // Big Shoulders : condensé de lignée « enseigne de stade ». Anton
+        // reste en secours si Google Fonts ne répond pas.
+        display: ['"Big Shoulders Display"', '"Anton"', 'Impact', '"Arial Narrow"', 'sans-serif'],
         mono: ['"IBM Plex Mono"', 'ui-monospace', 'monospace'],
         ar: ['"Tajawal"', '"Geeza Pro"', 'system-ui', 'sans-serif'],
       },

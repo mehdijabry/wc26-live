@@ -23,30 +23,32 @@ section[id] {
   }
   body {
     @apply bg-paper text-slate-900 font-sans antialiased;
-    /* ambient stadium light — two soft gold glows on the night ground */
-    background-image:
-      radial-gradient(1200px 800px at 12% -200px, rgba(217, 181, 74, 0.10), transparent 60%),
-      radial-gradient(1000px 700px at 95% 110%, rgba(217, 181, 74, 0.06), transparent 62%);
-    background-attachment: fixed;
+    /* Sol PLAT. Les deux halos dorés de la version marine tiraient au brun
+       sur le noir-vert, et la refonte ne compte plus sur l'ambiance : la
+       hiérarchie vient du contraste et de la typographie. */
     min-height: 100svh;
     padding-bottom: env(safe-area-inset-bottom);
   }
   ::selection {
     background: rgba(217, 181, 74, 0.9);
-    color: #071b30;
+    color: #0B0F0D;
   }
 }
 
 @layer components {
-  /* Night cards — elevated navy surface, faint edge, deep shadow */
+  /* Surface de la refonte : un filet net, pas d'ombre. Les ombres portées
+     empilaient de la profondeur là où le journal de résultats n'en a pas —
+     c'est le trait qui sépare, pas le relief. Le nom `glass` reste : il est
+     écrit dans des centaines d'endroits, le renommer ne changerait rien de
+     visible et casserait tout ce qui le référence. */
   .glass {
-    @apply bg-card border border-slate-200/60 shadow-[0_1px_0_rgba(255,255,255,0.03),0_14px_34px_-16px_rgba(0,0,0,0.6)];
+    @apply bg-card border border-slate-200;
   }
   .glass-hover {
-    @apply hover:border-accent-gold/40 hover:shadow-[0_2px_0_rgba(255,255,255,0.04),0_18px_44px_-14px_rgba(0,0,0,0.65)] transition-all;
+    @apply hover:border-accent-gold/50 transition-colors;
   }
   .gradient-text {
-    background: linear-gradient(120deg, #b58a1a, #d9b54a, #e9cd7e, #b58a1a);
+    background: linear-gradient(120deg, #A8841A, #D9B54A, #E9CD7E, #A8841A);
     background-size: 200% auto;
     -webkit-background-clip: text;
     background-clip: text;
@@ -55,7 +57,7 @@ section[id] {
   }
 
   .pill {
-    @apply inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium border border-slate-200 bg-slate-50 text-slate-700;
+    @apply inline-flex items-center gap-2 px-3 py-1 rounded-sm text-xs font-medium border border-slate-200 bg-slate-50 text-slate-700;
   }
   .ring-glow {
     box-shadow:
@@ -80,16 +82,16 @@ section[id] {
   /* Tailwind's `white` must stay white (text-white on gold/red buttons),
      so the light-first `bg-white` surfaces are remapped here to the
      night card surface instead of via the config. */
-  .bg-white { background-color: #0d2c4b; }
-  .bg-white\/95 { background-color: rgba(13, 44, 75, 0.95); }
-  .bg-white\/90 { background-color: rgba(13, 44, 75, 0.9); }
-  .bg-white\/85 { background-color: rgba(13, 44, 75, 0.88); }
-  .bg-white\/80 { background-color: rgba(13, 44, 75, 0.85); }
-  .hover\:bg-white:hover { background-color: #123a5f; }
+  .bg-white { background-color: #121916; }
+  .bg-white\/95 { background-color: rgba(18, 25, 22, 0.95); }
+  .bg-white\/90 { background-color: rgba(18, 25, 22, 0.9); }
+  .bg-white\/85 { background-color: rgba(18, 25, 22, 0.88); }
+  .bg-white\/80 { background-color: rgba(18, 25, 22, 0.85); }
+  .hover\:bg-white:hover { background-color: #1A231F; }
   /* Active chips were written as bg-slate-900 + text-white (dark chip on
      light page). With the inverted scale bg-slate-900 is now the cream
      highlight — flip its label to night so the pair stays readable. */
-  .bg-slate-900.text-white { color: #071b30; }
+  .bg-slate-900.text-white { color: #0B0F0D; }
 }
 
 /* ─── Arabic (RTL) mode ─────────────────────────────────────────────
@@ -104,9 +106,9 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
 
 /* Scrollbar — night */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-track { background: #0a2540; }
-::-webkit-scrollbar-thumb { background: #1a4370; border-radius: 5px; }
-::-webkit-scrollbar-thumb:hover { background: #23517f; }
+::-webkit-scrollbar-track { background: #0E1411; }
+::-webkit-scrollbar-thumb { background: #212B26; border-radius: 2px; }
+::-webkit-scrollbar-thumb:hover { background: #2B3832; }
 
 /* Hide-scrollbar utility (used by the live ticker) */
 .no-scrollbar::-webkit-scrollbar { display: none; }

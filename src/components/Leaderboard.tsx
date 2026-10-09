@@ -68,7 +68,7 @@ export function Leaderboard() {
               key={t}
               onClick={() => setTab(t)}
               className={
-                'px-4 py-1.5 rounded-full text-sm transition-all ' +
+                'px-4 py-1.5 rounded-sm text-sm transition-all ' +
                 (tab === t
                   ? 'bg-accent-gold text-ink-900 font-semibold'
                   : 'glass glass-hover text-slate-700')

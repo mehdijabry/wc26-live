@@ -133,7 +133,7 @@ export function BottomNav() {
             end={t.to === '/'}
             className={({ isActive }) =>
               'relative flex flex-col items-center justify-center gap-1 py-2.5 transition-colors ' +
-              (isActive ? 'text-accent-blue' : 'text-slate-500')
+              (isActive ? 'text-accent-gold' : 'text-slate-500')
             }
           >
             {({ isActive }) => (
@@ -143,7 +143,7 @@ export function BottomNav() {
                   {t2(t.label)}
                 </span>
                 {isActive && (
-                  <span className="absolute -top-px left-1/2 -translate-x-1/2 w-8 h-0.5 bg-accent-blue rounded-full" />
+                  <span className="absolute -top-px left-1/2 -translate-x-1/2 w-8 h-0.5 bg-accent-gold" />
                 )}
               </>
             )}

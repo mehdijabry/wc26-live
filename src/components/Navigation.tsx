@@ -99,9 +99,12 @@ export function Navigation() {
                 to={l.to}
                 end={l.to === '/'}
                 className={({ isActive }) =>
-                  'px-3 py-1.5 text-sm rounded-full transition-colors ' +
+                  'px-3 py-1.5 text-sm rounded-sm transition-colors ' +
+                  // L'onglet actif était un pavé crème : sur le sol encre
+                  // c'est la chose la plus lumineuse de la page, alors que
+                  // ce n'est qu'un repère. Un filet doré sous le mot suffit.
                   (isActive
-                    ? 'bg-slate-900 text-white'
+                    ? 'text-accent-gold border-b-2 border-accent-gold rounded-none'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100')
                 }
               >
@@ -114,7 +117,7 @@ export function Navigation() {
                 <button
                   key={code}
                   onClick={() => setLang(code)}
-                  className={'px-2.5 py-1 rounded-full text-[11px] font-mono transition-colors ' + (lang === code ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-500 hover:text-slate-900')}
+                  className={'px-2.5 py-1 rounded-sm text-[11px] font-mono transition-colors ' + (lang === code ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-500 hover:text-slate-900')}
                 >
                   {label}
                 </button>
