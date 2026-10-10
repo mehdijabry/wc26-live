@@ -669,6 +669,33 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
       console.log('[balai] passe échouée:', e)
     }
 
+    // Le bonus quotidien de groupe. Un joueur qui a parié aujourd'hui touche
+    // 3 crampons × le taux de participation de son MEILLEUR groupe, une
+    // seule fois par jour quel que soit le nombre de groupes où il figure.
+    //
+    // LE VERROU N'EST PAS LA SÉCURITÉ, c'est une économie d'appels. La
+    // sécurité est la clé primaire (joueur, jour) en base : même si ce bloc
+    // s'exécutait cent fois, le `on conflict do nothing` ne verserait rien de
+    // plus. Six heures suffisent donc à ne pas marteler Supabase, sans qu'une
+    // expiration mal placée puisse payer deux fois.
+    try {
+      if (!(await env.CACHE.get('bonusgroupe:verrou'))) {
+        await env.CACHE.put('bonusgroupe:verrou', '1', { expirationTtl: 21_600 })
+        const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/verser_bonus_de_groupe`, {
+          method: 'POST',
+          headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            'content-type': 'application/json',
+          },
+          body: '{}',
+        })
+        console.log(r.ok ? `[bonus groupe] ${await r.text()} versement(s)` : `[bonus groupe] refus ${r.status}`)
+      }
+    } catch (e) {
+      console.log('[bonus groupe] passe échouée:', e)
+    }
+
     try {
       if (!(await env.CACHE.get('buteurs:verrou'))) {
         await env.CACHE.put('buteurs:verrou', '1', { expirationTtl: 90 })
