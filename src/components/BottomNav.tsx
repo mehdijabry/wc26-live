@@ -50,6 +50,18 @@ const tabs: Tab[] = [
       </svg>
     ),
   },
+    {
+      // L'analyse IA a son propre onglet : c'est un outil distinct du pari,
+      // et une section absente de la barre du bas n'existe quasiment pas
+      // sur mobile.
+      to: '/analyse', label: 'Analysis',
+      icon: (a) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
+          <path d="M8 8l3 3-3 3M13 14h4" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ),
+    },
   {
     // Post-tournament: 'Predict' tab replaced by News — the daily read
     // is now the site's second pillar after live scores.
@@ -125,7 +137,18 @@ export function BottomNav() {
         contain: 'layout',
       }}
     >
-      <div className={visibleTabs.length === 4 ? 'grid grid-cols-4' : 'grid grid-cols-3'}>
+      {/* Les classes doivent être LITTÉRALES : Tailwind scanne le source et
+          ne génère pas `grid-cols-${n}`. D'où la table plutôt qu'un calcul.
+          Sans la case 5, l'arrivée de l'onglet Analyse faisait retomber la
+          barre sur trois colonnes et les deux derniers onglets passaient à
+          la ligne (mesuré le 10/10/2026). */}
+      <div
+        className={
+          { 3: 'grid grid-cols-3', 4: 'grid grid-cols-4', 5: 'grid grid-cols-5' }[
+            visibleTabs.length
+          ] ?? 'grid grid-cols-4'
+        }
+      >
         {visibleTabs.map((t) => (
           <NavLink
             key={t.to}

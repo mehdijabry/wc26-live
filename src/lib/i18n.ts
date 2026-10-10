@@ -70,6 +70,20 @@ const AR: Record<string, string> = {
   'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.': 'تحصل على {d} {jeton} كل يوم عند تسجيل الدخول — وإن لم تطلبها ضاعت. راهن بـ {min} منها على الأقل على نتيجة، بالمعامل الحقيقي للمباراة: كلما كان المرشح أوضح قلّ المردود. الأرباح بـ {point}، و{palier} {point} تفتح {prix}. الصعود على خمسة مستويات: تحت {libre} {point} لا تكلفك الورقة الخاسرة سوى رهانك، وفوقها تكلفك {perte1} ثم {perte2} ثم {perte3} {point}. بدون أي إيداع ولا وسيط رهان. كل مباراة لدينا معاملها قابلة للعب — الدوريات والكؤوس والمنتخبات، وأكبر البطولات أولا.',
   'crampons': 'كرامبون',
   // ── Les pronostics (10/10/2026) ────────────────────────────────────
+  'AI match analysis': 'تحليل المباريات بالذكاء الاصطناعي',
+  'Probable line-ups, form over ten matches, head-to-head and expected goals — the full read on every covered match.': 'التشكيلة المتوقعة، الحالة في عشر مباريات، المواجهات المباشرة والأهداف المتوقعة — القراءة الكاملة لكل مباراة مغطاة.',
+  'AI analysis': 'تحليل بالذكاء الاصطناعي',
+  'What the model sees, match by match': 'ما يراه النموذج، مباراة بمباراة',
+  'Probable line-ups, ten-match form, head-to-head and expected goals. Nothing is staked here — to back a result, go to the bets page.': 'التشكيلة المتوقعة، الحالة في عشر مباريات، المواجهات المباشرة والأهداف المتوقعة. لا رهان هنا — للمراهنة على نتيجة، انتقل إلى صفحة الرهانات.',
+  'Place a bet instead': 'ضع رهانًا بدلاً من ذلك',
+  'Sign in to open an analysis.': 'سجّل الدخول لفتح تحليل.',
+  '{n} matches analysed': '{n} مباراة محللة',
+  'No match covered on that day.': 'لا توجد مباراة مغطاة في ذلك اليوم.',
+  'your first one today is free': 'الأول اليوم مجاني',
+  'The day could not be loaded.': 'تعذّر تحميل هذا اليوم.',
+  'Bet on this match': 'راهن على هذه المباراة',
+  'read the full analysis of this match': 'اقرأ التحليل الكامل لهذه المباراة',
+  'Analysis': 'تحليل',
   'AI prediction': 'توقّع بالذكاء الاصطناعي',
   'unlocked': 'مفتوح',
   'probable line-ups, form, head-to-head and expected goals': 'التشكيلة المتوقعة، الحالة، المواجهات المباشرة والأهداف المتوقعة',
@@ -308,7 +322,7 @@ const AR: Record<string, string> = {
   'Football': 'كرة القدم',
   // ── لعبة التوقعات ──────────────────────────────────────────────────
   // أسماء العملتين — crampons و pressings — تبقى كما هي: أسماء خاصة باللعبة.
-  'Predictions': 'التوقعات',
+  'Predictions': 'الرهانات',
   'Pick a side, set your stake, the odds do the rest.': 'اختر فريقك، حدّد رهانك، والمعامل يفعل الباقي.',
   'How it works': 'كيف تعمل',
   'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.':
@@ -408,7 +422,7 @@ const AR: Record<string, string> = {
   'you': 'أنت',
   'Their champion': 'بطله',
   '3rd': 'الثالث',
-  'Predict': 'توقّع',
+  'Predict': 'الرهانات',
   'Table': 'الترتيب',
   'Clubs': 'الأندية',
 }
@@ -519,6 +533,20 @@ const FR: Record<string, string> = {
   'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.': 'Vous recevez {d} {jeton} par jour, à réclamer en vous connectant — non réclamés, ils sont perdus. Misez-en au moins {min} sur un résultat, à la cote réelle du match : plus le favori est net, moins ça paie. Les gains sont en {point}, et {palier} {point} débloquent {prix}. La montée compte cinq paliers : sous {libre} {point} un pari raté ne coûte que la mise, au-dessus chacun coûte {perte1}, puis {perte2}, puis {perte3} {point}. Rien à déposer, aucun bookmaker. Tout match dont nous avons la cote est jouable — championnats, coupes et sélections, les plus grandes compétitions d’abord.',
   'crampons': 'crampons',
   // ── Les pronostics (10/10/2026) ────────────────────────────────────
+  'AI match analysis': 'Analyse IA des matchs',
+  'Probable line-ups, form over ten matches, head-to-head and expected goals — the full read on every covered match.': 'Onze probable, forme sur dix matchs, confrontations directes et buts attendus — la lecture complète de chaque match couvert.',
+  'AI analysis': 'Analyse IA',
+  'What the model sees, match by match': 'Ce que le modèle voit, match par match',
+  'Probable line-ups, ten-match form, head-to-head and expected goals. Nothing is staked here — to back a result, go to the bets page.': 'Onze probable, forme sur dix matchs, confrontations directes et buts attendus. On ne mise rien ici — pour jouer un résultat, passez par la page des paris.',
+  'Place a bet instead': 'Plutôt placer un pari',
+  'Sign in to open an analysis.': 'Connectez-vous pour ouvrir une analyse.',
+  '{n} matches analysed': '{n} matchs analysés',
+  'No match covered on that day.': 'Aucun match couvert ce jour-là.',
+  'your first one today is free': 'le premier du jour est offert',
+  'The day could not be loaded.': 'Cette journée n’a pas pu être chargée.',
+  'Bet on this match': 'Parier sur ce match',
+  'read the full analysis of this match': 'lire l’analyse complète de ce match',
+  'Analysis': 'Analyse',
   'AI prediction': 'Pronostic IA',
   'unlocked': 'débloqué',
   'probable line-ups, form, head-to-head and expected goals': 'onze probable, forme, confrontations et buts attendus',
@@ -758,7 +786,7 @@ const FR: Record<string, string> = {
   // ── Jeu de pronostics (page /predictions, /leagues, /l/:slug) ──────
   // Les noms des monnaies — crampons, pressings — ne se traduisent pas :
   // ce sont les noms propres du jeu, comme « Gambz » chez Gamby.
-  'Predictions': 'Pronostics',
+  'Predictions': 'Paris',
   'Pick a side, set your stake, the odds do the rest.': 'Choisis un camp, décide ta mise, la cote fait le reste.',
   'How it works': 'Comment ça marche',
   'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.':
@@ -859,7 +887,7 @@ const FR: Record<string, string> = {
   'Their champion': 'Son champion',
   '3rd': '3e',
   // Entrées de navigation ajoutées avec les clubs et le jeu.
-  'Predict': 'Pronos',
+  'Predict': 'Paris',
   'Table': 'Classement',
   'Clubs': 'Clubs',
 }

@@ -42,6 +42,7 @@ const BracketWizard = lazy(() => import('./components/BracketWizard').then((m) =
 const PhasePickerHub = lazy(() => import('./components/posters/PhasePickerHub').then((m) => ({ default: m.PhasePickerHub })))
 const PublicProfile = lazy(() => import('./components/PublicProfile').then((m) => ({ default: m.PublicProfile })))
 const PredictWeek = lazy(() => import('./components/pages/PredictWeek').then((m) => ({ default: m.PredictWeek })))
+const Analyse = lazy(() => import('./components/pages/Analyse'))
 const MesParis = lazy(() => import('./components/pages/MesParis'))
 const Leagues = lazy(() => import('./components/pages/Leagues').then((m) => ({ default: m.Leagues })))
 const LeaguePage = lazy(() => import('./components/pages/LeaguePage').then((m) => ({ default: m.LeaguePage })))
@@ -276,6 +277,19 @@ function App() {
             element={
               <Suspense fallback={<PageSkeleton caption="Loading fixtures…" />}>
                 <PredictWeek />
+              </Suspense>
+            }
+          />
+          {/* /analyse — l'ANALYSE IA, une section à part. Parier et analyser
+              sont deux outils distincts : tant que l'analyse vivait au fond
+              d'une carte de pari, elle passait pour un troisieme marche
+              (Mehdi, 2026-10-10). Les deux pages se renvoient l'une a
+              l'autre, elles ne se melangent plus. */}
+          <Route
+            path="/analyse"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading analysis…" />}>
+                <Analyse />
               </Suspense>
             }
           />

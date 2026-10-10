@@ -4,18 +4,12 @@ import { api, ymdLocal, type DailyComp, type EspnEvent } from '../../lib/api'
 import { useAuth } from '../../store/auth'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
-import { teamBadgeFallback, cn } from '../../lib/utils'
+import { cn } from '../../lib/utils'
 import { localeOf, trLeague, useLang, useT, type Lang } from '../../lib/i18n'
 import { Jeton } from '../Jeton'
+import { camps, etat, heure, idDePronostic, type Camp } from '../../lib/matchEspn'
 import { Icone } from '../Icone'
-import CartePronostic from '../CartePronostic'
-import BoutonPronostic from '../BoutonPronostic'
-import {
-  pronosticsDisponibles,
-  mesPronostics,
-  prixDuProchain,
-  type Prix,
-} from '../../lib/pronostic'
+import { pronosticsDisponibles } from '../../lib/pronostic'
 import {
   JETON,
   JETONS_PAR_JOUR,
@@ -70,10 +64,6 @@ import {
  *  mémos qui en dépendent. */
 const VIDE: Set<string> = new Set()
 
-export function idDePronostic(ev: EspnEvent): string {
-  return `e${ev.id}`
-}
-
 const JOURS = 7
 /** Les mises proposées d'un geste. Un pas-à-pas demandait sept appuis.
  *  Le 1 ouvre la série depuis que le plancher est tombé à un crampon : avec
@@ -103,34 +93,6 @@ function libelleJour(d: Date, i: number, lang: Lang, t: (s: string) => string): 
   return d.toLocaleDateString(localeOf(lang), { weekday: 'short', day: 'numeric' })
 }
 
-type Camp = { nom: string; logo?: string; score?: string }
-
-function camps(ev: EspnEvent): { dom: Camp; ext: Camp } | null {
-  const c = ev.competitions?.[0]?.competitors ?? []
-  const d = c.find((x) => x.homeAway === 'home')
-  const e = c.find((x) => x.homeAway === 'away')
-  if (!d?.team || !e?.team) return null
-  const vers = (x: NonNullable<typeof d>): Camp => ({
-    nom: x.team!.shortDisplayName ?? x.team!.displayName ?? x.team!.abbreviation ?? '?',
-    logo: x.team!.logo ?? teamBadgeFallback(x.team!.logo, x.team!.abbreviation, x.team!.displayName),
-    score: x.score,
-  })
-  return { dom: vers(d), ext: vers(e) }
-}
-
-function etat(ev: EspnEvent): 'avant' | 'direct' | 'fini' {
-  const s = ev.status?.type?.state ?? ev.competitions?.[0]?.status?.type?.state
-  if (s === 'post') return 'fini'
-  if (s === 'in') return 'direct'
-  return 'avant'
-}
-
-function heure(ev: EspnEvent, lang: Lang): string {
-  return ev.date
-    ? new Date(ev.date).toLocaleTimeString(localeOf(lang), { hour: '2-digit', minute: '2-digit' })
-    : ''
-}
-
 const LIBELLE: Record<Choix, string> = { home: '1', draw: 'X', away: '2' }
 
 
@@ -155,10 +117,6 @@ function CarteMatch({
   selection,
   onChoisir,
   pronosticDispo,
-  pronosticOuvert,
-  prixPronostic,
-  soldeComplet,
-  onDebloque,
   lang,
   t,
 }: {
@@ -178,16 +136,11 @@ function CarteMatch({
    * montrer reviendrait à faire payer le vide (Mehdi, 2026-10-10).
    */
   pronosticDispo: boolean
-  pronosticOuvert: boolean
-  prixPronostic: Prix | null
-  soldeComplet: { crampons: number; pressings: number } | null
-  onDebloque: (matchId: string) => void
   lang: Lang
   t: (s: string) => string
 }) {
   const [scoresOuverts, setScoresOuverts] = useState(false)
   const [buteursOuverts, setButeursOuverts] = useState(false)
-  const [pronoOuvert, setPronoOuvert] = useState(false)
   // `null` tant qu'on n'a rien demandé, [] quand le match n'a pas de marché.
   const [buteurs, setButeurs] = useState<Buteur[] | null>(null)
   const [grille, setGrille] = useState<Array<[string, number]> | null>(null)
@@ -468,30 +421,28 @@ function CarteMatch({
           )}
         </div>
       )}
-      {/* Le pronostic IA. N'apparaît QUE si le fournisseur couvre ce match,
-          et il est separe des marches de pari : voir BoutonPronostic. */}
+      {/* ── Renvoi vers l'analyse IA ────────────────────────────────────
+          PAS LA CARTE ICI. Parier et analyser sont deux outils distincts :
+          dérouler une analyse complète au milieu des marchés remettait les
+          deux dans le même sac (Mehdi, 2026-10-10). La page de paris se
+          contente de signaler que l'analyse existe, et d'y conduire. */}
       {ouvert && pronosticDispo && (
         <div className="mt-2 pt-2 border-t border-slate-200">
-          <BoutonPronostic
-            ouvert={pronoOuvert}
-            dejaDebloque={pronosticOuvert}
-            offert={prixPronostic?.crampons === 0}
-            onBascule={() => setPronoOuvert((v) => !v)}
-          />
-
-          {pronoOuvert && (
-            <CartePronostic
-              match={id}
-              domicile={c.dom.nom}
-              exterieur={c.ext.nom}
-              cote={{ home: cote.home, draw: cote.draw, away: cote.away }}
-              ouvert={pronosticOuvert}
-              prix={prixPronostic}
-              solde={soldeComplet}
-              onOuvert={() => onDebloque(id)}
-              onFermer={() => setPronoOuvert(false)}
-            />
-          )}
+          <Link
+            to={`/analyse?match=${encodeURIComponent(id)}`}
+            className="flex items-center gap-2.5 px-3 py-2 rounded-lg border border-accent-gold/40 bg-accent-gold/[0.04] hover:border-accent-gold/70 transition-colors"
+          >
+            <Icone nom="strategy" taille={24} className="shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-mono text-[11px] uppercase tracking-wider text-accent-gold">
+                {t('AI prediction')}
+              </span>
+              <span className="block font-mono text-[10px] text-slate-500 leading-snug">
+                {t('read the full analysis of this match')}
+              </span>
+            </span>
+            <span className="shrink-0 font-mono text-[12px] text-accent-gold">→</span>
+          </Link>
         </div>
       )}
     </li>
@@ -979,41 +930,9 @@ export function PredictWeek() {
     return () => { vivant = false }
   }, [])
 
-  // CE QUI APPARTIENT AU JOUEUR PORTE SON IDENTIFIANT. À la déconnexion, on
-  // ne VIDE pas l'état — on cesse simplement de le reconnaître. Vider depuis
-  // l'effet imposait un `setState` synchrone, donc un rendu en cascade, et
-  // laissait un instant où les pronostics de l'ancienne session restaient
-  // affichés.
-  const [duJoueur, setDuJoueur] = useState<{
-    qui: string
-    ouverts: Set<string>
-    prix: Prix | null
-  } | null>(null)
-  // Incrémenté à chaque déblocage : le prix double, et la marche suivante
-  // doit s'afficher tout de suite.
-  const [tour, setTour] = useState(0)
-
-  useEffect(() => {
-    const qui = user?.id
-    if (!qui) return
-    let vivant = true
-    void Promise.all([
-      mesPronostics().catch(() => VIDE),
-      prixDuProchain().catch(() => null),
-    ]).then(([o, x]) => { if (vivant) setDuJoueur({ qui, ouverts: o, prix: x }) })
-    return () => { vivant = false }
-  }, [user?.id, tour])
-
-  const aJour = user?.id && duJoueur?.qui === user.id ? duJoueur : null
-  const ouverts = aJour?.ouverts ?? VIDE
-  const prix = aJour?.prix ?? null
-
-  const surDebloque = (matchId: string) => {
-    setDuJoueur((d) => (d ? { ...d, ouverts: new Set(d.ouverts).add(matchId) } : d))
-    setTour((n) => n + 1)
-    void rafraichirJoueur()
-  }
-
+  // La page de paris ne connaît plus QUE la couverture : savoir si un match
+  // est débloqué, et à quel prix, ne la regarde plus depuis que l'analyse a
+  // sa propre page.
   const prochainJour = prochainJourDeSemaine(pf)
   const joursFaits = !soldeConnu
     ? 0
@@ -1308,10 +1227,6 @@ export function PredictWeek() {
                 selection={selections.find((x) => x.matchId === idDePronostic(ev))}
                 onChoisir={onChoisir}
                 pronosticDispo={!!user && dispo.has(idDePronostic(ev))}
-                pronosticOuvert={ouverts.has(idDePronostic(ev))}
-                prixPronostic={prix}
-                soldeComplet={pf ? { crampons: pf.crampons, pressings: Number(pf.pressings) } : null}
-                onDebloque={surDebloque}
                 lang={lang}
                 t={t}
               />
