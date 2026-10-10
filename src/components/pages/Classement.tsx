@@ -7,9 +7,9 @@ import { Icone } from '../Icone'
 import { Jeton } from '../Jeton'
 import Distinctions from '../Distinctions'
 import PrixHebdomadaires from '../PrixHebdomadaires'
+import JaugeCoureur from '../JaugeCoureur'
 import { Leaderboard } from '../Leaderboard'
 import { SectionHeader } from '../Groups'
-import { cn } from '../../lib/utils'
 import { JETON, POINT } from '../../lib/jeu'
 import { localeOf, useLang, useT } from '../../lib/i18n'
 import {
@@ -212,28 +212,12 @@ export function Classement() {
                 joueur ce qu'il lui reste à FAIRE — les autres ne font que
                 constater. */}
             <div className="mt-4 pt-4 border-t border-slate-200">
-              <div className="flex items-baseline gap-2">
-                <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-                  {t('This week')}
-                </span>
-                <span className="font-mono text-[11px] tabular-nums text-slate-800">
-                  {saison.parisSemaine}/5
-                </span>
-                <span className="ms-auto flex gap-1">
-                  {[0, 1, 2, 3, 4].map((i) => (
-                    <span
-                      key={i}
-                      className={cn(
-                        'w-4 h-1.5 rounded-full',
-                        i < saison.parisSemaine ? 'bg-accent-gold' : 'bg-slate-100',
-                      )}
-                    />
-                  ))}
-                </span>
-              </div>
-              <p className="mt-1.5 font-mono text-[10px] text-slate-500">
-                {t('five bets a week unlock the full podium prizes in your groups')}
-              </p>
+              <JaugeCoureur
+                taux={saison.parisSemaine / 5}
+                titre={t('This week')}
+                fraction={`${saison.parisSemaine}/5`}
+                legende={t('five bets a week unlock the full podium prizes in your groups')}
+              />
             </div>
 
             <div className="mt-4 flex flex-wrap gap-2">
@@ -437,8 +421,18 @@ function CarteGroupe({
 
       {etat && !tropPetit && (
         <div className="mt-3 grid grid-cols-2 gap-3">
-          <Jauge titre={t('Today')} fait={etat.ontParieJour} total={etat.actifs} taux={etat.tauxJour} />
-          <Jauge titre={t('This week')} fait={etat.ontCinqSemaine} total={etat.actifs} taux={etat.tauxSemaine} />
+          <JaugeCoureur
+            taille={18}
+            taux={etat.tauxJour}
+            titre={t('Today')}
+            fraction={`${etat.ontParieJour}/${etat.actifs}`}
+          />
+          <JaugeCoureur
+            taille={18}
+            taux={etat.tauxSemaine}
+            titre={t('This week')}
+            fraction={`${etat.ontCinqSemaine}/${etat.actifs}`}
+          />
         </div>
       )}
 
@@ -473,26 +467,6 @@ function CarteGroupe({
   )
 }
 
-/** Une fraction et sa barre. La version bavarde est sur la page du groupe. */
-function Jauge({ titre, fait, total, taux }: { titre: string; fait: number; total: number; taux: number }) {
-  const plein = Math.round(taux * 100)
-  return (
-    <div>
-      <div className="flex items-baseline gap-1.5">
-        <span className="font-mono text-[9px] uppercase tracking-wider text-slate-500">{titre}</span>
-        <span className="ms-auto font-mono text-[10px] tabular-nums text-slate-800">
-          {fait}/{total}
-        </span>
-      </div>
-      <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-        <div
-          className={cn('h-full transition-[width] duration-500', plein === 100 ? 'bg-accent-green' : 'bg-accent-gold')}
-          style={{ width: `${plein}%` }}
-        />
-      </div>
-    </div>
-  )
-}
 
 function avecN(gabarit: string, n: number): string {
   return gabarit.replace('{n}', String(n))

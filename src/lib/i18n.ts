@@ -67,6 +67,9 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  // ── La jauge du coureur (10/10/2026) ───────────────────────────────
+  'daily streak': 'سلسلة يومية',
+  'the 7th pays {bonus} {point}': 'اليوم السابع يمنح {bonus} {point}',
   // ── La barrière d'erreur (10/10/2026) ──────────────────────────────
   'Updating…': 'جارٍ التحديث…',
   'This page could not load': 'تعذّر عرض هذه الصفحة',
@@ -583,6 +586,9 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // ── La jauge du coureur (10/10/2026) ───────────────────────────────
+  'daily streak': 'série du jour',
+  'the 7th pays {bonus} {point}': 'le 7e verse {bonus} {point}',
   // ── La barrière d'erreur (10/10/2026) ──────────────────────────────
   'Updating…': 'Mise à jour…',
   'This page could not load': 'Cette page n’a pas pu s’afficher',

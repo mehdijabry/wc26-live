@@ -1,6 +1,6 @@
 import { useT } from '../lib/i18n'
-import { cn } from '../lib/utils'
 import { Icone } from './Icone'
+import JaugeCoureur from './JaugeCoureur'
 import type { EtatDuGroupe } from '../lib/leagues'
 
 /**
@@ -127,25 +127,15 @@ function Jauge({
   legende: string
 }) {
   const t = useT()
-  const plein = Math.round(taux * 100)
   return (
     <div className="mt-3">
-      <div className="flex items-baseline gap-2 flex-wrap">
-        <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{titre}</span>
-        <span className="font-mono text-[11px] tabular-nums text-slate-800">
-          {fait}/{total}
-        </span>
-        <span className="ms-auto font-mono text-[10px] uppercase tracking-wider text-accent-gold">
-          {detail}
-        </span>
-      </div>
-      <div className="mt-1 h-1.5 rounded-full bg-slate-100 overflow-hidden">
-        <div
-          className={cn('h-full transition-[width] duration-500', plein === 100 ? 'bg-accent-green' : 'bg-accent-gold')}
-          style={{ width: `${plein}%` }}
-        />
-      </div>
-      <p className="mt-1 font-mono text-[10px] text-slate-500">{legende}</p>
+      <JaugeCoureur
+        taux={taux}
+        titre={titre}
+        fraction={`${fait}/${total}`}
+        detail={<span className="text-accent-gold">{detail}</span>}
+        legende={legende}
+      />
       {manquants.length > 0 && (
         <p className="mt-0.5 text-[11px] text-slate-600">
           <span className="text-slate-500">{t('still missing')} : </span>

@@ -9,6 +9,7 @@ import { localeOf, trLeague, useLang, useT, type Lang } from '../../lib/i18n'
 import { Jeton } from '../Jeton'
 import { camps, etat, heure, idDePronostic, type Camp } from '../../lib/matchEspn'
 import { Icone } from '../Icone'
+import JaugeCoureur from '../JaugeCoureur'
 import { pronosticsDisponibles } from '../../lib/pronostic'
 import {
   JETON,
@@ -1028,41 +1029,29 @@ export function PredictWeek() {
               sautant un jour. La septième est plus large et violette parce
               qu'elle paie en pressings, pas en crampons — ici une couleur
               veut dire une monnaie (Mehdi, 2026-10-10). */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
-            <div className="flex items-center gap-1">
-              {Array.from({ length: SEMAINE.jours }, (_, i) => i + 1).map((n) => {
-                const fait = n <= joursFaits
-                const suivant = aReclamer && n === prochainJour
-                const septieme = n === SEMAINE.jours
-                return (
-                  <span
-                    key={n}
-                    className={cn(
-                      'h-1.5 rounded-full transition-colors',
-                      septieme ? 'w-4' : 'w-2.5',
-                      fait
-                        ? septieme
-                          ? 'bg-accent-violet'
-                          : 'bg-accent-gold'
-                        : suivant
-                          ? 'bg-accent-gold/30 ring-1 ring-accent-gold'
-                          : 'bg-slate-100',
-                    )}
-                  />
-                )
-              })}
-            </div>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
-              {soldeConnu
-                ? avec(t('{f}/{n} days · the 7th pays {bonus} {point}'), {
-                    f: joursFaits,
-                    n: SEMAINE.jours,
+          {/* Les sept pastilles disaient le compte sans jamais donner
+              l'impression d'avancer. Le coureur, lui, se déplace : c'est la
+              même jauge que partout ailleurs dans le jeu (Mehdi,
+              2026-10-10). Le mauve de l'arrivée n'est pas décoratif — le 7e
+              jour verse des pressings, et le mauve est leur couleur. */}
+          <JaugeCoureur
+            className="mt-3"
+            taille={20}
+            taux={joursFaits / SEMAINE.jours}
+            teinteFin="violet"
+            fraction={soldeConnu ? `${joursFaits}/${SEMAINE.jours}` : '—'}
+            detail={
+              soldeConnu ? (
+                <span className="text-slate-500">
+                  {avec(t('the 7th pays {bonus} {point}'), {
                     bonus: SEMAINE.bonus,
                     point: t(POINT.plusieurs),
-                  })
-                : '—'}
-            </span>
-          </div>
+                  })}
+                </span>
+              ) : undefined
+            }
+            titre={t('daily streak')}
+          />
 
           {/* L'échelle des paliers. Une barre unique vers 7 500 ne disait rien
               du chemin ; cinq marches donnent un palier à atteindre tout de
