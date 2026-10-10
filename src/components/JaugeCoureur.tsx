@@ -104,6 +104,13 @@ export default function JaugeCoureur({
   const avance = `calc(${plein}% - ${((plein / 100) * taille).toFixed(2)}px)`
   const butHauteur = Math.round(taille * BUT_ECHELLE)
   const butLargeur = Math.round(butHauteur * BUT_RAPPORT)
+  // LA LIGNE TRAVERSE LA SURFACE, elle ne s'arrête pas à sa base.
+  // Vue du dessus, la piste EST la pelouse : elle doit passer par le point
+  // de penalty, pas sous la surface (Mehdi, 2026-10-10). La surface déborde
+  // donc sous la ligne, et c'est ce débordement qui décale tout le reste
+  // vers le haut — sinon elle mordrait sur la légende en dessous.
+  const debord = Math.max(0, Math.round((butHauteur - PISTE) / 2))
+  const hauteur = Math.max(debord + PISTE + taille, butHauteur)
 
   // Classes LITTÉRALES : Tailwind lit le source et ne génère rien pour un
   // `bg-accent-${x}` construit à l'exécution.
@@ -128,12 +135,12 @@ export default function JaugeCoureur({
         </div>
       )}
 
-      <div className="relative mt-1" style={{ height: butHauteur + PISTE }}>
+      <div className="relative mt-1" style={{ height: hauteur }}>
         {/* La course : la piste s'arrête à la surface, pas au bord de la
             carte — sinon le coureur finirait DANS le but. */}
         <div
-          className="absolute top-0 bottom-0"
-          style={{ insetInlineStart: 0, insetInlineEnd: butLargeur + BUT_ECART }}
+          className="absolute top-0"
+          style={{ bottom: debord, insetInlineStart: 0, insetInlineEnd: butLargeur + BUT_ECART }}
         >
           {/* Le coureur, posé SUR la piste : il s'arrête juste à son sommet,
               pour qu'il ait l'air d'y courir. */}
@@ -179,7 +186,7 @@ export default function JaugeCoureur({
             fini ? couleurCoureur : 'text-slate-200',
           )}
           style={{
-            bottom: PISTE,
+            bottom: 0,
             insetInlineEnd: 0,
             width: butLargeur,
             height: butHauteur,
