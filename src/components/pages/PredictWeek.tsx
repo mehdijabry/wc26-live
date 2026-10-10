@@ -9,6 +9,7 @@ import { localeOf, trLeague, useLang, useT, type Lang } from '../../lib/i18n'
 import { Jeton } from '../Jeton'
 import { Icone } from '../Icone'
 import CartePronostic from '../CartePronostic'
+import BoutonPronostic from '../BoutonPronostic'
 import {
   pronosticsDisponibles,
   mesPronostics,
@@ -467,26 +468,16 @@ function CarteMatch({
           )}
         </div>
       )}
-
-      {/* Le pronostic. N'apparaît QUE si le fournisseur couvre ce match. */}
+      {/* Le pronostic IA. N'apparaît QUE si le fournisseur couvre ce match,
+          et il est separe des marches de pari : voir BoutonPronostic. */}
       {ouvert && pronosticDispo && (
-        <div className="mt-1">
-          <button
-            type="button"
-            onClick={() => setPronoOuvert((v) => !v)}
-            className={cn(
-              'w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-[11px] transition-colors',
-              pronoOuvert ? 'bg-accent-violet/15 text-accent-violet' : 'text-slate-500 hover:bg-slate-50',
-            )}
-          >
-            <span className="uppercase tracking-wider">
-              {t('Prediction')}
-              {!pronosticOuvert && prixPronostic?.crampons === 0 && (
-                <span className="ms-2 normal-case tracking-normal text-accent-gold">{t('free today')}</span>
-              )}
-            </span>
-            <span className="text-slate-400">{pronoOuvert ? '−' : '+'}</span>
-          </button>
+        <div className="mt-2 pt-2 border-t border-slate-200">
+          <BoutonPronostic
+            ouvert={pronoOuvert}
+            dejaDebloque={pronosticOuvert}
+            offert={prixPronostic?.crampons === 0}
+            onBascule={() => setPronoOuvert((v) => !v)}
+          />
 
           {pronoOuvert && (
             <CartePronostic

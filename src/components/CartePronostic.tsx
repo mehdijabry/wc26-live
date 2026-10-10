@@ -10,7 +10,11 @@ import {
   debloquer,
   type Carte,
   motifLisible,
+  libelleStat,
+  STATS_EN_TETE,
   type Prix,
+  type Forme,
+  type FaceAFace,
 } from '../lib/pronostic'
 
 /**
@@ -226,13 +230,35 @@ export default function CartePronostic(p: Props) {
                 {carte.leurs.scoreProbable && (
                   <Case etiquette={t('likeliest score')} valeur={carte.leurs.scoreProbable} />
                 )}
-                {carte.leurs.plusDe && (
-                  <Case etiquette={t('over 2.5 goals')} valeur={`${Math.round(carte.leurs.plusDe.deux5)} %`} />
-                )}
-                {carte.leurs.lesDeuxMarquent !== null && (
-                  <Case etiquette={t('both teams score')} valeur={`${Math.round(carte.leurs.lesDeuxMarquent)} %`} />
-                )}
               </div>
+
+              {/* Les marchés, TOUS. On n'en montrait qu'un sur six. */}
+              {carte.leurs.plusDe && (
+                <Rangee
+                  titre={t('over N goals')}
+                  valeurs={[
+                    ['1.5', carte.leurs.plusDe.un5],
+                    ['2.5', carte.leurs.plusDe.deux5],
+                    ['3.5', carte.leurs.plusDe.trois5],
+                  ]}
+                />
+              )}
+              {carte.leurs.corners && (
+                <Rangee
+                  titre={t('over N corners')}
+                  valeurs={[
+                    ['8.5', carte.leurs.corners.huit5],
+                    ['9.5', carte.leurs.corners.neuf5],
+                    ['10.5', carte.leurs.corners.dix5],
+                  ]}
+                />
+              )}
+              {carte.leurs.lesDeuxMarquent !== null && (
+                <Rangee
+                  titre={t('both teams score')}
+                  valeurs={[[t('yes'), carte.leurs.lesDeuxMarquent]]}
+                />
+              )}
             </section>
           )}
 
@@ -258,36 +284,224 @@ export default function CartePronostic(p: Props) {
             </section>
           )}
 
+          {/* ── La forme, et l'histoire commune ───────────────────────── */}
+          {carte.forme && (carte.forme.dom || carte.forme.ext) && (
+            <section>
+              <Titre>{t('Form over the last matches')}</Titre>
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
+                <BlocForme forme={carte.forme.dom} nom={p.domicile} couleur="#D9B54A" />
+                <BlocForme forme={carte.forme.ext} nom={p.exterieur} couleur="#ECEFE8" />
+              </div>
+              {carte.forme.dom && carte.forme.ext && (
+                <Comparaison dom={carte.forme.dom} ext={carte.forme.ext} />
+              )}
+            </section>
+          )}
+
+          {carte.faceAFace && <BlocFaceAFace h2h={carte.faceAFace} />}
+
           {/* ── Les absents ───────────────────────────────────────────── */}
           {carte.absents && (carte.absents.home.length > 0 || carte.absents.away.length > 0) && (
             <section>
               <Titre>{t('Unavailable')}</Titre>
-              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              {/* CHAQUE COLONNE PORTE SON ÉQUIPE. Sans l'étiquette, rien ne
+                  disait laquelle des deux listes appartenait à qui : il
+                  fallait reconnaître les joueurs. */}
+              <div className="mt-2 grid gap-3 sm:grid-cols-2">
                 {(['home', 'away'] as const).map((cote) => (
-                  <ul key={cote} className="space-y-1">
-                    {carte.absents![cote].map((a) => (
-                      <li key={a.id} className="text-sm text-slate-600">
-                        <span className="text-slate-800">{a.short_name}</span>
-                        <span className="text-slate-500"> — {motifLisible(a, t)}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  <div key={cote}>
+                    <div className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                      <span
+                        className="h-1.5 w-1.5 rounded-full shrink-0"
+                        style={{ background: cote === 'home' ? '#D9B54A' : '#ECEFE8' }}
+                      />
+                      {cote === 'home' ? p.domicile : p.exterieur}
+                    </div>
+                    <ul className="mt-1 space-y-1">
+                      {carte.absents![cote].length === 0 && (
+                        <li className="text-sm text-slate-500">{t('nobody missing')}</li>
+                      )}
+                      {carte.absents![cote].map((a) => (
+                        <li key={a.id} className="text-sm text-slate-600">
+                          <span className="text-slate-800">{a.short_name}</span>
+                          <span className="text-slate-500"> — {motifLisible(a, t)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 ))}
               </div>
             </section>
           )}
 
+          {/* PAS DE « CONFIANCE » ICI. Le chiffre que le fournisseur appelle
+              ainsi est, à la décimale près, la plus forte de ses trois
+              probabilités — vérifié sur quatre matchs. Ce n'est pas une
+              seconde information, et l'afficher à côté de notre barre, qui
+              dit autre chose parce qu'elle part de la cote réelle, ne fait
+              que semer le doute. Il ne reste que la provenance. */}
           {carte.leurs?.modele && (
             <p className="font-mono text-[10px] uppercase tracking-wider text-slate-400">
-              {carte.leurs.modele}
-              {carte.leurs.confiance !== null
-                ? ` · ${t('confidence')} ${Math.round(carte.leurs.confiance * 100)} %`
-                : ''}
+              {t('model')} {carte.leurs.modele}
             </p>
           )}
         </div>
       )}
     </div>
+  )
+}
+
+/** Une rangée de seuils : « plus de 1,5 / 2,5 / 3,5 », tous d'un coup. */
+function Rangee({ titre, valeurs }: { titre: string; valeurs: Array<[string, number]> }) {
+  return (
+    <div className="mt-2">
+      <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{titre}</div>
+      <div className="mt-1 flex gap-2">
+        {valeurs.map(([seuil, v]) => (
+          <div key={seuil} className="flex-1 rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+            <div className="font-mono text-[10px] text-slate-500">{seuil}</div>
+            <div className="font-display text-base leading-tight tabular-nums">{Math.round(v)} %</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Les cinq derniers résultats, du plus récent au plus ancien. */
+function Serie({ serie }: { serie: string }) {
+  // La chaîne va du plus ANCIEN au plus récent : on prend la fin, puis on
+  // renverse, pour que le match le plus récent soit lu en premier.
+  const cinq = serie.slice(-5).split('').reverse()
+  const ton = (r: string) =>
+    r === 'W' ? 'bg-accent-green text-ink-900' : r === 'D' ? 'bg-slate-300 text-ink-900' : 'bg-accent-red text-ink-900'
+  return (
+    <div className="flex gap-1" dir="ltr">
+      {cinq.map((r, i) => (
+        <span
+          key={i}
+          className={cn('h-4 w-4 rounded-sm grid place-items-center font-mono text-[9px] font-bold', ton(r))}
+        >
+          {r}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+function BlocForme({ forme, nom, couleur }: { forme: Forme | null; nom: string; couleur: string }) {
+  const t = useT()
+  if (!forme) return <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">{t('No form data.')}</div>
+  return (
+    <div className="rounded-lg bg-slate-50 p-3">
+      <div className="flex items-center gap-1.5">
+        <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: couleur }} />
+        <span className="font-display text-sm truncate">{nom}</span>
+      </div>
+      <div className="mt-2">
+        <Serie serie={forme.serie} />
+      </div>
+      <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1 font-mono text-[11px] text-slate-600">
+        <Ligne cle={t('played')} valeur={`${forme.joues}`} />
+        <Ligne cle={t('W / D / L')} valeur={`${forme.gagnes}/${forme.nuls}/${forme.perdus}`} />
+        <Ligne cle={t('goals')} valeur={`${forme.butsPour}–${forme.butsContre}`} />
+        <Ligne cle={t('points per match')} valeur={forme.pointsParMatch.toFixed(2)} />
+      </dl>
+    </div>
+  )
+}
+
+function Ligne({ cle, valeur }: { cle: string; valeur: string }) {
+  return (
+    <>
+      <dt className="text-slate-500 truncate">{cle}</dt>
+      <dd className="text-end tabular-nums text-slate-800">{valeur}</dd>
+    </>
+  )
+}
+
+/**
+ * Les soixante statistiques, côte à côte.
+ *
+ * Huit en vue, le reste replié. Et « meilleur » n'est pas toujours « plus
+ * grand » : commettre plus de fautes ou perdre plus de ballons n'est pas un
+ * avantage, d'où la liste ci-dessous.
+ */
+const MOINS_C_EST_MIEUX = new Set([
+  'fouls', 'yellow_cards', 'red_cards', 'offsides', 'dispossessed',
+  'big_chances_missed', 'errors_lead_to_a_goal', 'errors_lead_to_a_shot',
+])
+
+function Comparaison({ dom, ext }: { dom: Forme; ext: Forme }) {
+  const t = useT()
+  const cles = [...new Set([...Object.keys(dom.stats), ...Object.keys(ext.stats)])]
+  const enTete = cles.filter((k) => (STATS_EN_TETE as readonly string[]).includes(k))
+  const reste = cles.filter((k) => !(STATS_EN_TETE as readonly string[]).includes(k)).sort()
+
+  // La colonne du milieu est à largeur fixe. En « auto » elle suivait la
+  // longueur de chaque libellé, et les chiffres des deux équipes dansaient
+  // d'une ligne à l'autre au lieu de former deux colonnes lisibles.
+  const rendre = (k: string) => {
+    const a = dom.stats[k]
+    const b = ext.stats[k]
+    const connu = typeof a === 'number' && typeof b === 'number'
+    const moins = MOINS_C_EST_MIEUX.has(k)
+    const domMieux = connu && (moins ? a < b : a > b)
+    const extMieux = connu && (moins ? b < a : b > a)
+    const nb = (v: number | undefined) => (typeof v === 'number' ? (Math.round(v * 100) / 100).toString() : '—')
+    return (
+      <div key={k} className="grid grid-cols-[1fr_minmax(0,9rem)_1fr] items-center gap-2 py-0.5">
+        <span className={cn('text-end tabular-nums', domMieux ? 'text-accent-gold font-semibold' : 'text-slate-600')}>
+          {nb(a)}
+        </span>
+        <span className="text-[10px] uppercase tracking-wider text-slate-500 text-center px-1">
+          {t(libelleStat(k))}
+        </span>
+        <span className={cn('tabular-nums', extMieux ? 'text-slate-900 font-semibold' : 'text-slate-600')}>
+          {nb(b)}
+        </span>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-3 font-mono text-[11px]">
+      {enTete.map(rendre)}
+      {reste.length > 0 && (
+        <details className="mt-2 group">
+          <summary className="cursor-pointer text-[10px] uppercase tracking-wider text-slate-500 hover:text-accent-gold transition-colors">
+            {avecN(t('{n} more statistics'), reste.length, 'en')}
+          </summary>
+          <div className="mt-1">{reste.map(rendre)}</div>
+        </details>
+      )}
+    </div>
+  )
+}
+
+function BlocFaceAFace({ h2h }: { h2h: FaceAFace }) {
+  const t = useT()
+  return (
+    <section>
+      <Titre>{t('Head-to-head')}</Titre>
+      <div className="mt-2 grid grid-cols-3 gap-2">
+        <Case etiquette={t('meetings')} valeur={`${h2h.total}`} />
+        <Case etiquette={t('W / D / L')} valeur={`${h2h.domGagne}/${h2h.nuls}/${h2h.extGagne}`} />
+        <Case etiquette={t('goals per match')} valeur={h2h.butsParMatch.toFixed(2)} />
+      </div>
+      {h2h.derniers.length > 0 && (
+        <ul className="mt-2 space-y-0.5 font-mono text-[11px] text-slate-600">
+          {h2h.derniers.map((m, i) => (
+            <li key={i} className="flex items-center gap-2">
+              <span className="text-slate-500 shrink-0">{m.date.slice(0, 10)}</span>
+              <span className="truncate">{m.dom}</span>
+              <span className="text-slate-900 font-semibold shrink-0" dir="ltr">{m.score}</span>
+              <span className="truncate">{m.ext}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
   )
 }
 

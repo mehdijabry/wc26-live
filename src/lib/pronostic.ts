@@ -52,6 +52,32 @@ export type Absent = {
   reason: string | null
 }
 
+export type Forme = {
+  equipe: string
+  /** Les dix derniers résultats, du plus ancien au plus récent : « LWWDW… ». */
+  serie: string
+  joues: number
+  gagnes: number
+  nuls: number
+  perdus: number
+  butsPour: number
+  butsContre: number
+  pointsParMatch: number
+  /** Les soixante moyennes du fournisseur, telles quelles. */
+  stats: Record<string, number>
+}
+
+export type FaceAFace = {
+  total: number
+  domGagne: number
+  nuls: number
+  extGagne: number
+  butsDom: number
+  butsExt: number
+  butsParMatch: number
+  derniers: Array<{ date: string; dom: string; ext: string; score: string }>
+}
+
 export type Carte = {
   match: string
   source: number | null
@@ -69,6 +95,66 @@ export type Carte = {
   composition: { home: EquipeComposition; away: EquipeComposition } | null
   absents: { home: Absent[]; away: Absent[] } | null
   statutComposition: 'confirmed' | 'predicted' | 'unavailable' | string
+  forme: { dom: Forme | null; ext: Forme | null } | null
+  faceAFace: FaceAFace | null
+}
+
+/**
+ * Les soixante statistiques, et l'ordre dans lequel elles se lisent.
+ *
+ * LES HUIT PREMIÈRES SONT MONTRÉES, LE RESTE EST REPLIÉ. Ce n'est pas un
+ * tri arbitraire : ce sont celles qui disent quelque chose sur l'issue d'un
+ * match — ce qu'une équipe crée, ce qu'elle concède, et à quelle vitesse.
+ * Les cinquante-deux autres restent accessibles d'un clic parce que Mehdi
+ * veut tout ce que l'API donne, et qu'on n'a pas à décider pour lui ce qui
+ * compte quand il parie.
+ *
+ * La valeur de chaque entrée est la chaîne ANGLAISE, qui sert de clé de
+ * traduction — même convention que partout ailleurs dans le site.
+ */
+export const STATS_EN_TETE = [
+  'xg',
+  'big_chances',
+  'shots_on_target',
+  'ball_possession',
+  'pass_accuracy_pct',
+  'corner_kicks',
+  'tackles_won',
+  'average_rating',
+] as const
+
+export const LIBELLE_STAT: Record<string, string> = {
+  xg: 'expected goals', expected_goals: 'expected goals (model)',
+  expected_goals_on_target: 'xG on target', big_chances: 'big chances',
+  big_chances_missed: 'big chances missed', big_chances_scored: 'big chances scored',
+  shots_on_target: 'shots on target', shots_off_target: 'shots off target',
+  total_shots: 'total shots', blocked_shots: 'blocked shots',
+  shots_inside_box: 'shots inside box', shots_outside_box: 'shots outside box',
+  hit_woodwork: 'hit woodwork', ball_possession: 'possession',
+  pass_accuracy_pct: 'pass accuracy', accurate_passes: 'accurate passes',
+  passes: 'passes', long_balls: 'long balls', through_balls: 'through balls',
+  crosses: 'crosses', dribbles: 'dribbles', dispossessed: 'dispossessed',
+  corner_kicks: 'corners', free_kicks: 'free kicks', throw_ins: 'throw-ins',
+  goal_kicks: 'goal kicks', offsides: 'offsides', fouls: 'fouls',
+  fouled_in_final_third: 'fouled in the final third', yellow_cards: 'yellow cards',
+  red_cards: 'red cards', tackles: 'tackles', total_tackles: 'total tackles',
+  tackles_won: 'tackles won', interceptions: 'interceptions', clearances: 'clearances',
+  recoveries: 'recoveries', duels: 'duels', ground_duels: 'ground duels',
+  aerial_duels: 'aerial duels', goalkeeper_saves: 'goalkeeper saves',
+  total_saves: 'total saves', big_saves: 'big saves', penalty_saves: 'penalty saves',
+  punches: 'punches', high_claims: 'high claims', goals_prevented: 'goals prevented',
+  errors_lead_to_a_goal: 'errors leading to a goal',
+  errors_lead_to_a_shot: 'errors leading to a shot',
+  attack: 'attacks', attack_pct: 'attacks share', dangerous_attack: 'dangerous attacks',
+  dangerous_attack_pct: 'dangerous attacks share', ball_safe: 'ball safe',
+  ball_safe_pct: 'ball safe share', final_third_entries: 'final third entries',
+  final_third_phase: 'final third phases', touches_in_penalty_area: 'touches in the box',
+  number_of_sprints: 'sprints', average_rating: 'average rating',
+}
+
+/** Le libellé anglais d'une statistique, ou la clé rendue lisible à défaut. */
+export function libelleStat(cle: string): string {
+  return LIBELLE_STAT[cle] ?? cle.replace(/_/g, ' ')
 }
 
 /**

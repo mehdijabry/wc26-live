@@ -41,6 +41,10 @@ const TTL_APPARIEMENT = 8 * 86_400
 const TTL_PRONOSTIC = 6 * 3600
 /** La composition, elle, se précise à l'approche du coup d'envoi. */
 const TTL_COMPOSITION = 900
+/** Les confrontations directes ne bougent qu'après un match joué. */
+const TTL_H2H = 86_400
+/** La forme recule d'un cran à chaque journée : une demi-journée suffit. */
+const TTL_FORME = 43_200
 
 type EnvPronos = {
   CACHE: KVNamespace
@@ -333,6 +337,44 @@ export async function appariement(env: EnvPronos): Promise<Appariement> {
   return brut ? (JSON.parse(brut) as Appariement) : {}
 }
 
+export type Forme = {
+  equipe: string
+  /** Les dix derniers résultats, du plus ancien au plus récent : « LWWDW… ». */
+  serie: string
+  joues: number
+  gagnes: number
+  nuls: number
+  perdus: number
+  butsPour: number
+  butsContre: number
+  pointsParMatch: number
+  /**
+   * LES SOIXANTE STATISTIQUES, telles quelles.
+   *
+   * On n'en gardait que deux. Mehdi en veut l'intégralité — et c'est la
+   * bonne décision : ce sont des moyennes déjà calculées sur la fenêtre, le
+   * fournisseur ne facture rien, et choisir à sa place lesquelles comptent
+   * pour parier est précisément ce qu'on ne peut pas savoir. L'interface
+   * met en avant les plus parlantes et replie le reste.
+   *
+   * Chaque clé porte aussi son propre dénominateur côté fournisseur : une
+   * équipe peut avoir la possession sur dix matchs et les dribbles sur
+   * quatre. On ne garde que la moyenne, déjà divisée par le bon compte.
+   */
+  stats: Record<string, number>
+}
+
+export type FaceAFace = {
+  total: number
+  domGagne: number
+  nuls: number
+  extGagne: number
+  butsDom: number
+  butsExt: number
+  butsParMatch: number
+  derniers: Array<{ date: string; dom: string; ext: string; score: string }>
+}
+
 export type CartePronostic = {
   match: string
   source: number | null
@@ -352,6 +394,10 @@ export type CartePronostic = {
   composition: unknown | null
   absents: unknown | null
   statutComposition: string
+  /** La forme des deux équipes et leur histoire commune. Nulles quand le
+   *  fournisseur ne les a pas — la carte se monte sans elles. */
+  forme: { dom: Forme | null; ext: Forme | null } | null
+  faceAFace: FaceAFace | null
 }
 
 /**
@@ -395,6 +441,8 @@ export async function cartePronostic(env: EnvPronos, matchId: string): Promise<C
     composition: null,
     absents: null,
     statutComposition: 'unavailable',
+    forme: null,
+    faceAFace: null,
   }
   if (!source) return vide
 
@@ -433,10 +481,70 @@ export async function cartePronostic(env: EnvPronos, matchId: string): Promise<C
     }
   }
 
-  const [pro, comp] = await Promise.all([
+  type RepH2H = {
+    total_matches?: number
+    home_wins?: number
+    draws?: number
+    away_wins?: number
+    home_goals?: number
+    away_goals?: number
+    avg_total_goals?: number
+    recent_matches?: Array<{ date?: string; home?: string; away?: string; score?: string }>
+  }
+  type RepForme = {
+    team_name?: string
+    overall?: {
+      matches?: number
+      won?: number
+      drawn?: number
+      lost?: number
+      goals_for?: number
+      goals_against?: number
+      form?: string
+      points_per_match?: number
+      stats?: Record<string, { average?: number } | undefined>
+    }
+  }
+
+  const [pro, comp, h2h] = await Promise.all([
     lire<RepPro>(clePro, `/api/v2/events/${source}/prediction/`, TTL_PRONOSTIC),
     lire<RepComp>(cleComp, `/api/v2/events/${source}/lineups/`, TTL_COMPOSITION),
+    lire<RepH2H>(`bsd:h2h:${source}`, `/api/v2/events/${source}/h2h/`, TTL_H2H),
   ])
+
+  // LES IDENTIFIANTS D'ÉQUIPE VIENNENT DE LA COMPOSITION, donc cette passe-ci
+  // ne peut pas être lancée en même temps que la précédente. C'est le seul
+  // appel en deux temps de la carte, et il est conditionnel : pas de
+  // composition, pas de forme — plutôt que d'aller chercher une forme qu'on
+  // ne saurait rattacher à personne.
+  const cotes = comp?.lineups as { home?: { team_id?: number }; away?: { team_id?: number } } | undefined
+  const idDom = cotes?.home?.team_id
+  const idExt = cotes?.away?.team_id
+  const [formeDom, formeExt] = await Promise.all([
+    idDom ? lire<RepForme>(`bsd:forme:${idDom}`, `/api/v2/teams/${idDom}/form/`, TTL_FORME) : Promise.resolve(null),
+    idExt ? lire<RepForme>(`bsd:forme:${idExt}`, `/api/v2/teams/${idExt}/form/`, TTL_FORME) : Promise.resolve(null),
+  ])
+
+  const formeDe = (f: RepForme | null): Forme | null => {
+    const o = f?.overall
+    if (!o) return null
+    return {
+      equipe: f?.team_name ?? '',
+      serie: o.form ?? '',
+      joues: o.matches ?? 0,
+      gagnes: o.won ?? 0,
+      nuls: o.drawn ?? 0,
+      perdus: o.lost ?? 0,
+      butsPour: o.goals_for ?? 0,
+      butsContre: o.goals_against ?? 0,
+      pointsParMatch: o.points_per_match ?? 0,
+      stats: Object.fromEntries(
+        Object.entries(o.stats ?? {})
+          .map(([k, v]) => [k, v?.average])
+          .filter((e): e is [string, number] => typeof e[1] === 'number'),
+      ),
+    }
+  }
 
   const m = pro?.markets
   const incoherent = m ? pronosticIncoherent(m) : false
@@ -479,5 +587,23 @@ export async function cartePronostic(env: EnvPronos, matchId: string): Promise<C
     composition: comp?.lineups ?? null,
     absents: comp?.unavailable_players ?? null,
     statutComposition: comp?.lineup_status ?? 'unavailable',
+    forme: formeDom || formeExt ? { dom: formeDe(formeDom), ext: formeDe(formeExt) } : null,
+    faceAFace: h2h?.total_matches
+      ? {
+          total: h2h.total_matches,
+          domGagne: h2h.home_wins ?? 0,
+          nuls: h2h.draws ?? 0,
+          extGagne: h2h.away_wins ?? 0,
+          butsDom: h2h.home_goals ?? 0,
+          butsExt: h2h.away_goals ?? 0,
+          butsParMatch: Math.round((h2h.avg_total_goals ?? 0) * 100) / 100,
+          derniers: (h2h.recent_matches ?? []).slice(0, 4).map((m) => ({
+            date: m.date ?? '',
+            dom: m.home ?? '',
+            ext: m.away ?? '',
+            score: m.score ?? '',
+          })),
+        }
+      : null,
   }
 }

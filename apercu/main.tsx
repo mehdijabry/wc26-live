@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { useState } from 'react'
 import CartePronostic from '../src/components/CartePronostic'
 import TerrainChargement from '../src/components/TerrainChargement'
+import BoutonPronostic from '../src/components/BoutonPronostic'
 import '../src/index.css'
 
 function Apercu() {
@@ -17,6 +18,26 @@ function Apercu() {
           </h2>
           <div className="glass rounded-2xl mt-2">
             <TerrainChargement />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">
+            1 bis · le bouton, dans ses trois états
+          </h2>
+          <div className="mt-2 space-y-2 glass rounded-2xl p-3">
+            <div className="font-mono text-[10px] text-slate-500">— à côté des marchés, pour comparer —</div>
+            <div className="px-3 py-1.5 rounded-lg font-mono text-[11px] text-slate-500 flex justify-between">
+              <span className="uppercase tracking-wider">score exact</span><span>+</span>
+            </div>
+            <div className="px-3 py-1.5 rounded-lg font-mono text-[11px] text-slate-500 flex justify-between">
+              <span className="uppercase tracking-wider">buteur</span><span>+</span>
+            </div>
+            <div className="pt-2 border-t border-slate-200">
+              <BoutonPronostic ouvert={false} dejaDebloque={false} offert onBascule={() => {}} />
+            </div>
+            <BoutonPronostic ouvert={false} dejaDebloque={false} offert={false} onBascule={() => {}} />
+            <BoutonPronostic ouvert dejaDebloque onBascule={() => {}} offert={false} />
           </div>
         </section>
 
