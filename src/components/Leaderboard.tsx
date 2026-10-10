@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { JETON, POINT, PALIER } from '../lib/jeu'
 import { Jeton } from './Jeton'
-import { localeOf, useLang } from '../lib/i18n'
+import { localeOf, useLang, useT } from '../lib/i18n'
 import { supabase, type LeaderboardRow } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import { SectionHeader } from './Groups'
@@ -34,6 +34,7 @@ export function Leaderboard({
   // Les nombres suivent la langue affichée. Ils étaient figés en « fr-FR »,
   // ce qui écrivait « 7 500 » au milieu d'une phrase anglaise.
   const lang = useLang((s) => s.lang)
+  const t = useT()
   const [rows, setRows] = useState<LeaderboardRow[]>([])
   const [loading, setLoading] = useState(true)
   // Les brackets du Mondial ont quitté cette page — ils étaient l'onglet
@@ -82,9 +83,13 @@ export function Leaderboard({
       <div className={niveau === 1 ? 'container max-w-6xl mx-auto px-6' : ''}>
         <SectionHeader
           niveau={niveau}
-          eyebrow="every player"
+          eyebrow={t('every player')}
           title={titre}
-          sub={`Live ranking of everyone backing their calls. You stake ${JETON.plusieurs}, you win ${POINT.plusieurs} at the real odds — ${PALIER.points.toLocaleString(localeOf(lang))} ${POINT.plusieurs} unlock ${PALIER.recompense}.`}
+          sub={t('Live ranking of everyone backing their calls. You stake {jeton}, you win {point} at the real odds — {palier} {point} unlock {prix}.')
+            .replace('{jeton}', t(JETON.plusieurs))
+            .replace('{palier}', PALIER.points.toLocaleString(localeOf(lang)))
+            .replace('{prix}', PALIER.recompense)
+            .replaceAll('{point}', t(POINT.plusieurs))}
         />
 
         <div className="flex flex-wrap gap-2 mt-8 mb-6">

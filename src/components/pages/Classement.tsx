@@ -168,11 +168,15 @@ export function Classement() {
 
   return (
     <div className="container max-w-3xl mx-auto px-6 pt-10">
+      {/* SectionHeader ne traduit pas : il reçoit des chaînes toutes faites.
+          Le titre d'une page lue en français ne peut pas rester en anglais. */}
       <SectionHeader
         niveau={1}
-        eyebrow="the game"
-        title="Standings"
-        sub={`You stake ${JETON.plusieurs}, you win ${POINT.plusieurs} at the real odds, and every win writes points that never come back off. Groups turn that into a season between mates.`}
+        eyebrow={t('the game')}
+        title={t('Standings')}
+        sub={t('You stake {jeton}, you win {point} at the real odds, and every win writes points that never come back off. Groups turn that into a season between mates.')
+          .replace('{jeton}', t(JETON.plusieurs))
+          .replace('{point}', t(POINT.plusieurs))}
       />
 
       {/* ── 1. MA SAISON ─────────────────────────────────────────────────── */}
@@ -367,7 +371,7 @@ export function Classement() {
       />
 
       {/* ── 4. LE CLASSEMENT GÉNÉRAL ─────────────────────────────────────── */}
-      <Leaderboard niveau={2} titre="Global table" />
+      <Leaderboard niveau={2} titre={t('Global table')} />
 
       <AuthModal
         open={modale}

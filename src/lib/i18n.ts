@@ -68,6 +68,12 @@ export function localeOf(l: Lang): string {
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
   // ── La section du jeu : /board (10/10/2026) ────────────────────────
+  'the game': 'اللعبة',
+  'every player': 'كل اللاعبين',
+  'Global table': 'الترتيب العام',
+  'You stake {jeton}, you win {point} at the real odds, and every win writes points that never come back off. Groups turn that into a season between mates.': 'تراهن بـ{jeton}، وتربح {point} بالمعامل الحقيقي للمباراة، وكل رهان رابح يكتب نقاطًا لا تضيع أبدًا. والمجموعات تحوّل ذلك إلى موسم بين الأصدقاء.',
+  'Live ranking of everyone backing their calls. You stake {jeton}, you win {point} at the real odds — {palier} {point} unlock {prix}.': 'الترتيب المباشر لكل من يراهن على توقعاته. تراهن بـ{jeton}، وتربح {point} بالمعامل الحقيقي — {palier} {point} تفتح {prix}.',
+  // ── La section du jeu : /board (10/10/2026) ────────────────────────
   'Standings': 'الترتيب',
   'Your groups': 'مجموعاتي',
   'New group': 'مجموعة جديدة',
@@ -572,6 +578,12 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // ── La section du jeu : /board (10/10/2026) ────────────────────────
+  'the game': 'le jeu',
+  'every player': 'tous les joueurs',
+  'Global table': 'Classement général',
+  'You stake {jeton}, you win {point} at the real odds, and every win writes points that never come back off. Groups turn that into a season between mates.': 'Vous misez des {jeton}, vous gagnez des {point} à la cote réelle du match, et chaque pari gagné écrit des points qui ne se reperdent jamais. Les groupes en font une saison entre amis.',
+  'Live ranking of everyone backing their calls. You stake {jeton}, you win {point} at the real odds — {palier} {point} unlock {prix}.': 'Le classement en direct de tous ceux qui assument leurs pronostics. Vous misez des {jeton}, vous gagnez des {point} à la cote réelle — {palier} {point} débloquent {prix}.',
   // ── La section du jeu : /board (10/10/2026) ────────────────────────
   'Standings': 'Classement',
   'Your groups': 'Mes groupes',
