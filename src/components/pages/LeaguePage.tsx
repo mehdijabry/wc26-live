@@ -39,6 +39,8 @@ export function LeaguePage() {
   const [ligue, setLigue] = useState<Ligue | null | 'introuvable'>(null)
   const [lignes, setLignes] = useState<LigneDeLigue[]>([])
   const [occupe, setOccupe] = useState(false)
+  /** Le groupe qu'on vient de quitter en rejoignant celui-ci. */
+  const [quitte, setQuitte] = useState<string | null>(null)
   const [copie, setCopie] = useState(false)
   const [modale, setModale] = useState(false)
 
@@ -90,7 +92,11 @@ export function LeaguePage() {
       return
     }
     setOccupe(true)
-    await rejoindre(ligue.id, user.id)
+    // UN JOUEUR, UN GROUPE : rejoindre fait quitter le précédent. La fonction
+    // renvoie son nom pour qu'on le DISE, au lieu de laisser le joueur
+    // découvrir tout seul qu'il n'y est plus.
+    const a = await rejoindre(ligue.slug)
+    if (a?.quitte) setQuitte(a.quitte)
     await charger()
     setOccupe(false)
   }
@@ -114,6 +120,15 @@ export function LeaguePage() {
         {lignes.length} {lignes.length === 1 ? t('member') : t('members')} ·{' '}
         {t('points counted from the day each member joined, so everyone starts level.')}
       </p>
+
+      {/* Dit explicitement ce qu'on vient de perdre. Un joueur n'appartient
+          qu'à UN groupe : rejoindre celui-ci l'a sorti du précédent, et le
+          découvrir plus tard serait une mauvaise surprise. */}
+      {quitte && (
+        <p className="mt-3 rounded-lg border border-accent-gold/40 bg-accent-gold/[0.06] px-3 py-2 text-sm">
+          {t('You left {g} to join this one — a player belongs to a single group.').replace('{g}', quitte)}
+        </p>
+      )}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         {!membre && (

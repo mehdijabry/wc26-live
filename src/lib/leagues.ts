@@ -42,19 +42,37 @@ export function nouveauSlug(): string {
   return Array.from(tirage, (n) => alphabet[n % alphabet.length]).join('')
 }
 
-export async function creerLigue(nom: string, proprietaire: string): Promise<Ligue | null> {
+/**
+ * UN JOUEUR, UN GROUPE.
+ *
+ * Créer ou rejoindre fait maintenant QUITTER le groupe précédent, et les
+ * deux opérations passent par une fonction en base plutôt que par deux
+ * insertions côté client. Deux raisons :
+ *
+ *  · la base porte une contrainte d'unicité sur le joueur ; depuis le
+ *    client, la seconde insertion échouerait avec un code d'erreur brut que
+ *    personne ne saurait traduire ;
+ *  · quitter puis entrer doit être ATOMIQUE. Si la seconde moitié échouait,
+ *    le joueur se retrouverait sans groupe — et sans moyen de revenir, le
+ *    lien d'invitation de son ancien groupe étant chez quelqu'un d'autre.
+ *
+ * Les deux renvoient le nom du groupe quitté, pour que l'interface puisse le
+ * dire au lieu de laisser le joueur le découvrir.
+ */
+export type Arrivee = { groupe: string; slug: string; nom: string; quitte: string | null }
+
+export async function creerLigue(nom: string): Promise<Arrivee | null> {
   if (!supabase) return null
+  // Le slug est tiré ICI, pas en base : c'est lui qui sert de lien
+  // d'invitation, et la page a besoin de le connaître pour y naviguer.
   const slug = nouveauSlug()
-  const { data, error } = await supabase
-    .from('leagues')
-    .insert({ slug, name: nom.trim().slice(0, 60), owner_id: proprietaire })
-    .select()
-    .single()
+  const { data, error } = await supabase.rpc('creer_groupe', {
+    p_slug: slug,
+    p_nom: nom.trim().slice(0, 60),
+  })
   if (error || !data) return null
-  // Le créateur est membre de sa propre ligue, sinon il n'apparaît pas dans
-  // son classement.
-  await supabase.from('league_members').insert({ league_id: data.id, user_id: proprietaire })
-  return data as Ligue
+  const l = Array.isArray(data) ? data[0] : data
+  return { groupe: l.groupe as string, slug, nom: l.nom as string, quitte: (l.quitte as string) ?? null }
 }
 
 export async function ligueParSlug(slug: string): Promise<Ligue | null> {
@@ -77,13 +95,12 @@ export async function mesLigues(utilisateur: string): Promise<Ligue[]> {
     .sort((a, b) => a.name.localeCompare(b.name, 'fr'))
 }
 
-export async function rejoindre(idLigue: string, utilisateur: string): Promise<boolean> {
-  if (!supabase) return false
-  const { error } = await supabase
-    .from('league_members')
-    .insert({ league_id: idLigue, user_id: utilisateur })
-  // 23505 = déjà membre. Ce n'est pas une erreur du point de vue de l'appelant.
-  return !error || error.code === '23505'
+export async function rejoindre(slug: string): Promise<Arrivee | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase.rpc('rejoindre_groupe', { p_slug: slug })
+  if (error || !data) return null
+  const l = Array.isArray(data) ? data[0] : data
+  return { groupe: l.groupe as string, slug, nom: l.nom as string, quitte: (l.quitte as string) ?? null }
 }
 
 export async function quitter(idLigue: string, utilisateur: string): Promise<void> {

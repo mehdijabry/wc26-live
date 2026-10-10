@@ -59,7 +59,7 @@ export function Leagues() {
     if (!propre) return
     setOccupe(true)
     setErreur(null)
-    const l = await creerLigue(propre, user.id)
+    const l = await creerLigue(propre)
     setOccupe(false)
     if (!l) {
       setErreur(t('The league could not be created. Try again in a moment.'))
