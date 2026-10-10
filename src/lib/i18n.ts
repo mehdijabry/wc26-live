@@ -67,6 +67,11 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  '{n} clubs. Open one for its full squad.': '{n} ناديًا. افتح واحدًا لرؤية تشكيلته كاملة.',
+  // ── Les championnats et leurs classements (10/10/2026) ─────────────
+  'Leagues': 'الدوريات',
+  'All leagues': 'كل البطولات',
+  'All clubs': 'كل الأندية',
   // ── Le lien de bienvenue (10/10/2026) ──────────────────────────────
   'welcome to Pressing 90': 'مرحبًا بك في بريسينغ 90',
   'Your welcome bonus': 'هديتك الترحيبية',
@@ -602,6 +607,11 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  '{n} clubs. Open one for its full squad.': '{n} clubs. Ouvrez-en un pour son effectif complet.',
+  // ── Les championnats et leurs classements (10/10/2026) ─────────────
+  'Leagues': 'Ligues',
+  'All leagues': 'Tous les championnats',
+  'All clubs': 'Tous les clubs',
   // ── Le lien de bienvenue (10/10/2026) ──────────────────────────────
   'welcome to Pressing 90': 'bienvenue sur Pressing 90',
   'Your welcome bonus': 'Votre cadeau de bienvenue',

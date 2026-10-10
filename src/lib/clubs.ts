@@ -219,7 +219,14 @@ async function jget<T>(url: string): Promise<T> {
 type EspnStandings = {
   name?: string
   children?: EspnStandings[]
-  standings?: { entries?: Array<{ team?: EspnTeamRaw }> }
+  standings?: {
+    entries?: Array<{
+      team?: EspnTeamRaw
+      /** Le classement officiel. Il arrivait DÉJÀ dans cette réponse — on
+       *  ne lisait que les équipes et on jetait les points. */
+      stats?: Array<{ name?: string; displayValue?: string; value?: number }>
+    }>
+  }
 }
 type EspnTeamRaw = {
   id: string
@@ -295,6 +302,98 @@ function versResume(t: EspnTeamRaw): ClubResume {
     logo: t.logos?.[0]?.href ?? t.logo ?? null,
     couleur: t.color ? `#${t.color}` : null,
   }
+}
+
+/**
+ * Une ligne du classement officiel.
+ *
+ * `rang` vient d'ESPN et non de l'ordre du tableau : les entrées arrivent
+ * DÉSORDONNÉES (mesuré sur la MLS le 10/10/2026 — 2, 13, 3…). Trier soi-même
+ * sur les points serait faux aussi, les règles de départage varient d'un
+ * championnat à l'autre.
+ */
+export type LigneClassement = {
+  rang: number
+  club: ClubResume
+  joues: number
+  gagnes: number
+  nuls: number
+  perdus: number
+  pour: number
+  contre: number
+  difference: string
+  points: number
+}
+
+/** Un tableau : un championnat n'en a qu'un, la MLS en a deux (conférences). */
+export type GroupeClassement = { nom: string; lignes: LigneClassement[] }
+
+function stat(
+  stats: Array<{ name?: string; displayValue?: string; value?: number }> | undefined,
+  nom: string,
+): { n: number; texte: string } {
+  const s = (stats ?? []).find((x) => x.name === nom)
+  const texte = s?.displayValue ?? ''
+  const n = Number(s?.value ?? Number(texte))
+  return { n: Number.isFinite(n) ? n : 0, texte }
+}
+
+/**
+ * Le championnat en une seule requête : son nom, ses clubs, et son
+ * classement officiel.
+ *
+ * UNE SEULE REQUÊTE, et c'est le point : la liste des clubs sortait déjà de
+ * `/standings`, on jetait simplement les colonnes. Afficher le tableau ne
+ * coûte donc aucun aller-retour de plus.
+ *
+ * `groupes` est vide quand la compétition n'a pas de classement (la Botola
+ * passe par notre worker, qui ne publie que les équipes) : l'appelant
+ * retombe alors sur la grille de clubs seule.
+ */
+export async function championnatComplet(
+  espnSlug: string,
+): Promise<{ nomLigue: string; clubs: ClubResume[]; groupes: GroupeClassement[] }> {
+  if (espnSlug === BOTOLA) {
+    const { nomLigue, clubs } = await clubsDuChampionnat(espnSlug)
+    return { nomLigue, clubs, groupes: [] }
+  }
+
+  const d = await jget<EspnStandings>(`${ESPN_LISTE}/${espnSlug}/standings`)
+  const vus = new Map<string, ClubResume>()
+  const groupes: GroupeClassement[] = []
+
+  const descendre = (n: EspnStandings, nomParent: string) => {
+    const entrees = n.standings?.entries ?? []
+    if (entrees.length > 0) {
+      const lignes: LigneClassement[] = []
+      for (const e of entrees) {
+        if (!e.team?.id) continue
+        const club = versResume(e.team)
+        if (!vus.has(e.team.id)) vus.set(e.team.id, club)
+        lignes.push({
+          rang: stat(e.stats, 'rank').n,
+          club,
+          joues: stat(e.stats, 'gamesPlayed').n,
+          gagnes: stat(e.stats, 'wins').n,
+          nuls: stat(e.stats, 'ties').n,
+          perdus: stat(e.stats, 'losses').n,
+          pour: stat(e.stats, 'pointsFor').n,
+          contre: stat(e.stats, 'pointsAgainst').n,
+          difference: stat(e.stats, 'pointDifferential').texte,
+          points: stat(e.stats, 'points').n,
+        })
+      }
+      // Une entrée sans rang (ESPN en laisse passer) finirait en tête d'un
+      // tri naïf : elle est renvoyée au bout.
+      lignes.sort((a, b) => (a.rang || 999) - (b.rang || 999))
+      if (lignes.length > 0) groupes.push({ nom: n.name ?? nomParent, lignes })
+    }
+    for (const enfant of n.children ?? []) descendre(enfant, n.name ?? nomParent)
+  }
+  descendre(d, d.name ?? espnSlug)
+
+  const clubs = [...vus.values()].sort((a, b) => a.nom.localeCompare(b.nom, 'en'))
+  return { nomLigue: d.name ?? espnSlug, clubs, groupes }
 }
 
 /** Les clubs d'un championnat, et le nom qu'ESPN lui donne. */

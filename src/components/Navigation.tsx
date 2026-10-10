@@ -16,7 +16,10 @@ const BASE_LINKS: Array<{ label: string; to: string }> = [
   { label: 'Matches', to: '/today' },
   // Les 363 pages clubs ne doivent pas dépendre du seul plan du site pour
   // être trouvées : un lien depuis chaque page du site vaut mieux.
-  { label: 'Clubs', to: '/clubs' },
+  // « Clubs » ne dit plus ce que la section contient : depuis le
+  // 10/10/2026 on y trouve d'abord le classement officiel de chaque
+  // championnat, les clubs ensuite (Mehdi).
+  { label: 'Leagues', to: '/clubs' },
   { label: 'News', to: '/news' },
   // Le jeu et son classement sont le produit, pas une annexe : ils méritent
   // d'être dans la navigation principale, pas seulement dans un lien de pied

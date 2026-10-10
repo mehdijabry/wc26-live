@@ -27,8 +27,8 @@ export function Clubs() {
   usePageHead(
     Object.keys(etat).length
       ? {
-          titre: 'Football clubs by league, country and continent',
-          description: `Every club in ${CONTINENTS.flatMap((c) => CHAMPIONNATS[c]).length} leagues across ${CONTINENTS.length} continents, with the current squad on each club page. Premier League, LALIGA, Serie A, Brasileirão, MLS and more.`,
+          titre: 'Football league tables, clubs and squads',
+          description: `The live table of ${CONTINENTS.flatMap((c) => CHAMPIONNATS[c]).length} leagues across ${CONTINENTS.length} continents — points, goal difference, form — and every club's current squad. Premier League, LALIGA, Serie A, Brasileirão, MLS and more.`,
           chemin: '/clubs',
         }
       : null,
@@ -42,7 +42,7 @@ export function Clubs() {
       ? {
           '@context': 'https://schema.org',
           '@type': 'CollectionPage',
-          name: 'Football clubs by league, country and continent',
+          name: 'Football league tables, clubs and squads',
           url: 'https://pressing90.live/clubs',
           mainEntity: {
             '@type': 'ItemList',
@@ -94,11 +94,11 @@ export function Clubs() {
 
   return (
     <div className="container max-w-5xl mx-auto px-6 py-10">
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Clubs by league</h1>
+      <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Leagues</h1>
       <p className="mt-3 text-muted-foreground max-w-2xl">
-        {nombreDeLigues} leagues across {CONTINENTS.length} continents. Open a league for its
-        clubs, open a club for its full squad — every name, number and position pulled live,
-        never typed by hand.
+        {nombreDeLigues} leagues across {CONTINENTS.length} continents. Open one for its live
+        table — points, goal difference, games played — and for every club in it, squad
+        included. All of it pulled live, never typed by hand.
       </p>
 
       {CONTINENTS.map((continent: Continent) => {

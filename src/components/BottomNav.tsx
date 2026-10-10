@@ -36,6 +36,19 @@ const tabs: Tab[] = [
     ),
   },
   {
+    // Les championnats : classement officiel d'abord, clubs ensuite. La
+    // section n'était atteignable que depuis le menu du haut, donc
+    // invisible sur téléphone (Mehdi, 2026-10-10).
+    to: '/clubs', label: 'Leagues',
+    icon: (a) => (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
+        <path d="M3 9h18M9 9v11" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" />
+        <path d="M12 12.5h6M12 16h4" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" />
+      </svg>
+    ),
+  },
+  {
     // Le jeu revient dans la barre du bas. Il en était sorti après la finale,
     // quand pronostiquer voulait encore dire « remplir le bracket du
     // Mondial » ; il porte maintenant le calendrier de la semaine, donc il a
@@ -165,6 +178,9 @@ export function BottomNav() {
             5: 'grid grid-cols-5',
             6: 'grid grid-cols-6',
             7: 'grid grid-cols-7',
+            // Huit, c'est l'archive du Mondial rallumée par l'interrupteur
+            // admin. 47 px par onglet sur un 375 : ça tient, tout juste.
+            8: 'grid grid-cols-8',
           }[visibleTabs.length] ?? 'grid grid-cols-5'
         }
       >
@@ -187,7 +203,7 @@ export function BottomNav() {
                     // « Classement » ne tient pas à 10 px dans une colonne de
                     // 53 px. Au-delà de cinq onglets le libellé rétrécit —
                     // mesuré sur 375 px, l'écran le plus étroit qu'on sert.
-                    (visibleTabs.length >= 6 ? 'text-[9px] ' : 'text-[10px] ') +
+                    (visibleTabs.length >= 7 ? 'text-[8px] ' : visibleTabs.length >= 6 ? 'text-[9px] ' : 'text-[10px] ') +
                     (isActive ? 'font-semibold' : 'font-medium')
                   }
                 >
