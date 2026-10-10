@@ -113,3 +113,18 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
 /* Hide-scrollbar utility (used by the live ticker) */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { scrollbar-width: none; }
+
+/* La trace d'une passe sur le terrain de chargement. Déclarée ici plutôt
+   qu'en ligne : une animation @keyframes ne peut pas vivre dans un style
+   d'attribut, et React remonte l'élément à chaque passe (clé changeante),
+   ce qui la relance toute seule. */
+@keyframes p90-trace {
+  from { opacity: 0.75; }
+  to   { opacity: 0; }
+}
+.trace-passe {
+  animation: p90-trace 0.55s ease-out forwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .trace-passe { animation: none; opacity: 0; }
+}

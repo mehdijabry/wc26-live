@@ -37,11 +37,27 @@ const POSTES: Array<[number, number]> = [
   [72, 20], [78, 50], [72, 80],
 ]
 
-/** La séquence de passes, par indice de joueur. */
-const PASSES = [0, 2, 5, 1, 6, 9, 7, 10, 6, 8, 9]
-
-/** Durée d'une passe, en millisecondes. Indépendante de la durée de l'étude. */
-const PASSE = 290
+/**
+ * Une passe toutes les 400 ms, vers un joueur tiré au sort.
+ *
+ * ── POURQUOI PLUS DE requestAnimationFrame ────────────────────────────────
+ * La première version interpolait le ballon image par image. Elle avait un
+ * défaut rédhibitoire : un onglet en arrière-plan ne reçoit PLUS AUCUNE
+ * frame, donc le terrain se figeait net pendant que les étapes, portées par
+ * des minuteries, continuaient de défiler. On voyait une étude avancer sur
+ * un terrain mort.
+ *
+ * Ici le ballon saute d'un joueur à l'autre sur une minuterie, et c'est le
+ * NAVIGATEUR qui interpole, par une transition CSS. Une minuterie est
+ * ralentie en arrière-plan, jamais arrêtée, et au retour tout est à sa
+ * place — alors qu'une boucle de frames, elle, ne reprend jamais seule.
+ *
+ * ── POURQUOI ALÉATOIRE ────────────────────────────────────────────────────
+ * Une séquence fixe se reconnaît à la deuxième étude, exactement comme une
+ * durée fixe (Mehdi, 2026-10-10). Le seul interdit est de se repasser le
+ * ballon à soi-même.
+ */
+const PASSE = 400
 
 /**
  * Les étapes, et le poids de chacune dans la durée totale.
@@ -70,7 +86,6 @@ export default function TerrainChargement({
   compact?: boolean
 }) {
   const t = useT()
-  const svg = useRef<SVGSVGElement | null>(null)
   const [etape, setEtape] = useState(0)
 
   // Tirée UNE SEULE FOIS au montage, par l'initialiseur paresseux de
@@ -86,54 +101,23 @@ export default function TerrainChargement({
   }, [onTermine])
 
   // ── Le ballon ───────────────────────────────────────────────────────────
+  // `porteur` est l'indice du joueur qui a la balle ; `precedent` sert à
+  // tracer la passe qui vient d'être jouée.
+  const [porteur, setPorteur] = useState(0)
+  const [precedent, setPrecedent] = useState(0)
+
   useEffect(() => {
-    const noeud = svg.current
-    if (!noeud) return
-
-    const ballon = noeud.querySelector<SVGCircleElement>('[data-ballon]')
-    const trace = noeud.querySelector<SVGPathElement>('[data-trace]')
-    const joueurs = Array.from(noeud.querySelectorAll<SVGCircleElement>('[data-joueur]'))
-    if (!ballon || !trace) return
-
-    const calme = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    if (calme) {
-      const [x, y] = POSTES[PASSES[PASSES.length - 1]]
-      ballon.setAttribute('cx', String(x))
-      ballon.setAttribute('cy', String(y))
-      return
-    }
-
-    let brut = 0
-    const depart = performance.now()
-
-    const dessiner = (maintenant: number) => {
-      const ecoule = maintenant - depart
-      const total = PASSES.length - 1
-      const avance = (ecoule / PASSE) % total
-      const i = Math.floor(avance)
-      const brutP = avance - i
-      const p = brutP < 0.5 ? 2 * brutP * brutP : 1 - 2 * (1 - brutP) * (1 - brutP)
-
-      const [xa, ya] = POSTES[PASSES[i]]
-      const [xb, yb] = POSTES[PASSES[i + 1]]
-      const x = xa + (xb - xa) * p
-      const y = ya + (yb - ya) * p
-      ballon.setAttribute('cx', String(x))
-      ballon.setAttribute('cy', String(y))
-      trace.setAttribute('d', `M ${xa} ${ya} L ${x} ${y}`)
-
-      const receveur = PASSES[i + 1]
-      const passeur = PASSES[i]
-      joueurs.forEach((j, k) => {
-        const vif = k === receveur ? Math.max(p, 0.15) : k === passeur ? 1 - p : 0
-        j.setAttribute('r', String(1.7 + 1.5 * vif))
-        j.setAttribute('opacity', String(0.45 + 0.55 * vif))
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+    const m = window.setInterval(() => {
+      setPorteur((actuel) => {
+        setPrecedent(actuel)
+        let suivant = actuel
+        // Un joueur ne se fait pas une passe à lui-même.
+        while (suivant === actuel) suivant = Math.floor(Math.random() * POSTES.length)
+        return suivant
       })
-
-      brut = requestAnimationFrame(dessiner)
-    }
-    brut = requestAnimationFrame(dessiner)
-    return () => cancelAnimationFrame(brut)
+    }, PASSE)
+    return () => clearInterval(m)
   }, [])
 
   // ── Les étapes ──────────────────────────────────────────────────────────
@@ -159,7 +143,6 @@ export default function TerrainChargement({
   return (
     <div className={compact ? 'py-3' : 'py-6'}>
       <svg
-        ref={svg}
         viewBox="0 0 100 100"
         className={compact ? 'w-full max-w-[200px] mx-auto block' : 'w-full max-w-[280px] mx-auto block'}
         role="img"
@@ -171,11 +154,41 @@ export default function TerrainChargement({
         <rect x="2" y="30" width="12" height="40" fill="none" stroke="#212B26" strokeWidth="0.5" />
         <rect x="86" y="30" width="12" height="40" fill="none" stroke="#212B26" strokeWidth="0.5" />
 
-        <path data-trace d="" stroke="#D9B54A" strokeWidth="0.6" opacity="0.5" fill="none" strokeLinecap="round" />
+        {/* La passe qui vient d'être jouée. Elle se redessine à chaque
+            changement de porteur, et s'efface d'elle-même. */}
+        <line
+          key={`${precedent}-${porteur}`}
+          x1={POSTES[precedent][0]}
+          y1={POSTES[precedent][1]}
+          x2={POSTES[porteur][0]}
+          y2={POSTES[porteur][1]}
+          stroke="#D9B54A"
+          strokeWidth="0.6"
+          strokeLinecap="round"
+          className="trace-passe"
+        />
         {POSTES.map(([x, y], i) => (
-          <circle key={i} data-joueur cx={x} cy={y} r="1.7" fill="#D9B54A" opacity="0.45" />
+          <circle
+            key={i}
+            cx={x}
+            cy={y}
+            r={i === porteur ? 3.2 : 1.7}
+            fill="#D9B54A"
+            opacity={i === porteur ? 1 : 0.45}
+            style={{ transition: 'r .3s ease-out, opacity .3s ease-out' }}
+          />
         ))}
-        <circle data-ballon cx={POSTES[0][0]} cy={POSTES[0][1]} r="1.5" fill="#ECEFE8" />
+        {/* Le ballon : c'est le NAVIGATEUR qui interpole le déplacement,
+            d'où la transition sur la translation plutôt qu'un calcul par
+            image. */}
+        <g
+          style={{
+            transform: `translate(${POSTES[porteur][0]}px, ${POSTES[porteur][1]}px)`,
+            transition: 'transform .34s cubic-bezier(.35,0,.25,1)',
+          }}
+        >
+          <circle cx="0" cy="0" r="1.5" fill="#ECEFE8" />
+        </g>
       </svg>
 
       {/* La progression. Une barre seule ne dirait pas CE QUI se fait ; la
