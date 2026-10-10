@@ -120,7 +120,12 @@ export function UserMenu() {
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-          <div className="absolute right-0 top-full mt-2 w-64 glass rounded-2xl p-4 z-40 ring-glow">
+          {/* `end-0` et non `right-0` : en arabe la pastille passe à gauche de
+              l'en-tête, et un ancrage physique à droite poussait le panneau
+              hors de l'écran — la boîte de déconnexion arrivait coupée sur
+              mobile (Mehdi, 2026-10-10). La largeur est en plus bornée au
+              viewport, pour qu'aucune mise en page ne puisse le faire déborder. */}
+          <div className="absolute end-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] glass rounded-2xl p-4 z-40 ring-glow">
             <div className="text-xs uppercase tracking-widest text-slate-500 font-mono mb-1">
               {t('Signed in as')}
             </div>
