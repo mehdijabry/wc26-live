@@ -24,19 +24,41 @@ import { useLang } from '../lib/i18n'
  * un coureur qui foncerait toujours vers la droite tournerait le dos à son
  * propre remplissage.
  */
-const MASQUE = {
-  WebkitMaskImage: 'url(/media/icones/coureur.svg)',
-  maskImage: 'url(/media/icones/coureur.svg)',
-  WebkitMaskRepeat: 'no-repeat',
-  maskRepeat: 'no-repeat',
-  WebkitMaskSize: 'contain',
-  maskSize: 'contain',
-  WebkitMaskPosition: 'bottom center',
-  maskPosition: 'bottom center',
-} as const
+function masque(fichier: string) {
+  const u = `url(/media/icones/${fichier}.svg)`
+  return {
+    WebkitMaskImage: u,
+    maskImage: u,
+    WebkitMaskRepeat: 'no-repeat',
+    maskRepeat: 'no-repeat',
+    WebkitMaskSize: 'contain',
+    maskSize: 'contain',
+    WebkitMaskPosition: 'bottom center',
+    maskPosition: 'bottom center',
+  } as const
+}
 
 /** Épaisseur de la piste, en pixels. Le coureur se cale dessus. */
 const PISTE = 4
+
+/**
+ * La surface de réparation, au bout du parcours — « comme si le joueur du
+ * chargement courait au point de penalty pour marquer » (Mehdi,
+ * 2026-10-10). Le fichier d'origine est vu du dessus, but en haut ; il a
+ * reçu un quart de tour horaire dans `penalty-area.svg` pour que la ligne
+ * de but fasse face au coureur. Sa boîte réelle fait 387 × 484, d'où ce
+ * rapport : sans lui, `contain` laisserait du vide d'un côté et le but ne
+ * serait pas collé au bout de la piste.
+ */
+const BUT_RAPPORT = 387.06 / 484
+/** Blanc entre la fin de la piste et la ligne des 16 mètres. */
+const BUT_ECART = 3
+/**
+ * La surface dépasse le coureur d'un quart. Elle est plus grande que lui
+ * dans la réalité, et à la taille exacte du joueur elle se lisait comme un
+ * rectangle gris sans rien dedans — on ne distinguait ni l'arc ni le point.
+ */
+const BUT_ECHELLE = 1.25
 
 export default function JaugeCoureur({
   taux,
@@ -80,6 +102,8 @@ export default function JaugeCoureur({
   // les autres jettent la déclaration en silence et le coureur ne quitte
   // jamais la ligne de départ.
   const avance = `calc(${plein}% - ${((plein / 100) * taille).toFixed(2)}px)`
+  const butHauteur = Math.round(taille * BUT_ECHELLE)
+  const butLargeur = Math.round(butHauteur * BUT_RAPPORT)
 
   // Classes LITTÉRALES : Tailwind lit le source et ne génère rien pour un
   // `bg-accent-${x}` construit à l'exécution.
@@ -104,39 +128,66 @@ export default function JaugeCoureur({
         </div>
       )}
 
-      <div className="relative mt-1" style={{ height: taille + PISTE }}>
-        {/* Le coureur, posé SUR la piste : il s'arrête juste à son sommet,
-            pour qu'il ait l'air d'y courir. */}
+      <div className="relative mt-1" style={{ height: butHauteur + PISTE }}>
+        {/* La course : la piste s'arrête à la surface, pas au bord de la
+            carte — sinon le coureur finirait DANS le but. */}
+        <div
+          className="absolute top-0 bottom-0"
+          style={{ insetInlineStart: 0, insetInlineEnd: butLargeur + BUT_ECART }}
+        >
+          {/* Le coureur, posé SUR la piste : il s'arrête juste à son sommet,
+              pour qu'il ait l'air d'y courir. */}
+          <span
+            aria-hidden="true"
+            className={cn(
+              'absolute transition-[inset-inline-start] duration-700 ease-out motion-reduce:transition-none',
+              couleurCoureur,
+            )}
+            style={{
+              bottom: PISTE,
+              insetInlineStart: avance,
+              width: taille,
+              height: taille,
+              backgroundColor: 'currentColor',
+              // En RTL la barre se remplit vers la gauche : le coureur se
+              // retourne pour courir dans le sens du remplissage.
+              transform: rtl ? 'scaleX(-1)' : undefined,
+              ...masque('coureur'),
+            }}
+          />
+          <div
+            className="absolute inset-x-0 bottom-0 rounded-full bg-slate-100 overflow-hidden"
+            style={{ height: PISTE }}
+          >
+            <div
+              className={cn(
+                'h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none',
+                couleurBarre,
+              )}
+              style={{ width: `${plein}%` }}
+            />
+          </div>
+        </div>
+
+        {/* La surface de réparation. Grise tant qu'il reste du chemin, elle
+            prend la couleur d'arrivée quand le coureur y est : c'est le but
+            marqué, et c'est la seule récompense visuelle du parcours. */}
         <span
           aria-hidden="true"
           className={cn(
-            'absolute transition-[inset-inline-start] duration-700 ease-out motion-reduce:transition-none',
-            couleurCoureur,
+            'absolute transition-colors duration-700 motion-reduce:transition-none',
+            fini ? couleurCoureur : 'text-slate-200',
           )}
           style={{
             bottom: PISTE,
-            insetInlineStart: avance,
-            width: taille,
-            height: taille,
+            insetInlineEnd: 0,
+            width: butLargeur,
+            height: butHauteur,
             backgroundColor: 'currentColor',
-            // En RTL la barre se remplit vers la gauche : le coureur se
-            // retourne pour courir dans le sens du remplissage.
             transform: rtl ? 'scaleX(-1)' : undefined,
-            ...MASQUE,
+            ...masque('penalty-area'),
           }}
         />
-        <div
-          className="absolute inset-x-0 bottom-0 rounded-full bg-slate-100 overflow-hidden"
-          style={{ height: PISTE }}
-        >
-          <div
-            className={cn(
-              'h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none',
-              couleurBarre,
-            )}
-            style={{ width: `${plein}%` }}
-          />
-        </div>
       </div>
 
       {legende && <p className="mt-1 font-mono text-[10px] text-slate-500">{legende}</p>}
