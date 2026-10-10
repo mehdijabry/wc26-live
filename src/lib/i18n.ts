@@ -67,6 +67,27 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  'View my public profile': 'عرض ملفي العام',
+  'Install the Pressing 90’ app': 'ثبّت تطبيق Pressing 90’',
+  'Get the Pressing 90’ app': 'احصل على تطبيق Pressing 90’',
+  'Create your free account': 'أنشئ حسابك المجاني',
+  // Menu du compte et solde (2026-10-10).
+  'Signed in as': 'مُسجَّل الدخول باسم',
+  'Rookie tier': 'مستوى مبتدئ',
+  'Amateur tier': 'مستوى هاوٍ',
+  'Pro tier': 'مستوى محترف',
+  'Elite tier': 'مستوى النخبة',
+  'Legend tier': 'مستوى أسطوري',
+  'Streak': 'سلسلة',
+  'streak': 'سلسلة',
+  'best': 'الأفضل',
+  'Edit alias': 'تعديل الاسم',
+  'Edit your alias': 'تعديل اسمك',
+  'Save': 'حفظ',
+  'Cancel': 'إلغاء',
+  'your_alias': 'اسمك',
+  '2-20 chars · letters, numbers, _ or -': '2 إلى 20 حرفا · حروف وأرقام و _ أو -',
+  'Loading your balance…': 'جارٍ تحميل رصيدك…',
   // Mes paris (/my-bets), 2026-10-09.
   'Away': 'خارج الديار',
   'My bets': 'رهاناتي',
@@ -352,6 +373,27 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  'View my public profile': 'Voir mon profil public',
+  'Install the Pressing 90’ app': 'Installer l’application Pressing 90’',
+  'Get the Pressing 90’ app': 'Obtenir l’application Pressing 90’',
+  'Create your free account': 'Créez votre compte gratuit',
+  // Menu du compte et solde (2026-10-10).
+  'Signed in as': 'Connecté en tant que',
+  'Rookie tier': 'Niveau débutant',
+  'Amateur tier': 'Niveau amateur',
+  'Pro tier': 'Niveau pro',
+  'Elite tier': 'Niveau élite',
+  'Legend tier': 'Niveau légende',
+  'Streak': 'Série',
+  'streak': 'série',
+  'best': 'record',
+  'Edit alias': 'Modifier le pseudo',
+  'Edit your alias': 'Modifier votre pseudo',
+  'Save': 'Enregistrer',
+  'Cancel': 'Annuler',
+  'your_alias': 'votre_pseudo',
+  '2-20 chars · letters, numbers, _ or -': '2 à 20 caractères · lettres, chiffres, _ ou -',
+  'Loading your balance…': 'Chargement de votre solde…',
   // Mes paris (/my-bets), 2026-10-09.
   'Away': 'Extérieur',
   'My bets': 'Mes paris',

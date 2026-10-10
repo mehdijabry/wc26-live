@@ -108,7 +108,7 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
                   {mode === 'reset' ? 'Reset your password' :
                    mode === 'magic' ? 'One-click sign in' :
                    mode === 'login' ? 'Welcome back' :
-                   'Save your bracket'}
+                   'Create your free account'}
                 </div>
               </div>
               <button onClick={onClose} className="text-slate-500 hover:text-slate-900 text-xl w-8 h-8 rounded-full hover:bg-slate-200 transition-colors flex items-center justify-center">×</button>

@@ -5,7 +5,7 @@ import { useBracket } from '../store/bracket'
 import { AuthModal } from './AuthModal'
 import { JETON, POINT } from '../lib/jeu'
 import { Jeton } from './Jeton'
-import { localeOf, useLang } from '../lib/i18n'
+import { localeOf, useLang, useT } from '../lib/i18n'
 
 const TIER_COLORS: Record<string, string> = {
   Rookie: 'text-slate-600',
@@ -16,9 +16,12 @@ const TIER_COLORS: Record<string, string> = {
 }
 
 export function UserMenu() {
-  const { user, profile, signOut, initialized, updateAlias } = useAuth()
+  const { user, profile, profilEtat, signOut, initialized, updateAlias } = useAuth()
   // Le solde suit la langue affichée, il était figé en « fr-FR ».
   const lang = useLang((s) => s.lang)
+  // Le menu du compte n'était jamais traduit : il restait en anglais quelle
+  // que soit la langue choisie (Mehdi, 2026-10-10).
+  const t = useT()
   const isPublished = useBracket((s) => s.isPublished)
   const shareSlug = useBracket((s) => s.shareSlug)
   const loadBracket = useBracket((s) => s.load)
@@ -81,6 +84,12 @@ export function UserMenu() {
     )
   }
 
+  // Tant que le solde n'est pas revenu, on écrit « — » : afficher 0 ferait
+  // croire au joueur qu'il a tout perdu (Mehdi, 2026-10-10).
+  const su = profilEtat === 'pret' || !!profile
+  const nb = (v: number | undefined | null, loc = false) =>
+    su ? (loc ? Number(v ?? 0).toLocaleString(localeOf(lang)) : String(v ?? 0)) : '—'
+
   const alias = profile?.alias ?? 'fan'
   const tier = profile?.tier ?? 'Rookie'
 
@@ -100,11 +109,11 @@ export function UserMenu() {
         <span className="flex items-center gap-1.5 ps-2 ms-0.5 border-s border-slate-300/40 font-mono tabular-nums text-xs">
           <span className="flex items-center gap-1" title={JETON.plusieurs}>
             <Jeton type="crampon" />
-            {profile?.crampons ?? 0}
+            {nb(profile?.crampons)}
           </span>
           <span className="flex items-center gap-1 text-accent-violet" title={POINT.plusieurs}>
             <Jeton type="pressing" />
-            {Number(profile?.pressings ?? 0).toLocaleString(localeOf(lang))}
+            {nb(profile?.pressings, true)}
           </span>
         </span>
       </button>
@@ -113,7 +122,7 @@ export function UserMenu() {
           <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
           <div className="absolute right-0 top-full mt-2 w-64 glass rounded-2xl p-4 z-40 ring-glow">
             <div className="text-xs uppercase tracking-widest text-slate-500 font-mono mb-1">
-              Signed in as
+              {t('Signed in as')}
             </div>
             {editing ? (
               <div className="space-y-2">
@@ -126,7 +135,7 @@ export function UserMenu() {
                       if (e.key === 'Enter') void saveAlias()
                       if (e.key === 'Escape') { setEditing(false); setError(null) }
                     }}
-                    placeholder="your_alias"
+                    placeholder={t('your_alias')}
                     className="flex-1 min-w-0 px-2 py-1 rounded border border-slate-300 text-sm font-display font-bold focus:outline-none focus:ring-2 focus:ring-accent-gold/40"
                     maxLength={20}
                   />
@@ -134,21 +143,21 @@ export function UserMenu() {
                     onClick={saveAlias}
                     disabled={busy}
                     className="px-2.5 py-1 rounded bg-accent-gold text-ink-900 text-xs font-semibold disabled:opacity-40"
-                    title="Save"
+                    title={t('Save')}
                   >
                     ✓
                   </button>
                   <button
                     onClick={() => { setEditing(false); setError(null) }}
                     className="px-2 py-1 rounded text-slate-500 hover:bg-slate-100 text-xs"
-                    title="Cancel"
+                    title={t('Cancel')}
                   >
                     ×
                   </button>
                 </div>
                 {error && <div className="text-[10px] text-red-500 font-mono">{error}</div>}
                 <div className="text-[10px] text-slate-400 font-mono">
-                  2-20 chars · letters, numbers, _ or -
+                  {t('2-20 chars · letters, numbers, _ or -')}
                 </div>
               </div>
             ) : (
@@ -156,27 +165,27 @@ export function UserMenu() {
                 <div className="font-display font-bold text-lg truncate flex-1">{alias}</div>
                 <button
                   onClick={() => { setDraft(alias); setEditing(true); setError(null) }}
-                  aria-label="Edit alias"
+                  aria-label={t('Edit alias')}
                   className="shrink-0 w-6 h-6 rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center text-xs transition-colors"
-                  title="Edit your alias"
+                  title={t('Edit your alias')}
                 >
                   ✏️
                 </button>
               </div>
             )}
             <div className={`text-xs font-mono mt-0.5 ${TIER_COLORS[tier]}`}>
-              {tier} tier
+              {t(`${tier} tier`)}
             </div>
 
             <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-              <Stat label={POINT.plusieurs} value={Number(profile?.pressings ?? 0).toLocaleString(localeOf(lang))} jeton="pressing" />
-              <Stat label={JETON.plusieurs} value={profile?.crampons ?? 0} jeton="crampon" />
-              <Stat label="Streak" value={profile?.current_streak ?? 0} />
+              <Stat label={POINT.plusieurs} value={nb(profile?.pressings, true)} jeton="pressing" />
+              <Stat label={JETON.plusieurs} value={nb(profile?.crampons)} jeton="crampon" />
+              <Stat label={t('Streak')} value={nb(profile?.current_streak)} />
             </div>
 
             <div className="mt-3 text-[11px] text-slate-500 font-mono flex items-center justify-between">
-              <span>🔥 streak {profile?.current_streak ?? 0}</span>
-              <span>★ best {profile?.best_streak ?? 0}</span>
+              <span>🔥 {t('streak')} {nb(profile?.current_streak)}</span>
+              <span>★ {t('best')} {nb(profile?.best_streak)}</span>
             </div>
 
             {/* Raccourcis — ce que le joueur vient réellement chercher ici. */}
@@ -186,7 +195,7 @@ export function UserMenu() {
                 onClick={() => setMenuOpen(false)}
                 className="block w-full px-3 py-2 rounded-lg bg-accent-gold/10 hover:bg-accent-gold/20 text-xs text-slate-800 transition-colors"
               >
-                🎟️ My bets
+                🎟️ {t('My bets')}
               </Link>
               {/* Le bracket du Mondial n'a plus sa place dans ce menu : le jeu
                   vivant, ce sont les paris (Mehdi, 2026-10-09). La PAGE reste en
@@ -198,7 +207,7 @@ export function UserMenu() {
                   onClick={() => setMenuOpen(false)}
                   className="block w-full px-3 py-2 rounded-lg bg-accent-green/10 hover:bg-accent-green/20 text-xs text-slate-800 transition-colors"
                 >
-                  🌍 View my public profile <span className="text-slate-500 font-mono">/u/{shareSlug}</span>
+                  🌍 {t('View my public profile')} <span className="text-slate-500 font-mono">/u/{shareSlug}</span>
                 </Link>
               )}
             </div>
@@ -207,7 +216,7 @@ export function UserMenu() {
               onClick={signOut}
               className="mt-3 w-full px-3 py-2 rounded-full bg-slate-100 hover:bg-slate-200 text-xs text-slate-600 transition-colors"
             >
-              Sign out
+              {t('Sign out')}
             </button>
           </div>
         </>

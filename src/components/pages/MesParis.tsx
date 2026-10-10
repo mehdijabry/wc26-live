@@ -10,6 +10,7 @@ import { Jeton } from '../Jeton'
 import {
   buteursDuMatch,
   mesBulletins,
+  mesParisSimples,
   type Bulletin,
   type Jambe,
 } from '../../lib/jeu'
@@ -123,9 +124,16 @@ export default function MesParis() {
     }
     setErreur(false)
     setBulletins(null)
+    // Les deux historiques, fusionnés et remis dans l'ordre : les bulletins du
+    // moteur actuel, et les paris simples de l'ancien système, qui sont encore
+    // réglés et peuvent donc encore créditer des pressings.
     let b: Bulletin[]
     try {
-      b = await mesBulletins()
+      const [bulletins, simples] = await Promise.all([
+        mesBulletins(),
+        mesParisSimples().catch(() => [] as Bulletin[]),
+      ])
+      b = [...bulletins, ...simples].sort((x, y) => Date.parse(y.created_at) - Date.parse(x.created_at))
     } catch {
       setErreur(true)
       return

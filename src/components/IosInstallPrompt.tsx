@@ -311,9 +311,9 @@ export function IosInstallPrompt() {
     platform === 'android-other'    ? 'Best install in Chrome' :
     'Install'
   const mainLabel =
-    platform === 'android-chromium' ? 'Install WC26 app' :
+    platform === 'android-chromium' ? 'Install the Pressing 90’ app' :
     platform === 'ios-safari'       ? 'Add to Home Screen' :
-    'Get the WC26 app'
+    'Get the Pressing 90’ app'
 
   return createPortal(
     <>
@@ -439,7 +439,7 @@ function IosSafariGuide({ onClose, onDismiss }: { onClose: () => void; onDismiss
       <ol className="px-6 py-6 space-y-4">
         <Step n={1} title="Tap the Share button" description="At the bottom of Safari (or top on iPad) — square with an arrow pointing up." icon={shareIcon} />
         <Step n={2} title="Scroll & tap 'Add to Home Screen'" description="In the share sheet, swipe through actions until you see this option." icon={addIcon} />
-        <Step n={3} title="Tap 'Add' — done!" description="The WC26 icon lands on your home screen. Tap it to launch the app fullscreen." icon={checkIcon} />
+        <Step n={3} title="Tap 'Add' — done!" description="The Pressing 90’ icon lands on your home screen. Tap it to launch the app fullscreen." icon={checkIcon} />
       </ol>
       <ModalActions onClose={onClose} onDismiss={onDismiss} />
     </>
@@ -452,14 +452,14 @@ function IosOtherGuide({ onClose, onDismiss, onShare }: { onClose: () => void; o
       <ModalHeader
         eyebrow="Switch to Safari first"
         title="Open this page in Safari"
-        sub="Chrome / Firefox on iPhone don't let us install our app icon — you'd get a generic browser shortcut instead. Open in Safari for the real WC26 app experience."
+        sub="Chrome / Firefox on iPhone don't let us install our app icon — you'd get a generic browser shortcut instead. Open in Safari for the real Pressing 90’ app experience."
       />
       <div className="px-6 py-6 space-y-3 text-sm">
         <div className="flex items-start gap-3">
           <span className="shrink-0 w-7 h-7 rounded-full bg-marine-950 text-cream flex items-center justify-center font-mono font-bold text-xs">1</span>
           <div>
             <div className="font-semibold">Tap the button below</div>
-            <div className="text-xs text-slate-500 mt-0.5">It opens the iOS share sheet with the WC26 link ready to send.</div>
+            <div className="text-xs text-slate-500 mt-0.5">It opens the iOS share sheet with the Pressing 90’ link ready to send.</div>
           </div>
         </div>
         <div className="flex items-start gap-3">
@@ -473,7 +473,7 @@ function IosOtherGuide({ onClose, onDismiss, onShare }: { onClose: () => void; o
           <span className="shrink-0 w-7 h-7 rounded-full bg-marine-950 text-cream flex items-center justify-center font-mono font-bold text-xs">3</span>
           <div>
             <div className="font-semibold">Install from Safari</div>
-            <div className="text-xs text-slate-500 mt-0.5">Once in Safari, the WC26 install button appears with the proper guide.</div>
+            <div className="text-xs text-slate-500 mt-0.5">Once in Safari, the Pressing 90’ install button appears with the proper guide.</div>
           </div>
         </div>
       </div>
@@ -492,8 +492,8 @@ function AndroidChromeGuide({ onClose, onDismiss }: { onClose: () => void; onDis
       />
       <ol className="px-6 py-6 space-y-4">
         <Step n={1} title="Tap the menu ⋮" description="Top-right corner of Chrome / Edge / Samsung Internet." icon={menuIcon} />
-        <Step n={2} title="Tap 'Install app' or 'Add to Home Screen'" description="Both are equivalent — they put the WC26 icon on your home screen." icon={addIcon} />
-        <Step n={3} title="Confirm to finish" description="Done. The icon launches WC26 fullscreen like a native app." icon={checkIcon} />
+        <Step n={2} title="Tap 'Install app' or 'Add to Home Screen'" description="Both are equivalent — they put the Pressing 90’ icon on your home screen." icon={addIcon} />
+        <Step n={3} title="Confirm to finish" description="Done. The icon launches Pressing 90’ fullscreen like a native app." icon={checkIcon} />
       </ol>
       <ModalActions onClose={onClose} onDismiss={onDismiss} />
     </>
@@ -519,7 +519,7 @@ function AndroidOtherGuide({ onClose, onDismiss, onOpenChrome }: { onClose: () =
         <div className="flex items-start gap-3">
           <span className="shrink-0 w-7 h-7 rounded-full bg-marine-950 text-cream flex items-center justify-center font-mono font-bold text-xs">2</span>
           <div>
-            <div className="font-semibold">Tap the WC26 install pill in Chrome</div>
+            <div className="font-semibold">Tap the Pressing 90’ install pill in Chrome</div>
             <div className="text-xs text-slate-500 mt-0.5">One-tap and the icon lands on your home screen.</div>
           </div>
         </div>

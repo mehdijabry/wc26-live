@@ -7,6 +7,14 @@ type AuthState = {
   user: User | null
   session: Session | null
   profile: Profile | null
+  /**
+   * L'état du solde, et pas seulement sa valeur. Sans lui, `profile` à null
+   * s'affichait « 0 crampons, 0 pressings » : le joueur croyait avoir tout
+   * perdu et devait recharger pour voir son vrai solde (Mehdi, 2026-10-10).
+   * Une donnée absente n'est pas une donnée nulle — l'écran doit pouvoir
+   * dire « je ne sais pas encore ».
+   */
+  profilEtat: 'inconnu' | 'chargement' | 'pret' | 'echec'
   loading: boolean
   /**
    * True once init() has finished its first pass — we've checked
@@ -73,6 +81,7 @@ export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   session: null,
   profile: null,
+  profilEtat: 'inconnu',
   loading: true,
   initialized: false,
   completingSignIn: hasAuthCallback(),
@@ -115,7 +124,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       // vide le localStorage de l'app. Voir src/lib/sessionBackup.ts.
       if (session?.refresh_token) sauverRefresh(session.refresh_token)
       if (session) await get().refreshProfile()
-      else set({ profile: null })
+      else set({ profile: null, profilEtat: 'inconnu' })
 
       if (event === 'SIGNED_IN' && typeof window !== 'undefined' && callback) {
         try {
@@ -295,18 +304,27 @@ export const useAuth = create<AuthState>((set, get) => ({
     effacerRefresh()
     await supabase.auth.signOut()
     effacerRefresh()
-    set({ user: null, session: null, profile: null })
+    set({ user: null, session: null, profile: null, profilEtat: 'inconnu' })
   },
 
   async refreshProfile() {
     if (!supabase) return
     const userId = get().user?.id
     if (!userId) return
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    if (data) set({ profile: data as Profile })
+    set({ profilEtat: get().profile ? 'pret' : 'chargement' })
+    // Une seule reprise : le tout premier appel part parfois avant que le
+    // jeton rafraîchi soit en place, et l'échec silencieux laissait le solde
+    // à zéro jusqu'au prochain rechargement de la page.
+    for (let essai = 0; essai < 2; essai++) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .maybeSingle()
+      if (!error && data) { set({ profile: data as Profile, profilEtat: 'pret' }); return }
+      if (!error && !data) { set({ profilEtat: 'pret' }); return }   // profil pas encore créé
+      if (essai === 0) await new Promise((r) => setTimeout(r, 700))
+    }
+    set({ profilEtat: 'echec' })
   },
 }))

@@ -254,6 +254,38 @@ export async function mesBulletins(): Promise<Bulletin[]> {
 }
 
 /**
+ * Les paris simples de l'ancien système (table `bets`), présentés comme des
+ * bulletins à une seule jambe.
+ *
+ * POURQUOI. Avant le moteur de bulletins, on pariait un match à la fois. Ces
+ * paris-là existent toujours et continuent d'être réglés par leur propre
+ * déclencheur — mais « Mes paris » ne lisait que `bet_slips`, donc ils étaient
+ * invisibles. Mehdi a vu arriver 7 pressings le soir où son combiné tombait,
+ * sans pouvoir rapprocher les deux : le gain venait d'un simple du 8 octobre,
+ * réglé treize minutes plus tard (2026-10-10). Un historique incomplet se lit
+ * comme une erreur de comptage.
+ */
+export async function mesParisSimples(): Promise<Bulletin[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('bets')
+    .select('id, match_id, pick, stake, odds, status, payout, created_at')
+    .order('created_at', { ascending: false })
+    .limit(50)
+  if (error) throw new Error(error.message)
+  type Simple = { id: number; match_id: string; pick: string; stake: number; odds: number; status: Jambe['status']; payout: number | null; created_at: string }
+  return ((data as Simple[]) ?? []).map((b) => ({
+    id: -b.id,                    // négatif : ne peut jamais heurter un id de bulletin
+    stake: b.stake,
+    odds: b.odds,
+    status: b.status,
+    payout: b.payout,
+    created_at: b.created_at,
+    legs: [{ match_id: b.match_id, market: '1x2' as Marche, pick: b.pick, odds: b.odds, status: b.status }],
+  }))
+}
+
+/**
  * Les matchs déjà joués, pour les signaler sur les cartes.
  * Un même match peut apparaître dans plusieurs bulletins (un simple et un
  * combiné) : on garde la liste, pas seulement la dernière.
