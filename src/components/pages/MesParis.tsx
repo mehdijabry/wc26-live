@@ -313,6 +313,11 @@ export default function MesParis() {
                       >
                         {b.status === 'won' ? (b.payout ?? gainPossible) : gainPossible}
                       </span>
+                      {/* La perte de palier, dite explicitement : sans elle, le
+                          joueur voit son solde baisser sans savoir pourquoi. */}
+                      {b.status === 'lost' && !!b.penalty && (
+                        <span className="font-mono tabular-nums text-accent-red">−{b.penalty}</span>
+                      )}
                     </div>
                   </footer>
                 </article>

@@ -183,8 +183,8 @@ export function UserMenu() {
             </div>
 
             <div className="grid grid-cols-3 gap-2 mt-4 text-center">
-              <Stat label={POINT.plusieurs} value={nb(profile?.pressings, true)} jeton="pressing" />
-              <Stat label={JETON.plusieurs} value={nb(profile?.crampons)} jeton="crampon" />
+              <Stat label={t(POINT.plusieurs)} value={nb(profile?.pressings, true)} jeton="pressing" />
+              <Stat label={t(JETON.plusieurs)} value={nb(profile?.crampons)} jeton="crampon" />
               <Stat label={t('Streak')} value={nb(profile?.current_streak)} />
             </div>
 

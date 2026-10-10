@@ -67,6 +67,12 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.': 'تحصل على {d} {jeton} كل يوم عند تسجيل الدخول — وإن لم تطلبها ضاعت. راهن بـ {min} منها على الأقل على نتيجة، بالمعامل الحقيقي للمباراة: كلما كان المرشح أوضح قلّ المردود. الأرباح بـ {point}، و{palier} {point} تفتح {prix}. الصعود على خمسة مستويات: تحت {libre} {point} لا تكلفك الورقة الخاسرة سوى رهانك، وفوقها تكلفك {perte1} ثم {perte2} ثم {perte3} {point}. بدون أي إيداع ولا وسيط رهان. كل مباراة لدينا معاملها قابلة للعب — الدوريات والكؤوس والمنتخبات، وأكبر البطولات أولا.',
+  'crampons': 'كرامبون',
+  'pressings': 'بريسينغ',
+  'Tier {n} · {perte}': 'المستوى {n} · {perte}',
+  '{p} {point} lost per failed slip': '{p} {point} عند خسارة أي ورقة',
+  'nothing at risk': 'لا شيء في خطر',
   'View my public profile': 'عرض ملفي العام',
   'Install the Pressing 90’ app': 'ثبّت تطبيق Pressing 90’',
   'Get the Pressing 90’ app': 'احصل على تطبيق Pressing 90’',
@@ -373,6 +379,12 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.': 'Vous recevez {d} {jeton} par jour, à réclamer en vous connectant — non réclamés, ils sont perdus. Misez-en au moins {min} sur un résultat, à la cote réelle du match : plus le favori est net, moins ça paie. Les gains sont en {point}, et {palier} {point} débloquent {prix}. La montée compte cinq paliers : sous {libre} {point} un pari raté ne coûte que la mise, au-dessus chacun coûte {perte1}, puis {perte2}, puis {perte3} {point}. Rien à déposer, aucun bookmaker. Tout match dont nous avons la cote est jouable — championnats, coupes et sélections, les plus grandes compétitions d’abord.',
+  'crampons': 'crampons',
+  'pressings': 'pressings',
+  'Tier {n} · {perte}': 'Palier {n} · {perte}',
+  '{p} {point} lost per failed slip': '{p} {point} perdus par pari raté',
+  'nothing at risk': 'rien en jeu',
   'View my public profile': 'Voir mon profil public',
   'Install the Pressing 90’ app': 'Installer l’application Pressing 90’',
   'Get the Pressing 90’ app': 'Obtenir l’application Pressing 90’',

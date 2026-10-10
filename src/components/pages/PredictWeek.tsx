@@ -13,6 +13,9 @@ import {
   POINT,
   MISE_MINIMUM,
   PALIER,
+  PALIERS,
+  palierDe,
+  avanceeDansPalier,
   JAMBES_MAX,
   coteCombinee,
   cotes as chargerCotes,
@@ -879,9 +882,15 @@ export function PredictWeek() {
     [jouables],
   )
 
+  // Même règle que la pastille du compte : tant que le portefeuille n'est pas
+  // revenu, on écrit « — ». Afficher 0 laisse croire à un solde vide.
+  const soldeConnu = pf !== null
+  const chiffre = (v: number | undefined | null, loc = false) =>
+    soldeConnu ? (loc ? Number(v ?? 0).toLocaleString(localeOf(lang)) : String(v ?? 0)) : '—'
   const solde = pf?.crampons ?? 0
   const aReclamer = reclamableAujourdhui(pf)
-  const progression = pf ? Math.min(100, (Number(pf.pressings) / PALIER.points) * 100) : 0
+  const pressings = Number(pf?.pressings ?? 0)
+  const palierCourant = palierDe(pressings)
 
   return (
     <div className={cn('container max-w-2xl mx-auto px-4 sm:px-6 py-8', selections.length > 0 && 'pb-72')}>
@@ -898,7 +907,7 @@ export function PredictWeek() {
         <p className="mt-2 text-sm text-slate-600 leading-relaxed">
           {avec(
             t(
-              'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.',
+              'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.',
             ),
             {
               d: JETONS_PAR_JOUR,
@@ -907,6 +916,10 @@ export function PredictWeek() {
               point: POINT.plusieurs,
               palier: PALIER.points.toLocaleString(localeOf(lang)),
               prix: PALIER.recompense,
+              libre: PALIERS[2].de.toLocaleString(localeOf(lang)),
+              perte1: PALIERS[2].perte,
+              perte2: PALIERS[3].perte,
+              perte3: PALIERS[4].perte,
             },
           )}
         </p>
@@ -919,18 +932,18 @@ export function PredictWeek() {
             <div>
               <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Jeton type="crampon" taille={11} />
-                {JETON.plusieurs}
+                {t(JETON.plusieurs)}
               </div>
-              <div className="font-display text-2xl leading-none tabular-nums">{solde}</div>
+              <div className="font-display text-2xl leading-none tabular-nums">{chiffre(pf?.crampons)}</div>
             </div>
             <div className="w-px self-stretch bg-slate-200" />
             <div>
               <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Jeton type="pressing" taille={11} />
-                {POINT.plusieurs}
+                {t(POINT.plusieurs)}
               </div>
               <div className="font-display text-2xl leading-none tabular-nums text-accent-violet">
-                {Number(pf?.pressings ?? 0).toLocaleString(localeOf(lang))}
+                {chiffre(pf?.pressings, true)}
               </div>
             </div>
             <div className="ms-auto">
@@ -947,12 +960,48 @@ export function PredictWeek() {
               )}
             </div>
           </div>
+          {/* L'échelle des paliers. Une barre unique vers 7 500 ne disait rien
+              du chemin ; cinq marches donnent un palier à atteindre tout de
+              suite, et surtout elles annoncent le risque avant qu'il ne
+              coûte (Mehdi, 2026-10-10). */}
           <div className="mt-3">
-            <div className="h-1 rounded-full bg-slate-50 overflow-hidden">
-              <div className="h-full bg-accent-violet transition-all" style={{ width: `${progression}%` }} />
+            <div className="flex gap-1">
+              {PALIERS.map((p) => {
+                const atteint = pressings >= p.a
+                const encours = !atteint && pressings >= p.de
+                return (
+                  <div key={p.n} className="flex-1">
+                    <div className="h-1 rounded-full bg-slate-50 overflow-hidden">
+                      <div
+                        className={cn('h-full transition-all', p.perte > 0 ? 'bg-accent-gold' : 'bg-accent-violet')}
+                        style={{ width: atteint ? '100%' : encours ? `${avanceeDansPalier(pressings) * 100}%` : '0%' }}
+                      />
+                    </div>
+                    <div
+                      className={cn(
+                        'mt-1 font-mono text-[9px] tabular-nums text-center',
+                        encours ? 'text-slate-800' : 'text-slate-500',
+                      )}
+                    >
+                      {p.perte > 0 ? `−${p.perte}` : '—'}
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            <div className="mt-1 font-mono text-[10px] text-slate-500 tabular-nums">
-              {PALIER.points.toLocaleString(localeOf(lang))} {POINT.plusieurs} → {PALIER.recompense}
+            <div className="mt-1 font-mono text-[10px] text-slate-500 tabular-nums flex items-center justify-between gap-3">
+              <span>
+                {avec(t('Tier {n} · {perte}'), {
+                  n: palierCourant.n,
+                  perte:
+                    palierCourant.perte > 0
+                      ? avec(t('{p} {point} lost per failed slip'), { p: palierCourant.perte, point: t(POINT.plusieurs) })
+                      : t('nothing at risk'),
+                })}
+              </span>
+              <span className="shrink-0">
+                {PALIER.points.toLocaleString(localeOf(lang))} {t(POINT.plusieurs)} → {PALIER.recompense}
+              </span>
             </div>
           </div>
         </div>

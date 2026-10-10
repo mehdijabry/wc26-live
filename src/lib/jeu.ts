@@ -48,6 +48,41 @@ export const MISE_MINIMUM = 1
  */
 export const PALIER = { points: 7_500, recompense: '5 $' } as const
 
+/**
+ * Les cinq paliers, et ce qu'un bulletin perdu coûte dans chacun.
+ *
+ * MIROIR EXACT de `palier_de()` et `perte_du_palier()` (migration 009). La
+ * règle s'applique en base — c'est elle qui fait foi, comme pour les cotes —
+ * et cette table n'existe que pour l'afficher. Si l'une bouge, l'autre bouge.
+ *
+ * Les deux premiers paliers ne coûtent aucun pressing : on y apprend le jeu
+ * en ne risquant que ses crampons. Au-delà de 2 000, chaque bulletin perdu se
+ * paie, et d'autant plus cher qu'on est monté haut (Mehdi, 2026-10-10).
+ */
+export const PALIERS = [
+  { n: 1, de: 0, a: 1_000, perte: 0 },
+  { n: 2, de: 1_000, a: 2_000, perte: 0 },
+  { n: 3, de: 2_000, a: 3_750, perte: 15 },
+  { n: 4, de: 3_750, a: 5_500, perte: 30 },
+  { n: 5, de: 5_500, a: PALIER.points, perte: 45 },
+] as const
+
+export type Palier = (typeof PALIERS)[number]
+
+/** Le palier où se trouve ce solde. Au-delà du dernier seuil, on reste au 5e. */
+export function palierDe(pressings: number): Palier {
+  return [...PALIERS].reverse().find((p) => pressings >= p.de) ?? PALIERS[0]
+}
+
+/** Ce qu'un bulletin perdu coûterait maintenant. */
+export const perteActuelle = (pressings: number) => palierDe(pressings).perte
+
+/** La progression DANS le palier courant, de 0 à 1 — pour la barre. */
+export function avanceeDansPalier(pressings: number): number {
+  const p = palierDe(pressings)
+  return Math.max(0, Math.min(1, (pressings - p.de) / (p.a - p.de)))
+}
+
 export function nombreDe(
   n: number,
   mot: { un: string; plusieurs: string },
@@ -126,6 +161,8 @@ export type Bulletin = {
   odds: number
   status: 'open' | 'won' | 'lost' | 'void'
   payout: number | null
+  /** Pressings retirés par le palier quand le bulletin tombe (migration 009). */
+  penalty?: number | null
   created_at: string
   legs: Jambe[]
 }
@@ -244,7 +281,7 @@ export async function mesBulletins(): Promise<Bulletin[]> {
   if (!supabase) return []
   const { data, error } = await supabase
     .from('bet_slips')
-    .select('id, stake, odds, status, payout, created_at, legs:bet_legs(match_id, market, pick, odds, status)')
+    .select('id, stake, odds, status, payout, penalty, created_at, legs:bet_legs(match_id, market, pick, odds, status)')
     .order('created_at', { ascending: false })
     .limit(50)
   // Une requête ratée ne doit jamais ressembler à « aucun pari » : l'écran
