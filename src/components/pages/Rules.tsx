@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Icone } from '../Icone'
 import { Link } from 'react-router-dom'
 import { tournamentRules } from '../../data/tournament-rules'
 
@@ -37,6 +38,7 @@ export function RulesPage() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Rules · Cheat-sheet
         </div>
+        <Icone nom="whistle" taille={56} className="mb-3 opacity-90" />
         <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight leading-[1.1]">
           The <span className="text-accent-gold">WC26</span> rulebook
           <br />

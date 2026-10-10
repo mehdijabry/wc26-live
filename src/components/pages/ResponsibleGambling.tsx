@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Icone } from '../Icone'
 import { useLang } from '../../lib/i18n'
 
 /**
@@ -117,6 +118,7 @@ export function ResponsibleGambling() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           {c.eyebrow} · 18+
         </div>
+        <Icone nom="penalty-card" taille={56} className="mb-3 opacity-90" />
         <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight">
           {c.title}
         </h1>

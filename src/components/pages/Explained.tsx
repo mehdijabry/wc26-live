@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Icone } from '../Icone'
 import { Link } from 'react-router-dom'
 import { WC_FAQ, type FaqEntry } from '../../data/wcFaq'
 
@@ -103,6 +104,7 @@ export function Explained() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           Explained
         </div>
+        <Icone nom="strategy" taille={56} className="mb-3 opacity-90" />
         <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight leading-[1.1]">
           How the <span className="text-accent-gold">2026 World Cup</span>{' '}
           actually works

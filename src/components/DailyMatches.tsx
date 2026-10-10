@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import { Icone } from './Icone'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, competitionLogo, eventTeams, liveClock, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { Cotes1X2 } from './Cotes1X2'
@@ -376,6 +377,7 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
           )}
           {!loading && data && data.total === 0 && (
             <div className="glass rounded-2xl p-8 text-center text-slate-500">
+              <Icone nom="football" taille={56} className="mx-auto mb-3 opacity-90" />
               {t('No matches on')} {dateLabel}.<br />
               <span className="text-xs">{t('Use ← Previous or Next → to pick another day.')}</span>
             </div>

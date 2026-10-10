@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { Icone } from '../Icone'
 
 /**
  * About page — explains what Pressing 90’ is, who built it, what makes it
@@ -16,6 +17,7 @@ export function About() {
         <div className="font-mono text-xs uppercase tracking-[0.22em] text-slate-500 mb-3">
           About · Pressing 90'
         </div>
+        <Icone nom="goal-post" taille={56} className="mb-3 opacity-90" />
         <h1 className="font-display font-bold text-4xl sm:text-5xl text-slate-900 tracking-tight">
           We're building the cleanest place to follow{' '}
           <span className="text-accent-gold">WC2026</span>.
