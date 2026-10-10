@@ -43,21 +43,17 @@ export function nouveauSlug(): string {
 }
 
 /**
- * UN JOUEUR, UN GROUPE.
+ * CRÉER ET REJOINDRE PASSENT PAR LA BASE.
  *
- * Créer ou rejoindre fait maintenant QUITTER le groupe précédent, et les
- * deux opérations passent par une fonction en base plutôt que par deux
- * insertions côté client. Deux raisons :
+ * Un joueur peut appartenir à plusieurs groupes — ce qui est limité, c'est
+ * la RÉCLAMATION du bonus : une seule par jour, et c'est lui qui choisit
+ * laquelle (Mehdi, 2026-10-10). Créer un groupe reste deux écritures, la
+ * ligue puis l'adhésion de son auteur, et elles doivent être atomiques :
+ * une ligue sans son créateur dedans n'apparaîtrait dans aucun classement,
+ * pas même le sien.
  *
- *  · la base porte une contrainte d'unicité sur le joueur ; depuis le
- *    client, la seconde insertion échouerait avec un code d'erreur brut que
- *    personne ne saurait traduire ;
- *  · quitter puis entrer doit être ATOMIQUE. Si la seconde moitié échouait,
- *    le joueur se retrouverait sans groupe — et sans moyen de revenir, le
- *    lien d'invitation de son ancien groupe étant chez quelqu'un d'autre.
- *
- * Les deux renvoient le nom du groupe quitté, pour que l'interface puisse le
- * dire au lieu de laisser le joueur le découvrir.
+ * `quitte` reste dans le type pour ne pas faire changer de forme aux
+ * appelants, mais vaut toujours NULL : on ne quitte plus rien en entrant.
  */
 export type Arrivee = { groupe: string; slug: string; nom: string; quitte: string | null }
 
