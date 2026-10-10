@@ -70,6 +70,38 @@ export async function etatDuGroupe(slug: string): Promise<EtatDuGroupe | null> {
   }
 }
 
+/**
+ * « Ma saison » — la ligne du joueur, où qu'il soit dans le classement.
+ *
+ * La vue `leaderboard` s'arrête à cent lignes : hors du top 100, un joueur ne
+ * se voyait nulle part et la page lui laissait croire qu'il n'avait aucun
+ * point. Son rang se compte en base. Voir la migration 018.
+ */
+export type Saison = {
+  points: number
+  rang: number
+  joueurs: number
+  parisSemaine: number
+  parisTotal: number
+  gagnes: number
+}
+
+export async function maSaison(): Promise<Saison | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase.rpc('ma_saison')
+  if (error || !data) return null
+  const s = Array.isArray(data) ? data[0] : data
+  if (!s) return null
+  return {
+    points: Number(s.points ?? 0),
+    rang: Number(s.rang ?? 0),
+    joueurs: Number(s.joueurs ?? 0),
+    parisSemaine: Number(s.paris_semaine ?? 0),
+    parisTotal: Number(s.paris_total ?? 0),
+    gagnes: Number(s.gagnes ?? 0),
+  }
+}
+
 export type Reclamation = { crampons: number; taux: number; groupe: string; deja: boolean }
 
 /**

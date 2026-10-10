@@ -16,7 +16,20 @@ const TIER_COLORS: Record<string, string> = {
   Legend: 'text-yellow-300',
 }
 
-export function Leaderboard() {
+/**
+ * Le classement général.
+ *
+ * `niveau` et `titre` existent parce que ce bloc sert à deux endroits : seul
+ * sur son ancienne page, et comme dernière section du hub /board, où le h1
+ * est déjà pris. Deux h1 sur une page, c'est une page sans titre.
+ */
+export function Leaderboard({
+  niveau = 1,
+  titre = 'Leaderboard',
+}: {
+  niveau?: 1 | 2
+  titre?: string
+} = {}) {
   const { user } = useAuth()
   // Les nombres suivent la langue affichée. Ils étaient figés en « fr-FR »,
   // ce qui écrivait « 7 500 » au milieu d'une phrase anglaise.
@@ -58,12 +71,19 @@ export function Leaderboard() {
     )
 
   return (
-    <section id="leaderboard" className="py-20 sm:py-28 border-t border-slate-200/70">
-      <div className="container max-w-6xl mx-auto px-6">
+    <section
+      id="leaderboard"
+      className={
+        niveau === 1
+          ? 'py-20 sm:py-28 border-t border-slate-200/70'
+          : 'mt-12 pt-8 border-t border-slate-200/70 pb-16'
+      }
+    >
+      <div className={niveau === 1 ? 'container max-w-6xl mx-auto px-6' : ''}>
         <SectionHeader
-          niveau={1}
+          niveau={niveau}
           eyebrow="every player"
-          title="Leaderboard"
+          title={titre}
           sub={`Live ranking of everyone backing their calls. You stake ${JETON.plusieurs}, you win ${POINT.plusieurs} at the real odds — ${PALIER.points.toLocaleString(localeOf(lang))} ${POINT.plusieurs} unlock ${PALIER.recompense}.`}
         />
 

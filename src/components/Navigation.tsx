@@ -22,7 +22,11 @@ const BASE_LINKS: Array<{ label: string; to: string }> = [
   // d'être dans la navigation principale, pas seulement dans un lien de pied
   // de page. Le classement vivait à /board sans qu'aucun lien n'y mène.
   { label: 'Predict', to: '/predictions' },
-  { label: 'Table', to: '/board' },
+  // Le jeu social n'avait aucune porte d'entrée : les pages existaient, rien
+  // n'y menait (Mehdi, 2026-10-10). /board est maintenant la section
+  // entière — ma saison, mes groupes, mes prix, le général — et ce lien est
+  // sa porte. Un deuxième lien vers /leagues ne ferait que diviser.
+  { label: 'Standings', to: '/board' },
 ]
 const WC26_LINK = { label: 'WC26 Archive', to: '/wc26' }
 

@@ -51,6 +51,21 @@ const tabs: Tab[] = [
     ),
   },
     {
+      // Le classement et les groupes. Mehdi n'a pas trouvé la section le
+      // 10/10/2026 : elle n'était dans aucune barre. Sur mobile, une
+      // fonctionnalité absente de cette barre n'existe pas.
+      to: '/board', label: 'Standings',
+      icon: (a) => (
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+          <path d="M4 20h16" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" />
+          <rect x="9.5" y="7" width="5" height="13" rx="1" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
+          <rect x="3.5" y="12" width="6" height="8" rx="1" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
+          <rect x="14.5" y="14" width="6" height="6" rx="1" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
+          <path d="M12 3.5l.9 1.9 2 .3-1.5 1.4.4 2-1.8-1-1.8 1 .4-2L9 5.7l2-.3.9-1.9z" fill="currentColor" />
+        </svg>
+      ),
+    },
+    {
       // L'analyse IA a son propre onglet : c'est un outil distinct du pari,
       // et une section absente de la barre du bas n'existe quasiment pas
       // sur mobile.
@@ -144,9 +159,13 @@ export function BottomNav() {
           la ligne (mesuré le 10/10/2026). */}
       <div
         className={
-          { 3: 'grid grid-cols-3', 4: 'grid grid-cols-4', 5: 'grid grid-cols-5' }[
-            visibleTabs.length
-          ] ?? 'grid grid-cols-4'
+          {
+            3: 'grid grid-cols-3',
+            4: 'grid grid-cols-4',
+            5: 'grid grid-cols-5',
+            6: 'grid grid-cols-6',
+            7: 'grid grid-cols-7',
+          }[visibleTabs.length] ?? 'grid grid-cols-5'
         }
       >
         {visibleTabs.map((t) => (
@@ -162,7 +181,16 @@ export function BottomNav() {
             {({ isActive }) => (
               <>
                 {t.icon(isActive)}
-                <span className={'text-[10px] ' + (isActive ? 'font-semibold' : 'font-medium')}>
+                <span
+                  className={
+                    'max-w-full px-0.5 truncate ' +
+                    // « Classement » ne tient pas à 10 px dans une colonne de
+                    // 53 px. Au-delà de cinq onglets le libellé rétrécit —
+                    // mesuré sur 375 px, l'écran le plus étroit qu'on sert.
+                    (visibleTabs.length >= 6 ? 'text-[9px] ' : 'text-[10px] ') +
+                    (isActive ? 'font-semibold' : 'font-medium')
+                  }
+                >
                   {t2(t.label)}
                 </span>
                 {isActive && (

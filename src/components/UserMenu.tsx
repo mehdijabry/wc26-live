@@ -227,6 +227,16 @@ export function UserMenu() {
               >
                 🎟️ {t('My bets')}
               </Link>
+              {/* Le classement et les groupes : ils n'étaient atteignables que
+                  par une phrase en bas de la page des paris, sous cent
+                  quatre-vingt-dix matchs (Mehdi, 2026-10-10). */}
+              <Link
+                to="/board"
+                onClick={() => setMenuOpen(false)}
+                className="block w-full px-3 py-2 rounded-lg bg-accent-gold/10 hover:bg-accent-gold/20 text-xs text-slate-800 transition-colors"
+              >
+                🏆 {t('Standings')}
+              </Link>
               {/* Le bracket du Mondial n'a plus sa place dans ce menu : le jeu
                   vivant, ce sont les paris (Mehdi, 2026-10-09). La PAGE reste en
                   ligne et la route /bracket est intacte — seul le raccourci

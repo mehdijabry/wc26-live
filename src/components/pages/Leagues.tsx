@@ -3,8 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
-import { creerLigue, mesLigues, type Ligue, mesPrix, reclamerPrix, type Prix } from '../../lib/leagues'
-import PrixHebdomadaires from '../PrixHebdomadaires'
+import { creerLigue, mesLigues, type Ligue } from '../../lib/leagues'
 import { useT } from '../../lib/i18n'
 
 /**
@@ -24,8 +23,6 @@ export function Leagues() {
   const [occupe, setOccupe] = useState(false)
   const [modale, setModale] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
-  const [prix, setPrix] = useState<Prix[]>([])
-  const [messagePrix, setMessagePrix] = useState<string | null>(null)
 
   usePageHead({
     titre: 'Private prediction leagues — settle it with your mates',
@@ -46,11 +43,7 @@ export function Leagues() {
       setLigues([])
       return
     }
-    // Les groupes et les prix en parallèle : deux lectures indépendantes,
-    // les enchaîner ferait clignoter la page deux fois.
-    const [g, p] = await Promise.all([mesLigues(user.id), mesPrix()])
-    setLigues(g)
-    setPrix(p)
+    setLigues(await mesLigues(user.id))
   }, [user])
 
   useEffect(() => {
@@ -81,6 +74,13 @@ export function Leagues() {
       <p className="mt-3 text-muted-foreground max-w-2xl">
         {t('Create a league, send one link, and settle the argument once and for all — who actually knows their football? Everyone starts level: points only count from the day each member joins.')}
       </p>
+
+      <Link
+        to="/board"
+        className="mt-6 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm active:scale-[0.98] transition-transform"
+      >
+        🏆 {t('Open the standings')}
+      </Link>
 
       <div className="mt-8 flex flex-wrap gap-2">
         <input
@@ -141,30 +141,6 @@ export function Leagues() {
         .
       </p>
 
-      {/* Les prix du podium. Posés ici plutôt que dans chaque groupe : le
-          joueur n'en réclame qu'UN par semaine, il doit donc les voir tous
-          ensemble pour choisir — un par un, il choisirait à l'aveugle. */}
-      <PrixHebdomadaires
-        prix={prix}
-        occupe={occupe}
-        onReclamer={(id, monnaie) => {
-          setOccupe(true)
-          setMessagePrix(null)
-          void reclamerPrix(id, monnaie).then(async (r) => {
-            setOccupe(false)
-            if ('erreur' in r) {
-              setMessagePrix(t('Could not claim this prize.'))
-              return
-            }
-            setMessagePrix(
-              t('Prize taken from {g}.').replace('{g}', r.groupe),
-            )
-            await charger()
-            await useAuth.getState().refreshProfile()
-          })
-        }}
-      />
-      {messagePrix && <p className="mt-2 text-sm text-slate-600">{messagePrix}</p>}
 
       <AuthModal open={modale} onClose={() => { setModale(false); void charger() }} />
     </div>

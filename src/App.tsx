@@ -33,7 +33,7 @@ const Predictions = lazy(() => import('./components/Predictions').then((m) => ({
 const Clubs = lazy(() => import('./components/pages/Clubs').then((m) => ({ default: m.Clubs })))
 const ClubsLeague = lazy(() => import('./components/pages/ClubsLeague').then((m) => ({ default: m.ClubsLeague })))
 const ClubPage = lazy(() => import('./components/pages/ClubPage').then((m) => ({ default: m.ClubPage })))
-const Leaderboard = lazy(() => import('./components/Leaderboard').then((m) => ({ default: m.Leaderboard })))
+const Classement = lazy(() => import('./components/pages/Classement').then((m) => ({ default: m.Classement })))
 // Les brackets publiés du Mondial : archive, montée sur /bracket et plus
 // sur /board, où ils étaient l'onglet par défaut du classement.
 const BracketsPublies = lazy(() => import('./components/BracketsPublies').then((m) => ({ default: m.BracketsPublies })))
@@ -766,17 +766,15 @@ function TodayPage() {
   )
 }
 
+/**
+ * /board — le hub du jeu social : ma saison, mes groupes, mes prix, puis le
+ * classement général. L'en-tête de page est posé par Classement.
+ */
 function BoardPage() {
-  usePageHead({
-    titre: 'Football prediction leaderboard — who calls it best',
-    description:
-      'The best callers on Pressing 90, ranked on points won across every competition. Exact score 100, right winner and goal difference 60, right winner 30.',
-    chemin: '/board',
-  })
   return (
     <>
       <Suspense fallback={<PageSkeleton caption="Loading the leaderboard…" />}>
-        <Leaderboard />
+        <Classement />
       </Suspense>
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="board-mid" /></div>
     </>

@@ -67,6 +67,24 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  // ── La section du jeu : /board (10/10/2026) ────────────────────────
+  'Standings': 'الترتيب',
+  'Your groups': 'مجموعاتي',
+  'New group': 'مجموعة جديدة',
+  'Group name': 'اسم المجموعة',
+  'Place a bet': 'راهن',
+  'Open the standings': 'افتح الترتيب',
+  'of {n}': 'من {n}',
+  'bets won': 'رهانات رابحة',
+  'five bets a week unlock the full podium prizes in your groups': 'خمسة رهانات في الأسبوع تفتح جوائز المنصة بالكامل في مجموعاتك',
+  'Sign in to see your rank, your badges and your groups. Everything below is the public table.': 'سجّل الدخول لترى رتبتك وأوسمتك ومجموعاتك. وما يلي هو الترتيب العام.',
+  'Name it, send the link, and the table starts from the day each of you joins.': 'أعطها اسمًا وأرسل الرابط: يبدأ الترتيب من يوم انضمام كل واحد.',
+  '{n} members': '{n} أعضاء',
+  'Claim {n}': 'اطلب {n}',
+  'Nobody has bet today': 'لا أحد راهن اليوم',
+  '{n} crampons claimed today': 'تمت المطالبة بـ {n} كرامبون اليوم',
+  '{n} crampons claimed.': 'تمت المطالبة بـ {n} كرامبون.',
+  'Could not claim the bonus right now.': 'تعذّرت المطالبة بالمكافأة الآن.',
   'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.': 'تحصل على {d} {jeton} كل يوم عند تسجيل الدخول — وإن لم تطلبها ضاعت. راهن بـ {min} منها على الأقل على نتيجة، بالمعامل الحقيقي للمباراة: كلما كان المرشح أوضح قلّ المردود. الأرباح بـ {point}، و{palier} {point} تفتح {prix}. الصعود على خمسة مستويات: تحت {libre} {point} لا تكلفك الورقة الخاسرة سوى رهانك، وفوقها تكلفك {perte1} ثم {perte2} ثم {perte3} {point}. بدون أي إيداع ولا وسيط رهان. كل مباراة لدينا معاملها قابلة للعب — الدوريات والكؤوس والمنتخبات، وأكبر البطولات أولا.',
   'crampons': 'كرامبون',
   // ── Les pronostics (10/10/2026) ────────────────────────────────────
@@ -554,6 +572,24 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // ── La section du jeu : /board (10/10/2026) ────────────────────────
+  'Standings': 'Classement',
+  'Your groups': 'Mes groupes',
+  'New group': 'Nouveau groupe',
+  'Group name': 'Nom du groupe',
+  'Place a bet': 'Parier',
+  'Open the standings': 'Ouvrir le classement',
+  'of {n}': 'sur {n}',
+  'bets won': 'paris gagnés',
+  'five bets a week unlock the full podium prizes in your groups': 'cinq paris par semaine débloquent les prix du podium à 100 % dans vos groupes',
+  'Sign in to see your rank, your badges and your groups. Everything below is the public table.': 'Connectez-vous pour voir votre rang, vos distinctions et vos groupes. Tout ce qui suit est le classement public.',
+  'Name it, send the link, and the table starts from the day each of you joins.': 'Donnez-lui un nom, envoyez le lien : le classement démarre au jour d’arrivée de chacun.',
+  '{n} members': '{n} membres',
+  'Claim {n}': 'Réclamer {n}',
+  'Nobody has bet today': 'Personne n’a parié aujourd’hui',
+  '{n} crampons claimed today': '{n} crampons réclamés aujourd’hui',
+  '{n} crampons claimed.': '{n} crampons réclamés.',
+  'Could not claim the bonus right now.': 'Impossible de réclamer le bonus pour le moment.',
   'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.': 'Vous recevez {d} {jeton} par jour, à réclamer en vous connectant — non réclamés, ils sont perdus. Misez-en au moins {min} sur un résultat, à la cote réelle du match : plus le favori est net, moins ça paie. Les gains sont en {point}, et {palier} {point} débloquent {prix}. La montée compte cinq paliers : sous {libre} {point} un pari raté ne coûte que la mise, au-dessus chacun coûte {perte1}, puis {perte2}, puis {perte3} {point}. Rien à déposer, aucun bookmaker. Tout match dont nous avons la cote est jouable — championnats, coupes et sélections, les plus grandes compétitions d’abord.',
   'crampons': 'crampons',
   // ── Les pronostics (10/10/2026) ────────────────────────────────────
