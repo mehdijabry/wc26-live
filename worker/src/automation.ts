@@ -28,6 +28,7 @@
  * A missing webhook just skips that output (logged), never throws.
  */
 import { TALES, TALE_LABELS, TALE_SUBJECTS, type Tale, type TaleCover, type TaleLang, type TaleText } from './tales'
+import { cartePronostic } from './pronostics'
 import type { Env } from './index'
 import { withPlaybook, checkCaption, playbookSummary, pinnedComment } from './playbook'
 import { playbookReview } from './review'
@@ -3224,7 +3225,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       // du worker pour la Botola. On veut savoir ce que le plan GRATUIT autorise
       // — notamment /predictions, que la concurrence facture — avant de bâtir
       // quoi que ce soit dessus. Lecture seule, jamais appelée par le site.
-      const x = extra as { chemin?: string; params?: Record<string, string> }
+      const x = extra as { chemin?: string; params?: Record<string, string>; max?: number }
       const chemin = String(x.chemin ?? '/status')
       const qs = new URLSearchParams(x.params ?? {}).toString()
       const cle = (env as unknown as { APISPORTS_KEY?: string }).APISPORTS_KEY
@@ -3234,7 +3235,52 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
           headers: { 'x-apisports-key': cle }, signal: AbortSignal.timeout(15000),
         })
         const t = await r.text()
-        return { ok: r.ok, note: `${r.status} · ${t.slice(0, 1400)}` }
+        return { ok: r.ok, note: `${r.status} · ${t.slice(0, Math.min(Number(x.max ?? 1400), 60000))}` }
+      } catch (e) { return { ok: false, note: String(e).slice(0, 200) } }
+    }
+    if (job === 'bsd-carte') {
+      // Monte la carte d'un match SANS passer par la porte de déblocage :
+      // c'est la vérification du montage lui-même, pas de l'autorisation.
+      const id = String((extra as { match?: string }).match ?? '')
+      if (!/^e\d{4,12}$/.test(id)) return { ok: false, note: 'match invalide' }
+      const c = await cartePronostic(env as unknown as { CACHE: KVNamespace; BSD_KEY?: string }, id)
+      return { ok: true, note: JSON.stringify(c).slice(0, Math.min(Number((extra as { max?: number }).max ?? 2000), 60000)) }
+    }
+    if (job === 'bsd-appariement') {
+      // Mesure de l'appariement ESPN ↔ BSD construit par la passe des cotes.
+      // Lecture seule ; `verrou: true` relâche le verrou des cotes pour que
+      // la passe suivante reconstruise tout de suite au lieu d'attendre.
+      const x = extra as { verrou?: boolean; echantillon?: number }
+      if (x.verrou) await env.CACHE.delete('cotes:verrou')
+      const brut = await env.CACHE.get('bsd:appariement')
+      if (!brut) return { ok: false, note: x.verrou ? 'verrou relâché, appariement pas encore construit' : 'aucun appariement en cache' }
+      const table = JSON.parse(brut) as Record<string, number>
+      const cles = Object.keys(table)
+      const ech = cles.slice(0, Math.min(Number(x.echantillon ?? 8), 40)).map((k) => `${k}→${table[k]}`)
+      const m = await env.CACHE.get('bsd:appariement:manques')
+      const d = m ? (JSON.parse(m) as { total: number; apparies: number; manques: string[] }) : null
+      const taux = d ? ` (${d.apparies}/${d.total}, ${Math.round((100 * d.apparies) / Math.max(d.total, 1))} %)` : ''
+      const rates = d && (extra as { manques?: boolean }).manques ? ` · ÉCHECS : ${d.manques.join(' | ')}` : ''
+      return { ok: true, note: `${cles.length} match(s) appariés${taux} · ${ech.join(' ')}${rates}` }
+    }
+    if (job === 'bsd') {
+      // Sonde de lecture pour Bzzoiro Sports Data (2026-10-10). Même rôle que
+      // `apisports` ci-dessus : on mesure ce que la clé ouvre AVANT de bâtir
+      // quoi que ce soit dessus. Leur schéma OpenAPI annonce pronostics, onze
+      // probable (IA, avec confiance), indisponibles avec motif, forme et H2H
+      // sans quota — c'est ce qu'on vient confirmer sur de vraies données.
+      const x = extra as { chemin?: string; params?: Record<string, string>; max?: number }
+      const chemin = String(x.chemin ?? '/api/v2/coverage/')
+      const qs = new URLSearchParams(x.params ?? {}).toString()
+      const cle = (env as unknown as { BSD_KEY?: string }).BSD_KEY
+      if (!cle) return { ok: false, note: 'BSD_KEY absente' }
+      try {
+        const r = await fetch(`https://sports.bzzoiro.com${chemin}${qs ? '?' + qs : ''}`, {
+          headers: { authorization: `Token ${cle}`, accept: 'application/json' },
+          signal: AbortSignal.timeout(20000),
+        })
+        const t = await r.text()
+        return { ok: r.ok, note: `${r.status} · ${t.slice(0, Math.min(Number(x.max ?? 1400), 60000))}` }
       } catch (e) { return { ok: false, note: String(e).slice(0, 200) } }
     }
     if (job === 'espn-direct') {

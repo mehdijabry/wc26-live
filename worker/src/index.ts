@@ -22,6 +22,7 @@ import {
   withSecurityHeaders,
 } from './security'
 import { handleAdmin } from './admin'
+import { construireAppariement, cartePronostic, appariement } from './pronostics'
 
 export interface Env {
   CACHE: KVNamespace
@@ -58,6 +59,8 @@ export interface Env {
   // qu'ESPN n'a pas du tout. La clé reste ici : le navigateur ne doit jamais
   // la voir, sinon n'importe qui brûle le quota. Posée par wrangler secret.
   APISPORTS_KEY?: string
+  /** Bzzoiro Sports Data : pronostics, onze probable, indisponibles. */
+  BSD_KEY?: string
   TIKTOK_CLIENT_KEY?: string     // TikTok for Developers app (Content Posting API) — wrangler secret, Mehdi (2026-09-18)
   TIKTOK_CLIENT_SECRET?: string
   MAKE_FB_VIDEO_WEBHOOK_URL?: string  // Make scenario 2: webhook → Facebook Pages "Upload a Video"
@@ -505,6 +508,25 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
       // /push/test (POST)         fire a test push to the calling endpoint
       // /push/broadcast (POST)    fan-out to every saved subscription
       //                            (auth: x-admin-token header)
+      // ─── Les matchs pour lesquels un pronostic existe ──────────────
+      // Public et sans jeton : savoir qu'un pronostic EXISTE ne révèle rien,
+      // et le site a besoin de cette liste avant toute connexion pour ne pas
+      // proposer un déblocage qu'il ne pourrait pas honorer.
+      if (url.pathname === '/jeu/pronostics-dispo') {
+        const t = await appariement(env)
+        return cors(
+          json({ matchs: Object.keys(t) }, 200, { 'cache-control': 'public, max-age=300' }),
+          req,
+        )
+      }
+
+      // ─── Le pronostic d'un match, réservé à qui l'a débloqué ───────
+      if (url.pathname === '/jeu/pronostic') {
+        const rl = await rateLimit(env, req, { route: 'jeu:pronostic', limit: 60 })
+        if (rl.blocked) return cors(rateLimitedResponse(rl.retryAfter), req)
+        return cors(await handlePronostic(req, env), req)
+      }
+
       // ─── Push endpoints — rate-limited per IP ──────────────────────
       // 'Cheap' actions (subscribe/unsubscribe) get a generous limit;
       // /push/test is throttled hard because a misuse hits external
@@ -1617,10 +1639,10 @@ async function cachedFetch(env: Env, key: string, upstream: string, ttl: number)
   })
 }
 
-function json(data: unknown, status = 200): Response {
+function json(data: unknown, status = 200, enTetes: Record<string, string> = {}): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', ...enTetes },
   })
 }
 
@@ -1635,7 +1657,14 @@ function cors(resp: Response, req: Request): Response {
   // lecture (curl l'atteint sans origine), et les routes d'admin sont
   // protégées par leur propre jeton, pas par le CORS.
   const localAutorise = /^http:\/\/(localhost|127\.0\.0\.1):\d{1,5}$/.test(origin)
-  const allowed = ALLOW_ORIGINS.includes(origin) || localAutorise ? origin : ALLOW_ORIGINS[0]
+  // Les prévisualisations de NOTRE projet Pages. Sans elles, un déploiement
+  // de branche ne peut appeler aucune route du worker — et comme il n'existe
+  // pas de serveur local pour ce site, la branche est le SEUL endroit où
+  // vérifier une fonctionnalité avant la production. On vérifiait donc à
+  // l'aveugle. Le motif est volontairement étroit : un seul segment, et
+  // uniquement sous wc26-live.pages.dev.
+  const apercu = /^https:\/\/[a-z0-9-]{1,63}\.wc26-live\.pages\.dev$/.test(origin)
+  const allowed = ALLOW_ORIGINS.includes(origin) || localAutorise || apercu ? origin : ALLOW_ORIGINS[0]
   const h = new Headers(resp.headers)
   h.set('access-control-allow-origin', allowed)
   // Push endpoints are POST — must allow it in CORS.
@@ -2763,6 +2792,9 @@ async function syncCotes(env: Env): Promise<void> {
   }
 
   const lignes: Array<Record<string, unknown>> = []
+  // Les mêmes matchs, mais avec leurs NOMS : c'est la seule passe du worker
+  // qui les a sous la main, et c'est ce qu'il faut pour apparier avec BSD.
+  const pourAppariement: Array<{ id: string; date: string; dom: string; ext: string }> = []
 
   for (let i = 0; i < JOURS_DE_COTES; i++) {
     const d = new Date(Date.now() + i * 86_400_000)
@@ -2809,6 +2841,13 @@ async function syncCotes(env: Env): Promise<void> {
         kickoff: ev.date ?? null,
         updated_at: new Date().toISOString(),
       })
+
+      pourAppariement.push({
+        id: `e${ev.id}`,
+        date: ev.date,
+        dom: dom.displayName ?? dom.shortDisplayName ?? '',
+        ext: ext.displayName ?? ext.shortDisplayName ?? '',
+      })
     }
   }
 
@@ -2824,6 +2863,15 @@ async function syncCotes(env: Env): Promise<void> {
     },
     body: JSON.stringify(lignes),
   })
+  // L'appariement BSD passe APRÈS, et sous try/catch : une panne chez eux ne
+  // doit jamais empêcher la publication des cotes, dont dépend tout le jeu.
+  try {
+    const a = await construireAppariement(env, pourAppariement)
+    console.log(`[bsd] appariement ${a.apparies}/${a.total}`)
+  } catch (e) {
+    console.log('[bsd] appariement échoué:', String(e).slice(0, 160))
+  }
+
   if (!resp.ok) {
     console.log('[cotes] upsert refusé:', resp.status, (await resp.text()).slice(0, 180))
   } else {
@@ -3067,6 +3115,54 @@ export async function sendWebPush(env: Env, sub: PushSub, payload: object): Prom
 }
 
 // ---------- /push/subscribe + /push/unsubscribe ---------------------------
+
+/**
+ * Le pronostic d'un match.
+ *
+ * DEUX VÉRIFICATIONS, et les deux côté serveur. Le jeton Supabase dit QUI
+ * demande, et la table `prediction_unlocks` dit s'il a payé. Sans ça, il
+ * suffirait d'appeler cette adresse à la main pour contourner le prix — et
+ * tout l'intérêt de l'échelle de déblocage disparaîtrait.
+ *
+ * On ne renvoie JAMAIS 404 quand la donnée manque : la carte se monte avec
+ * ce qu'on a et le site affiche nos propres chiffres. Un pronostic absent
+ * n'est pas une page cassée.
+ */
+async function handlePronostic(req: Request, env: Env): Promise<Response> {
+  const url = new URL(req.url)
+  const match = (url.searchParams.get('match') ?? '').trim()
+  // Nos identifiants sont `e` suivi de chiffres. Tout le reste est refusé
+  // avant d'atteindre KV ou Supabase.
+  if (!/^e\d{4,12}$/.test(match)) return json({ error: 'match invalide' }, 400)
+
+  const bearer = req.headers.get('authorization')
+  if (!bearer?.startsWith('Bearer ')) return json({ error: 'connexion requise' }, 401)
+
+  let utilisateur: string | null = null
+  try {
+    const r = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: bearer },
+    })
+    if (r.ok) utilisateur = ((await r.json()) as { id?: string }).id ?? null
+  } catch { /* jeton illisible : traité comme absent juste en dessous */ }
+  if (!utilisateur) return json({ error: 'session expirée' }, 401)
+
+  const q = `${env.SUPABASE_URL}/rest/v1/prediction_unlocks?select=match_id&user_id=eq.${encodeURIComponent(utilisateur)}&match_id=eq.${encodeURIComponent(match)}&limit=1`
+  const vu = await fetch(q, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+  })
+  if (!vu.ok) return json({ error: 'verification impossible' }, 502)
+  const lignes = (await vu.json()) as unknown[]
+  // 402 et pas 403 : le client doit pouvoir distinguer « pas le droit » de
+  // « pas encore payé », parce que la seconde réponse se règle par un clic.
+  if (!lignes.length) return json({ error: 'pronostic non debloque' }, 402)
+
+  try {
+    return json(await cartePronostic(env, match))
+  } catch (e) {
+    return json({ error: String((e as Error).message) }, 502)
+  }
+}
 
 async function handlePushSubscribe(req: Request, env: Env): Promise<Response> {
   // Read at most 4KB — a legit PushSubscription is ~500 bytes; anything
