@@ -3,6 +3,8 @@ import { useState } from 'react'
 import CartePronostic from '../src/components/CartePronostic'
 import TerrainChargement from '../src/components/TerrainChargement'
 import BoutonPronostic from '../src/components/BoutonPronostic'
+import BarreDeblocage from '../src/components/BarreDeblocage'
+import Distinctions from '../src/components/Distinctions'
 import '../src/index.css'
 
 function Apercu() {
@@ -18,6 +20,63 @@ function Apercu() {
           </h2>
           <div className="glass rounded-2xl mt-2">
             <TerrainChargement />
+          </div>
+        </section>
+
+        <section>
+          <h2 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">
+            0 · les récompenses de groupe
+          </h2>
+          <BarreDeblocage
+            etat={{
+              membres: 5, actifs: 4, ontParieJour: 3, tauxJour: 0.75, bonusJour: 2,
+              ontCinqSemaine: 2, tauxSemaine: 0.5, recompenses: 3,
+              manquantsJour: ['Karim'],
+              manquantsSemaine: ['Karim', 'Sofia'],
+            }}
+            dejaReclame={null}
+            occupe={false}
+            onReclamer={() => {}}
+          />
+          <BarreDeblocage
+            etat={{
+              membres: 5, actifs: 4, ontParieJour: 4, tauxJour: 1, bonusJour: 3,
+              ontCinqSemaine: 4, tauxSemaine: 1, recompenses: 3,
+              manquantsJour: [], manquantsSemaine: [],
+            }}
+            dejaReclame={{ groupe: 'Les Collègues', crampons: 3 }}
+            occupe={false}
+            onReclamer={() => {}}
+          />
+          <BarreDeblocage
+            etat={{
+              membres: 2, actifs: 2, ontParieJour: 1, tauxJour: 0.5, bonusJour: 0,
+              ontCinqSemaine: 0, tauxSemaine: 0, recompenses: 0,
+              manquantsJour: [], manquantsSemaine: [],
+            }}
+            dejaReclame={null}
+            occupe={false}
+            onReclamer={() => {}}
+          />
+        </section>
+
+        <section>
+          <h2 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">
+            0 bis · les distinctions, cumulées
+          </h2>
+          <div className="mt-2 glass rounded-2xl p-4 space-y-3">
+            {[
+              { l: 'GOAT dans 3 groupes', c: { or: 0, argent: 0, bronze: 0, goat: 3 } },
+              { l: 'premier dans 2, GOAT dans 1', c: { or: 2, argent: 0, bronze: 0, goat: 1 } },
+              { l: 'un or, un argent, un bronze', c: { or: 1, argent: 1, bronze: 1, goat: 0 } },
+              { l: 'troisième d’un seul groupe', c: { or: 0, argent: 0, bronze: 1, goat: 0 } },
+            ].map((x) => (
+              <div key={x.l} className="flex items-center gap-3">
+                <span className="font-display text-[15px]">mehdijabry</span>
+                <Distinctions compte={x.c} taille={20} />
+                <span className="ms-auto font-mono text-[10px] text-slate-500">{x.l}</span>
+              </div>
+            ))}
           </div>
         </section>
 

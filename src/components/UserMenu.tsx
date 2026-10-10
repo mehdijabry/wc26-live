@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import Distinctions from './Distinctions'
+import { mesDistinctions, type Distinctions as Compte } from '../lib/leagues'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useBracket } from '../store/bracket'
@@ -27,6 +29,23 @@ export function UserMenu() {
   const loadBracket = useBracket((s) => s.load)
   const location = useLocation()
   const [modalOpen, setModalOpen] = useState(false)
+
+  // Les distinctions portées, tous groupes confondus. Lues une fois à
+  // l'ouverture du menu : elles ne bougent qu'au règlement d'un pari, et les
+  // recharger à chaque rendu ferait une requête par survol.
+  //
+  // DÉCLARÉES AVANT TOUT RETOUR ANTICIPÉ. Le composant rend un simple bouton
+  // « Sign in » quand personne n'est connecté : un hook placé après ce
+  // retour ne serait appelé que parfois, ce que React interdit.
+  const [distinctions, setDistinctions] = useState<Compte>({ or: 0, argent: 0, bronze: 0, goat: 0 })
+  useEffect(() => {
+    const id = profile?.id
+    if (!id) return
+    let vivant = true
+    void mesDistinctions(id).then((d) => { if (vivant) setDistinctions(d) })
+    return () => { vivant = false }
+  }, [profile?.id])
+
   const [menuOpen, setMenuOpen] = useState(false)
 
   // Force the dropdown closed whenever the URL changes. Without this,
@@ -91,6 +110,8 @@ export function UserMenu() {
     su ? (loc ? Number(v ?? 0).toLocaleString(localeOf(lang)) : String(v ?? 0)) : '—'
 
   const alias = profile?.alias ?? 'fan'
+
+
   const tier = profile?.tier ?? 'Rookie'
 
   return (
@@ -103,6 +124,7 @@ export function UserMenu() {
           {alias.slice(0, 1).toUpperCase()}
         </span>
         <span className="hidden sm:block max-w-[100px] truncate">{alias}</span>
+        <Distinctions compte={distinctions} taille={14} max={2} />
         {/* Le solde se lit sans ouvrir quoi que ce soit. Un score qu'il faut
             aller chercher dans un menu déroulant n'existe pas pour le joueur
             — c'est le reproche qui a motivé cette refonte. */}
@@ -167,7 +189,10 @@ export function UserMenu() {
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                <div className="font-display font-bold text-lg truncate flex-1">{alias}</div>
+                <div className="font-display font-bold text-lg truncate flex-1">
+                  {alias}
+                  <Distinctions compte={distinctions} taille={18} className="ms-2" />
+                </div>
                 <button
                   onClick={() => { setDraft(alias); setEditing(true); setError(null) }}
                   aria-label={t('Edit alias')}

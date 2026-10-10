@@ -30,6 +30,13 @@
  */
 
 export type NomIcone =
+  // Le jeu social, déposées le 10/10/2026 : podium, médailles et GOAT.
+  | 'ranking'
+  | 'medaille-or'
+  | 'medaille-argent'
+  | 'medaille-bronze'
+  | 'goat'
+  | 'profile'
   | 'football'
   | 'football-club-flag'
   | 'football-free-kick'

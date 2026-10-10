@@ -4,14 +4,21 @@ import { useAuth } from '../../store/auth'
 import { usePageHead } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
 import {
-  classementDeLigue,
-  lienDInvitation,
   ligueParSlug,
-  quitter,
+  classementDeLigue,
   rejoindre,
+  quitter,
+  lienDInvitation,
+  etatDuGroupe,
+  podiumDuJour,
+  bonusDuJour,
+  reclamerBonus,
   type Ligue,
   type LigneDeLigue,
+  type EtatDuGroupe,
 } from '../../lib/leagues'
+import BarreDeblocage from '../BarreDeblocage'
+import { Icone } from '../Icone'
 import { cn } from '../../lib/utils'
 import { localeOf, useLang, useT } from '../../lib/i18n'
 
@@ -41,6 +48,10 @@ export function LeaguePage() {
   const [occupe, setOccupe] = useState(false)
   const [copie, setCopie] = useState(false)
   const [modale, setModale] = useState(false)
+  const [etat, setEtat] = useState<EtatDuGroupe | null>(null)
+  const [podium, setPodium] = useState<Map<string, number>>(new Map())
+  const [reclame, setReclame] = useState<{ groupe: string; crampons: number } | null>(null)
+  const [messageBonus, setMessageBonus] = useState<string | null>(null)
 
   usePageHead({
     titre: ligue && ligue !== 'introuvable' ? `${ligue.name} — private league` : 'Private league',
@@ -56,8 +67,37 @@ export function LeaguePage() {
       return
     }
     setLigue(l)
-    setLignes(await classementDeLigue(slug))
+    // Quatre lectures en parallèle : le classement, l'état de déblocage, le
+    // podium du jour et le bonus déjà pris. Les enchaîner ferait clignoter
+    // la page quatre fois.
+    const [table, e, pod, bonus] = await Promise.all([
+      classementDeLigue(slug),
+      etatDuGroupe(slug),
+      podiumDuJour(slug),
+      bonusDuJour(),
+    ])
+    setLignes(table)
+    setEtat(e)
+    setPodium(pod)
+    setReclame(bonus)
   }, [slug])
+
+  const onReclamer = async () => {
+    setOccupe(true)
+    setMessageBonus(null)
+    const r = await reclamerBonus(slug)
+    setOccupe(false)
+    if ('erreur' in r) {
+      setMessageBonus(t('Could not claim right now.'))
+      return
+    }
+    if (r.deja) {
+      setMessageBonus(t('Claimed today in {g} — one group per day.').replace('{g}', r.groupe))
+    }
+    await charger()
+    // Le solde a bougé : le menu du compte doit le refléter sans rechargement.
+    await useAuth.getState().refreshProfile()
+  }
 
   useEffect(() => {
     void charger()
@@ -152,6 +192,21 @@ export function LeaguePage() {
         )}
       </div>
 
+      {/* L'état de déblocage, et le bouton pour encaisser. Posé APRÈS
+          l'invitation : un groupe trop petit doit d'abord recruter, et c'est
+          le lien qui sert à ça. */}
+      {membre && etat && (
+        <>
+          <BarreDeblocage
+            etat={etat}
+            dejaReclame={reclame}
+            occupe={occupe}
+            onReclamer={() => void onReclamer()}
+          />
+          {messageBonus && <p className="mt-2 text-sm text-slate-600">{messageBonus}</p>}
+        </>
+      )}
+
       <p className="mt-3 text-xs font-mono text-slate-400 break-all">{lien}</p>
 
       {lignes.length === 0 ? (
@@ -164,7 +219,7 @@ export function LeaguePage() {
             <tr className="text-start text-xs font-mono uppercase tracking-wider text-slate-400 border-b border-slate-200/60">
               <th className="py-2 pr-3 font-medium text-start">#</th>
               <th className="py-2 pr-3 font-medium text-start">{t('Player')}</th>
-              <th className="py-2 pr-3 font-medium text-end">{t('Settled')}</th>
+              <th className="py-2 pr-3 font-medium text-end">{t('Won / played')}</th>
               <th className="py-2 font-medium text-end">{t('Points')}</th>
             </tr>
           </thead>
@@ -178,8 +233,20 @@ export function LeaguePage() {
                 )}
               >
                 <td className="py-2 pr-3 font-mono tabular-nums text-slate-400">{i + 1}</td>
-                <td className="py-2 pr-3">{r.alias || t('anonymous')}</td>
-                <td className="py-2 pr-3 text-end font-mono tabular-nums text-slate-500">{r.resolved}</td>
+                  <td className="py-2 pr-3">
+                    <span className="inline-flex items-center gap-1.5">
+                      {r.alias || t('anonymous')}
+                      {/* La médaille du JOUR, pas du classement affiché : le
+                          tableau compte les points depuis l'adhésion, le
+                          podium se rejoue chaque jour. */}
+                      {podium.get(r.user_id) === 1 && <Icone nom="medaille-or" taille={16} />}
+                      {podium.get(r.user_id) === 2 && <Icone nom="medaille-argent" taille={16} />}
+                      {podium.get(r.user_id) === 3 && <Icone nom="medaille-bronze" taille={16} />}
+                    </span>
+                  </td>
+                <td className="py-2 pr-3 text-end font-mono tabular-nums text-slate-500">
+                    {r.gagnes}<span className="text-slate-400">/{r.paris}</span>
+                  </td>
                 <td className="py-2 text-end font-mono tabular-nums font-semibold">
                   {r.points.toLocaleString(localeOf(lang))}
                 </td>

@@ -25,8 +25,129 @@ export type LigneDeLigue = {
   avatar_url: string | null
   country: string | null
   points: number
-  resolved: number
+  paris: number
+  gagnes: number
   joined_at: string
+}
+
+/**
+ * L'état de déblocage d'un groupe, tel que la barre l'affiche.
+ *
+ * `manquantsJour` et `manquantsSemaine` sont LE levier : le bonus en soi est
+ * petit, ce qui fait bouger un groupe c'est de voir qui bloque et de lui
+ * envoyer le message.
+ */
+export type EtatDuGroupe = {
+  membres: number
+  actifs: number
+  ontParieJour: number
+  tauxJour: number
+  bonusJour: number
+  ontCinqSemaine: number
+  tauxSemaine: number
+  recompenses: number
+  manquantsJour: string[]
+  manquantsSemaine: string[]
+}
+
+export async function etatDuGroupe(slug: string): Promise<EtatDuGroupe | null> {
+  if (!supabase) return null
+  const { data, error } = await supabase.rpc('groupe_etat', { p_slug: slug })
+  if (error || !data) return null
+  const e = Array.isArray(data) ? data[0] : data
+  if (!e) return null
+  return {
+    membres: Number(e.membres ?? 0),
+    actifs: Number(e.actifs ?? 0),
+    ontParieJour: Number(e.ont_parie_jour ?? 0),
+    tauxJour: Number(e.taux_jour ?? 0),
+    bonusJour: Number(e.bonus_jour ?? 0),
+    ontCinqSemaine: Number(e.ont_cinq_semaine ?? 0),
+    tauxSemaine: Number(e.taux_semaine ?? 0),
+    recompenses: Number(e.recompenses ?? 0),
+    manquantsJour: (e.manquants_jour as string[]) ?? [],
+    manquantsSemaine: (e.manquants_semaine as string[]) ?? [],
+  }
+}
+
+export type Reclamation = { crampons: number; taux: number; groupe: string; deja: boolean }
+
+/**
+ * Réclame le bonus du jour pour UN groupe.
+ *
+ * La base refuse la seconde réclamation de la journée et renvoie alors le
+ * groupe déjà pris : l'interface peut donc dire « tu as déjà réclamé chez
+ * les Collègues » au lieu d'un refus muet.
+ */
+export async function reclamerBonus(slug: string): Promise<Reclamation | { erreur: string }> {
+  if (!supabase) return { erreur: 'hors ligne' }
+  const { data, error } = await supabase.rpc('reclamer_bonus_de_groupe', { p_slug: slug })
+  if (error) return { erreur: error.message }
+  const r = Array.isArray(data) ? data[0] : data
+  if (!r) return { erreur: 'inconnu' }
+  return {
+    crampons: Number(r.crampons ?? 0),
+    taux: Number(r.taux ?? 0),
+    groupe: String(r.groupe ?? ''),
+    deja: Boolean(r.deja),
+  }
+}
+
+/**
+ * Le bonus déjà réclamé aujourd'hui, s'il y en a un.
+ *
+ * Lu AVANT d'afficher le bouton : sans ça, l'interface proposerait de
+ * réclamer dans chacun de ses groupes et le joueur découvrirait le refus
+ * après avoir choisi. La politique RLS n'autorise que ses propres lignes.
+ */
+export async function bonusDuJour(): Promise<{ groupe: string; crampons: number } | null> {
+  if (!supabase) return null
+  const aujourdhui = new Date()
+  const j = `${aujourdhui.getFullYear()}-${String(aujourdhui.getMonth() + 1).padStart(2, '0')}-${String(aujourdhui.getDate()).padStart(2, '0')}`
+  const { data } = await supabase
+    .from('group_bonus_paid')
+    .select('crampons, leagues(name)')
+    .eq('jour', j)
+    .maybeSingle()
+  if (!data) return null
+  const d = data as unknown as { crampons: number; leagues: { name: string } | null }
+  return { groupe: d.leagues?.name ?? '', crampons: Number(d.crampons ?? 0) }
+}
+
+/**
+ * Le podium du JOUR d'un groupe : trois lignes, pas plus.
+ *
+ * Le classement du groupe compte les points depuis l'adhésion de chacun —
+ * c'est ce qui le rend jouable quand on arrive tard. Les médailles, elles,
+ * sont quotidiennes. Les deux classements ne peuvent donc pas être le même,
+ * et déduire l'un de l'autre ici serait faux.
+ */
+export async function podiumDuJour(slug: string): Promise<Map<string, number>> {
+  const m = new Map<string, number>()
+  if (!supabase) return m
+  const { data } = await supabase.rpc('podium_du_jour', { p_slug: slug })
+  for (const r of (data as Array<{ user_id: string; rang: number }>) ?? []) {
+    m.set(r.user_id, Number(r.rang))
+  }
+  return m
+}
+
+/** Combien d'ors, d'argents, de bronzes et de GOAT, tous groupes confondus. */
+export type Distinctions = { or: number; argent: number; bronze: number; goat: number }
+
+export async function mesDistinctions(utilisateur: string): Promise<Distinctions> {
+  const vide = { or: 0, argent: 0, bronze: 0, goat: 0 }
+  if (!supabase) return vide
+  const { data, error } = await supabase.rpc('distinctions', { p_user: utilisateur })
+  if (error || !data) return vide
+  const d = Array.isArray(data) ? data[0] : data
+  if (!d) return vide
+  return {
+    or: Number(d.orees ?? 0),
+    argent: Number(d.argents ?? 0),
+    bronze: Number(d.bronzes ?? 0),
+    goat: Number(d.goats ?? 0),
+  }
 }
 
 /**
