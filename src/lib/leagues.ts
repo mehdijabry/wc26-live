@@ -132,6 +132,53 @@ export async function podiumDuJour(slug: string): Promise<Map<string, number>> {
   return m
 }
 
+/**
+ * Les prix du podium en attente, et ceux déjà pris.
+ *
+ * Un joueur peut être sur le podium de plusieurs groupes la même semaine :
+ * il en réclame UN et il choisit lequel, puis la monnaie. Les autres restent
+ * visibles mais inaccessibles — c'est ce qui rend le choix lisible.
+ */
+export type Prix = {
+  id: number
+  groupe: string
+  slug: string
+  semaine: string
+  rang: number
+  taux: number
+  crampons: number
+  pressings: number
+  reclame: boolean
+}
+
+export async function mesPrix(): Promise<Prix[]> {
+  if (!supabase) return []
+  const { data } = await supabase.rpc('mes_prix')
+  return ((data as Prix[]) ?? []).map((p) => ({
+    ...p,
+    rang: Number(p.rang),
+    taux: Number(p.taux),
+    crampons: Number(p.crampons),
+    pressings: Number(p.pressings),
+  }))
+}
+
+export async function reclamerPrix(
+  id: number,
+  monnaie: 'crampons' | 'pressings',
+): Promise<{ crampons: number; pressings: number; groupe: string } | { erreur: string }> {
+  if (!supabase) return { erreur: 'hors ligne' }
+  const { data, error } = await supabase.rpc('reclamer_prix', { p_prix: id, p_monnaie: monnaie })
+  if (error) return { erreur: error.message }
+  const r = Array.isArray(data) ? data[0] : data
+  if (!r) return { erreur: 'inconnu' }
+  return {
+    crampons: Number(r.crampons ?? 0),
+    pressings: Number(r.pressings ?? 0),
+    groupe: String(r.groupe ?? ''),
+  }
+}
+
 /** Combien d'ors, d'argents, de bronzes et de GOAT, tous groupes confondus. */
 export type Distinctions = { or: number; argent: number; bronze: number; goat: number }
 

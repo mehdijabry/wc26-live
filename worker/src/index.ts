@@ -669,6 +669,38 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
       console.log('[balai] passe échouée:', e)
     }
 
+    // La clôture de la semaine écoulée : elle inscrit les prix du podium de
+    // chaque groupe, sans rien verser — le joueur réclame et choisit.
+    //
+    // PAS DE TEST SUR LE JOUR. `cloturer_semaine()` clôt par défaut la
+    // semaine PRÉCÉDENTE : qu'on l'appelle lundi matin ou jeudi soir, elle
+    // fait la même chose. Un test « est-on lundi ? » n'apporterait qu'une
+    // façon de rater le créneau si le worker dort au mauvais moment.
+    //
+    // Le verrou porte le lundi de la semaine close, donc il expire tout seul
+    // au cycle suivant. La sécurité reste la contrainte d'unicité en base :
+    // (groupe, joueur, semaine) rend la clôture rejouable sans doublon.
+    try {
+      const lundi = new Date()
+      lundi.setUTCDate(lundi.getUTCDate() - ((lundi.getUTCDay() + 6) % 7) - 7)
+      const cle = `cloture:${lundi.toISOString().slice(0, 10)}`
+      if (!(await env.CACHE.get(cle))) {
+        await env.CACHE.put(cle, '1', { expirationTtl: 1_209_600 })
+        const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/cloturer_semaine`, {
+          method: 'POST',
+          headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            'content-type': 'application/json',
+          },
+          body: '{}',
+        })
+        console.log(r.ok ? `[prix] semaine close, ${await r.text()} prix` : `[prix] refus ${r.status}`)
+      }
+    } catch (e) {
+      console.log('[prix] clôture échouée:', e)
+    }
+
     try {
       if (!(await env.CACHE.get('buteurs:verrou'))) {
         await env.CACHE.put('buteurs:verrou', '1', { expirationTtl: 90 })

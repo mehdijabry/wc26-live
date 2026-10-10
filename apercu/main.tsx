@@ -5,6 +5,7 @@ import TerrainChargement from '../src/components/TerrainChargement'
 import BoutonPronostic from '../src/components/BoutonPronostic'
 import BarreDeblocage from '../src/components/BarreDeblocage'
 import Distinctions from '../src/components/Distinctions'
+import PrixHebdomadaires from '../src/components/PrixHebdomadaires'
 import '../src/index.css'
 
 function Apercu() {
@@ -55,6 +56,21 @@ function Apercu() {
               manquantsJour: [], manquantsSemaine: [],
             }}
             dejaReclame={null}
+            occupe={false}
+            onReclamer={() => {}}
+          />
+        </section>
+
+        <section>
+          <h2 className="font-mono text-[11px] uppercase tracking-wider text-slate-500">
+            0 ter · les prix du podium
+          </h2>
+          <PrixHebdomadaires
+            prix={[
+              { id: 1, groupe: 'Les Collègues', slug: 'a', semaine: '2026-10-05', rang: 1, taux: 0.8, crampons: 40, pressings: 8, reclame: false },
+              { id: 2, groupe: 'La Famille', slug: 'b', semaine: '2026-10-05', rang: 3, taux: 1, crampons: 20, pressings: 4, reclame: false },
+              { id: 3, groupe: 'Les Collègues', slug: 'a', semaine: '2026-09-28', rang: 2, taux: 0.6, crampons: 18, pressings: 4, reclame: true },
+            ]}
             occupe={false}
             onReclamer={() => {}}
           />
