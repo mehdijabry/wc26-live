@@ -3219,6 +3219,24 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       await send('D', 'Test D — كيف جاء هدف إيغور تياغو؟', base('<p style="direction:rtl;text-align:right">نص عربي للاختبار.</p>'), 'Test D — sujet et corps en arabe.')
       return { ok: true, note: out.join(' · ') }
     }
+    if (job === 'apisports') {
+      // Sonde de diagnostic (2026-10-10) : la clé api-sports est déjà un secret
+      // du worker pour la Botola. On veut savoir ce que le plan GRATUIT autorise
+      // — notamment /predictions, que la concurrence facture — avant de bâtir
+      // quoi que ce soit dessus. Lecture seule, jamais appelée par le site.
+      const x = extra as { chemin?: string; params?: Record<string, string> }
+      const chemin = String(x.chemin ?? '/status')
+      const qs = new URLSearchParams(x.params ?? {}).toString()
+      const cle = (env as unknown as { APISPORTS_KEY?: string }).APISPORTS_KEY
+      if (!cle) return { ok: false, note: 'APISPORTS_KEY absente' }
+      try {
+        const r = await fetch(`https://v3.football.api-sports.io${chemin}${qs ? '?' + qs : ''}`, {
+          headers: { 'x-apisports-key': cle }, signal: AbortSignal.timeout(15000),
+        })
+        const t = await r.text()
+        return { ok: r.ok, note: `${r.status} · ${t.slice(0, 1400)}` }
+      } catch (e) { return { ok: false, note: String(e).slice(0, 200) } }
+    }
     if (job === 'espn-direct') {
       // Can the worker read ESPN itself while the studio is suspended? (2026-09-19) — one league, status + payload size.
       const slug = String((extra as { slug?: string }).slug ?? 'ita.1')
