@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Icone } from '../Icone'
 import { Link } from 'react-router-dom'
 import { api } from '../../lib/api'
 import { useAuth } from '../../store/auth'
@@ -196,6 +197,7 @@ export default function MesParis() {
 
       {!user && (
         <div className="mt-8 glass rounded-sm p-6">
+          <Icone nom="referee" taille={56} className="mb-3 opacity-90" />
           <p className="text-sm text-slate-700">{t('Sign in to see your bets.')}</p>
           <button
             onClick={() => setAuthOuvert(true)}
@@ -231,6 +233,7 @@ export default function MesParis() {
 
       {user && !erreur && bulletins?.length === 0 && (
         <div className="mt-8 glass rounded-sm p-6">
+          <Icone nom="football-club-flag" taille={56} className="mb-3 opacity-90" />
           <p className="text-sm text-slate-700">{t('You have not placed a bet yet.')}</p>
           <Link
             to="/predictions"

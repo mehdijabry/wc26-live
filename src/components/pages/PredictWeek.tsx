@@ -7,9 +7,20 @@ import { AuthModal } from '../AuthModal'
 import { teamBadgeFallback, cn } from '../../lib/utils'
 import { localeOf, trLeague, useLang, useT, type Lang } from '../../lib/i18n'
 import { Jeton } from '../Jeton'
+import { Icone } from '../Icone'
+import CartePronostic from '../CartePronostic'
+import {
+  pronosticsDisponibles,
+  mesPronostics,
+  prixDuProchain,
+  type Prix,
+} from '../../lib/pronostic'
 import {
   JETON,
   JETONS_PAR_JOUR,
+  SEMAINE,
+  gainDuJour,
+  prochainJourDeSemaine,
   POINT,
   MISE_MINIMUM,
   PALIER,
@@ -54,6 +65,10 @@ import {
  */
 
 /** Même convention que le worker : surtout ne pas diverger. */
+/** Un ensemble vide STABLE : en recréer un à chaque rendu relancerait les
+ *  mémos qui en dépendent. */
+const VIDE: Set<string> = new Set()
+
 export function idDePronostic(ev: EspnEvent): string {
   return `e${ev.id}`
 }
@@ -138,6 +153,11 @@ function CarteMatch({
   jambes,
   selection,
   onChoisir,
+  pronosticDispo,
+  pronosticOuvert,
+  prixPronostic,
+  soldeComplet,
+  onDebloque,
   lang,
   t,
 }: {
@@ -148,11 +168,25 @@ function CarteMatch({
   /** Ce qu'il est en train d'y mettre, dans le bulletin en cours. */
   selection: Selection | undefined
   onChoisir: (matchId: string, s: Selection | null) => void
+  /**
+   * Notre fournisseur de pronostics couvre-t-il ce match ?
+   *
+   * FAUX veut dire PAS DE BOUTON. Le calendrier vient d'ESPN et contient des
+   * championnats que le fournisseur n'a pas — D2 écossaise, Primera B
+   * argentine, Liga de Expansión. Proposer un déblocage qui n'aurait rien à
+   * montrer reviendrait à faire payer le vide (Mehdi, 2026-10-10).
+   */
+  pronosticDispo: boolean
+  pronosticOuvert: boolean
+  prixPronostic: Prix | null
+  soldeComplet: { crampons: number; pressings: number } | null
+  onDebloque: (matchId: string) => void
   lang: Lang
   t: (s: string) => string
 }) {
   const [scoresOuverts, setScoresOuverts] = useState(false)
   const [buteursOuverts, setButeursOuverts] = useState(false)
+  const [pronoOuvert, setPronoOuvert] = useState(false)
   // `null` tant qu'on n'a rien demandé, [] quand le match n'a pas de marché.
   const [buteurs, setButeurs] = useState<Buteur[] | null>(null)
   const [grille, setGrille] = useState<Array<[string, number]> | null>(null)
@@ -312,7 +346,8 @@ function CarteMatch({
             <p className="px-3 py-2 font-mono text-[11px] text-slate-500">{t('Loading…')}</p>
           )}
           {scoresOuverts && grille !== null && grille.length === 0 && (
-            <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
+            <p className="px-3 py-2 font-mono text-[11px] text-slate-500 flex items-center gap-2">
+              <Icone nom="score-board" taille={32} className="shrink-0 opacity-80" />
               {t('No exact-score market on this match.')}
             </p>
           )}
@@ -382,7 +417,8 @@ function CarteMatch({
                 // Pas une panne : ESPN ne publie les buteurs que sur une
                 // partie des compétitions, et on n'ouvre le marché que là
                 // où ils le sont vraiment.
-                <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
+                <p className="px-3 py-2 font-mono text-[11px] text-slate-500 flex items-center gap-2">
+                  <Icone nom="football-studs" taille={32} className="shrink-0 opacity-80" />
                   {t('No goalscorer market on this competition.')}
                 </p>
               ) : (
@@ -428,6 +464,42 @@ function CarteMatch({
                 </ul>
               )}
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Le pronostic. N'apparaît QUE si le fournisseur couvre ce match. */}
+      {ouvert && pronosticDispo && (
+        <div className="mt-1">
+          <button
+            type="button"
+            onClick={() => setPronoOuvert((v) => !v)}
+            className={cn(
+              'w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-[11px] transition-colors',
+              pronoOuvert ? 'bg-accent-violet/15 text-accent-violet' : 'text-slate-500 hover:bg-slate-50',
+            )}
+          >
+            <span className="uppercase tracking-wider">
+              {t('Prediction')}
+              {!pronosticOuvert && prixPronostic?.crampons === 0 && (
+                <span className="ms-2 normal-case tracking-normal text-accent-gold">{t('free today')}</span>
+              )}
+            </span>
+            <span className="text-slate-400">{pronoOuvert ? '−' : '+'}</span>
+          </button>
+
+          {pronoOuvert && (
+            <CartePronostic
+              match={id}
+              domicile={c.dom.nom}
+              exterieur={c.ext.nom}
+              cote={{ home: cote.home, draw: cote.draw, away: cote.away }}
+              ouvert={pronosticOuvert}
+              prix={prixPronostic}
+              solde={soldeComplet}
+              onOuvert={() => onDebloque(id)}
+              onFermer={() => setPronoOuvert(false)}
+            />
           )}
         </div>
       )}
@@ -811,7 +883,20 @@ export function PredictWeek() {
         ? t('Could not claim right now.')
         : r.dejaReclame
           ? t('Already claimed today — come back tomorrow.')
-          : avec(t('+{d} {jeton} · balance {n}'), { d: JETONS_PAR_JOUR, jeton: JETON.plusieurs, n: r.solde }),
+          : r.bonus > 0
+            ? avec(t('Week complete! +{d} {jeton} and +{b} {point} · balance {n}'), {
+                d: gainDuJour(r.jour),
+                jeton: t(JETON.plusieurs),
+                b: r.bonus,
+                point: t(POINT.plusieurs),
+                n: r.solde,
+              })
+            : avec(t('Day {j} · +{d} {jeton} · balance {n}'), {
+                j: r.jour,
+                d: gainDuJour(r.jour),
+                jeton: t(JETON.plusieurs),
+                n: r.solde,
+              }),
     )
     setTimeout(() => setMessage(null), 4000)
   }
@@ -889,6 +974,61 @@ export function PredictWeek() {
     soldeConnu ? (loc ? Number(v ?? 0).toLocaleString(localeOf(lang)) : String(v ?? 0)) : '—'
   const solde = pf?.crampons ?? 0
   const aReclamer = reclamableAujourdhui(pf)
+  // La semaine de connexion. Le compteur en base retombe à 0 APRÈS le
+  // septième jour : une série à 0 alors que le jour est déjà pris veut donc
+  // dire « semaine terminée », pas « rien fait ».
+  // Les pronostics : ce qui est couvert, ce qui est déjà ouvert, et le prix
+  // du prochain. Trois lectures indépendantes, et aucune ne bloque la page —
+  // une liste vide retire simplement les boutons.
+  const [dispo, setDispo] = useState<Set<string>>(VIDE)
+
+  useEffect(() => {
+    let vivant = true
+    void pronosticsDisponibles().then((s) => { if (vivant) setDispo(s) })
+    return () => { vivant = false }
+  }, [])
+
+  // CE QUI APPARTIENT AU JOUEUR PORTE SON IDENTIFIANT. À la déconnexion, on
+  // ne VIDE pas l'état — on cesse simplement de le reconnaître. Vider depuis
+  // l'effet imposait un `setState` synchrone, donc un rendu en cascade, et
+  // laissait un instant où les pronostics de l'ancienne session restaient
+  // affichés.
+  const [duJoueur, setDuJoueur] = useState<{
+    qui: string
+    ouverts: Set<string>
+    prix: Prix | null
+  } | null>(null)
+  // Incrémenté à chaque déblocage : le prix double, et la marche suivante
+  // doit s'afficher tout de suite.
+  const [tour, setTour] = useState(0)
+
+  useEffect(() => {
+    const qui = user?.id
+    if (!qui) return
+    let vivant = true
+    void Promise.all([
+      mesPronostics().catch(() => VIDE),
+      prixDuProchain().catch(() => null),
+    ]).then(([o, x]) => { if (vivant) setDuJoueur({ qui, ouverts: o, prix: x }) })
+    return () => { vivant = false }
+  }, [user?.id, tour])
+
+  const aJour = user?.id && duJoueur?.qui === user.id ? duJoueur : null
+  const ouverts = aJour?.ouverts ?? VIDE
+  const prix = aJour?.prix ?? null
+
+  const surDebloque = (matchId: string) => {
+    setDuJoueur((d) => (d ? { ...d, ouverts: new Set(d.ouverts).add(matchId) } : d))
+    setTour((n) => n + 1)
+    void rafraichirJoueur()
+  }
+
+  const prochainJour = prochainJourDeSemaine(pf)
+  const joursFaits = !soldeConnu
+    ? 0
+    : aReclamer
+      ? prochainJour - 1
+      : Number(pf?.claim_streak ?? 0) || SEMAINE.jours
   const pressings = Number(pf?.pressings ?? 0)
   const palierCourant = palierDe(pressings)
 
@@ -923,6 +1063,19 @@ export function PredictWeek() {
             },
           )}
         </p>
+        <p className="mt-2 text-sm text-slate-600 leading-relaxed">
+          {avec(
+            t(
+              'The daily claim climbs with your streak: {min} the first day, {max} the seventh — and a full week pays {bonus} {point} on top. Miss a day and it starts over at {min}.',
+            ),
+            {
+              min: gainDuJour(1),
+              max: gainDuJour(SEMAINE.jours),
+              bonus: SEMAINE.bonus,
+              point: t(POINT.plusieurs),
+            },
+          )}
+        </p>
       </details>
 
       {/* Le portefeuille, lisible d'un coup d'œil */}
@@ -953,13 +1106,54 @@ export function PredictWeek() {
                   onClick={() => void onReclamer()}
                   className="px-4 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm active:scale-[0.98] transition-transform"
                 >
-                  {avec(t('+{d} free'), { d: JETONS_PAR_JOUR })}
+                  {avec(t('+{d} free'), { d: gainDuJour(prochainJour) })}
                 </button>
               ) : (
                 <span className="font-mono text-[11px] text-slate-500">{t('claimed')} ✓</span>
               )}
             </div>
           </div>
+          {/* La semaine de connexion. Sept marques, une par jour : le joueur
+              voit d'un coup d'œil ce qu'il a déjà tenu et ce qu'il perd en
+              sautant un jour. La septième est plus large et violette parce
+              qu'elle paie en pressings, pas en crampons — ici une couleur
+              veut dire une monnaie (Mehdi, 2026-10-10). */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <div className="flex items-center gap-1">
+              {Array.from({ length: SEMAINE.jours }, (_, i) => i + 1).map((n) => {
+                const fait = n <= joursFaits
+                const suivant = aReclamer && n === prochainJour
+                const septieme = n === SEMAINE.jours
+                return (
+                  <span
+                    key={n}
+                    className={cn(
+                      'h-1.5 rounded-full transition-colors',
+                      septieme ? 'w-4' : 'w-2.5',
+                      fait
+                        ? septieme
+                          ? 'bg-accent-violet'
+                          : 'bg-accent-gold'
+                        : suivant
+                          ? 'bg-accent-gold/30 ring-1 ring-accent-gold'
+                          : 'bg-slate-100',
+                    )}
+                  />
+                )
+              })}
+            </div>
+            <span className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+              {soldeConnu
+                ? avec(t('{f}/{n} days · the 7th pays {bonus} {point}'), {
+                    f: joursFaits,
+                    n: SEMAINE.jours,
+                    bonus: SEMAINE.bonus,
+                    point: t(POINT.plusieurs),
+                  })
+                : '—'}
+            </span>
+          </div>
+
           {/* L'échelle des paliers. Une barre unique vers 7 500 ne disait rien
               du chemin ; cinq marches donnent un palier à atteindre tout de
               suite, et surtout elles annoncent le risque avant qu'il ne
@@ -1097,9 +1291,12 @@ export function PredictWeek() {
         <p className="mt-10 text-center text-sm text-slate-500">{t('Loading…')}</p>
       )}
       {comps && cotesEtat === 'ok' && jouables.length === 0 && (
-        <p className="mt-10 text-center text-sm text-slate-500">
-          {t('Nothing to back that day — no odds published. Try another day: the weekend has the most.')}
-        </p>
+        <div className="mt-10 text-center">
+          <Icone nom="ground" taille={64} className="mx-auto mb-3 opacity-90" />
+          <p className="text-sm text-slate-500">
+            {t('Nothing to back that day — no odds published. Try another day: the weekend has the most.')}
+          </p>
+        </div>
       )}
 
       {affichees.map((c) => (
@@ -1119,6 +1316,11 @@ export function PredictWeek() {
                 jambes={jambes.get(idDePronostic(ev))}
                 selection={selections.find((x) => x.matchId === idDePronostic(ev))}
                 onChoisir={onChoisir}
+                pronosticDispo={!!user && dispo.has(idDePronostic(ev))}
+                pronosticOuvert={ouverts.has(idDePronostic(ev))}
+                prixPronostic={prix}
+                soldeComplet={pf ? { crampons: pf.crampons, pressings: Number(pf.pressings) } : null}
+                onDebloque={surDebloque}
                 lang={lang}
                 t={t}
               />

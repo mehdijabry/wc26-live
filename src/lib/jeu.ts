@@ -15,7 +15,31 @@ export const JETON = { un: 'crampon', plusieurs: 'crampons' } as const
 /** Ce qu'on gagne. C'est le score, et c'est lui qui se convertit. */
 export const POINT = { un: 'pressing', plusieurs: 'pressings' } as const
 
-export const JETONS_PAR_JOUR = 5
+/**
+ * La semaine de connexion. MIROIR EXACT de `claim_daily()` (migration 010) :
+ * le gain monte de un par jour d'assiduité, et le septième verse en plus un
+ * bonus en pressings. Un jour manqué remet la série à un.
+ *
+ *     jour 1 → 5 crampons      jour 5 → 9
+ *     jour 2 → 6               jour 6 → 10
+ *     jour 3 → 7               jour 7 → 11 + 100 pressings
+ *     jour 4 → 8
+ *
+ * POURQUOI MONTER PLUTÔT QUE DONNER PLUS. Un gain fixe ne récompense pas le
+ * retour : revenir le sixième jour rapporte autant que revenir une fois par
+ * semaine. Ici la semaine complète donne 56 crampons au lieu de 35, et c'est
+ * exactement ce qui finance les pronostics à débloquer (Mehdi, 2026-10-10).
+ */
+export const SEMAINE = { jours: 7, base: 4, bonus: 100 } as const
+
+/** Ce que rapporte le `jour`-ième jour d'affilée. */
+export function gainDuJour(jour: number): number {
+  return SEMAINE.base + Math.min(Math.max(jour, 1), SEMAINE.jours)
+}
+
+/** Le premier jour de la semaine : ce que touche un joueur qui revient après
+ *  une absence, et le chiffre qu'on affiche dans les règles. */
+export const JETONS_PAR_JOUR = gainDuJour(1)
 /**
  * Le plancher d'une mise. À 3, un joueur qui reçoit 5 crampons par jour ne
  * pouvait placer qu'UN pari : les 2 crampons restants étaient inutilisables
@@ -96,6 +120,8 @@ export type Portefeuille = {
   crampons: number
   pressings: number
   last_claim: string | null
+  /** Jours consécutifs déjà réclamés, 0 à 6. Remis à 0 après le septième. */
+  claim_streak: number
 }
 
 export type Cote = {
@@ -186,7 +212,7 @@ export async function portefeuille(utilisateur: string): Promise<Portefeuille | 
   if (!supabase) return null
   const { data } = await supabase
     .from('profiles')
-    .select('crampons, pressings, last_claim')
+    .select('crampons, pressings, last_claim, claim_streak')
     .eq('id', utilisateur)
     .maybeSingle()
   return (data as Portefeuille) ?? null
@@ -196,12 +222,41 @@ export async function portefeuille(utilisateur: string): Promise<Portefeuille | 
  * Réclame les jetons du jour. Côté base, c'est une fois par jour et pas plus ;
  * les jours sautés ne se rattrapent pas.
  */
-export async function reclamerDuJour(): Promise<{ solde: number; dejaReclame: boolean } | null> {
+export async function reclamerDuJour(): Promise<{
+  solde: number
+  dejaReclame: boolean
+  jour: number
+  bonus: number
+} | null> {
   if (!supabase) return null
   const { data, error } = await supabase.rpc('claim_daily')
   if (error || !data) return null
   const l = Array.isArray(data) ? data[0] : data
-  return { solde: l.solde as number, dejaReclame: l.deja_reclame as boolean }
+  return {
+    solde: l.solde as number,
+    dejaReclame: l.deja_reclame as boolean,
+    jour: Number(l.jour ?? 1),
+    bonus: Number(l.bonus ?? 0),
+  }
+}
+
+/**
+ * Le jour que vaudra la PROCHAINE réclamation — ce qui permet d'écrire le
+ * gain sur le bouton avant de cliquer.
+ *
+ * La même règle qu'en base, et pour la même raison qu'ailleurs : la base
+ * fait foi, ceci ne sert qu'à l'afficher. On ne regarde donc pas le compteur
+ * seul mais la DATE de la dernière prise — une série de trois jours
+ * abandonnée la semaine dernière ne vaut plus rien.
+ */
+export function prochainJourDeSemaine(p: Portefeuille | null): number {
+  if (!p) return 1
+  const serie = Number(p.claim_streak ?? 0)
+  if (!p.last_claim || serie < 1 || serie > 6) return 1
+  const hier = new Date()
+  hier.setDate(hier.getDate() - 1)
+  const j = `${hier.getFullYear()}-${String(hier.getMonth() + 1).padStart(2, '0')}-${String(hier.getDate()).padStart(2, '0')}`
+  return p.last_claim === j ? serie + 1 : 1
 }
 
 /** Vrai quand les jetons du jour n'ont pas encore été pris. */
