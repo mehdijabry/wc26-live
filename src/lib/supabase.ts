@@ -53,6 +53,9 @@ export type Profile = {
   /** Le portefeuille du jeu — voir src/lib/jeu.ts et la migration 004. */
   crampons: number
   pressings: number
+  /** Analyses IA offertes qui restent à consommer — lien de bienvenue ou
+   *  don de l'administration. Migration 019. */
+  analyses_offertes: number
   last_claim: string | null
 }
 

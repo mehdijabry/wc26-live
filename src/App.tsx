@@ -35,6 +35,7 @@ const Clubs = lazy(() => import('./components/pages/Clubs').then((m) => ({ defau
 const ClubsLeague = lazy(() => import('./components/pages/ClubsLeague').then((m) => ({ default: m.ClubsLeague })))
 const ClubPage = lazy(() => import('./components/pages/ClubPage').then((m) => ({ default: m.ClubPage })))
 const Classement = lazy(() => import('./components/pages/Classement').then((m) => ({ default: m.Classement })))
+const Bienvenue = lazy(() => import('./components/pages/Bienvenue').then((m) => ({ default: m.Bienvenue })))
 // Les brackets publiés du Mondial : archive, montée sur /bracket et plus
 // sur /board, où ils étaient l'onglet par défaut du classement.
 const BracketsPublies = lazy(() => import('./components/BracketsPublies').then((m) => ({ default: m.BracketsPublies })))
@@ -336,6 +337,16 @@ function App() {
               info instead of a 404. */}
           <Route path="/squads" element={<Navigate to="/wc26" replace />} />
           <Route path="/board" element={<BoardPage />} />
+          {/* Lien de promotion : hors sitemap, hors Google. Il n'est pas
+              prérendu — c'est une page qui n'a de sens qu'avec une session. */}
+          <Route
+            path="/bienvenue/:code"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading your bonus…" />}>
+                <Bienvenue />
+              </Suspense>
+            }
+          />
           <Route path="/news" element={<NewsListPage />} />
           <Route path="/news/:slug" element={<NewsArticlePage />} />
           <Route path="/stadiums" element={<StadiumsPage />} />

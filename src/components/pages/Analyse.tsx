@@ -251,7 +251,7 @@ export default function Analyse() {
                         cote={cote ? { home: cote.home, draw: cote.draw, away: cote.away } : null}
                         ouvert={!!ouverts?.has(id)}
                         prix={prix}
-                        solde={profil ? { crampons: profil.crampons, pressings: Number(profil.pressings) } : null}
+                        solde={profil ? { crampons: profil.crampons, pressings: Number(profil.pressings), offertes: Number(profil.analyses_offertes ?? 0) } : null}
                         onOuvert={() => {
                           setDuJoueur((d) => (d ? { ...d, ouverts: new Set(d.ouverts).add(id) } : d))
                           setTour((n) => n + 1)

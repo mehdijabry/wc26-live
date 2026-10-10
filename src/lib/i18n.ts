@@ -67,6 +67,22 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  // ── Le lien de bienvenue (10/10/2026) ──────────────────────────────
+  'welcome to Pressing 90': 'مرحبًا بك في بريسينغ 90',
+  'Your welcome bonus': 'هديتك الترحيبية',
+  'free AI analyses': 'تحليلات ذكاء اصطناعي مجانية',
+  'Create your account and it lands in your balance straight away. No deposit, no bookmaker.': 'أنشئ حسابك وسيصلك كل شيء فورًا في رصيدك. بدون أي إيداع ولا وسيط رهان.',
+  'Create my account': 'إنشاء حسابي',
+  'Adding it to your balance…': 'جارٍ إضافتها إلى رصيدك…',
+  'It is in your balance. Enjoy.': 'أصبحت في رصيدك. استمتع.',
+  'Try the AI analysis': 'جرّب تحليل الذكاء الاصطناعي',
+  'This account has already used a welcome link.': 'سبق لهذا الحساب أن استعمل رابط ترحيب.',
+  'This link has expired or reached its limit. You can still sign up — the game is free.': 'انتهت صلاحية هذا الرابط أو بلغ حده. يمكنك التسجيل على كل حال — اللعبة مجانية.',
+  'This link is not valid. Ask for a fresh one, or just sign up — the game is free either way.': 'هذا الرابط غير صالح. اطلب رابطًا آخر أو سجّل مباشرة — اللعبة مجانية في الحالتين.',
+  'Pressing 90 is free. You stake crampons on real odds — there is no money in, and no bookmaker.': 'بريسينغ 90 مجاني. تراهن بالكرامبون بالمعامل الحقيقي — لا مال يدخل ولا وسيط رهان.',
+  'This one is on us — one of your free analyses covers it.': 'هذه على حسابنا — يغطيها أحد تحليلاتك المجانية.',
+  'Open — free analysis': 'افتح — تحليل مجاني',
+  '{n} free analyses left': 'بقيت لك {n} تحليلات مجانية',
   // ── La jauge du coureur (10/10/2026) ───────────────────────────────
   'daily streak': 'سلسلة يومية',
   'the 7th pays {bonus} {point}': 'اليوم السابع يمنح {bonus} {point}',
@@ -586,6 +602,22 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // ── Le lien de bienvenue (10/10/2026) ──────────────────────────────
+  'welcome to Pressing 90': 'bienvenue sur Pressing 90',
+  'Your welcome bonus': 'Votre cadeau de bienvenue',
+  'free AI analyses': 'analyses IA offertes',
+  'Create your account and it lands in your balance straight away. No deposit, no bookmaker.': 'Créez votre compte et tout arrive aussitôt dans votre solde. Aucun dépôt, aucun bookmaker.',
+  'Create my account': 'Créer mon compte',
+  'Adding it to your balance…': 'Ajout à votre solde…',
+  'It is in your balance. Enjoy.': 'C’est dans votre solde. Bon jeu.',
+  'Try the AI analysis': 'Essayer l’analyse IA',
+  'This account has already used a welcome link.': 'Ce compte a déjà utilisé un lien de bienvenue.',
+  'This link has expired or reached its limit. You can still sign up — the game is free.': 'Ce lien a expiré ou atteint sa limite. Vous pouvez tout de même vous inscrire : le jeu est gratuit.',
+  'This link is not valid. Ask for a fresh one, or just sign up — the game is free either way.': 'Ce lien n’est pas valide. Demandez-en un autre, ou inscrivez-vous simplement : le jeu est gratuit.',
+  'Pressing 90 is free. You stake crampons on real odds — there is no money in, and no bookmaker.': 'Pressing 90 est gratuit. On mise des crampons à la cote réelle : aucun argent n’entre, aucun bookmaker.',
+  'This one is on us — one of your free analyses covers it.': 'Celle-ci est offerte : une de vos analyses gratuites la couvre.',
+  'Open — free analysis': 'Ouvrir — analyse offerte',
+  '{n} free analyses left': 'il vous reste {n} analyses offertes',
   // ── La jauge du coureur (10/10/2026) ───────────────────────────────
   'daily streak': 'série du jour',
   'the 7th pays {bonus} {point}': 'le 7e verse {bonus} {point}',

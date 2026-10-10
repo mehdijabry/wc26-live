@@ -26,7 +26,7 @@ import { uploadPostCards } from '../../lib/newsCards'
  */
 
 type Tab =
-  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news' | 'social' | 'insights'
+  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news' | 'social' | 'insights' | 'jeu'
 
 // Token storage key in sessionStorage. We use sessionStorage (not local)
 // so the token clears when the tab closes — saves us from a stale
@@ -189,7 +189,7 @@ export function AdminPanel() {
           className="max-w-6xl mx-auto px-4 sm:px-5 pb-2 flex gap-1.5 overflow-x-auto scroll-smooth"
           style={{ scrollPaddingInline: '1rem', WebkitOverflowScrolling: 'touch' }}
         >
-          {(['overview', 'analytics', 'insights', 'news', 'social', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
+          {(['overview', 'analytics', 'insights', 'jeu', 'news', 'social', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -227,6 +227,7 @@ export function AdminPanel() {
         {tab === 'news' && <News />}
         {tab === 'social' && <Social />}
         {tab === 'insights' && <Insights />}
+        {tab === 'jeu' && <Jeu />}
       </main>
     </div>
   )
@@ -3512,4 +3513,317 @@ function KickoffLeadEditor({
       )}
     </div>
   )
+}
+
+// ─── Section: Jeu — donner des crampons, offrir l'entrée ───────────────
+//
+// Deux outils demandés par Mehdi (2026-10-10) : créditer n'importe quel
+// compte à la main, et fabriquer un lien d'inscription qui offre des
+// crampons ET des analyses IA (pour la promotion Facebook).
+//
+// Aucune écriture ne part d'ici : le navigateur n'a que la session admin du
+// worker, et c'est le worker — seul porteur de la clé de service — qui
+// appelle la base. Les fonctions correspondantes sont retirées à `anon` et
+// `authenticated` (migration 019), donc même un compte connecté ne peut pas
+// les appeler depuis la console du navigateur.
+
+type ProfilAdmin = {
+  id: string
+  alias: string | null
+  email: string | null
+  crampons: number
+  pressings: number
+  analyses: number
+  points: number
+  cree_le: string
+}
+
+type CodeAdmin = {
+  id: number
+  code: string
+  libelle: string | null
+  crampons: number
+  analyses: number
+  max_uses: number | null
+  uses: number
+  expires_at: string | null
+  actif: boolean
+  created_at: string
+}
+
+function Jeu() {
+  return (
+    <>
+      <DonDeJetons />
+      <CodesDInscription />
+    </>
+  )
+}
+
+function DonDeJetons() {
+  const [q, setQ] = useState('')
+  const [profils, setProfils] = useState<ProfilAdmin[]>([])
+  const [cible, setCible] = useState<ProfilAdmin | null>(null)
+  const [crampons, setCrampons] = useState('')
+  const [pressings, setPressings] = useState('')
+  const [analyses, setAnalyses] = useState('')
+  const [motif, setMotif] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function chercher() {
+    setOccupe(true)
+    setMsg(null)
+    const d = await adminGet(`/admin/jeu/profils?q=${encodeURIComponent(q)}`)
+    setOccupe(false)
+    if (Array.isArray(d)) setProfils(d as ProfilAdmin[])
+    else setMsg('Recherche impossible : ' + JSON.stringify(d))
+  }
+
+  // La liste s'affiche dès l'ouverture, sans rien taper : les comptes les
+  // plus récents d'abord, qui sont ceux qu'on vient créditer après une
+  // inscription.
+  useEffect(() => { void chercher() }, [])
+
+  async function envoyer() {
+    if (!cible) return
+    setOccupe(true)
+    setMsg(null)
+    const d = await adminPost('/admin/jeu/crediter', {
+      cible: cible.id,
+      crampons: Number(crampons) || 0,
+      pressings: Number(pressings) || 0,
+      analyses: Number(analyses) || 0,
+      motif,
+    }) as Array<{ crampons: number; pressings: number; analyses: number }> | { error?: string }
+    setOccupe(false)
+    if (Array.isArray(d) && d[0]) {
+      const s = d[0]
+      setMsg(
+        `Envoyé à ${cible.alias ?? cible.email}. Nouveaux soldes : ` +
+        `${s.crampons} crampons · ${s.pressings} pressings · ${s.analyses} analyses offertes.`,
+      )
+      setCrampons(''); setPressings(''); setAnalyses(''); setMotif('')
+      void chercher()
+    } else {
+      setMsg('Refusé : ' + ((d as { error?: string }).error ?? JSON.stringify(d)))
+    }
+  }
+
+  const rien = !Number(crampons) && !Number(pressings) && !Number(analyses)
+
+  return (
+    <Section title="Envoyer des jetons" eyebrow="Jeu">
+      <div className="flex flex-wrap gap-2">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') void chercher() }}
+          placeholder="Pseudo, courriel ou identifiant"
+          className="flex-1 min-w-[14rem] px-3 py-2 rounded-lg border border-slate-200 text-sm"
+        />
+        <button
+          type="button"
+          onClick={() => void chercher()}
+          disabled={occupe}
+          className="px-4 py-2 rounded-lg bg-ink-900 text-white text-sm font-semibold disabled:opacity-40"
+        >
+          Chercher
+        </button>
+      </div>
+
+      <ul className="mt-3 grid gap-1.5 max-h-72 overflow-y-auto">
+        {profils.map((p) => (
+          <li key={p.id}>
+            <button
+              type="button"
+              onClick={() => setCible(p)}
+              className={
+                'w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ' +
+                (cible?.id === p.id
+                  ? 'border-accent-gold bg-accent-gold/10'
+                  : 'border-slate-200 hover:bg-slate-50')
+              }
+            >
+              <div className="font-semibold text-slate-900">{p.alias ?? '(sans pseudo)'}</div>
+              <div className="font-mono text-[11px] text-slate-500 tabular-nums">
+                {p.email} · {p.crampons} crampons · {p.pressings} pressings · {p.analyses} analyses · {p.points} pts
+              </div>
+            </button>
+          </li>
+        ))}
+        {profils.length === 0 && !occupe && (
+          <li className="text-sm text-slate-500">Aucun compte pour cette recherche.</li>
+        )}
+      </ul>
+
+      {cible && (
+        <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">
+            Destinataire
+          </div>
+          <div className="font-semibold text-slate-900">{cible.alias ?? cible.email}</div>
+
+          <div className="mt-3 grid sm:grid-cols-3 gap-2">
+            <Champ label="Crampons" valeur={crampons} onChange={setCrampons} />
+            <Champ label="Pressings" valeur={pressings} onChange={setPressings} />
+            <Champ label="Analyses IA" valeur={analyses} onChange={setAnalyses} />
+          </div>
+          <input
+            value={motif}
+            onChange={(e) => setMotif(e.target.value)}
+            placeholder="Motif (gardé dans l'historique)"
+            className="mt-2 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+          />
+          <p className="mt-2 text-[11px] text-slate-500">
+            Un montant négatif retire — le solde ne descend jamais sous zéro. Chaque envoi laisse
+            une ligne dans <code>admin_grants</code>.
+          </p>
+          <button
+            type="button"
+            onClick={() => void envoyer()}
+            disabled={occupe || rien}
+            className="mt-3 px-4 py-2 rounded-lg bg-accent-gold text-ink-900 text-sm font-semibold disabled:opacity-40"
+          >
+            Envoyer
+          </button>
+        </div>
+      )}
+
+      {msg && <div className="mt-3 text-sm font-mono text-slate-600 break-words">{msg}</div>}
+    </Section>
+  )
+}
+
+function Champ({ label, valeur, onChange }: { label: string; valeur: string; onChange: (v: string) => void }) {
+  return (
+    <label className="block">
+      <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">{label}</span>
+      <input
+        type="number"
+        value={valeur}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="0"
+        className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm tabular-nums"
+      />
+    </label>
+  )
+}
+
+function CodesDInscription() {
+  const [codes, setCodes] = useState<CodeAdmin[]>([])
+  const [crampons, setCrampons] = useState('50')
+  const [analyses, setAnalyses] = useState('3')
+  const [maxUses, setMaxUses] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [occupe, setOccupe] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  async function charger() {
+    const d = await adminGet('/admin/jeu/codes')
+    if (Array.isArray(d)) setCodes(d as CodeAdmin[])
+  }
+  useEffect(() => { void charger() }, [])
+
+  async function creer() {
+    setOccupe(true)
+    setMsg(null)
+    const d = await adminPost('/admin/jeu/codes', {
+      crampons: Number(crampons) || 0,
+      analyses: Number(analyses) || 0,
+      max_uses: Number(maxUses) || null,
+      libelle,
+    }) as CodeAdmin | { error?: string }
+    setOccupe(false)
+    if ((d as CodeAdmin).code) {
+      setMsg(`Lien créé : ${lienDeCode((d as CodeAdmin).code)}`)
+      setLibelle('')
+      void charger()
+    } else {
+      setMsg('Refusé : ' + ((d as { error?: string }).error ?? JSON.stringify(d)))
+    }
+  }
+
+  async function basculer(c: CodeAdmin) {
+    setOccupe(true)
+    await adminPost('/admin/jeu/codes/etat', { id: c.id, actif: !c.actif })
+    setOccupe(false)
+    void charger()
+  }
+
+  return (
+    <Section title="Liens d'inscription" eyebrow="Promotion">
+      <p className="text-sm text-slate-600">
+        Un lien offre des crampons et des analyses IA à qui s'inscrit avec. Un compte ne peut
+        réclamer qu'un seul lien, à vie — sinon il suffirait d'en ouvrir plusieurs.
+      </p>
+
+      <div className="mt-3 grid sm:grid-cols-4 gap-2">
+        <Champ label="Crampons" valeur={crampons} onChange={setCrampons} />
+        <Champ label="Analyses IA" valeur={analyses} onChange={setAnalyses} />
+        <Champ label="Nb d'utilisations" valeur={maxUses} onChange={setMaxUses} />
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-slate-500 font-mono">Libellé</span>
+          <input
+            value={libelle}
+            onChange={(e) => setLibelle(e.target.value)}
+            placeholder="promo facebook"
+            className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm"
+          />
+        </label>
+      </div>
+      <p className="mt-1.5 text-[11px] text-slate-500">
+        Nombre d'utilisations vide = illimité.
+      </p>
+      <button
+        type="button"
+        onClick={() => void creer()}
+        disabled={occupe}
+        className="mt-3 px-4 py-2 rounded-lg bg-accent-gold text-ink-900 text-sm font-semibold disabled:opacity-40"
+      >
+        Générer le lien
+      </button>
+
+      {msg && <div className="mt-3 text-sm font-mono text-slate-600 break-words">{msg}</div>}
+
+      <ul className="mt-5 grid gap-2">
+        {codes.map((c) => (
+          <li key={c.id} className="rounded-xl border border-slate-200 p-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <code className="font-mono text-sm font-semibold text-slate-900">{c.code}</code>
+              {!c.actif && (
+                <span className="font-mono text-[10px] uppercase tracking-widest text-accent-red">désactivé</span>
+              )}
+              <button
+                type="button"
+                onClick={() => void navigator.clipboard.writeText(lienDeCode(c.code))}
+                className="ms-auto px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-mono uppercase tracking-widest text-slate-600"
+              >
+                Copier le lien
+              </button>
+              <button
+                type="button"
+                onClick={() => void basculer(c)}
+                disabled={occupe}
+                className="px-2.5 py-1 rounded-lg border border-slate-200 text-[11px] font-mono uppercase tracking-widest text-slate-600 disabled:opacity-40"
+              >
+                {c.actif ? 'Désactiver' : 'Réactiver'}
+              </button>
+            </div>
+            <div className="mt-1 font-mono text-[11px] text-slate-500 tabular-nums">
+              {c.crampons} crampons · {c.analyses} analyses · utilisé {c.uses}
+              {c.max_uses ? ` / ${c.max_uses}` : ' fois'}
+              {c.libelle ? ` · ${c.libelle}` : ''}
+            </div>
+            <div className="mt-1 font-mono text-[11px] text-slate-400 break-all">{lienDeCode(c.code)}</div>
+          </li>
+        ))}
+        {codes.length === 0 && <li className="text-sm text-slate-500">Aucun lien pour le moment.</li>}
+      </ul>
+    </Section>
+  )
+}
+
+function lienDeCode(code: string): string {
+  return `https://pressing90.live/bienvenue/${code}`
 }

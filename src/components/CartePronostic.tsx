@@ -41,7 +41,7 @@ type Props = {
   /** Déjà ouvert ? Sinon on affiche le prix avant toute chose. */
   ouvert: boolean
   prix: Prix | null
-  solde: { crampons: number; pressings: number } | null
+  solde: { crampons: number; pressings: number; offertes: number } | null
   onOuvert: () => void
   onFermer: () => void
 }
@@ -113,6 +113,11 @@ export default function CartePronostic(p: Props) {
     }
   }
 
+  // Un crédit ne sert QUE là où il y aurait eu quelque chose à payer : la
+  // première lecture du jour est déjà gratuite pour tout le monde, et la
+  // consommer gâcherait le cadeau.
+  const offerte = !!p.prix && p.prix.crampons > 0 && (p.solde?.offertes ?? 0) > 0
+
   const nos = p.cote ? chancesDeLaCote(p.cote) : null
 
   return (
@@ -141,17 +146,23 @@ export default function CartePronostic(p: Props) {
           <p className="text-sm text-slate-600 leading-relaxed">
             {p.prix && p.prix.crampons === 0
               ? t('Your first prediction today is free.')
-              : t('Unlock the full read: probable XI, injuries, expected goals and more.')}
+              : offerte
+                ? t('This one is on us — one of your free analyses covers it.')
+                : t('Unlock the full read: probable XI, injuries, expected goals and more.')}
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
-            {p.prix && p.prix.crampons === 0 ? (
+            {/* UN SEUL BOUTON quand un crédit couvre la lecture : proposer
+                « crampons ou pressings » laisserait croire qu'il va payer,
+                alors que la base consomme le crédit avant de toucher au
+                solde (migration 019). */}
+            {p.prix && (p.prix.crampons === 0 || offerte) ? (
               <button
                 type="button"
                 disabled={paiement}
                 onClick={() => void payer('crampons')}
                 className="px-4 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm disabled:opacity-50 active:scale-[0.98] transition-transform"
               >
-                {t('Open — free')}
+                {p.prix && p.prix.crampons === 0 ? t('Open — free') : t('Open — free analysis')}
               </button>
             ) : (
               <>
@@ -176,7 +187,12 @@ export default function CartePronostic(p: Props) {
               </>
             )}
           </div>
-          {p.prix && p.prix.rang > 1 && (
+          {offerte && (
+            <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-accent-violet">
+              {avecN(t('{n} free analyses left'), p.solde?.offertes ?? 0, lang)}
+            </p>
+          )}
+          {p.prix && p.prix.rang > 1 && !offerte && (
             <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">
               {avecN(t('{n}th of the day · the price doubles each time'), p.prix.rang, lang)}
             </p>

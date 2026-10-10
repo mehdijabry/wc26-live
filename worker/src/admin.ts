@@ -468,7 +468,99 @@ export async function handleAdmin(
     return handleCacheClear(req, env)
   }
 
+  // ── Le jeu : donner des crampons, offrir l'entrée ────────────────────
+  if (pathname === '/admin/jeu/profils' && req.method === 'GET') {
+    return rpcJeu(env, 'admin_profils', {
+      p_q: new URL(req.url).searchParams.get('q') ?? null,
+      p_limite: 20,
+    })
+  }
+  if (pathname === '/admin/jeu/crediter' && req.method === 'POST') {
+    const b = await req.json().catch(() => null) as {
+      cible?: string; crampons?: number; pressings?: number; analyses?: number; motif?: string
+    } | null
+    if (!b?.cible) return jsonResp({ error: 'cible manquante' }, 400)
+    return rpcJeu(env, 'admin_crediter', {
+      p_cible: b.cible,
+      p_crampons: entier(b.crampons),
+      p_pressings: entier(b.pressings),
+      p_analyses: entier(b.analyses),
+      p_motif: typeof b.motif === 'string' ? b.motif.slice(0, 200) : null,
+    })
+  }
+  if (pathname === '/admin/jeu/codes' && req.method === 'GET') {
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/signup_codes?select=*&order=created_at.desc&limit=50`,
+      { headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` } },
+    )
+    return jsonResp(await r.json().catch(() => []), r.ok ? 200 : 502)
+  }
+  if (pathname === '/admin/jeu/codes' && req.method === 'POST') {
+    const b = await req.json().catch(() => null) as {
+      crampons?: number; analyses?: number; max_uses?: number | null; libelle?: string; expire?: string | null
+    } | null
+    return rpcJeu(env, 'creer_code_inscription', {
+      p_crampons: entier(b?.crampons),
+      p_analyses: entier(b?.analyses),
+      p_max_uses: b?.max_uses == null || b.max_uses === 0 ? null : entier(b.max_uses),
+      p_libelle: typeof b?.libelle === 'string' ? b.libelle.slice(0, 120) : null,
+      p_expire: b?.expire || null,
+    })
+  }
+  if (pathname === '/admin/jeu/codes/etat' && req.method === 'POST') {
+    const b = await req.json().catch(() => null) as { id?: number; actif?: boolean } | null
+    if (!b?.id) return jsonResp({ error: 'id manquant' }, 400)
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/signup_codes?id=eq.${encodeURIComponent(String(b.id))}`,
+      {
+        method: 'PATCH',
+        headers: {
+          apikey: env.SUPABASE_SERVICE_KEY,
+          authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+          'content-type': 'application/json',
+          prefer: 'return=representation',
+        },
+        body: JSON.stringify({ actif: !!b.actif }),
+      },
+    )
+    return jsonResp(await r.json().catch(() => null), r.ok ? 200 : 502)
+  }
+
   return jsonResp({ error: 'not found' }, 404)
+}
+
+/** Un entier borné, jamais NaN : ces montants viennent d'un champ de saisie. */
+function entier(v: unknown): number {
+  const n = Math.trunc(Number(v))
+  if (!Number.isFinite(n)) return 0
+  return Math.max(-1_000_000_000, Math.min(1_000_000_000, n))
+}
+
+/**
+ * Appelle une fonction de jeu avec la CLÉ DE SERVICE.
+ *
+ * Ces fonctions-là sont retirées à `anon` et `authenticated` en base : le
+ * panneau n'ouvre pas de session Supabase, il tient la sienne auprès du
+ * worker, et c'est le worker qui porte la clé. L'autorisation a donc déjà
+ * été vérifiée par `requireSession` plus haut — ne JAMAIS appeler `rpcJeu`
+ * depuis une route publique.
+ */
+async function rpcJeu(env: AdminEnv, fonction: string, corps: Record<string, unknown>): Promise<Response> {
+  const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/${fonction}`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(corps),
+  })
+  const data = await r.json().catch(() => null)
+  if (!r.ok) {
+    const msg = (data as { message?: string } | null)?.message ?? 'erreur base'
+    return jsonResp({ error: msg }, 400)
+  }
+  return jsonResp(data)
 }
 
 // ─────────────────────────────────────────────────────────────────────

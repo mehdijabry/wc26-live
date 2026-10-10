@@ -217,7 +217,7 @@ export async function prixDuProchain(): Promise<Prix | null> {
 export async function debloquer(
   match: string,
   monnaie: 'crampons' | 'pressings',
-): Promise<{ deja: boolean; crampons: number; pressings: number; rang: number }> {
+): Promise<{ deja: boolean; crampons: number; pressings: number; rang: number; offert: boolean }> {
   if (!supabase) throw new Error('hors ligne')
   const { data, error } = await supabase.rpc('debloquer_pronostic', {
     p_match: match,
@@ -230,6 +230,11 @@ export async function debloquer(
     crampons: Number((l as { crampons?: number })?.crampons ?? 0),
     pressings: Number((l as { pressings?: number })?.pressings ?? 0),
     rang: Number((l as { rang?: number })?.rang ?? 0),
+    // Vrai quand un crédit offert a payé à la place du solde (migration
+    // 019). Sans ce drapeau, le joueur verrait « 0 crampon » et croirait
+    // à un déblocage gratuit ordinaire — il ne saurait jamais qu'il vient
+    // de consommer une des analyses de son lien de bienvenue.
+    offert: Boolean((l as { offert?: boolean })?.offert),
   }
 }
 
