@@ -35,6 +35,9 @@ const MASQUE = {
   maskPosition: 'bottom center',
 } as const
 
+/** Épaisseur de la piste, en pixels. Le coureur se cale dessus. */
+const PISTE = 4
+
 export default function JaugeCoureur({
   taux,
   titre,
@@ -101,16 +104,17 @@ export default function JaugeCoureur({
         </div>
       )}
 
-      <div className="relative mt-1" style={{ height: taille + 6 }}>
-        {/* Le coureur, posé SUR la piste : la piste fait 6 px de haut et il
-            s'arrête juste dessus, pour qu'il ait l'air d'y courir. */}
+      <div className="relative mt-1" style={{ height: taille + PISTE }}>
+        {/* Le coureur, posé SUR la piste : il s'arrête juste à son sommet,
+            pour qu'il ait l'air d'y courir. */}
         <span
           aria-hidden="true"
           className={cn(
-            'absolute bottom-[6px] transition-[inset-inline-start] duration-700 ease-out motion-reduce:transition-none',
+            'absolute transition-[inset-inline-start] duration-700 ease-out motion-reduce:transition-none',
             couleurCoureur,
           )}
           style={{
+            bottom: PISTE,
             insetInlineStart: avance,
             width: taille,
             height: taille,
@@ -121,7 +125,10 @@ export default function JaugeCoureur({
             ...MASQUE,
           }}
         />
-        <div className="absolute inset-x-0 bottom-0 h-1.5 rounded-full bg-slate-100 overflow-hidden">
+        <div
+          className="absolute inset-x-0 bottom-0 rounded-full bg-slate-100 overflow-hidden"
+          style={{ height: PISTE }}
+        >
           <div
             className={cn(
               'h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none',
