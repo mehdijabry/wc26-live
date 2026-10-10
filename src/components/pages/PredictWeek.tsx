@@ -935,11 +935,16 @@ export function PredictWeek() {
   // est débloqué, et à quel prix, ne la regarde plus depuis que l'analyse a
   // sa propre page.
   const prochainJour = prochainJourDeSemaine(pf)
+  // PLUS DE `|| SEMAINE.jours`. La base écrivait `claim_streak = 0` après le
+  // septième jour et l'interface retraduisait ce zéro en sept — un raccourci
+  // qui affichait une semaine complète à quiconque arrivait avec un zéro
+  // pour une autre raison. Depuis la migration 020, la colonne porte le jour
+  // réellement réclamé, de 1 à 7, et il n'y a plus rien à deviner.
   const joursFaits = !soldeConnu
     ? 0
     : aReclamer
       ? prochainJour - 1
-      : Number(pf?.claim_streak ?? 0) || SEMAINE.jours
+      : Math.min(Number(pf?.claim_streak ?? 0), SEMAINE.jours)
   const pressings = Number(pf?.pressings ?? 0)
   const palierCourant = palierDe(pressings)
 

@@ -1,6 +1,6 @@
 import { useT } from '../lib/i18n'
 import { cn } from '../lib/utils'
-import { Icone } from './Icone'
+import IconeMasque from './IconeMasque'
 
 /**
  * L'entrée vers le pronostic IA.
@@ -46,7 +46,7 @@ export default function BoutonPronostic({
           : 'border-accent-gold/40 bg-accent-gold/[0.04] hover:border-accent-gold/70',
       )}
     >
-      <Icone nom="strategy" taille={28} className="shrink-0" />
+      <IconeMasque nom="growth-analysis" taille={26} className="shrink-0 text-accent-gold" />
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2 flex-wrap">
           <span className="font-display text-[15px] leading-none text-slate-900">{t('AI prediction')}</span>

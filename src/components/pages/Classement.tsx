@@ -212,10 +212,14 @@ export function Classement() {
                 joueur ce qu'il lui reste à FAIRE — les autres ne font que
                 constater. */}
             <div className="mt-4 pt-4 border-t border-slate-200">
+              {/* La fraction se PLAFONNE : « 7/5 » se lit comme une erreur,
+                  pas comme un objectif dépassé (Mehdi, 2026-10-10). Le
+                  déblocage, lui, est atteint à cinq — au-delà il n'y a plus
+                  rien à montrer. */}
               <JaugeCoureur
                 taux={saison.parisSemaine / 5}
                 titre={t('This week')}
-                fraction={`${saison.parisSemaine}/5`}
+                fraction={`${Math.min(saison.parisSemaine, 5)}/5`}
                 legende={t('five bets a week unlock the full podium prizes in your groups')}
               />
             </div>

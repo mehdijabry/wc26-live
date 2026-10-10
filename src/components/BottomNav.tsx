@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useSiteSettings } from '../store/siteSettings'
 import { useT } from '../lib/i18n'
+import IconeMasque from './IconeMasque'
 
 /**
  * Bottom tab bar — footmercato-style.
@@ -83,12 +84,13 @@ const tabs: Tab[] = [
       // et une section absente de la barre du bas n'existe quasiment pas
       // sur mobile.
       to: '/analyse', label: 'Analysis',
-      icon: (a) => (
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-          <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} />
-          <path d="M8 8l3 3-3 3M13 14h4" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      ),
+      // Le glyphe de console ne disait rien de l'analyse — Mehdi a déposé
+      // `growth-analysis.svg` le 10/10/2026. Servi en MASQUE comme le
+      // coureur de la jauge : le fichier reste hors du paquet et prend
+      // quand même la couleur de l'onglet actif, ce qu'une <img> ne peut
+      // pas faire. L'état actif se lit déjà à la couleur, donc pas de
+      // variante épaissie ici.
+      icon: () => <IconeMasque nom="growth-analysis" taille={22} />,
     },
   {
     // Post-tournament: 'Predict' tab replaced by News — the daily read
