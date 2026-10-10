@@ -47,6 +47,9 @@ export type Profile = {
   current_streak: number
   best_streak: number
   tier: 'Rookie' | 'Amateur' | 'Pro' | 'Elite' | 'Legend'
+  /** Les points de classement : mise × 10 × min(cote, 5) sur un pari
+   *  gagné, cumulés et jamais reperdus. Migration 012. */
+  ranking_points: number
   /** Le portefeuille du jeu — voir src/lib/jeu.ts et la migration 004. */
   crampons: number
   pressings: number

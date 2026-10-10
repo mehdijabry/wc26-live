@@ -42,15 +42,20 @@ export function Leaderboard() {
     })()
   }, [])
 
-  // Le classement se joue sur les PRESSINGS, pas sur l'ancien total de
-  // points du bracket : c'est la monnaie du jeu vivant. `total_points`
-  // reste en base pour l'archive du Mondial, il n'est simplement plus le
-  // critère. Voir supabase/migrations/004_paris.sql.
-  const sorted = [...rows].sort((a, b) =>
-    tab === 'points'
-      ? Number(b.pressings ?? 0) - Number(a.pressings ?? 0)
-      : b.accuracy_pct - a.accuracy_pct
-  )
+    // LE CLASSEMENT SE JOUE SUR LES POINTS, PAS SUR LE SOLDE.
+    //
+    // Il triait sur les pressings, c'est-à-dire un solde — qui monte, qui
+    // descend avec les pénalités de palier, et qu'on gonfle en réclamant
+    // chaque jour sans jamais parier. Un solde n'est pas un mérite.
+    //
+    // Un point se gagne en GAGNANT un pari — mise × 10 × min(cote, 5) — et
+    // ne se reperd jamais. `total_points` reste pour l'archive du Mondial,
+    // les pressings restent la monnaie. Voir la migration 012.
+    const sorted = [...rows].sort((a, b) =>
+      tab === 'points'
+        ? Number(b.ranking_points ?? 0) - Number(a.ranking_points ?? 0)
+        : b.accuracy_pct - a.accuracy_pct
+    )
 
   return (
     <section id="leaderboard" className="py-20 sm:py-28 border-t border-slate-200/70">
@@ -158,7 +163,7 @@ export function Leaderboard() {
                   </div>
                   <div className="text-right">
                     <div className="font-display font-bold text-lg text-slate-900 tabular-nums">
-                      {tab === 'points' ? Number(row.pressings ?? 0).toLocaleString(localeOf(lang)) : `${row.accuracy_pct}%`}
+                      {tab === 'points' ? Number(row.ranking_points ?? 0).toLocaleString(localeOf(lang)) : `${row.accuracy_pct}%`}
                     </div>
                     <div className="text-[10px] font-mono text-slate-500">
                       {tab === 'points' ? 'pts' : 'accuracy'}
