@@ -8,6 +8,9 @@ import { AuthModal } from './AuthModal'
 import { JETON, POINT } from '../lib/jeu'
 import { Jeton } from './Jeton'
 import { localeOf, useLang, useT } from '../lib/i18n'
+import Avatar from './Avatar'
+import { cn } from '../lib/utils'
+import { choisirAvatar, cleDeLUrl, listeAvatars, urlAvatar } from '../lib/avatars'
 
 const TIER_COLORS: Record<string, string> = {
   Rookie: 'text-slate-600',
@@ -47,6 +50,8 @@ export function UserMenu() {
   }, [profile?.id])
 
   const [menuOpen, setMenuOpen] = useState(false)
+  const [avatars, setAvatars] = useState<string[]>([])
+  const [avatarOccupe, setAvatarOccupe] = useState(false)
 
   // Force the dropdown closed whenever the URL changes. Without this,
   // taps on the BottomNav (or any other Link) navigate the page but
@@ -56,6 +61,27 @@ export function UserMenu() {
   useEffect(() => {
     setMenuOpen(false)
   }, [location.pathname])
+  // La liste ne se charge qu'à l'ouverture du menu : sept vignettes dans
+  // l'en-tête de chaque page, pour un menu que la plupart n'ouvriront
+  // jamais, ce serait du poids payé pour rien.
+  useEffect(() => {
+    if (!menuOpen || avatars.length > 0) return
+    let vivant = true
+    void listeAvatars().then((l) => { if (vivant) setAvatars(l) })
+    return () => { vivant = false }
+  }, [menuOpen, avatars.length])
+
+  const cleChoisie = cleDeLUrl(profile?.avatar_url)
+
+  async function poserAvatar(cle: string | null) {
+    setAvatarOccupe(true)
+    try {
+      await choisirAvatar(cle)
+      await useAuth.getState().refreshProfile()
+    } catch { /* la vignette reste celle d'avant, rien à annoncer */ }
+    setAvatarOccupe(false)
+  }
+
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
@@ -120,9 +146,7 @@ export function UserMenu() {
         onClick={() => setMenuOpen((v) => !v)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full glass glass-hover text-sm"
       >
-        <span className="w-6 h-6 rounded-full bg-accent-gold/20 text-accent-gold flex items-center justify-center text-xs font-bold">
-          {alias.slice(0, 1).toUpperCase()}
-        </span>
+        <Avatar alias={alias} url={profile?.avatar_url} taille={24} />
         <span className="hidden sm:block max-w-[100px] truncate">{alias}</span>
         <Distinctions compte={distinctions} taille={14} max={2} />
         {/* Le solde se lit sans ouvrir quoi que ce soit. Un score qu'il faut
@@ -216,6 +240,46 @@ export function UserMenu() {
             <div className="mt-3 text-[11px] text-slate-500 font-mono flex items-center justify-between">
               <span>🔥 {t('streak')} {nb(profile?.current_streak)}</span>
               <span>★ {t('best')} {nb(profile?.best_streak)}</span>
+            </div>
+
+            {/* ── L'avatar ────────────────────────────────────────────
+                C'est ici que vit l'identité du joueur : le pseudo, le
+                solde, les distinctions. Le choix de la figure y a sa
+                place, et nulle part ailleurs. */}
+            <div className="mt-4">
+              <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                {t('Your avatar')}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {avatars.map((cle) => (
+                  <button
+                    key={cle}
+                    type="button"
+                    onClick={() => void poserAvatar(cle)}
+                    disabled={avatarOccupe}
+                    className={cn(
+                      'rounded-full p-0.5 transition-colors disabled:opacity-40',
+                      cleChoisie === cle ? 'ring-2 ring-accent-gold' : 'ring-1 ring-transparent hover:ring-accent-gold/40',
+                    )}
+                    aria-label={cle}
+                  >
+                    <Avatar alias={alias} url={urlAvatar(cle)} taille={32} />
+                  </button>
+                ))}
+                {/* Revenir à l'initiale est un choix comme un autre. */}
+                <button
+                  type="button"
+                  onClick={() => void poserAvatar(null)}
+                  disabled={avatarOccupe}
+                  className={cn(
+                    'rounded-full p-0.5 transition-colors disabled:opacity-40',
+                    cleChoisie === null ? 'ring-2 ring-accent-gold' : 'ring-1 ring-transparent hover:ring-accent-gold/40',
+                  )}
+                  aria-label={t('Use my initial')}
+                >
+                  <Avatar alias={alias} taille={32} />
+                </button>
+              </div>
             </div>
 
             {/* Raccourcis — ce que le joueur vient réellement chercher ici. */}

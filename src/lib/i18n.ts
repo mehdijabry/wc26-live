@@ -67,6 +67,8 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  'Your avatar': 'صورتك',
+  'Use my initial': 'العودة إلى الحرف الأول',
   '{n} clubs. Open one for its full squad.': '{n} ناديًا. افتح واحدًا لرؤية تشكيلته كاملة.',
   // ── Les championnats et leurs classements (10/10/2026) ─────────────
   'Leagues': 'الدوريات',
@@ -607,6 +609,8 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  'Your avatar': 'Votre avatar',
+  'Use my initial': 'Revenir à mon initiale',
   '{n} clubs. Open one for its full squad.': '{n} clubs. Ouvrez-en un pour son effectif complet.',
   // ── Les championnats et leurs classements (10/10/2026) ─────────────
   'Leagues': 'Ligues',

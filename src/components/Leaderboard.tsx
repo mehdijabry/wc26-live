@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { JETON, POINT, PALIER } from '../lib/jeu'
 import { Jeton } from './Jeton'
+import Avatar from './Avatar'
 import { localeOf, useLang, useT } from '../lib/i18n'
 import { supabase, type LeaderboardRow } from '../lib/supabase'
 import { useAuth } from '../store/auth'
@@ -174,9 +175,7 @@ export function Leaderboard({
                   <span className="font-mono text-xs text-slate-500 w-8 tabular-nums">
                     #{idx + 1}
                   </span>
-                  <span className="w-8 h-8 rounded-full bg-accent-gold/15 text-accent-gold flex items-center justify-center font-bold text-sm">
-                    {row.alias.slice(0, 1).toUpperCase()}
-                  </span>
+                  <Avatar alias={row.alias} url={row.avatar_url} taille={32} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate flex items-center gap-2">
                       {row.alias}

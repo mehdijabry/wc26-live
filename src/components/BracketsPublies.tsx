@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import Avatar from './Avatar'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import { useT } from '../lib/i18n'
@@ -73,9 +74,7 @@ export function BracketsPublies() {
             >
               <div className="flex items-center gap-3 mb-2">
                 <span className="font-mono text-[10px] text-slate-500">#{i + 1}</span>
-                <span className="w-8 h-8 rounded-full bg-accent-gold/15 text-accent-gold flex items-center justify-center font-bold text-sm">
-                  {b.alias.slice(0, 1).toUpperCase()}
-                </span>
+                <Avatar alias={b.alias} url={(b as { avatar_url?: string | null }).avatar_url} taille={28} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-display font-bold truncate flex items-center gap-2">
                     {b.alias}
