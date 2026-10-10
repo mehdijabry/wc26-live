@@ -1,6 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
+import { BarriereDErreur } from './components/BarriereDErreur'
 import { Hero, HeroScoreboard } from './components/Hero'
 import { Bracket } from './components/Bracket'
 import { Groups } from './components/Groups'
@@ -257,6 +258,10 @@ function App() {
         {/* StickyCountdown (WC26 next-match pill) unmounted after the
             final — the tournament store has no upcoming fixtures so it
             rendered nothing; removing the mount also stops its 1s tick. */}
+        {/* Une page qui casse ne doit pas emporter l'en-tête, la barre du
+            bas et le bandeau des scores avec elle : le visiteur garde de
+            quoi aller ailleurs. */}
+        <BarriereDErreur>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/wc26" element={<WC26Page />} />
@@ -490,6 +495,7 @@ function App() {
           <Route path="/ai" element={<AskAiPage />} />
           <Route path="*" element={<HomePage />} />
         </Routes>
+        </BarriereDErreur>
       </main>
 
       {/* Same gating as the top chrome — keep Footer + BottomNav off

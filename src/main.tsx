@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
+import { recupererChunkPerime } from './lib/chunks'
+import { BarriereDErreur } from './components/BarriereDErreur'
 
 // Hard redirect from the legacy subdomain. Anyone still landing on
 // wc26.mehdijabry.dev (Facebook posts, Google cache, bookmarks, PWAs
@@ -31,47 +33,29 @@ if ('serviceWorker' in navigator) {
   })
 }
 
-// Stale-chunk recovery. When we redeploy, the main bundle the user
-// already has cached references lazy chunks (e.g. AdminPanel-OLD.js)
-// that no longer exist on the CDN — or the chunk 404s for ~1 min while
-// the new deployment propagates across Cloudflare's edge. The lazy
-// import rejects, React Suspense unmounts, blank page.
+// Récupération d'un morceau de code introuvable — voir src/lib/chunks.ts
+// pour le détail et l'historique.
 //
-// Previous version reloaded ONCE per session — during an edge
-// propagation window that single reload landed while the chunk was
-// still 404 and the user stayed on a white page for the whole session
-// (this exactly happened on 2026-07-15). Now: time-gated retry (one
-// reload per 15s, indefinitely) + an unhandledrejection fallback for
-// chunk failures that bypass vite:preloadError.
-function recoverFromStaleChunk(reason: unknown) {
-  const msg = String((reason as { message?: unknown })?.message ?? reason ?? '')
-  if (!/dynamically imported module|Importing a module script failed|ChunkLoadError|error loading dynamically imported/i.test(msg)) return
-  let last = 0
-  try { last = Number(sessionStorage.getItem('wc26.chunkReloadAt') ?? 0) } catch { /* private mode */ }
-  if (Date.now() - last < 15_000) return // just tried — don't pingpong
-  try { sessionStorage.setItem('wc26.chunkReloadAt', String(Date.now())) } catch { /* private mode */ }
-  console.warn('[p90] stale/unreachable chunk, healing cache + reloading:', msg)
-  // The failure can be a POISONED BROWSER-CACHE ENTRY (a 404/HTML that
-  // got cached under the chunk URL during deploy propagation) — a plain
-  // reload reuses it forever. `cache: 'reload'` bypasses the cache and
-  // OVERWRITES the entry with the fresh network response, so the reload
-  // that follows imports the healthy file. Seen 2026-08-06: fetch() said
-  // 200 while import() kept failing on the same URL.
-  const urlMatch = /https?:\/\/\S+?\.js/.exec(msg)
-  const heal = urlMatch
-    ? fetch(urlMatch[0], { cache: 'reload' }).catch(() => undefined)
-    : Promise.resolve(undefined)
-  void heal.finally(() => window.location.reload())
-}
+// TROIS évènements, pas deux. `vite:preloadError` couvre le préchargement et
+// `unhandledrejection` les imports directs, mais l'échec d'un `React.lazy()`
+// ne passe par ni l'un ni l'autre : React relance la promesse rejetée
+// PENDANT LE RENDU, ce qui en fait une erreur classique. Elle sortait donc
+// par `window.onerror`, que personne n'écoutait — une exception dans la
+// console et l'écran restait blanc (2026-10-10).
 window.addEventListener('vite:preloadError', (e) => {
-  recoverFromStaleChunk((e as Event & { payload?: unknown }).payload ?? 'vite:preloadError')
+  recupererChunkPerime((e as Event & { payload?: unknown }).payload ?? 'vite:preloadError')
 })
-window.addEventListener('unhandledrejection', (e) => recoverFromStaleChunk(e.reason))
+window.addEventListener('unhandledrejection', (e) => { recupererChunkPerime(e.reason) })
+window.addEventListener('error', (e) => { recupererChunkPerime(e.error ?? e.message) })
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <BrowserRouter>
-      <App />
+      {/* Dernier filet : si l'en-tête ou le routeur lui-même casse, on
+          affiche un écran lisible au lieu de rien du tout. */}
+      <BarriereDErreur>
+        <App />
+      </BarriereDErreur>
     </BrowserRouter>
   </StrictMode>,
 )

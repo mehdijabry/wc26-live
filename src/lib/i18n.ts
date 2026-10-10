@@ -67,6 +67,11 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  // ── La barrière d'erreur (10/10/2026) ──────────────────────────────
+  'Updating…': 'جارٍ التحديث…',
+  'This page could not load': 'تعذّر عرض هذه الصفحة',
+  'Something went wrong on our side. Reloading usually fixes it.': 'حدث خلل من جهتنا. إعادة التحميل تكفي في الغالب.',
+  'Reload': 'إعادة التحميل',
   // ── La section du jeu : /board (10/10/2026) ────────────────────────
   'the game': 'اللعبة',
   'every player': 'كل اللاعبين',
@@ -578,6 +583,11 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // ── La barrière d'erreur (10/10/2026) ──────────────────────────────
+  'Updating…': 'Mise à jour…',
+  'This page could not load': 'Cette page n’a pas pu s’afficher',
+  'Something went wrong on our side. Reloading usually fixes it.': 'Quelque chose a lâché de notre côté. Un rechargement suffit presque toujours.',
+  'Reload': 'Recharger',
   // ── La section du jeu : /board (10/10/2026) ────────────────────────
   'the game': 'le jeu',
   'every player': 'tous les joueurs',
