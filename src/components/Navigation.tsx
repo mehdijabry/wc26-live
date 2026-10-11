@@ -144,17 +144,41 @@ export function Navigation() {
                 {t(l.label)}
               </NavLink>
             ))}
-            {/* EN / FR / عربي toggle */}
-            <div className="ms-2 inline-flex rounded-full border border-slate-200 bg-slate-50 p-0.5" role="group" aria-label="Language">
-              {([['en', 'EN'], ['fr', 'FR'], ['ar', 'عربي']] as const).map(([code, label]) => (
-                <button
-                  key={code}
-                  onClick={() => setLang(code)}
-                  className={'px-2.5 py-1 rounded-sm text-[11px] font-mono transition-colors ' + (lang === code ? 'bg-accent-gold text-ink-900 font-semibold' : 'text-slate-500 hover:text-slate-900')}
-                >
-                  {label}
-                </button>
-              ))}
+            {/* La langue : un menu déroulant, plus la pastille à trois
+                boutons. Elle occupait la largeur de deux liens de
+                navigation pour une action qu'on fait une fois (Mehdi,
+                2026-10-10).
+
+                `<select>` natif plutôt qu'un menu dessiné : il se pose au
+                bon endroit sur chaque système, s'ouvre au clavier, et sur
+                téléphone il appelle le sélecteur de l'appareil. Un menu
+                maison coûterait cent lignes pour faire moins bien. */}
+            <div className="ms-3 relative">
+              <select
+                value={lang}
+                onChange={(e) => setLang(e.target.value as 'en' | 'fr' | 'ar')}
+                aria-label="Language"
+                className="appearance-none bg-transparent border-0 ps-1 pe-4 py-1 text-[11px] font-mono uppercase tracking-wider text-slate-500 hover:text-slate-900 focus:outline-none focus:text-slate-900 cursor-pointer transition-colors"
+              >
+                {([['en', 'EN'], ['fr', 'FR'], ['ar', 'AR']] as const).map(([code, label]) => (
+                  // Les options sont dessinées par le système : il faut leur
+                  // poser des couleurs en dur, elles n'héritent ni du thème
+                  // ni des classes Tailwind.
+                  <option key={code} value={code} style={{ background: '#121916', color: '#ECEFE8' }}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+              {/* Le chevron, puisque `appearance-none` retire celui du
+                  système. `pointer-events-none` pour que le clic traverse
+                  jusqu'au select. */}
+              <svg
+                aria-hidden="true"
+                width="8" height="8" viewBox="0 0 10 6"
+                className="pointer-events-none absolute end-0 top-1/2 -translate-y-1/2 text-slate-500"
+              >
+                <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
           </nav>
 
