@@ -14,8 +14,9 @@ export function Footer() {
             <div className="font-display font-bold text-base text-slate-900">
               Pressing <span className="text-accent-gold">90’</span>
             </div>
-            <div className="text-[9px] uppercase tracking-[0.18em] font-mono mt-1 text-slate-500">
-              More than a game. Our field of expression.
+            <div className="text-[8px] uppercase tracking-[0.16em] font-mono mt-1 leading-[1.5] text-slate-500">
+              <div>More than a game.</div>
+              <div>Our field of expression.</div>
             </div>
           </div>
         </div>

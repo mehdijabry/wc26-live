@@ -105,8 +105,13 @@ export function Navigation() {
                   caractères : sur un téléphone elle pousserait le bouton de
                   connexion hors de l'écran, donc en dessous de `sm` on garde
                   la ligne courte qui dit ce qu'est le site. */}
-              <div className="hidden sm:block text-[9px] uppercase tracking-[0.18em] font-mono whitespace-nowrap mt-1 text-slate-500">
-                More than a game. Our field of expression.
+              {/* SUR DEUX LIGNES. En une seule, la signature poussait la
+                  navigation vers la droite et mangeait la place d'« Accueil »
+                  (Mehdi, 2026-10-10). Pliée en deux et réduite d'un pixel,
+                  elle tient sous le nom sans dépasser sa largeur. */}
+              <div className="hidden sm:block text-[8px] uppercase tracking-[0.16em] font-mono whitespace-nowrap mt-1 leading-[1.5] text-slate-500">
+                <div>More than a game.</div>
+                <div>Our field of expression.</div>
               </div>
               <div className="sm:hidden text-[9px] uppercase tracking-[0.2em] font-mono whitespace-nowrap mt-0.5 text-slate-500">
                 {t('live football scores')}
