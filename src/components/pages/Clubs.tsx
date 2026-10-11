@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CHAMPIONNATS, CONTINENTS, clubsDuChampionnat, type Continent } from '../../lib/clubs'
+import { CHAMPIONNATS, CONTINENTS, clubsDuChampionnat, logoChampionnat, monogrammeChampionnat, type Continent } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { trLeague, useLang, useT } from '../../lib/i18n'
 
@@ -98,7 +98,7 @@ export function Clubs() {
   return (
     <div className="container max-w-5xl mx-auto px-6 py-10">
       <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{t('Leagues')}</h1>
-      <p className="mt-3 text-muted-foreground max-w-2xl">
+      <p className="mt-3 text-slate-500 max-w-2xl">
         {t('{n} leagues across {c} continents. Open one for its live table — points, goal difference, games played — and for every club in it, squad included. All of it pulled live, never typed by hand.')
           .replace('{n}', String(nombreDeLigues))
           .replace('{c}', String(CONTINENTS.length))}
@@ -119,32 +119,68 @@ export function Clubs() {
                 championnats), pas un libellé : il passe quand même par le
                 dictionnaire, sinon « Americas » reste en anglais au milieu
                 d'une page française. */}
-            <h2 className="text-xl font-semibold">{t(continent)}</h2>
-            <ul className="mt-4 grid gap-3 sm:grid-cols-2">
-              {ligues.map((ch) => (
-                <li key={ch.slug}>
-                  <Link
-                    to={`/clubs/${ch.slug}`}
-                    className="flex items-baseline justify-between gap-3 rounded-lg border px-4 py-3 hover:bg-muted/50 transition-colors"
-                  >
-                    {/* ESPN colle un qualificatif de pays que personne
-                        n'emploie — « English Premier League ». `trLeague`
-                        ne traduit pas le nom, il le normalise. */}
-                    <span className="font-medium">{trLeague(etat[ch.slug]?.nom ?? joliSlug(ch.slug), lang)}</span>
-                    {etat[ch.slug] && (
-                      <span className="text-sm text-muted-foreground shrink-0">
-                        {t('{n} clubs').replace('{n}', String(etat[ch.slug]!.clubs))}
+            {/* Un bandeau de section plutôt qu'un titre nu : filet doré,
+                intitulé en capitales espacées, compte à droite. C'est la
+                grammaire du reste du site, que cette page n'avait pas. */}
+            <div className="flex items-center gap-3">
+              <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent-gold">{t(continent)}</h2>
+              <div className="h-px flex-1 bg-slate-200" />
+              <span className="font-mono text-[11px] tabular-nums text-slate-500">{ligues.length}</span>
+            </div>
+            <ul className="mt-4 grid gap-3 grid-cols-2 lg:grid-cols-3">
+              {ligues.map((ch) => {
+                const info = etat[ch.slug]
+                // ESPN colle un qualificatif de pays que personne n'emploie —
+                // « English Premier League ». `trLeague` ne traduit pas le
+                // nom, il le normalise.
+                const nom = trLeague(info?.nom ?? joliSlug(ch.slug), lang)
+                const ecusson = logoChampionnat(ch)
+                return (
+                  <li key={ch.slug}>
+                    <Link
+                      to={`/clubs/${ch.slug}`}
+                      className="group h-full flex items-center gap-3.5 rounded-xl glass glass-hover px-3.5 py-3.5"
+                    >
+                      <span className="shrink-0 w-11 h-11 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
+                        {ecusson ? (
+                          // Dimensions explicites et chargement différé :
+                          // vingt-et-une images sur une page d'index, autant
+                          // qu'elles n'entrent pas toutes dans le premier
+                          // rendu et ne fassent pas sauter la mise en page.
+                          <img
+                            src={ecusson}
+                            alt=""
+                            width={32}
+                            height={32}
+                            loading="lazy"
+                            decoding="async"
+                            className="w-8 h-8 object-contain"
+                          />
+                        ) : (
+                          <span className="font-display text-[13px] font-bold tracking-tight text-accent-gold">
+                            {monogrammeChampionnat(nom)}
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </Link>
-                </li>
-              ))}
+                      <span className="min-w-0 flex-1">
+                        <span className="block font-display text-[15px] leading-tight text-slate-900 group-hover:text-accent-gold transition-colors">
+                          {nom}
+                        </span>
+                        <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-slate-500 tabular-nums truncate">
+                          {ch.pays || t('continental')}
+                          {info && ` · ${t('{n} clubs').replace('{n}', String(info.clubs))}`}
+                        </span>
+                      </span>
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           </section>
         )
       })}
 
-      <p className="mt-12 text-sm text-muted-foreground">
+      <p className="mt-12 text-sm text-slate-500">
         {t('Squads and club details come from ESPN’s public soccer API and refresh on their schedule, not ours. Morocco has no league of its own here — that source carries no Botola at all — so Moroccan sides appear only through the two African cups above.')}
       </p>
     </div>

@@ -66,6 +66,18 @@ export type Championnat = {
   slug: string
   /** Code ISO du pays, pour le drapeau et le regroupement. Vide pour une compétition continentale. */
   pays: string
+  /**
+   * L'identifiant du logo chez ESPN — PAS celui de la compétition. Les deux
+   * diffèrent presque partout : la Premier League est la ligue 700 et le logo
+   * 23. Relevé une fois pour toutes sur `/scoreboard` le 11/10/2026 et figé
+   * ici, pour qu'afficher l'index ne coûte pas vingt-et-un appels de plus.
+   *
+   * Absent quand ESPN n'a pas de vrai logo : la Coupe de la confédération et
+   * le championnat sud-africain ne renvoient que son image grise par défaut.
+   * Ces deux-là reçoivent un monogramme maison, qui vaut mieux qu'un
+   * placeholder emprunté.
+   */
+  logo?: number
 }
 
 export type Continent = 'Europe' | 'Americas' | 'Africa' | 'Asia'
@@ -91,30 +103,30 @@ export type Continent = 'Europe' | 'Americas' | 'Africa' | 'Asia'
  */
 export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
   Europe: [
-    { espn: 'eng.1', slug: 'premier-league', pays: 'ENG' },
-    { espn: 'esp.1', slug: 'laliga', pays: 'ESP' },
-    { espn: 'ger.1', slug: 'bundesliga', pays: 'GER' },
-    { espn: 'ita.1', slug: 'serie-a', pays: 'ITA' },
-    { espn: 'fra.1', slug: 'ligue-1', pays: 'FRA' },
-    { espn: 'por.1', slug: 'primeira-liga', pays: 'POR' },
-    { espn: 'ned.1', slug: 'eredivisie', pays: 'NED' },
-    { espn: 'tur.1', slug: 'super-lig', pays: 'TUR' },
+    { espn: 'eng.1', slug: 'premier-league', pays: 'ENG', logo: 23 },
+    { espn: 'esp.1', slug: 'laliga', pays: 'ESP', logo: 15 },
+    { espn: 'ger.1', slug: 'bundesliga', pays: 'GER', logo: 10 },
+    { espn: 'ita.1', slug: 'serie-a', pays: 'ITA', logo: 12 },
+    { espn: 'fra.1', slug: 'ligue-1', pays: 'FRA', logo: 9 },
+    { espn: 'por.1', slug: 'primeira-liga', pays: 'POR', logo: 14 },
+    { espn: 'ned.1', slug: 'eredivisie', pays: 'NED', logo: 11 },
+    { espn: 'tur.1', slug: 'super-lig', pays: 'TUR', logo: 18 },
     // Les trois coupes d'Europe. Elles ont un VRAI tableau depuis que l'UEFA
     // a remplacé les groupes par une phase de ligue unique : 36 équipes dans
     // un seul classement, vérifié le 11/10/2026 sur les trois.
-    { espn: 'uefa.champions', slug: 'champions-league', pays: '' },
-    { espn: 'uefa.europa', slug: 'europa-league', pays: '' },
-    { espn: 'uefa.europa.conf', slug: 'conference-league', pays: '' },
+    { espn: 'uefa.champions', slug: 'champions-league', pays: '', logo: 2 },
+    { espn: 'uefa.europa', slug: 'europa-league', pays: '', logo: 2310 },
+    { espn: 'uefa.europa.conf', slug: 'conference-league', pays: '', logo: 20296 },
   ],
   Americas: [
-    { espn: 'bra.1', slug: 'brasileirao', pays: 'BRA' },
-    { espn: 'arg.1', slug: 'liga-profesional', pays: 'ARG' },
-    { espn: 'usa.1', slug: 'mls', pays: 'USA' },
-    { espn: 'mex.1', slug: 'liga-mx', pays: 'MEX' },
-    { espn: 'conmebol.libertadores', slug: 'copa-libertadores', pays: '' },
+    { espn: 'bra.1', slug: 'brasileirao', pays: 'BRA', logo: 85 },
+    { espn: 'arg.1', slug: 'liga-profesional', pays: 'ARG', logo: 1 },
+    { espn: 'usa.1', slug: 'mls', pays: 'USA', logo: 19 },
+    { espn: 'mex.1', slug: 'liga-mx', pays: 'MEX', logo: 22 },
+    { espn: 'conmebol.libertadores', slug: 'copa-libertadores', pays: '', logo: 58 },
   ],
   Africa: [
-    { espn: 'caf.champions', slug: 'caf-champions-league', pays: '' },
+    { espn: 'caf.champions', slug: 'caf-champions-league', pays: '', logo: 2391 },
     { espn: 'caf.confed', slug: 'caf-confederation-cup', pays: '' },
     // LA BOTOLA EST PRÊTE MAIS N'EST PAS PUBLIÉE. Pour l'activer, il suffit
     // de décommenter la ligne ci-dessous — tout le reste existe déjà : la
@@ -144,9 +156,24 @@ export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
     // ligne ici et un adaptateur à côté de `clubsDuChampionnat`.
   ],
   Asia: [
-    { espn: 'ksa.1', slug: 'saudi-pro-league', pays: 'KSA' },
-    { espn: 'jpn.1', slug: 'j-league', pays: 'JPN' },
+    { espn: 'ksa.1', slug: 'saudi-pro-league', pays: 'KSA', logo: 2488 },
+    { espn: 'jpn.1', slug: 'j-league', pays: 'JPN', logo: 2199 },
   ],
+}
+
+/**
+ * L'écusson d'une compétition. On prend la variante « 500-dark », qui est le
+ * jeu dessiné POUR les fonds sombres — donc le nôtre. Rend `null` quand ESPN
+ * n'a pas de vrai logo, et l'appelant pose alors un monogramme.
+ */
+export const logoChampionnat = (ch: Championnat): string | null =>
+  ch.logo ? `https://a.espncdn.com/i/leaguelogos/soccer/500-dark/${ch.logo}.png` : null
+
+/** Deux ou trois lettres tirées du nom, pour les compétitions sans écusson. */
+export function monogrammeChampionnat(nom: string): string {
+  const mots = nom.split(/[\s—·-]+/).filter((m) => m.length > 2 && !/^(de|du|la|le|of|the|cup|coupe)$/i.test(m))
+  if (mots.length >= 2) return (mots[0][0] + mots[1][0]).toUpperCase()
+  return nom.slice(0, 2).toUpperCase()
 }
 
 export const CONTINENTS: Continent[] = ['Europe', 'Americas', 'Africa', 'Asia']
