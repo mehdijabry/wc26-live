@@ -25,6 +25,11 @@ const BASE_LINKS: Array<{ label: string; to: string }> = [
   // d'être dans la navigation principale, pas seulement dans un lien de pied
   // de page. Le classement vivait à /board sans qu'aucun lien n'y mène.
   { label: 'Predict', to: '/predictions' },
+  // L'analyse IA n'avait de lien que dans la barre du bas : sur ordinateur,
+  // la section n'existait tout simplement pas (Mehdi, 2026-10-10). Elle se
+  // place entre le pari et le classement — on lit l'analyse, on parie, on
+  // regarde où ça mène.
+  { label: 'Analysis', to: '/analyse' },
   // Le jeu social n'avait aucune porte d'entrée : les pages existaient, rien
   // n'y menait (Mehdi, 2026-10-10). /board est maintenant la section
   // entière — ma saison, mes groupes, mes prix, le général — et ce lien est
