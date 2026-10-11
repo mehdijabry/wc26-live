@@ -20,6 +20,41 @@ export function urlAvatar(cle: string): string {
   return `/media/avatars/${cle}.png`
 }
 
+/**
+ * Le filet de sécurité, et RIEN D'AUTRE.
+ *
+ * La table `public.avatars` reste la source de vérité : c'est elle que lit
+ * le sélecteur, et elle que la base valide. Cette liste ne sert qu'à donner
+ * une figure à un profil dont `avatar_url` serait vide — un compte créé
+ * avant que le tirage automatique existe, ou une ligne posée autrement.
+ * Depuis la migration 024 chaque inscription en reçoit un, donc ce chemin
+ * ne devrait plus servir.
+ */
+const SECOURS = [
+  'boy-with-vr',
+  'afro-man-with-vr',
+  'man-with-hat',
+  'man-with-t-shirt',
+  'short-hair-man-with-bucket-hat',
+  'short-hair-man-with-sweater',
+  'thief-with-black-hoodie',
+] as const
+
+/**
+ * Une figure stable pour un profil qui n'en a pas.
+ *
+ * DÉTERMINISTE, et c'est tout l'intérêt : tirer au hasard au rendu donnerait
+ * une figure différente à chaque rechargement, et une autre encore chez le
+ * voisin qui regarde le même classement. La même graine rend toujours la
+ * même figure.
+ */
+export function avatarDeSecours(graine: string | null | undefined): string {
+  const g = graine ?? ''
+  let h = 0
+  for (let i = 0; i < g.length; i++) h = (h * 31 + g.charCodeAt(i)) | 0
+  return urlAvatar(SECOURS[Math.abs(h) % SECOURS.length]!)
+}
+
 /** La clé derrière une adresse enregistrée, pour cocher la bonne vignette. */
 export function cleDeLUrl(url: string | null | undefined): string | null {
   if (!url) return null

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { championnatParSlug, championnatComplet, type ClubResume, type GroupeClassement } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
-import { useLang, useT } from '../../lib/i18n'
+import { trLeague, useLang, useT } from '../../lib/i18n'
 import { cn } from '../../lib/utils'
 
 /**
@@ -18,6 +18,7 @@ export function ClubsLeague() {
   const [clubs, setClubs] = useState<ClubResume[]>([])
   const [groupes, setGroupes] = useState<GroupeClassement[]>([])
   const t = useT()
+  const lang = useLang((s) => s.lang)
 
   usePageHead(
     nomLigue && clubs.length
@@ -95,9 +96,9 @@ export function ClubsLeague() {
   if (!ch) {
     return (
       <div className="container max-w-3xl mx-auto px-6 py-16">
-        <h1 className="text-2xl font-bold">League not found</h1>
+        <h1 className="text-2xl font-bold">{t('League not found')}</h1>
         <Link to="/clubs" className="mt-4 inline-block underline">
-          Back to every league
+          {t('Back to every league')}
         </Link>
       </div>
     )
@@ -109,7 +110,7 @@ export function ClubsLeague() {
         ← {t('All leagues')}
       </Link>
       <h1 className="mt-3 text-3xl md:text-4xl font-bold tracking-tight">
-        {nomLigue ?? 'Loading…'}
+        {nomLigue ? trLeague(nomLigue, lang) : t('Loading…')}
       </h1>
       {clubs.length > 0 && (
         <p className="mt-3 text-muted-foreground">

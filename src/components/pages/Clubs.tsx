@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { CHAMPIONNATS, CONTINENTS, clubsDuChampionnat, type Continent } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
+import { trLeague, useLang, useT } from '../../lib/i18n'
 
 /**
  * /clubs — l'arborescence continent → pays → championnat.
@@ -22,6 +23,8 @@ function joliSlug(slug: string): string {
 }
 
 export function Clubs() {
+  const t = useT()
+  const lang = useLang((s) => s.lang)
   const [etat, setEtat] = useState<Etat>({})
 
   usePageHead(
@@ -94,11 +97,11 @@ export function Clubs() {
 
   return (
     <div className="container max-w-5xl mx-auto px-6 py-10">
-      <h1 className="text-3xl md:text-4xl font-bold tracking-tight">Leagues</h1>
+      <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{t('Leagues')}</h1>
       <p className="mt-3 text-muted-foreground max-w-2xl">
-        {nombreDeLigues} leagues across {CONTINENTS.length} continents. Open one for its live
-        table — points, goal difference, games played — and for every club in it, squad
-        included. All of it pulled live, never typed by hand.
+        {t('{n} leagues across {c} continents. Open one for its live table — points, goal difference, games played — and for every club in it, squad included. All of it pulled live, never typed by hand.')
+          .replace('{n}', String(nombreDeLigues))
+          .replace('{c}', String(CONTINENTS.length))}
       </p>
 
       {CONTINENTS.map((continent: Continent) => {
@@ -112,7 +115,11 @@ export function Clubs() {
         if (!ligues.length) return null
         return (
           <section key={continent} className="mt-10">
-            <h2 className="text-xl font-semibold">{continent}</h2>
+            {/* Le continent est une DONNÉE (la clé du tableau des
+                championnats), pas un libellé : il passe quand même par le
+                dictionnaire, sinon « Americas » reste en anglais au milieu
+                d'une page française. */}
+            <h2 className="text-xl font-semibold">{t(continent)}</h2>
             <ul className="mt-4 grid gap-3 sm:grid-cols-2">
               {ligues.map((ch) => (
                 <li key={ch.slug}>
@@ -120,10 +127,13 @@ export function Clubs() {
                     to={`/clubs/${ch.slug}`}
                     className="flex items-baseline justify-between gap-3 rounded-lg border px-4 py-3 hover:bg-muted/50 transition-colors"
                   >
-                    <span className="font-medium">{etat[ch.slug]?.nom ?? joliSlug(ch.slug)}</span>
+                    {/* ESPN colle un qualificatif de pays que personne
+                        n'emploie — « English Premier League ». `trLeague`
+                        ne traduit pas le nom, il le normalise. */}
+                    <span className="font-medium">{trLeague(etat[ch.slug]?.nom ?? joliSlug(ch.slug), lang)}</span>
                     {etat[ch.slug] && (
                       <span className="text-sm text-muted-foreground shrink-0">
-                        {etat[ch.slug]!.clubs} clubs
+                        {t('{n} clubs').replace('{n}', String(etat[ch.slug]!.clubs))}
                       </span>
                     )}
                   </Link>
@@ -135,9 +145,7 @@ export function Clubs() {
       })}
 
       <p className="mt-12 text-sm text-muted-foreground">
-        Squads and club details come from ESPN's public soccer API and refresh on their schedule,
-        not ours. Morocco has no league of its own here — that source carries no Botola at all —
-        so Moroccan sides appear only through the two African cups above.
+        {t('Squads and club details come from ESPN’s public soccer API and refresh on their schedule, not ours. Morocco has no league of its own here — that source carries no Botola at all — so Moroccan sides appear only through the two African cups above.')}
       </p>
     </div>
   )

@@ -19,6 +19,7 @@ import {
 } from '../../lib/leagues'
 import BarreDeblocage from '../BarreDeblocage'
 import { Icone } from '../Icone'
+import Avatar from '../Avatar'
 import { cn } from '../../lib/utils'
 import { localeOf, useLang, useT } from '../../lib/i18n'
 
@@ -235,6 +236,7 @@ export function LeaguePage() {
                 <td className="py-2 pr-3 font-mono tabular-nums text-slate-400">{i + 1}</td>
                   <td className="py-2 pr-3">
                     <span className="inline-flex items-center gap-1.5">
+                      <Avatar alias={r.alias} url={r.avatar_url} graine={r.user_id} taille={22} />
                       {r.alias || t('anonymous')}
                       {/* La médaille du JOUR, pas du classement affiché : le
                           tableau compte les points depuis l'adhésion, le

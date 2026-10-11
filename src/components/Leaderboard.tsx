@@ -175,7 +175,7 @@ export function Leaderboard({
                   <span className="font-mono text-xs text-slate-500 w-8 tabular-nums">
                     #{idx + 1}
                   </span>
-                  <Avatar alias={row.alias} url={row.avatar_url} taille={32} />
+                  <Avatar alias={row.alias} url={row.avatar_url} graine={row.id} taille={32} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate flex items-center gap-2">
                       {row.alias}

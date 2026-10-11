@@ -8,6 +8,7 @@ import {
   type Joueur,
 } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
+import { useT } from '../../lib/i18n'
 
 /**
  * /club/:league/:club — un club et son effectif complet.
@@ -21,6 +22,7 @@ import { usePageHead, useJsonLd } from '../../lib/head'
  * forme pèsent 1 M – 10 M par mois, d'où le titre.
  */
 export function ClubPage() {
+  const t = useT()
   const { league, club } = useParams<{ league: string; club: string }>()
   const ch = league ? championnatParSlug(league) : null
   const [detail, setDetail] = useState<ClubDetail | null>(null)
@@ -134,9 +136,9 @@ export function ClubPage() {
   if (!ch || introuvable) {
     return (
       <div className="container max-w-3xl mx-auto px-6 py-16">
-        <h1 className="text-2xl font-bold">Club not found</h1>
+        <h1 className="text-2xl font-bold">{t('Club not found')}</h1>
         <Link to="/clubs" className="mt-4 inline-block underline">
-          Back to every league
+          {t('Back to every league')}
         </Link>
       </div>
     )
@@ -179,11 +181,11 @@ export function ClubPage() {
       {effectif.length > 0 && (
         <>
           <h2 className="mt-10 text-xl font-semibold">
-            Squad — {effectif.length} players
+            {t('Squad — {n} players').replace('{n}', String(effectif.length))}
           </h2>
           {avecStats && (
             <p className="mt-1 text-sm text-muted-foreground">
-              Tap a name for their full season line.
+              {t('Tap a name for their full season line.')}
             </p>
           )}
           <div className="mt-4 overflow-x-auto">
@@ -191,11 +193,11 @@ export function ClubPage() {
               <thead>
                 <tr className="text-left text-muted-foreground border-b">
                   <th className="py-2 pr-3 font-medium">#</th>
-                  <th className="py-2 pr-3 font-medium">Player</th>
-                  <th className="py-2 pr-3 font-medium">Position</th>
-                  <th className="py-2 pr-3 font-medium hidden sm:table-cell">Age</th>
+                  <th className="py-2 pr-3 font-medium">{t('Player')}</th>
+                  <th className="py-2 pr-3 font-medium">{t('Position')}</th>
+                  <th className="py-2 pr-3 font-medium hidden sm:table-cell">{t('Age')}</th>
                   {avecNationalite && (
-                    <th className="py-2 pr-3 font-medium hidden md:table-cell">Nationality</th>
+                    <th className="py-2 pr-3 font-medium hidden md:table-cell">{t('Nationality')}</th>
                   )}
                   {avecStats && (
                     <>
@@ -224,9 +226,7 @@ export function ClubPage() {
       )}
 
       <p className="mt-10 text-sm text-muted-foreground">
-        Squad data comes from ESPN's public soccer API and changes when they update it. Numbers,
-        positions and season statistics are theirs, not ours — nothing on this page is typed by
-        hand, and a blank figure means ESPN publishes none, not zero.
+        {t('Squad data comes from ESPN’s public soccer API and changes when they update it. Numbers, positions and season statistics are theirs, not ours — nothing on this page is typed by hand, and a blank figure means ESPN publishes none, not zero.')}
       </p>
     </div>
   )
@@ -259,6 +259,7 @@ function LigneJoueur({
   ouvert: boolean
   onBasculer: () => void
 }) {
+  const t = useT()
   const s = joueur.stats
   const gardien = joueur.poste === 'G'
   const colonnes = 3 + (avecNationalite ? 1 : 0) + 1 + (avecStats ? 3 : 0)
@@ -304,19 +305,19 @@ function LigneJoueur({
         <tr className="border-b last:border-0 bg-muted/40">
           <td colSpan={colonnes} className="py-3 pl-3 pr-3">
             <div className="flex flex-wrap gap-x-6 gap-y-2">
-              <Chiffre nom="Appearances" valeur={s.matchs} />
-              <Chiffre nom="Goals" valeur={s.buts} />
-              <Chiffre nom="Assists" valeur={s.passes} />
-              <Chiffre nom="Shots" valeur={s.tirs} />
-              <Chiffre nom="On target" valeur={s.tirsCadres} />
-              <Chiffre nom="Fouls" valeur={s.fautes} />
-              <Chiffre nom="Yellow" valeur={s.jaunes} />
-              <Chiffre nom="Red" valeur={s.rouges} />
+              <Chiffre nom={t('Appearances')} valeur={s.matchs} />
+              <Chiffre nom={t('Goals')} valeur={s.buts} />
+              <Chiffre nom={t('Assists')} valeur={s.passes} />
+              <Chiffre nom={t('Shots')} valeur={s.tirs} />
+              <Chiffre nom={t('On target')} valeur={s.tirsCadres} />
+              <Chiffre nom={t('Fouls')} valeur={s.fautes} />
+              <Chiffre nom={t('Yellow')} valeur={s.jaunes} />
+              <Chiffre nom={t('Red')} valeur={s.rouges} />
               {/* Arrêts et buts encaissés existent sur TOUS les joueurs chez
                   ESPN, à zéro pour les joueurs de champ. Les montrer là
                   n'apprendrait rien et laisserait croire à une donnée. */}
-              {gardien && <Chiffre nom="Saves" valeur={s.arrets} />}
-              {gardien && <Chiffre nom="Conceded" valeur={s.encaisses} />}
+              {gardien && <Chiffre nom={t('Saves')} valeur={s.arrets} />}
+              {gardien && <Chiffre nom={t('Conceded')} valeur={s.encaisses} />}
             </div>
             {/* Le ratio ne se calcule que s'il veut dire quelque chose. */}
             {s.tirs !== null && s.tirs > 0 && s.buts !== null && (

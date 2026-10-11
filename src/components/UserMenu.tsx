@@ -146,7 +146,7 @@ export function UserMenu() {
         onClick={() => setMenuOpen((v) => !v)}
         className="flex items-center gap-2 px-3 py-1.5 rounded-full glass glass-hover text-sm"
       >
-        <Avatar alias={alias} url={profile?.avatar_url} taille={24} />
+        <Avatar alias={alias} url={profile?.avatar_url} graine={profile?.id} taille={24} />
         <span className="hidden sm:block max-w-[100px] truncate">{alias}</span>
         <Distinctions compte={distinctions} taille={14} max={2} />
         {/* Le solde se lit sans ouvrir quoi que ce soit. Un score qu'il faut
@@ -266,19 +266,6 @@ export function UserMenu() {
                     <Avatar alias={alias} url={urlAvatar(cle)} taille={32} />
                   </button>
                 ))}
-                {/* Revenir à l'initiale est un choix comme un autre. */}
-                <button
-                  type="button"
-                  onClick={() => void poserAvatar(null)}
-                  disabled={avatarOccupe}
-                  className={cn(
-                    'rounded-full p-0.5 transition-colors disabled:opacity-40',
-                    cleChoisie === null ? 'ring-2 ring-accent-gold' : 'ring-1 ring-transparent hover:ring-accent-gold/40',
-                  )}
-                  aria-label={t('Use my initial')}
-                >
-                  <Avatar alias={alias} taille={32} />
-                </button>
               </div>
             </div>
 

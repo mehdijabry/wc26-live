@@ -67,8 +67,33 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  // ── La section Ligues : elle etait entierement en anglais (10/10/2026)
+  'Europe': 'أوروبا',
+  'Americas': 'الأمريكتان',
+  'Africa': 'أفريقيا',
+  'Asia': 'آسيا',
+  '{n} clubs': '{n} ناديًا',
+  '{n} leagues across {c} continents. Open one for its live table — points, goal difference, games played — and for every club in it, squad included. All of it pulled live, never typed by hand.': '{n} بطولة في {c} قارات. افتح واحدة لترى ترتيبها المباشر — النقاط وفارق الأهداف والمباريات — وكل أنديتها بتشكيلاتها. كل شيء يُقرأ مباشرة، لا شيء يُكتب يدويًا.',
+  'Squads and club details come from ESPN’s public soccer API and refresh on their schedule, not ours. Morocco has no league of its own here — that source carries no Botola at all — so Moroccan sides appear only through the two African cups above.': 'التشكيلات وبيانات الأندية تأتي من واجهة ESPN العامة وتتحدّث وفق جدولهم لا جدولنا. المغرب ليس له دوري خاص هنا — فهذا المصدر لا يضم البطولة المغربية — ولذلك لا تظهر الأندية المغربية إلا عبر الكأسين الأفريقيتين أعلاه.',
+  'Back to every league': 'العودة إلى كل البطولات',
+  'Club not found': 'النادي غير موجود',
+  'Squad — {n} players': 'التشكيلة — {n} لاعبًا',
+  'Tap a name for their full season line.': 'اضغط على اسم لرؤية سطر موسمه كاملًا.',
+  'Position': 'المركز',
+  'Age': 'العمر',
+  'Nationality': 'الجنسية',
+  'Appearances': 'مباريات',
+  'Goals': 'أهداف',
+  'Assists': 'تمريرات حاسمة',
+  'Shots': 'تسديدات',
+  'On target': 'تسديدات على المرمى',
+  'Fouls': 'أخطاء',
+  'Yellow': 'بطاقات صفراء',
+  'Red': 'بطاقات حمراء',
+  'Saves': 'تصديات',
+  'Conceded': 'أهداف مستقبلة',
+  'Squad data comes from ESPN’s public soccer API and changes when they update it. Numbers, positions and season statistics are theirs, not ours — nothing on this page is typed by hand, and a blank figure means ESPN publishes none, not zero.': 'بيانات التشكيلة تأتي من واجهة ESPN العامة وتتغيّر عندما يحدّثونها. الأرقام والمراكز وإحصاءات الموسم ملكهم لا ملكنا — لا شيء في هذه الصفحة مكتوب يدويًا، والخانة الفارغة تعني أن ESPN لا تنشر شيئًا، لا أنها صفر.',
   'Your avatar': 'صورتك',
-  'Use my initial': 'العودة إلى الحرف الأول',
   '{n} clubs. Open one for its full squad.': '{n} ناديًا. افتح واحدًا لرؤية تشكيلته كاملة.',
   // ── Les championnats et leurs classements (10/10/2026) ─────────────
   'Leagues': 'الدوريات',
@@ -508,6 +533,19 @@ const AR: Record<string, string> = {
 
 // ─── Competition names (established Arabic media forms) ──────────────
 const AR_LEAGUES: Record<string, string> = {
+  // ── Les noms ESPN des championnats (10/10/2026) ────────────────────
+  'English Premier League': 'الدوري الإنجليزي الممتاز',
+  'Spanish LALIGA': 'الدوري الإسباني',
+  'German Bundesliga': 'الدوري الألماني',
+  'Italian Serie A': 'الدوري الإيطالي',
+  'French Ligue 1': 'الدوري الفرنسي',
+  'Portuguese Primeira Liga': 'الدوري البرتغالي',
+  'Dutch Eredivisie': 'الدوري الهولندي',
+  'Turkish Super Lig': 'الدوري التركي',
+  'Brazilian Serie A': 'الدوري البرازيلي',
+  'Argentine Liga Profesional de Fútbol': 'الدوري الأرجنتيني',
+  'Mexican Liga BBVA MX': 'الدوري المكسيكي',
+  'Japanese J.League': 'الدوري الياباني',
   'FIFA World Cup': 'كأس العالم',
   'UEFA Euro': 'كأس أمم أوروبا',
   'Copa América': 'كوبا أمريكا',
@@ -609,8 +647,33 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // ── La section Ligues : elle etait entierement en anglais (10/10/2026)
+  'Europe': 'Europe',
+  'Americas': 'Amériques',
+  'Africa': 'Afrique',
+  'Asia': 'Asie',
+  '{n} clubs': '{n} clubs',
+  '{n} leagues across {c} continents. Open one for its live table — points, goal difference, games played — and for every club in it, squad included. All of it pulled live, never typed by hand.': '{n} championnats sur {c} continents. Ouvrez-en un pour son classement en direct — points, différence de buts, matchs joués — et pour tous ses clubs, effectif compris. Tout est lu en direct, rien n’est saisi à la main.',
+  'Squads and club details come from ESPN’s public soccer API and refresh on their schedule, not ours. Morocco has no league of its own here — that source carries no Botola at all — so Moroccan sides appear only through the two African cups above.': 'Les effectifs et les fiches de clubs viennent de l’API publique d’ESPN et se rafraîchissent à leur rythme, pas au nôtre. Le Maroc n’a pas de championnat propre ici — cette source ne porte aucune Botola — les clubs marocains n’apparaissent donc que par les deux coupes africaines ci-dessus.',
+  'Back to every league': 'Retour à tous les championnats',
+  'Club not found': 'Club introuvable',
+  'Squad — {n} players': 'Effectif — {n} joueurs',
+  'Tap a name for their full season line.': 'Touchez un nom pour sa ligne de saison complète.',
+  'Position': 'Poste',
+  'Age': 'Âge',
+  'Nationality': 'Nationalité',
+  'Appearances': 'Matchs',
+  'Goals': 'Buts',
+  'Assists': 'Passes décisives',
+  'Shots': 'Tirs',
+  'On target': 'Tirs cadrés',
+  'Fouls': 'Fautes',
+  'Yellow': 'Jaunes',
+  'Red': 'Rouges',
+  'Saves': 'Arrêts',
+  'Conceded': 'Buts encaissés',
+  'Squad data comes from ESPN’s public soccer API and changes when they update it. Numbers, positions and season statistics are theirs, not ours — nothing on this page is typed by hand, and a blank figure means ESPN publishes none, not zero.': 'Les données d’effectif viennent de l’API publique d’ESPN et changent quand ils les mettent à jour. Les numéros, les postes et les statistiques de la saison sont les leurs, pas les nôtres — rien sur cette page n’est saisi à la main, et une case vide veut dire qu’ESPN ne publie rien, pas zéro.',
   'Your avatar': 'Votre avatar',
-  'Use my initial': 'Revenir à mon initiale',
   '{n} clubs. Open one for its full squad.': '{n} clubs. Ouvrez-en un pour son effectif complet.',
   // ── Les championnats et leurs classements (10/10/2026) ─────────────
   'Leagues': 'Ligues',
@@ -1051,6 +1114,21 @@ const FR: Record<string, string> = {
 
 // ─── French competition names (only where French usage differs) ──────
 const FR_LEAGUES: Record<string, string> = {
+  // ── Les noms ESPN des championnats (10/10/2026) ────────────────────
+  'English Premier League': 'Premier League',
+  'Spanish LALIGA': 'LaLiga',
+  'German Bundesliga': 'Bundesliga',
+  'Italian Serie A': 'Serie A',
+  'French Ligue 1': 'Ligue 1',
+  'Portuguese Primeira Liga': 'Primeira Liga',
+  'Dutch Eredivisie': 'Eredivisie',
+  'Turkish Super Lig': 'Süper Lig',
+  'Brazilian Serie A': 'Brasileirão',
+  'Argentine Liga Profesional de Fútbol': 'Liga Profesional',
+  'Mexican Liga BBVA MX': 'Liga MX',
+  'Saudi Pro League': 'Saudi Pro League',
+  'Japanese J.League': 'J.League',
+  'MLS': 'MLS',
   'FIFA World Cup': 'Coupe du monde',
   'UEFA Euro': 'Euro',
   'Africa Cup of Nations': 'Coupe d’Afrique des nations',
