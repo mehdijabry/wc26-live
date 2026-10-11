@@ -87,6 +87,17 @@ const urls = [`  <url><loc>${ORIGINE}/clubs</loc><lastmod>${aujourdhui}</lastmod
 
 let total = 0
 const echecs = []
+// UN CLUB, UNE SEULE URL. Depuis que les coupes d'Europe et la Libertadores
+// sont exposées (11/10/2026), le Real Madrid apparaît dans LaLiga ET en Ligue
+// des champions : sans ce garde-fou le plan du site annoncerait deux adresses
+// pour la même page, et Google en indexerait zéro — le site traîne déjà des
+// doublons et 3 pages indexées sur 50. L'ordre de la liste décide : les
+// championnats nationaux sont déclarés AVANT les coupes continentales, donc
+// un club garde son championnat comme adresse canonique, et seuls les clubs
+// qu'on ne voit nulle part ailleurs (Bodø/Glimt, Slavia Prague…) entrent par
+// la coupe. Les pages restent accessibles, elles ne sont simplement pas
+// annoncées deux fois.
+const dejaVus = new Set()
 for (const ch of championnats()) {
   try {
     const liste = await clubs(ch.espn)
@@ -94,13 +105,17 @@ for (const ch of championnats()) {
     urls.push(
       `  <url><loc>${ORIGINE}/clubs/${ch.slug}</loc><lastmod>${aujourdhui}</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>`,
     )
+    let neufs = 0
     for (const c of liste) {
+      if (dejaVus.has(c)) continue
+      dejaVus.add(c)
+      neufs++
       urls.push(
         `  <url><loc>${ORIGINE}/club/${ch.slug}/${c}</loc><lastmod>${aujourdhui}</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>`,
       )
     }
-    total += liste.length
-    console.log(`[clubs] ${ch.slug.padEnd(26)} ${String(liste.length).padStart(3)} clubs`)
+    total += neufs
+    console.log(`[clubs] ${ch.slug.padEnd(26)} ${String(liste.length).padStart(3)} clubs · ${String(neufs).padStart(3)} nouveaux au plan`)
   } catch (e) {
     echecs.push(`${ch.slug} (${ch.espn}) : ${e.message}`)
   }

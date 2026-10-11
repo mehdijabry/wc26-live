@@ -75,7 +75,15 @@ export type Continent = 'Europe' | 'Americas' | 'Africa' | 'Asia'
  * ajouter une ligne suffit à publier tout un championnat, ses clubs et leurs
  * effectifs, sans écrire une seule donnée.
  *
- * ESPN couvre 219 compétitions. On s'arrête à seize volontairement : le site
+ * LES COUPES NATIONALES N'Y SONT PAS, ET NE PEUVENT PAS Y ÊTRE. Cette section
+ * affiche un CLASSEMENT, or une coupe à élimination directe n'en a aucun.
+ * Mesuré sur l'API le 11/10/2026, saison 2026 : Copa del Rey, FA Cup, Coppa
+ * Italia, DFB-Pokal, Coupe de France et Carabao Cup renvoient toutes
+ * **0 équipe et 0 tableau**. Les ajouter ne donnerait que des pages vides.
+ * Elles restent jouables dans Paris et suivies dans Matchs, où un calendrier
+ * suffit — c'est le classement qui manque, pas les données.
+ *
+ * ESPN couvre 219 compétitions. On s'arrête à une vingtaine volontairement : le site
  * avait 3 pages indexées sur 50 début octobre 2026, et quelques milliers de
  * pages générées qui répètent ce que Transfermarkt classe déjà se feraient
  * répondre « explorée, actuellement non indexée » — le verdict qui frappe déjà
@@ -91,12 +99,19 @@ export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
     { espn: 'por.1', slug: 'primeira-liga', pays: 'POR' },
     { espn: 'ned.1', slug: 'eredivisie', pays: 'NED' },
     { espn: 'tur.1', slug: 'super-lig', pays: 'TUR' },
+    // Les trois coupes d'Europe. Elles ont un VRAI tableau depuis que l'UEFA
+    // a remplacé les groupes par une phase de ligue unique : 36 équipes dans
+    // un seul classement, vérifié le 11/10/2026 sur les trois.
+    { espn: 'uefa.champions', slug: 'champions-league', pays: '' },
+    { espn: 'uefa.europa', slug: 'europa-league', pays: '' },
+    { espn: 'uefa.europa.conf', slug: 'conference-league', pays: '' },
   ],
   Americas: [
     { espn: 'bra.1', slug: 'brasileirao', pays: 'BRA' },
     { espn: 'arg.1', slug: 'liga-profesional', pays: 'ARG' },
     { espn: 'usa.1', slug: 'mls', pays: 'USA' },
     { espn: 'mex.1', slug: 'liga-mx', pays: 'MEX' },
+    { espn: 'conmebol.libertadores', slug: 'copa-libertadores', pays: '' },
   ],
   Africa: [
     { espn: 'caf.champions', slug: 'caf-champions-league', pays: '' },
