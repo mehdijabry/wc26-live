@@ -9,6 +9,7 @@ import { localeOf, trLeague, useLang, useT, type Lang } from '../../lib/i18n'
 import { Jeton } from '../Jeton'
 import { camps, etat, heure, idDePronostic, type Camp } from '../../lib/matchEspn'
 import { Icone } from '../Icone'
+import RangeeDefilante from '../RangeeDefilante'
 import JaugeCoureur from '../JaugeCoureur'
 import { pronosticsDisponibles } from '../../lib/pronostic'
 import {
@@ -1122,7 +1123,7 @@ export function PredictWeek() {
       )}
 
       {/* Les jours */}
-      <div className="mt-5 flex gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+      <RangeeDefilante className="mt-5 gap-1.5 -mx-4 px-4 sm:mx-0 sm:px-0">
         {dates.map((d, i) => (
           <button
             key={i}
@@ -1138,14 +1139,14 @@ export function PredictWeek() {
             {libelleJour(d, i, lang, t)}
           </button>
         ))}
-      </div>
+      </RangeeDefilante>
 
       {/* Filtre par compétition. Un samedi ramène plus de 180 matchs dans une
           quarantaine de compétitions : tout afficher d'un bloc est illisible.
           Les compétitions arrivent déjà triées par importance depuis
           `api.today()`, donc les grandes sortent en tête de cette rangée. */}
       {jouables.length > 1 && (
-        <div className="mt-3 flex gap-1.5 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0">
+        <RangeeDefilante className="mt-3 gap-1.5 -mx-4 px-4 sm:mx-0 sm:px-0">
           <button
             type="button"
             onClick={() => setFiltreComp(null)}
@@ -1173,7 +1174,7 @@ export function PredictWeek() {
               {trLeague(c.label, lang)} · {c.events.length}
             </button>
           ))}
-        </div>
+        </RangeeDefilante>
       )}
 
       {erreurChargement && (

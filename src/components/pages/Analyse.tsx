@@ -7,6 +7,7 @@ import { AuthModal } from '../AuthModal'
 import { cn } from '../../lib/utils'
 import { trLeague, useLang, useT } from '../../lib/i18n'
 import { Icone } from '../Icone'
+import RangeeDefilante from '../RangeeDefilante'
 import BoutonPronostic from '../BoutonPronostic'
 import CartePronostic from '../CartePronostic'
 import { cotes as chargerCotes, type Cote } from '../../lib/jeu'
@@ -160,7 +161,7 @@ export default function Analyse() {
       )}
 
       {/* Les jours. Même fenêtre que les cotes : sept. */}
-      <div className="mt-6 flex gap-2 overflow-x-auto no-scrollbar">
+      <RangeeDefilante className="mt-6 gap-2">
         {dates.map((d, i) => (
           <button
             key={i}
@@ -180,7 +181,7 @@ export default function Analyse() {
                 : d.toLocaleDateString(lang === 'ar' ? 'ar' : lang, { weekday: 'short', day: 'numeric' })}
           </button>
         ))}
-      </div>
+      </RangeeDefilante>
 
       {user && (
         <p className="mt-3 font-mono text-[11px] text-slate-500">
