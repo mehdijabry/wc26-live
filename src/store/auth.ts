@@ -278,7 +278,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: window.location.origin,
+        // La page en cours, pas l'accueil — voir signUpWithPassword.
+        emailRedirectTo: window.location.origin + window.location.pathname,
         data: alias ? { alias } : undefined,
       },
     })
@@ -291,7 +292,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        // La page en cours, pas l'accueil — voir signUpWithPassword.
+        redirectTo: window.location.origin + window.location.pathname,
       },
     })
     if (error) return { error: error.message }
