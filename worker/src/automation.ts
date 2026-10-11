@@ -1206,15 +1206,39 @@ async function sendKitEmail(env: Env, kit: StoryKit, kitUrl: string): Promise<{ 
 }
 
 /** Voice-over + studio render of the match-day reel; published from the callback. */
+/**
+ * LE FORMAT QUI MARCHE — mesuré sur la page le 11/10/2026.
+ *
+ * Le reel résultats du 10 octobre faisait 9 s et montrait 3 résultats :
+ * 1 036 vues, 97 % de non-abonnés, 47 min de visionnage. Le MÊME gabarit,
+ * au MÊME créneau (3 h 30), à 30 s et 10 résultats : 291 vues le 7, puis
+ * 217 le 11. Les trois ont été distribués par les recommandations Meta ;
+ * ce qui les sépare est la part du clip réellement regardée — 33 % pour
+ * celui de 9 s contre 13 % pour ceux de 30 s. Sur les Reels c'est ce taux
+ * qui décide si Meta élargit le test à un second cercle, et la courbe du
+ * gagnant le montre : plat à 200 vues pendant 5 h, puis décollage.
+ *
+ * Donc : la VIDÉO montre trois résultats, la LÉGENDE garde les dix. La
+ * vidéo est l'accroche, le texte est le détail — qui veut tout a tout.
+ *
+ * Ni l'horaire ni le sujet n'expliquent l'écart (même créneau, mêmes
+ * championnats) : ne pas toucher aux créneaux du matin, eux sont déjà
+ * validés par l'audit du 13/09.
+ */
+export const REEL_VEDETTES = 3
+
 export async function queueMatchdayReel(env: Env, date: string, label: string, pool: AutoMatch[], barcaDay = false): Promise<void> {
   if (!reelsConfigured(env)) { await log(env, date, 'matchday-reel', false, 'skipped — set MAKE_FB_VIDEO_WEBHOOK_URL or FB_PAGE_TOKEN'); return }
   try {
-    const reelPool = pool.slice(0, 8)
+    // La vidéo ne garde que les affiches de tête ; la légende, elle,
+    // continue d'annoncer toute la journée (voir REEL_VEDETTES).
+    const reelPool = pool.slice(0, REEL_VEDETTES)
+    const poolLegende = pool.slice(0, 8)
     const ar = (await loadAutomationSettings(env)).mainLang !== 'en'
     const key = `voice-${date}-${Math.random().toString(36).slice(2, 6)}.mp3`
     const voiceUrl = ar ? await arabicVoice(env, matchdayScriptAr(reelPool), key) : await englishVoice(env, matchdayScript(reelPool, label), key)
     const jobId = `reel-${date}-${Math.random().toString(36).slice(2, 7)}`
-    await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'reel', date, description: ar ? reelCaptionAr(reelPool, label) : reelCaption(reelPool, label), title: ar ? `مباريات اليوم — ${labelAr()}` : `Today's matches — ${label}`, comment: ar ? `⚽ النتائج المباشرة والتشكيلات: ${SITE}/today?lang=ar&ref=fb-reel` : `⚽ Live scores, odds & line-ups: ${SITE}/today?ref=fb-reel` }), { expirationTtl: 6 * 3600 })
+    await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'reel', date, description: ar ? reelCaptionAr(poolLegende, label) : reelCaption(poolLegende, label), title: ar ? `مباريات اليوم — ${labelAr()}` : `Today's matches — ${label}`, comment: ar ? `⚽ النتائج المباشرة والتشكيلات: ${SITE}/today?lang=ar&ref=fb-reel` : `⚽ Live scores, odds & line-ups: ${SITE}/today?ref=fb-reel` }), { expirationTtl: 6 * 3600 })
     const cover = barcaDay ? { text: 'يوم برشلونة: هل يفوز الليلة؟', tone: 'barca' } : { text: 'مباريات اليوم: من يفوز؟', tone: 'matchday' }
     await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading: ar ? 'مباريات اليوم' : undefined, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : undefined }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
     await log(env, date, 'matchday-reel', true, `rendering ${reelPool.length} slides (job ${jobId}) — voice ${voiceUrl}`)
@@ -1849,13 +1873,14 @@ function resultsCaption(list: AutoMatch[], label: string, date: string, matchDat
   return lines.join('\n')
 }
 async function queueResultsReel(env: Env, date: string, label: string, finished: AutoMatch[], jobLabel = 'results-reel', matchDate = date): Promise<string> {
-  const list = finished.slice(0, 10)
+  const list = finished.slice(0, 10)          // la légende : tout
+  const vedettes = list.slice(0, REEL_VEDETTES)  // l'image : les trois de tête
   const jobId = `results-${date}-${Math.random().toString(36).slice(2, 7)}`
   const heading = resultsHeading(date, matchDate)
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'reel', label: jobLabel, date, title: `${heading} — ${labelAr(matchDate)}`, description: resultsCaption(list, label, date, matchDate), comment: `⏱ كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb-reel` }), { expirationTtl: 6 * 3600 })
   const cover = { text: matchDate === date ? 'نتائج اليوم: هل فاجأتك؟' : 'نتائج الأمس: هل فاجأتك؟', tone: 'results' }
-  await studio(env, '/render/reel', { type: 'matchday', data: { matches: list.map((m, i) => (i === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar' }, seconds: Math.max(9, 3 * list.length), jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
-  await log(env, date, jobLabel, true, `rendering ${list.length} results (job ${jobId}): ${list.map((m) => `${m.home} ${m.homeScore}-${m.awayScore} ${m.away}`).join(' · ').slice(0, 160)}`)
+  await studio(env, '/render/reel', { type: 'matchday', data: { matches: vedettes.map((m, i) => (i === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar' }, seconds: 9, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+  await log(env, date, jobLabel, true, `rendering ${vedettes.length} of ${list.length} results (job ${jobId}): ${list.map((m) => `${m.home} ${m.homeScore}-${m.awayScore} ${m.away}`).join(' · ').slice(0, 160)}`)
   return jobId
 }
 // Since the 2026-09-13 audit the reel goes out the NEXT MORNING at 07:30 as
