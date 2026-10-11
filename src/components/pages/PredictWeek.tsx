@@ -482,7 +482,26 @@ function Bulletin({
   t: (s: string) => string
 }) {
   const [mise, setMise] = useState(MISE_MINIMUM)
+  // `saisie` double `mise` en texte : sans elle on ne peut pas vider le
+  // champ pour retaper, le zéro se réinsérant à chaque frappe.
+  const [saisie, setSaisie] = useState(String(MISE_MINIMUM))
   const max = Math.max(MISE_MINIMUM, solde)
+
+  /** Pose une mise depuis un bouton : le champ suit. */
+  function poser(n: number) {
+    const v = Math.max(MISE_MINIMUM, Math.min(Math.trunc(n), max))
+    setMise(v)
+    setSaisie(String(v))
+  }
+  /** Frappe libre. On borne À LA SAISIE plutôt qu'au moment de miser : un
+   *  champ qui afficherait 999 pour une mise réelle de 10 mentirait. */
+  function surSaisie(brut: string) {
+    const net = brut.replace(/[^0-9]/g, '').slice(0, 9)
+    if (net === '') { setSaisie(''); return }
+    const v = Math.max(MISE_MINIMUM, Math.min(Number(net), max))
+    setMise(v)
+    setSaisie(String(v))
+  }
   const utilisable = Math.min(mise, max)
   const cote = coteCombinee(selections)
   const gain = Math.round(utilisable * cote)
@@ -563,7 +582,7 @@ function Bulletin({
               key={m}
               type="button"
               disabled={m > solde}
-              onClick={() => setMise(m)}
+              onClick={() => poser(m)}
               className={cn(
                 'flex-1 py-2 rounded-xl font-mono text-sm tabular-nums transition-colors border',
                 utilisable === m
@@ -575,15 +594,42 @@ function Bulletin({
               {m}
             </button>
           ))}
+        </div>
+
+        {/* Le montant libre, et « tout » réduit à un chip de texte — même
+            traitement que le sélecteur de langue : une action qu'on fait
+            rarement n'a pas à peser autant qu'une mise rapide. */}
+        <div className="mt-2 flex items-center gap-2">
+          <label className="relative flex-1">
+            <input
+              type="text"
+              inputMode="numeric"
+              value={saisie}
+              onChange={(e) => surSaisie(e.target.value)}
+              onBlur={() => { if (saisie === '') setSaisie(String(mise)) }}
+              disabled={solde < MISE_MINIMUM}
+              placeholder={t('your stake')}
+              aria-label={t('your stake')}
+              className={cn(
+                'w-full py-2 ps-3 pe-12 rounded-xl border bg-slate-50 border-slate-200',
+                'font-mono text-sm tabular-nums text-slate-900 placeholder:text-slate-500',
+                'focus:outline-none focus:border-accent-gold/60 transition-colors',
+                solde < MISE_MINIMUM && 'opacity-30',
+              )}
+            />
+            <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 font-mono text-[10px] tabular-nums text-slate-500">
+              /{solde}
+            </span>
+          </label>
           <button
             type="button"
             disabled={solde < MISE_MINIMUM}
-            onClick={() => setMise(solde)}
+            onClick={() => poser(solde)}
             className={cn(
-              'flex-1 py-2 rounded-xl font-mono text-xs transition-colors border',
+              'shrink-0 px-2 py-1 font-mono text-[11px] uppercase tracking-wider transition-colors',
               utilisable === solde && solde >= MISE_MINIMUM
-                ? 'bg-accent-gold/15 border-accent-gold/60 text-accent-gold font-semibold'
-                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100',
+                ? 'text-accent-gold'
+                : 'text-slate-500 hover:text-slate-900',
               solde < MISE_MINIMUM && 'opacity-30',
             )}
           >

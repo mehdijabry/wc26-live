@@ -444,6 +444,7 @@ const AR: Record<string, string> = {
   '{n} staked · {g} to win': '{n} مراهَن · {g} محتمل',
   'Your pick': 'اختيارك',
   'all': 'الكل',
+  'your stake': 'مبلغ رهانك',
   'Stake {n} · win {g}': 'راهن بـ {n} · اربح {g}',
   'You need {n} {jeton}': 'تحتاج {n} {jeton}',
   // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──
@@ -1024,6 +1025,7 @@ const FR: Record<string, string> = {
   '{n} staked · {g} to win': '{n} engagés · {g} possible',
   'Your pick': 'Ton choix',
   'all': 'tout',
+  'your stake': 'votre mise',
   'Stake {n} · win {g}': 'Miser {n} · gagner {g}',
   'You need {n} {jeton}': 'Il te faut {n} {jeton}',
   // ── Le bulletin : combinés, score exact, buteur (ouverts le 09/10) ──

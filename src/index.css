@@ -92,6 +92,11 @@ section[id] {
      light page). With the inverted scale bg-slate-900 is now the cream
      highlight — flip its label to night so the pair stays readable. */
   .bg-slate-900.text-white { color: #0B0F0D; }
+  /* `ink-900` est le texte SOMBRE, prévu pour être posé sur le doré. Sur
+     une surface `bg-white` — qui vaut #121916 ici — il devient invisible.
+     C'est arrivé au bouton « Continue with Google », que plus personne ne
+     voyait. Le filet rattrape toute récidive sans qu'on ait à la chercher. */
+  .bg-white.text-ink-900, .bg-white.text-ink-800 { color: #ECEFE8; }
 }
 
 /* ─── Arabic (RTL) mode ─────────────────────────────────────────────

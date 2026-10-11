@@ -488,6 +488,42 @@ export async function handleAdmin(
       p_motif: typeof b.motif === 'string' ? b.motif.slice(0, 200) : null,
     })
   }
+  // Supprimer un compte. IRRÉVERSIBLE : `profiles` est en cascade sur
+  // `auth.users`, donc le profil, les paris et le classement partent avec.
+  // D'où la confirmation tapée — l'adresse exacte du compte — qui rend un
+  // clic de travers impossible.
+  if (pathname === '/admin/jeu/supprimer' && req.method === 'POST') {
+    const b = await req.json().catch(() => null) as { id?: string; confirmation?: string } | null
+    if (!b?.id || !/^[0-9a-f-]{36}$/i.test(b.id)) return jsonResp({ error: 'identifiant manquant ou invalide' }, 400)
+
+    // On relit le compte AVANT : pour comparer la confirmation, et pour
+    // pouvoir dire dans la réponse qui a été supprimé. Une suppression
+    // muette ne se vérifie pas après coup.
+    const lecture = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/admin_profils`, {
+      method: 'POST',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ p_q: b.id, p_limite: 1 }),
+    })
+    const trouves = await lecture.json().catch(() => []) as Array<{ id: string; alias: string; email: string }>
+    const profil = Array.isArray(trouves) ? trouves.find((x) => x.id === b.id) : undefined
+    if (!profil) return jsonResp({ error: 'compte introuvable' }, 404)
+
+    const attendu = (profil.email || profil.alias || '').trim()
+    if ((b.confirmation ?? '').trim().toLowerCase() !== attendu.toLowerCase()) {
+      return jsonResp({ error: `confirmation incorrecte — tapez exactement « ${attendu} »` }, 400)
+    }
+
+    const r = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${encodeURIComponent(b.id)}`, {
+      method: 'DELETE',
+      headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}` },
+    })
+    if (!r.ok) return jsonResp({ error: `suppression refusée (${r.status}) ${(await r.text()).slice(0, 160)}` }, 502)
+    return jsonResp({ ok: true, supprime: { id: profil.id, alias: profil.alias, email: profil.email } })
+  }
   if (pathname === '/admin/jeu/codes' && req.method === 'GET') {
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/signup_codes?select=*&order=created_at.desc&limit=50`,

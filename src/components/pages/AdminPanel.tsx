@@ -3570,6 +3570,11 @@ function DonDeJetons() {
   const [motif, setMotif] = useState('')
   const [occupe, setOccupe] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  // La suppression se tape, elle ne se clique pas : il faut recopier
+  // l'adresse exacte du compte. Remis à zéro à chaque changement de
+  // cible, pour qu'une confirmation ne survive jamais à sa cible.
+  const [aSupprimer, setASupprimer] = useState(false)
+  const [confirmation, setConfirmation] = useState('')
 
   async function chercher() {
     setOccupe(true)
@@ -3610,7 +3615,24 @@ function DonDeJetons() {
     }
   }
 
+  async function supprimer() {
+    if (!cible) return
+    setOccupe(true)
+    setMsg(null)
+    const d = await adminPost('/admin/jeu/supprimer', { id: cible.id, confirmation }) as
+      { ok?: boolean; supprime?: { alias: string; email: string }; error?: string }
+    setOccupe(false)
+    if (d?.ok) {
+      setMsg(`Compte supprimé : ${d.supprime?.alias ?? ''} ${d.supprime?.email ?? ''}`.trim())
+      setCible(null); setASupprimer(false); setConfirmation('')
+      void chercher()
+    } else {
+      setMsg('Refusé : ' + (d?.error ?? JSON.stringify(d)))
+    }
+  }
+
   const rien = !Number(crampons) && !Number(pressings) && !Number(analyses)
+  const attendu = (cible?.email || cible?.alias || '').trim()
 
   return (
     <Section title="Envoyer des jetons" eyebrow="Jeu">
@@ -3637,7 +3659,7 @@ function DonDeJetons() {
           <li key={p.id}>
             <button
               type="button"
-              onClick={() => setCible(p)}
+              onClick={() => { setCible(p); setASupprimer(false); setConfirmation('') }}
               className={
                 'w-full text-left px-3 py-2 rounded-lg border text-sm transition-colors ' +
                 (cible?.id === p.id
@@ -3687,6 +3709,56 @@ function DonDeJetons() {
           >
             Envoyer
           </button>
+
+          {/* Zone dangereuse — séparée par un filet rouge et repliée par
+              défaut : on ne supprime pas un compte en visant mal le
+              bouton « Envoyer », qui est juste au-dessus. */}
+          <div className="mt-5 pt-4 border-t border-accent-red/30">
+            {!aSupprimer ? (
+              <button
+                type="button"
+                onClick={() => setASupprimer(true)}
+                className="text-[11px] font-mono uppercase tracking-widest text-accent-red/80 hover:text-accent-red underline underline-offset-4"
+              >
+                Supprimer ce compte
+              </button>
+            ) : (
+              <div>
+                <div className="text-[10px] uppercase tracking-widest text-accent-red font-mono">
+                  Suppression définitive
+                </div>
+                <p className="mt-1.5 text-[12px] text-slate-600 leading-relaxed">
+                  Le compte, le profil, les paris et la place au classement partent ensemble,
+                  et rien ne se récupère. Pour confirmer, recopiez{' '}
+                  <code className="text-slate-900">{attendu}</code>.
+                </p>
+                <input
+                  value={confirmation}
+                  onChange={(e) => setConfirmation(e.target.value)}
+                  placeholder={attendu}
+                  autoComplete="off"
+                  className="mt-2 w-full px-3 py-2 rounded-lg border border-accent-red/40 text-sm"
+                />
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void supprimer()}
+                    disabled={occupe || confirmation.trim().toLowerCase() !== attendu.toLowerCase()}
+                    className="px-4 py-2 rounded-lg bg-accent-red text-white text-sm font-semibold disabled:opacity-30"
+                  >
+                    Supprimer définitivement
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setASupprimer(false); setConfirmation('') }}
+                    className="px-4 py-2 rounded-lg border border-slate-200 text-sm text-slate-700"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

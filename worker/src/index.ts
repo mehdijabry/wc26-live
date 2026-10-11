@@ -310,6 +310,50 @@ export default {
         const action = url.pathname.slice('/studio/ops/'.length)
         try {
           if (action === 'pool') return json({ ok: true, matches: await auto.bigMatchesToday(env) })
+          if (action === 'resend-test' && req.method === 'POST') {
+            // Envoie UN courriel minimal, à une adresse donnée dans la
+            // requête. Sert à isoler la moitié « Resend » de la chaîne :
+            // si celui-ci arrive et que l'inscription n'envoie toujours
+            // rien, c'est le crochet Supabase qui ne se déclenche pas.
+            const ex3 = env as unknown as { RESEND_API_KEY?: string; RESEND_FROM?: string }
+            if (!ex3.RESEND_API_KEY || !ex3.RESEND_FROM) return json({ ok: false, raison: 'Resend non configuré' })
+            const b = await req.json().catch(() => ({})) as { a?: string }
+            if (!b.a || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(b.a)) return json({ ok: false, raison: 'adresse manquante' }, 400)
+            const r = await fetch('https://api.resend.com/emails', {
+              method: 'POST',
+              headers: { authorization: `Bearer ${ex3.RESEND_API_KEY}`, 'content-type': 'application/json' },
+              body: JSON.stringify({
+                from: ex3.RESEND_FROM,
+                to: b.a,
+                subject: 'Test Pressing 90 — la chaîne Resend fonctionne',
+                text: 'Si vous lisez ceci, Resend et le domaine d\'envoi sont bons. Le maillon restant est le crochet Supabase.',
+              }),
+            })
+            const detail = (await r.text()).slice(0, 240)
+            return json({ ok: r.ok, http: r.status, expediteur: ex3.RESEND_FROM, detail })
+          }
+          if (action === 'resend-etat') {
+            // Est-ce que la clé Resend en place VIT ENCORE, et le domaine
+            // est-il toujours vérifié ? Posé le 11/10/2026 : Mehdi ne
+            // retrouvait plus son compte Resend et envisageait d'en refaire
+            // un — or si la clé répond, le compte n'a pas besoin d'être
+            // retrouvé pour que les courriels partent. La clé ne sort pas
+            // d'ici : on ne rend que l'état des domaines.
+            const ex2 = env as unknown as { RESEND_API_KEY?: string; RESEND_FROM?: string }
+            if (!ex2.RESEND_API_KEY) return json({ ok: false, raison: 'RESEND_API_KEY absente' })
+            const r = await fetch('https://api.resend.com/domains', {
+              headers: { authorization: `Bearer ${ex2.RESEND_API_KEY}` },
+            })
+            const corps = await r.text()
+            if (!r.ok) return json({ ok: false, http: r.status, detail: corps.slice(0, 200) }, 200)
+            let domaines: Array<Record<string, unknown>> = []
+            try { domaines = (JSON.parse(corps).data ?? []) as Array<Record<string, unknown>> } catch { /* ignore */ }
+            return json({
+              ok: true,
+              expediteur: ex2.RESEND_FROM ?? null,
+              domaines: domaines.map((d) => ({ nom: d.name, statut: d.status, region: d.region, cree: d.created_at })),
+            })
+          }
           if (action === 'token') return json(await auto.fbTokenStatus(env))   // validity/expiry/scopes only — never the value
           if (action === 'status') {
             const date = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get('date') ?? '') ? url.searchParams.get('date')! : auto.localParts().date   // ?date= to read yesterday's log (callbacks log under the job's own date)

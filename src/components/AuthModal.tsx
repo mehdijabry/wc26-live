@@ -145,7 +145,7 @@ export function AuthModal({ open, onClose }: { open: boolean; onClose: () => voi
                   type="button"
                   onClick={onGoogle}
                   disabled={status === 'busy' || !SUPABASE_CONFIGURED}
-                  className="w-full flex items-center justify-center gap-2 bg-white text-ink-900 font-semibold rounded-full py-2.5 hover:bg-slate-100 transition-colors disabled:opacity-40 mb-4"
+                  className="w-full flex items-center justify-center gap-2 bg-slate-100 text-slate-900 border border-slate-300 font-semibold rounded-full py-2.5 hover:bg-slate-200 hover:border-accent-gold/60 transition-colors disabled:opacity-40 mb-4"
                 >
                   <GoogleIcon />
                   <span>Continue with Google</span>
