@@ -72,12 +72,18 @@ export type Championnat = {
    * 23. Relevé une fois pour toutes sur `/scoreboard` le 11/10/2026 et figé
    * ici, pour qu'afficher l'index ne coûte pas vingt-et-un appels de plus.
    *
-   * Absent quand ESPN n'a pas de vrai logo : la Coupe de la confédération et
-   * le championnat sud-africain ne renvoient que son image grise par défaut.
-   * Ces deux-là reçoivent un monogramme maison, qui vaut mieux qu'un
-   * placeholder emprunté.
+   * Absent quand ESPN n'a pas de vrai logo : ses DEUX API ne renvoient pour la
+   * Coupe de la confédération et le championnat sud-africain que son image
+   * grise par défaut. Ces deux-là ont `logoFichier`.
    */
   logo?: number
+  /**
+   * Un écusson servi par nous, sous `public/media/ligues/`. Fourni par Mehdi
+   * le 11/10/2026 depuis les sites officiels, puis ramené à 128 px carrés sur
+   * fond transparent — les originaux faisaient 272 et 120 ko pour une vignette
+   * de 32 px, et étaient verticaux là où la grille attend un carré.
+   */
+  logoFichier?: string
 }
 
 export type Continent = 'Europe' | 'Americas' | 'Africa' | 'Asia'
@@ -127,7 +133,7 @@ export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
   ],
   Africa: [
     { espn: 'caf.champions', slug: 'caf-champions-league', pays: '', logo: 2391 },
-    { espn: 'caf.confed', slug: 'caf-confederation-cup', pays: '' },
+    { espn: 'caf.confed', slug: 'caf-confederation-cup', pays: '', logoFichier: 'caf-confederation-cup' },
     // LA BOTOLA EST PRÊTE MAIS N'EST PAS PUBLIÉE. Pour l'activer, il suffit
     // de décommenter la ligne ci-dessous — tout le reste existe déjà : la
     // route `/botola/teams` et `/botola/squad` du worker, l'aiguillage plus
@@ -144,7 +150,7 @@ export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
     // 8 octobre 2026 : on attend.
     //
     // { espn: 'botola', slug: 'botola', pays: 'MAR' },
-    { espn: 'rsa.1', slug: 'south-african-premiership', pays: 'RSA' },
+    { espn: 'rsa.1', slug: 'south-african-premiership', pays: 'RSA', logoFichier: 'south-african-premiership' },
     // LE MAROC n'a pas de championnat chez ESPN : le catalogue des 219
     // compétitions ne contient aucune Botola (`mar.1` répond vide). Les clubs
     // marocains n'arrivent donc que par les deux coupes africaines ci-dessus —
@@ -167,7 +173,11 @@ export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
  * n'a pas de vrai logo, et l'appelant pose alors un monogramme.
  */
 export const logoChampionnat = (ch: Championnat): string | null =>
-  ch.logo ? `https://a.espncdn.com/i/leaguelogos/soccer/500-dark/${ch.logo}.png` : null
+  ch.logoFichier
+    ? `/media/ligues/${ch.logoFichier}.png`
+    : ch.logo
+      ? `https://a.espncdn.com/i/leaguelogos/soccer/500-dark/${ch.logo}.png`
+      : null
 
 /**
  * Les deux lettres d'un écusson maison, tirées du SLUG et non du nom traduit :
