@@ -100,7 +100,22 @@ section[id] {
    scoreboard digits + mono data LTR so times/scores read naturally. */
 html[lang="ar"] body { font-family: 'Tajawal', 'Geeza Pro', system-ui, sans-serif; }
 html[lang="ar"] .font-display { font-family: 'Tajawal', 'Geeza Pro', system-ui, sans-serif; font-weight: 800; letter-spacing: 0; }
-html[lang="ar"] .font-mono { letter-spacing: 0.02em; }
+/* Les lettres arabes se LIENT, et deux réglages cassaient ce trait de
+   liaison — les intitulés (« النتيجة بالضبط », « الهداف »…) se lisaient
+   comme des lettres détachées :
+
+   1. l'interlettrage. `tracking-wider` posait un demi-pixel entre chaque
+      lettre. Imperceptible en latin, fatal en arabe. On l'annule pour
+      toute la page, chiffres compris, qui n'en ont pas besoin non plus.
+   2. la police. IBM Plex Mono n'a pas l'arabe : les lettres tombaient sur
+      la monospace du système, qui enferme chacune dans une case de même
+      largeur. Le repli des polices se fait par CARACTÈRE — en glissant
+      Tajawal avant la générique `monospace`, les chiffres et les heures
+      restent en Plex Mono et seules les lettres arabes changent de fonte. */
+html[lang="ar"] * { letter-spacing: 0; }
+html[lang="ar"] .font-mono {
+  font-family: 'IBM Plex Mono', ui-monospace, 'Tajawal', 'Geeza Pro', monospace;
+}
 /* numbers/clocks stay left-to-right inside RTL text */
 html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bidi: embed; }
 
