@@ -3,6 +3,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase, withTimeout, type Profile } from '../lib/supabase'
 import { effacerRefresh, lireRefresh, sauverRefresh } from '../lib/sessionBackup'
 import { reclamerCodeEnAttente } from '../lib/codeBienvenue'
+import { useLang } from '../lib/i18n'
 
 type AuthState = {
   user: User | null
@@ -53,6 +54,18 @@ type AuthState = {
   updateAlias: (newAlias: string) => Promise<{ error?: string }>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
+}
+
+/**
+ * La langue du visiteur AU MOMENT DE L'INSCRIPTION, rangée dans les
+ * métadonnées du compte. C'est la seule façon pour le courriel de partir
+ * dans la bonne langue : Supabase n'a qu'un gabarit par type de message, et
+ * c'est notre crochet (worker/src/authmail.ts) qui compose — il lit ceci.
+ * Une publicité en arabe qui débouche sur « Confirm your email address »
+ * perd son monde au dernier clic.
+ */
+function langueCourante(): string {
+  try { return useLang.getState().lang } catch { return 'en' }
 }
 
 // True if the URL looks like a Supabase auth callback (PKCE `?code=`,
@@ -257,7 +270,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         // /bienvenue/<code> doit y revenir après avoir confirmé son
         // courriel, sinon la réclamation du bonus n'a jamais lieu.
         emailRedirectTo: window.location.origin + window.location.pathname,
-        data: alias ? { alias } : undefined,
+        data: { lang: langueCourante(), ...(alias ? { alias } : {}) },
       },
     })
     if (error) return { error: error.message }
@@ -280,7 +293,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       options: {
         // La page en cours, pas l'accueil — voir signUpWithPassword.
         emailRedirectTo: window.location.origin + window.location.pathname,
-        data: alias ? { alias } : undefined,
+        data: { lang: langueCourante(), ...(alias ? { alias } : {}) },
       },
     })
     if (error) return { error: error.message }

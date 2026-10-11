@@ -47,6 +47,7 @@ export interface Env {
   GSC_SITE_URL?: string
   RESEND_API_KEY?: string
   RESEND_FROM?: string
+  SEND_EMAIL_HOOK_SECRET?: string   // Supabase → Hooks → Send Email Hook
   // Make.com webhook that publishes to the Facebook page. Used by the
   // social scheduler cron to fire due posts. Set via wrangler secret.
   MAKE_FB_WEBHOOK_URL?: string
@@ -236,6 +237,22 @@ export default {
       // AI assistant chat — Workers AI tool-use loop with WC26 data.
       // Powers ai.pressing90.live. CORS is handled inside handleAiChat
       // because it lets browsers POST cross-origin from the chat UI.
+      // Supabase nous passe la main pour TOUS ses courriels d'auth, afin
+      // qu'ils partent dans la langue du visiteur et par Resend plutôt que
+      // par son service intégré, bridé à quelques messages par heure.
+      // Voir src/authmail.ts.
+      if (url.pathname === '/auth/email' && req.method === 'POST') {
+        const { handleAuthEmail } = await import('./authmail')
+        return handleAuthEmail(req, env as unknown as import('./authmail').EnvMail)
+      }
+      // Relecture d'un gabarit sans rien envoyer : /auth/email/apercu?lang=ar&type=signup
+      if (url.pathname === '/auth/email/apercu') {
+        const { apercuAuthEmail } = await import('./authmail')
+        const l = (url.searchParams.get('lang') ?? 'ar') as 'ar' | 'fr' | 'en'
+        const t = (url.searchParams.get('type') ?? 'signup') as 'signup' | 'magiclink' | 'recovery' | 'email_change' | 'invite'
+        const a = apercuAuthEmail(l, t, 'https://pressing90.live/bienvenue/RFNBJGQN')
+        return new Response(a.html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
+      }
       if (url.pathname === '/ai/chat') {
         const { handleAiChat } = await import('./ai-chat')
         return handleAiChat(env, req)
