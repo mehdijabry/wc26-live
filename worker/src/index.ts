@@ -243,7 +243,17 @@ export default {
       // Voir src/authmail.ts.
       if (url.pathname === '/auth/email' && req.method === 'POST') {
         const { handleAuthEmail } = await import('./authmail')
-        return handleAuthEmail(req, env as unknown as import('./authmail').EnvMail)
+        const rep = await handleAuthEmail(req, env as unknown as import('./authmail').EnvMail)
+        // On garde une trace de CHAQUE appel, réussi ou non. Le 11/10/2026
+        // le courriel d'inscription n'arrivait pas et rien ne permettait de
+        // dire si Supabase appelait seulement le worker. `wrangler tail` ne
+        // sert qu'en direct ; cette ligne-ci survit à la nuit.
+        try {
+          await env.CACHE.put('auth:dernier-appel', JSON.stringify({
+            quand: new Date().toISOString(), statut: rep.status,
+          }), { expirationTtl: 7 * 86400 })
+        } catch { /* la trace ne doit jamais faire échouer l'envoi */ }
+        return rep
       }
       // Relecture d'un gabarit sans rien envoyer : /auth/email/apercu?lang=ar&type=signup
       if (url.pathname === '/auth/email/apercu') {
@@ -332,6 +342,12 @@ export default {
             const detail = (await r.text()).slice(0, 240)
             return json({ ok: r.ok, http: r.status, expediteur: ex3.RESEND_FROM, detail })
           }
+          if (action === 'crochet-etat') {
+            const brut = await env.CACHE.get('auth:dernier-appel')
+            return json(brut
+              ? { appele: true, dernier: JSON.parse(brut) }
+              : { appele: false, note: 'Supabase n\'a jamais appelé /auth/email depuis la pose de la trace.' })
+          }
           if (action === 'resend-etat') {
             // Est-ce que la clé Resend en place VIT ENCORE, et le domaine
             // est-il toujours vérifié ? Posé le 11/10/2026 : Mehdi ne
@@ -345,7 +361,7 @@ export default {
               headers: { authorization: `Bearer ${ex2.RESEND_API_KEY}` },
             })
             const corps = await r.text()
-            if (!r.ok) return json({ ok: false, http: r.status, detail: corps.slice(0, 200) }, 200)
+            if (!r.ok) return json({ ok: false, http: r.status, expediteur: ex2.RESEND_FROM ?? null, detail: corps.slice(0, 200) }, 200)
             let domaines: Array<Record<string, unknown>> = []
             try { domaines = (JSON.parse(corps).data ?? []) as Array<Record<string, unknown>> } catch { /* ignore */ }
             return json({

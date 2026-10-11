@@ -213,7 +213,8 @@ function page(c: Copie, lien: string, lang: Langue): string {
 </td></tr></table>`
 }
 
-const texteSeul = (c: Copie, lien: string) => `${c.titre}\n\n${c.corps}\n\n${lien}\n\n${c.note}\n\nPressing 90' — ${SITE}`
+const texteSeul = (c: Copie, lien: string) =>
+  `${c.titre}\n\n${c.corps}\n\n${c.bouton} :\n${lien}\n\n${c.note}\n\n—\nPressing 90' · More than a game. Our field of expression.\n${SITE}`
 
 /** Le « Send Email Hook » de Supabase. */
 export async function handleAuthEmail(req: Request, env: EnvMail): Promise<Response> {
@@ -257,9 +258,17 @@ export async function handleAuthEmail(req: Request, env: EnvMail): Promise<Respo
     body: JSON.stringify({
       from: env.RESEND_FROM,
       to: destinataire,
+      // Une adresse de réponse qui existe : un expéditeur à qui on ne peut
+      // pas répondre est un signal de courrier indésirable à lui seul.
+      reply_to: 'contact@pressing90.live',
       subject: c.objet,
       html: page(c, lien, lang),
       text: texteSeul(c, lien),
+      headers: {
+        // Empêche les messageries de regrouper deux confirmations
+        // successives dans un même fil, où la seconde devient invisible.
+        'X-Entity-Ref-ID': `${act}-${Date.now()}`,
+      },
     }),
   })
   if (!r.ok) {
