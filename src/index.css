@@ -124,6 +124,29 @@ html[lang="ar"] .font-mono {
 /* numbers/clocks stay left-to-right inside RTL text */
 html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bidi: embed; }
 
+/* ─── Le zoom d'iOS sur les champs de saisie ────────────────────────
+   iOS agrandit la page dès qu'on touche un champ dont la police fait
+   MOINS de 16 px — et il ne la réduit jamais en sortant. La page reste
+   zoomée, la barre fixe du bas se retrouve décalée, et il faut pincer
+   pour revenir (Mehdi, 11/10/2026, vu d'abord sur le champ de mise).
+
+   On NE désactive PAS le zoom par `maximum-scale=1` ou `user-scalable=no` :
+   ce serait le retirer aussi à ceux qui en ont besoin pour lire, et
+   Safari ignore la seconde depuis iOS 10. La seule parade propre est de
+   passer les champs à 16 px — et seulement sur écran tactile, pour que
+   le dessin reste serré à la souris. */
+@media (pointer: coarse) {
+  /* `:not([hidden])` n'exclut rien de réel — il sert à passer devant les
+     utilitaires Tailwind (`text-sm`, `text-xs`), qui ont une spécificité
+     de classe là où `select` et `textarea` nus n'ont que celle d'un
+     élément. Sans ça la zone de texte d'Analyse restait à 14 px. */
+  input:not([type='checkbox']):not([type='radio']):not([type='range']),
+  select:not([hidden]),
+  textarea:not([hidden]) {
+    font-size: 16px;
+  }
+}
+
 /* Scrollbar — night */
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: #0E1411; }
