@@ -1018,7 +1018,7 @@ export function PredictWeek() {
               min: MISE_MINIMUM,
               point: POINT.plusieurs,
               palier: PALIER.points.toLocaleString(localeOf(lang)),
-              prix: PALIER.recompense,
+              prix: t(PALIER.recompense),
               libre: PALIERS[2].de.toLocaleString(localeOf(lang)),
               perte1: PALIERS[2].perte,
               perte2: PALIERS[3].perte,
@@ -1145,7 +1145,7 @@ export function PredictWeek() {
                 })}
               </span>
               <span className="shrink-0">
-                {PALIER.points.toLocaleString(localeOf(lang))} {t(POINT.plusieurs)} → {PALIER.recompense}
+                {PALIER.points.toLocaleString(localeOf(lang))} {t(POINT.plusieurs)} → {t(PALIER.recompense)}
               </span>
             </div>
           </div>

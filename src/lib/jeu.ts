@@ -113,7 +113,26 @@ export const MISE_MINIMUM = 1
  * jouer régulièrement et viser juste. Un objectif qu'on voit approcher
  * tient le joueur ; un objectif inaccessible le fait partir.
  */
-export const PALIER = { points: 7_500, recompense: '5 $' } as const
+/**
+ * CE QUE LE PALIER OUVRE — NEUTRALISÉ LE 11/10/2026.
+ *
+ * C'était « 5 $ ». Google refuse les sites de jeu d'argent, et sa règle est
+ * explicite : aucun prix en espèces ni en nature contre une mise. Même notre
+ * système — où rien n'entre — ne passe pas tant que la page annonce une somme.
+ * Tant que l'examen AdSense n'est pas franchi, le palier n'ouvre donc plus
+ * qu'un rang : le dernier de la montée, ce qu'il est déjà dans `PALIERS`.
+ *
+ * RIEN D'AUTRE NE BOUGE. Le seuil reste à 7 500, la base reste la base, le
+ * jeu est identique. Seul le libellé change, et il change aux TROIS endroits
+ * qui l'affichent, puisqu'ils lisent tous cette constante.
+ *
+ * C'est aussi plus honnête en attendant : le versement n'a jamais été validé
+ * juridiquement, et la page promettait une somme qu'aucun règlement écrit ne
+ * garantissait.
+ *
+ * POUR RÉTABLIR : remettre ici le libellé voulu. Le reste suivra tout seul.
+ */
+export const PALIER = { points: 7_500, recompense: 'the final tier' } as const
 
 /**
  * Les cinq paliers, et ce qu'un bulletin perdu coûte dans chacun.

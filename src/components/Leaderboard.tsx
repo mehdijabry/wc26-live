@@ -89,7 +89,7 @@ export function Leaderboard({
           sub={t('Live ranking of everyone backing their calls. You stake {jeton}, you win {point} at the real odds — {palier} {point} unlock {prix}.')
             .replace('{jeton}', t(JETON.plusieurs))
             .replace('{palier}', PALIER.points.toLocaleString(localeOf(lang)))
-            .replace('{prix}', PALIER.recompense)
+            .replace('{prix}', t(PALIER.recompense))
             .replaceAll('{point}', t(POINT.plusieurs))}
         />
 
