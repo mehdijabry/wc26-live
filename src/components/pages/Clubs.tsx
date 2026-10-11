@@ -22,6 +22,34 @@ function joliSlug(slug: string): string {
     .join(' ')
 }
 
+/**
+ * L'écusson des compétitions dont ESPN n'a pas de logo — la Coupe de la
+ * confédération et le championnat sud-africain, vérifiés sur ses DEUX API le
+ * 11/10/2026 : elles ne renvoient que son image grise par défaut.
+ *
+ * On ne va pas chercher le vrai logo ailleurs. Ce sont des marques déposées,
+ * et les sources qui les hébergent le font sous usage loyal, ce qui n'autorise
+ * pas à les afficher ici — a fortiori avec un examen AdSense en cours. On
+ * dessine donc le nôtre, repris du sigle 90' : cadre carré arrondi, monogramme,
+ * et le trait du terrain en dessous. Une absence assumée vaut mieux qu'un
+ * emprunt, et mieux que deux lettres posées dans le vide.
+ */
+function EcussonMaison({ lettres }: { lettres: string }) {
+  return (
+    <svg viewBox="0 0 48 48" width="32" height="32" aria-hidden="true" className="w-8 h-8">
+      <rect x="3" y="3" width="42" height="42" rx="11" fill="none" stroke="#D9B54A" strokeWidth="2.4" opacity="0.85" />
+      <text
+        x="24" y="25" textAnchor="middle" dominantBaseline="middle"
+        fill="#D9B54A" fontSize="17" fontWeight="700" letterSpacing="0.5"
+        fontFamily="'Big Shoulders Display', system-ui, sans-serif"
+      >
+        {lettres}
+      </text>
+      <line x1="14" y1="35" x2="34" y2="35" stroke="#D9B54A" strokeWidth="2" opacity="0.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function Clubs() {
   const t = useT()
   const lang = useLang((s) => s.lang)
@@ -157,9 +185,7 @@ export function Clubs() {
                             className="w-8 h-8 object-contain"
                           />
                         ) : (
-                          <span className="font-display text-[13px] font-bold tracking-tight text-accent-gold">
-                            {monogrammeChampionnat(nom)}
-                          </span>
+                          <EcussonMaison lettres={monogrammeChampionnat(ch.slug)} />
                         )}
                       </span>
                       <span className="min-w-0 flex-1">

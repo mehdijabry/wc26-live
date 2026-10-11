@@ -169,11 +169,15 @@ export const CHAMPIONNATS: Record<Continent, Championnat[]> = {
 export const logoChampionnat = (ch: Championnat): string | null =>
   ch.logo ? `https://a.espncdn.com/i/leaguelogos/soccer/500-dark/${ch.logo}.png` : null
 
-/** Deux ou trois lettres tirées du nom, pour les compétitions sans écusson. */
-export function monogrammeChampionnat(nom: string): string {
-  const mots = nom.split(/[\s—·-]+/).filter((m) => m.length > 2 && !/^(de|du|la|le|of|the|cup|coupe)$/i.test(m))
-  if (mots.length >= 2) return (mots[0][0] + mots[1][0]).toUpperCase()
-  return nom.slice(0, 2).toUpperCase()
+/**
+ * Les deux lettres d'un écusson maison, tirées du SLUG et non du nom traduit :
+ * un monogramme doit rester le même dans les trois langues, comme un blason.
+ * `caf-confederation-cup` → CC, `south-african-premiership` → SA.
+ */
+export function monogrammeChampionnat(slug: string): string {
+  const mots = slug.split('-').filter((m) => !/^(de|du|la|le|of|the|cup|coupe|league|liga)$/i.test(m))
+  const pris = mots.length >= 2 ? mots[0][0] + mots[1][0] : slug.slice(0, 2)
+  return pris.toUpperCase()
 }
 
 export const CONTINENTS: Continent[] = ['Europe', 'Americas', 'Africa', 'Asia']
