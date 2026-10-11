@@ -3,6 +3,7 @@ import type { Session, User } from '@supabase/supabase-js'
 import { supabase, withTimeout, type Profile } from '../lib/supabase'
 import { effacerRefresh, lireRefresh, sauverRefresh } from '../lib/sessionBackup'
 import { reclamerCodeEnAttente } from '../lib/codeBienvenue'
+import { API_BASE } from '../lib/api'
 import { useLang } from '../lib/i18n'
 
 type AuthState = {
@@ -66,6 +67,27 @@ type AuthState = {
  */
 function langueCourante(): string {
   try { return useLang.getState().lang } catch { return 'en' }
+}
+
+/**
+ * Le courriel de bienvenue, demandé au worker à la première session.
+ *
+ * Il est déclenché ICI et non par Supabase, parce qu'une inscription par
+ * Google ne passe par AUCUN courriel : l'adresse est déjà vérifiée, donc
+ * Supabase n'envoie rien et ces inscrits-là n'avaient jamais reçu le
+ * moindre message (Mehdi, 11/10/2026).
+ *
+ * Sans attendre la réponse, et sans jamais faire échouer la connexion :
+ * un courriel de bienvenue qui se perd est regrettable, une connexion qui
+ * se bloque pour l'envoyer ne l'est pas. Le worker se charge de ne l'
+ * envoyer qu'une fois — la marque est posée dans les métadonnées du compte.
+ */
+function demanderBienvenue(jeton?: string): void {
+  if (!jeton) return
+  void fetch(`${API_BASE}/auth/bienvenue`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${jeton}` },
+  }).catch(() => { /* silencieux par construction */ })
 }
 
 // True if the URL looks like a Supabase auth callback (PKCE `?code=`,
@@ -142,7 +164,10 @@ export const useAuth = create<AuthState>((set, get) => ({
         // session arrive — retour de courriel, Google, lien magique.
         // Voir lib/codeBienvenue.ts : sans ça le bonus promis en publicité
         // n'était jamais versé.
-        if (event === 'SIGNED_IN' && await reclamerCodeEnAttente()) { /* crédité */ }
+        if (event === 'SIGNED_IN') {
+          if (await reclamerCodeEnAttente()) { /* crédité */ }
+          demanderBienvenue(session.access_token)
+        }
         await get().refreshProfile()
       } else set({ profile: null, profilEtat: 'inconnu' })
 

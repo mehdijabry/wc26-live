@@ -249,11 +249,25 @@ export default {
         // dire si Supabase appelait seulement le worker. `wrangler tail` ne
         // sert qu'en direct ; cette ligne-ci survit à la nuit.
         try {
+          const { formeDuDernierRefus } = await import('./authmail')
           await env.CACHE.put('auth:dernier-appel', JSON.stringify({
             quand: new Date().toISOString(), statut: rep.status,
+            forme: rep.status === 401 ? formeDuDernierRefus() : undefined,
           }), { expirationTtl: 7 * 86400 })
         } catch { /* la trace ne doit jamais faire échouer l'envoi */ }
         return rep
+      }
+      // Le courriel de bienvenue, déclenché par le site à la première
+      // session. C'est le SEUL message que reçoivent les inscrits par
+      // Google : leur adresse étant déjà vérifiée, Supabase n'envoie rien.
+      if (url.pathname === '/auth/bienvenue' && req.method === 'POST') {
+        const { handleBienvenue } = await import('./authmail')
+        return handleBienvenue(req, env as unknown as import('./authmail').EnvMail & { SUPABASE_SERVICE_KEY?: string })
+      }
+      if (url.pathname === '/auth/bienvenue/apercu') {
+        const { apercuBienvenue } = await import('./authmail')
+        const l = (url.searchParams.get('lang') ?? 'ar') as 'ar' | 'fr' | 'en'
+        return new Response(apercuBienvenue(l).html, { headers: { 'content-type': 'text/html; charset=utf-8' } })
       }
       // Relecture d'un gabarit sans rien envoyer : /auth/email/apercu?lang=ar&type=signup
       if (url.pathname === '/auth/email/apercu') {

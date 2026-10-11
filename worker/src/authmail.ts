@@ -67,14 +67,27 @@ const deB64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0))
  * `v1,whsec_<base64>`. L'horodatage est borné à cinq minutes pour qu'un
  * message capté ne puisse pas être rejoué.
  */
+export type Forme = Record<string, unknown>
+let derniereForme: Forme = {}
+export const formeDuDernierRefus = () => derniereForme
+
 async function signatureValide(corps: string, h: Headers, secret: string): Promise<boolean> {
   const id = h.get('webhook-id')
   const ts = h.get('webhook-timestamp')
   const sig = h.get('webhook-signature')
-  if (!id || !ts || !sig) return false
+  const brutSecret = secret.replace(/^v1,whsec_/, '').replace(/^whsec_/, '')
+  derniereForme = {
+    quand: new Date().toISOString(),
+    enTetes: { id: !!id, ts: ts ?? null, sig: !!sig },
+    secret: { longueurTotale: secret.length, longueurApresPrefixe: brutSecret.length, prefixePresent: secret !== brutSecret },
+    corpsOctets: corps.length,
+    partsSignature: sig ? sig.split(' ').length : 0,
+  }
+  if (!id || !ts || !sig) { derniereForme.echec = 'en-tête manquant'; return false }
 
   const age = Math.abs(Math.floor(Date.now() / 1000) - Number(ts))
-  if (!Number.isFinite(age) || age > 300) return false
+  derniereForme.ecartSecondes = Number.isFinite(age) ? age : 'non numérique'
+  if (!Number.isFinite(age) || age > 300) { derniereForme.echec = 'horodatage hors fenêtre'; return false }
 
   const brut = secret.replace(/^v1,whsec_/, '').replace(/^whsec_/, '')
   const cle = await crypto.subtle.importKey('raw', deB64(brut), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
@@ -82,10 +95,19 @@ async function signatureValide(corps: string, h: Headers, secret: string): Promi
 
   // L'en-tête peut porter plusieurs signatures séparées par une espace,
   // le temps d'une rotation de secret : il suffit qu'une corresponde.
+  let lisibles = 0
   for (const part of sig.split(' ')) {
     const v = part.startsWith('v1,') ? part.slice(3) : part
-    try { if (memeSignature(deB64(v), deB64(attendu))) return true } catch { /* base64 douteux */ }
+    try {
+      const recu = deB64(v)
+      lisibles++
+      derniereForme.octetsRecus = recu.length
+      derniereForme.octetsAttendus = deB64(attendu).length
+      if (memeSignature(recu, deB64(attendu))) return true
+    } catch { /* base64 illisible : compté plus bas */ }
   }
+  derniereForme.partsLisibles = lisibles
+  derniereForme.echec = lisibles === 0 ? 'signature illisible en base64' : 'empreinte différente'
   return false
 }
 
@@ -258,9 +280,11 @@ export async function handleAuthEmail(req: Request, env: EnvMail): Promise<Respo
     body: JSON.stringify({
       from: env.RESEND_FROM,
       to: destinataire,
-      // Une adresse de réponse qui existe : un expéditeur à qui on ne peut
-      // pas répondre est un signal de courrier indésirable à lui seul.
-      reply_to: 'contact@pressing90.live',
+      // La même adresse que l'expéditeur. Un « noreply » à qui l'on ne peut
+      // pas répondre est un signal de pourriel à lui seul — mais pointer
+      // vers une boîte qui n'existe pas serait pire. `welcome@` doit donc
+      // être routée dans Cloudflare Email Routing, où sont les MX.
+      reply_to: 'welcome@pressing90.live',
       subject: c.objet,
       html: page(c, lien, lang),
       text: texteSeul(c, lien),
@@ -285,4 +309,131 @@ export async function handleAuthEmail(req: Request, env: EnvMail): Promise<Respo
 export function apercuAuthEmail(lang: Langue, action: Action, lien: string): { objet: string; html: string } {
   const c = TEXTES[action][lang]
   return { objet: c.objet, html: page(c, lien, lang) }
+}
+
+// ─── LE COURRIEL DE BIENVENUE ─────────────────────────────────────────────
+// Google ne passe par AUCUN courriel : l'adresse est déjà vérifiée, donc
+// Supabase n'envoie rien et le crochet ci-dessus n'est jamais appelé. Ces
+// inscrits-là n'avaient jamais eu le moindre message (Mehdi, 11/10/2026).
+//
+// On déclenche donc sur le COMPTE et non sur l'authentification : le site
+// appelle cet endpoint à la première session, et il part une seule fois.
+//
+// ── LA MARQUE D'ENVOI VA DANS LES MÉTADONNÉES ────────────────────────────
+// `user_metadata.welcome_sent`, posé par l'API admin. Ni colonne à ajouter
+// — donc aucune migration à appliquer à la main — ni clé KV, qui n'est
+// qu'éventuellement cohérente et laisserait passer un doublon.
+
+type CopieBienvenue = { objet: string; titre: string; corps: string; bouton: string; aide: string }
+
+const BIENVENUE: Record<Langue, CopieBienvenue> = {
+  ar: {
+    objet: 'أهلًا بك في Pressing 90\' — رصيدك جاهز',
+    titre: 'حسابك جاهز',
+    corps: 'كرامبوناتك في انتظارك، وتحصل على المزيد مجانًا كل يوم عند تسجيل الدخول. اختر مباراة، وتوقّع نتيجتها بالمعامل الحقيقي.',
+    bouton: 'أول توقّع لي',
+    aide: 'كلّ رهان رابح يرفعك في الترتيب. ضمّ أصدقاءك في مجموعة خاصة وشوفوا من الأدقّ.',
+  },
+  fr: {
+    objet: 'Bienvenue sur Pressing 90\' — votre solde est prêt',
+    titre: 'Votre compte est prêt',
+    corps: 'Vos crampons vous attendent, et vous en recevez d’autres chaque jour en vous connectant. Choisissez un match, et pronostiquez à la cote réelle.',
+    bouton: 'Faire mon premier pronostic',
+    aide: 'Chaque pari gagné vous fait monter au classement. Réunissez vos amis dans un groupe privé et voyez qui est le plus précis.',
+  },
+  en: {
+    objet: 'Welcome to Pressing 90\' — your balance is ready',
+    titre: 'Your account is ready',
+    corps: 'Your crampons are waiting, and you get more free every day you sign in. Pick a match and back your call at the real odds.',
+    bouton: 'Make my first pick',
+    aide: 'Every winning bet moves you up the table. Gather your friends in a private group and see who reads the game best.',
+  },
+}
+
+/** Même mise en page que les courriels d'auth : une seule marque, un seul geste. */
+function pageBienvenue(c: CopieBienvenue, lien: string, lang: Langue): string {
+  const rtl = lang === 'ar'
+  const dir = rtl ? 'rtl' : 'ltr'
+  const police = rtl ? "'Segoe UI',Tahoma,Arial,sans-serif" : "'Helvetica Neue',Helvetica,Arial,sans-serif"
+  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#0B0F0D;margin:0;padding:32px 12px;">
+<tr><td align="center">
+<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" style="width:560px;max-width:100%;background-color:#121916;border-radius:18px;border:1px solid rgba(236,239,232,0.09);">
+  <tr><td align="center" style="padding:40px 32px 0 32px;">
+    <img src="${SIGLE}" width="76" height="76" alt="Pressing 90" style="display:block;border:0;outline:none;text-decoration:none;border-radius:17px;">
+  </td></tr>
+  <tr><td align="center" style="padding:16px 32px 0 32px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:23px;font-weight:700;color:#ECEFE8;letter-spacing:-0.3px;">
+    Pressing <span style="color:#D9B54A;">90'</span>
+  </td></tr>
+  <tr><td align="center" style="padding:10px 32px 0 32px;font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:10px;font-weight:600;color:#6F7A74;letter-spacing:2.4px;line-height:1.9;text-transform:uppercase;">
+    More than a game.<br>Our field of expression.
+  </td></tr>
+  <tr><td align="center" style="padding:24px 36px 0 36px;"><div style="height:1px;width:56px;background-color:#D9B54A;line-height:1px;">&nbsp;</div></td></tr>
+  <tr><td dir="${dir}" align="center" style="padding:26px 36px 0 36px;font-family:${police};font-size:27px;font-weight:700;color:#ECEFE8;line-height:1.45;">${ech(c.titre)}</td></tr>
+  <tr><td dir="${dir}" align="center" style="padding:14px 40px 0 40px;font-family:${police};font-size:16px;color:#A8B3AD;line-height:1.75;">${ech(c.corps)}</td></tr>
+  <tr><td align="center" style="padding:30px 32px 0 32px;">
+    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+      <td align="center" bgcolor="#D9B54A" style="border-radius:12px;">
+        <a href="${ech(lien)}" style="display:inline-block;padding:16px 40px;font-family:${police};font-size:17px;font-weight:700;color:#0B0F0D;text-decoration:none;border-radius:12px;">${ech(c.bouton)}</a>
+      </td></tr></table>
+  </td></tr>
+  <tr><td align="center" style="padding:28px 36px 0 36px;"><div style="height:1px;background-color:rgba(236,239,232,0.08);line-height:1px;">&nbsp;</div></td></tr>
+  <tr><td dir="${dir}" align="center" style="padding:20px 40px 0 40px;font-family:${police};font-size:14px;color:#7E8A84;line-height:1.75;">${ech(c.aide)}</td></tr>
+  <tr><td dir="${dir}" align="center" style="padding:22px 36px 36px 36px;font-family:${police};font-size:12px;color:#5E6B65;line-height:1.8;">
+    ${rtl ? 'مجاني بالكامل · بدون إيداع · بدون وسيط رهان' : lang === 'fr' ? 'Gratuit · sans dépôt · sans bookmaker' : 'Free · no deposit · no bookmaker'}
+  </td></tr>
+</table>
+</td></tr></table>`
+}
+
+/** POST /auth/bienvenue — appelé par le site à la première session. */
+export async function handleBienvenue(req: Request, env: EnvMail & { SUPABASE_SERVICE_KEY?: string }): Promise<Response> {
+  const rep = (o: unknown, s = 200) => new Response(JSON.stringify(o), { status: s, headers: { 'content-type': 'application/json' } })
+  if (!env.RESEND_API_KEY || !env.RESEND_FROM || !env.SUPABASE_SERVICE_KEY) return rep({ error: 'non configuré' }, 503)
+
+  // L'identité vient du jeton de l'utilisateur, vérifié par Supabase —
+  // jamais d'un identifiant passé dans le corps, qui s'invente.
+  const jeton = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '')
+  if (!jeton) return rep({ error: 'jeton manquant' }, 401)
+  const u = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${jeton}` },
+  })
+  if (!u.ok) return rep({ error: 'jeton refusé' }, 401)
+  const utilisateur = await u.json() as { id?: string; email?: string; user_metadata?: Record<string, unknown> }
+  if (!utilisateur.id || !utilisateur.email) return rep({ error: 'compte incomplet' }, 400)
+  if (utilisateur.user_metadata?.welcome_sent) return rep({ ok: true, deja: true })
+
+  const brut = String(utilisateur.user_metadata?.lang ?? '').toLowerCase()
+  const lang: Langue = brut.startsWith('ar') ? 'ar' : brut.startsWith('fr') ? 'fr' : 'en'
+  const c = BIENVENUE[lang]
+  const lien = `${SITE}/predict?lang=${lang}&ref=bienvenue`
+
+  const r = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { authorization: `Bearer ${env.RESEND_API_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      from: env.RESEND_FROM,
+      to: utilisateur.email,
+      reply_to: 'welcome@pressing90.live',
+      subject: c.objet,
+      html: pageBienvenue(c, lien, lang),
+      text: `${c.titre}\n\n${c.corps}\n\n${c.bouton} :\n${lien}\n\n${c.aide}\n\n—\nPressing 90' · ${SITE}`,
+      headers: { 'X-Entity-Ref-ID': `bienvenue-${utilisateur.id}` },
+    }),
+  })
+  if (!r.ok) return rep({ error: `resend ${r.status} ${(await r.text()).slice(0, 160)}` }, 502)
+
+  // Marqué APRÈS l'envoi : si Resend refuse, le prochain passage réessaie
+  // au lieu de perdre le courriel en silence.
+  await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${utilisateur.id}`, {
+    method: 'PUT',
+    headers: { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ user_metadata: { ...utilisateur.user_metadata, welcome_sent: true } }),
+  })
+  return rep({ ok: true, langue: lang })
+}
+
+/** Rendu du courriel de bienvenue, pour le relire sans envoyer. */
+export function apercuBienvenue(lang: Langue): { objet: string; html: string } {
+  const c = BIENVENUE[lang]
+  return { objet: c.objet, html: pageBienvenue(c, `${SITE}/predict?lang=${lang}`, lang) }
 }
