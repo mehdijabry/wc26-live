@@ -17,13 +17,13 @@ import { supabase } from './supabase'
  * l'adresse elle-même.
  */
 export function urlAvatar(cle: string): string {
-  return `/media/icones/profile/${cle}.png`
+  return `/media/avatars/${cle}.png`
 }
 
 /** La clé derrière une adresse enregistrée, pour cocher la bonne vignette. */
 export function cleDeLUrl(url: string | null | undefined): string | null {
   if (!url) return null
-  const m = /\/media\/icones\/profile\/([a-z0-9-]+)\.png$/.exec(url)
+  const m = /\/media\/avatars\/([a-z0-9-]+)\.png$/.exec(url)
   return m ? m[1]! : null
 }
 
