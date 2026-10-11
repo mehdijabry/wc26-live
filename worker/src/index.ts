@@ -356,6 +356,23 @@ export default {
             const detail = (await r.text()).slice(0, 240)
             return json({ ok: r.ok, http: r.status, expediteur: ex3.RESEND_FROM, detail })
           }
+          if (action === 'publier-reel' && req.method === 'POST') {
+            // Publier un reel à la main, par la MÊME chaîne que
+            // l'automatisation : Make d'abord, API Reels en secours. Le
+            // commentaire du lien est mis en file (auto:pendingcomments)
+            // parce que Make ne rend pas d'identifiant de publication et
+            // que Facebook met un moment à traiter la vidéo.
+            const b = await req.json().catch(() => null) as
+              { video_url?: string; description?: string; title?: string; comment?: string } | null
+            if (!b?.video_url || !b.description) return json({ error: 'video_url et description requis' }, 400)
+            const r = await auto.fbReel(env, {
+              video_url: b.video_url,
+              description: b.description,
+              title: b.title ?? 'Pressing 90',
+            })
+            if (r.ok && b.comment) await auto.enqueuePendingComment(env, b.description, b.comment)
+            return json({ ...r, commentaireEnFile: !!(r.ok && b.comment) }, r.ok ? 200 : 502)
+          }
           if (action === 'crochet-etat') {
             const brut = await env.CACHE.get('auth:dernier-appel')
             return json(brut
