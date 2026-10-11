@@ -202,7 +202,10 @@ function App() {
           <img
             src="/p90-logo.svg"
             alt=""
-            className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_8px_30px_rgba(212,175,55,0.25)]"
+            // Le halo suit la SILHOUETTE : tant que le SVG avait un fond
+            // plein, il dessinait un carré lumineux. Et il était doré sur
+            // une marque crème. Les deux corrigés.
+            className="w-24 h-24 sm:w-28 sm:h-28 drop-shadow-[0_6px_26px_rgba(236,239,232,0.16)]"
           />
           <div className="mt-5 text-center">
             <div className="font-display font-bold text-2xl sm:text-3xl tracking-tight text-slate-900">
