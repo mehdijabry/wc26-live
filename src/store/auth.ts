@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { Session, User } from '@supabase/supabase-js'
 import { supabase, withTimeout, type Profile } from '../lib/supabase'
 import { effacerRefresh, lireRefresh, sauverRefresh } from '../lib/sessionBackup'
+import { reclamerCodeEnAttente } from '../lib/codeBienvenue'
 
 type AuthState = {
   user: User | null
@@ -123,8 +124,14 @@ export const useAuth = create<AuthState>((set, get) => ({
       // laisse son jeton dans un cookie. C'est la copie qui survit quand iOS
       // vide le localStorage de l'app. Voir src/lib/sessionBackup.ts.
       if (session?.refresh_token) sauverRefresh(session.refresh_token)
-      if (session) await get().refreshProfile()
-      else set({ profile: null, profilEtat: 'inconnu' })
+      if (session) {
+        // Un lien d'inscription en attente se réclame ici, d'où que la
+        // session arrive — retour de courriel, Google, lien magique.
+        // Voir lib/codeBienvenue.ts : sans ça le bonus promis en publicité
+        // n'était jamais versé.
+        if (event === 'SIGNED_IN' && await reclamerCodeEnAttente()) { /* crédité */ }
+        await get().refreshProfile()
+      } else set({ profile: null, profilEtat: 'inconnu' })
 
       if (event === 'SIGNED_IN' && typeof window !== 'undefined' && callback) {
         try {
@@ -135,6 +142,27 @@ export const useAuth = create<AuthState>((set, get) => ({
         }
       }
     })
+
+    // Un onglet laissé en arriere-plan voit son jeton d'acces expirer (une
+    // heure). supabase-js garde son minuteur de rafraichissement actif dans
+    // un onglet cache, ou il echoue sans temoin ; au retour, la premiere
+    // requete se met a attendre une renegociation deja engagee et bloquee.
+    // La parade est d'arreter le minuteur quand l'onglet part et de le
+    // relancer quand il revient, puis de redemander le profil sous delai :
+    // l'ecran se repare seul au lieu d'exiger un rechargement manuel.
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', () => {
+        if (!supabase) return
+        if (document.visibilityState === 'visible') {
+          void supabase.auth.startAutoRefresh()
+          void withTimeout(supabase.auth.getSession(), 6_000, null).then(() => {
+            if (get().user) void get().refreshProfile()
+          })
+        } else {
+          void supabase.auth.stopAutoRefresh()
+        }
+      })
+    }
 
     // If the URL carries a PKCE `?code=` from Google/magic-link, perform
     // the exchange EXPLICITLY. The default `detectSessionInUrl` is racy
@@ -225,7 +253,10 @@ export const useAuth = create<AuthState>((set, get) => ({
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin,
+        // La page EN COURS, pas l'accueil : quelqu'un qui s'inscrit depuis
+        // /bienvenue/<code> doit y revenir après avoir confirmé son
+        // courriel, sinon la réclamation du bonus n'a jamais lieu.
+        emailRedirectTo: window.location.origin + window.location.pathname,
         data: alias ? { alias } : undefined,
       },
     })
@@ -315,12 +346,21 @@ export const useAuth = create<AuthState>((set, get) => ({
     // Une seule reprise : le tout premier appel part parfois avant que le
     // jeton rafraîchi soit en place, et l'échec silencieux laissait le solde
     // à zéro jusqu'au prochain rechargement de la page.
+    // SOUS DÉLAI, impérativement. C'était la seule requête Supabase du
+    // projet sans garde — et le 11/10/2026 elle a gelé l'app six fois de
+    // suite : au retour d'un onglet resté longtemps en arrière-plan, le
+    // jeton d'accès a expiré, supabase-js part le renégocier, et tant que
+    // cette négociation n'aboutit pas la promesse ne se résout jamais. Le
+    // solde restait sur « - », et comme onAuthStateChange attend ici, tout
+    // ce qui suivait restait sur « Loading… » jusqu'au rechargement.
+    type Reponse = { data: Profile | null; error: { message: string } | null }
+    const EXPIRE: Reponse = { data: null, error: { message: 'timeout' } }
     for (let essai = 0; essai < 2; essai++) {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .maybeSingle()
+      const { data, error } = await withTimeout<Reponse>(
+        supabase.from('profiles').select('*').eq('id', userId).maybeSingle() as unknown as Promise<Reponse>,
+        6_000,
+        EXPIRE,
+      )
       if (!error && data) { set({ profile: data as Profile, profilEtat: 'pret' }); return }
       if (!error && !data) { set({ profilEtat: 'pret' }); return }   // profil pas encore créé
       if (essai === 0) await new Promise((r) => setTimeout(r, 700))

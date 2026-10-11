@@ -7,6 +7,7 @@ import { AuthModal } from '../AuthModal'
 import { Icone } from '../Icone'
 import { Jeton } from '../Jeton'
 import { useT } from '../../lib/i18n'
+import { memoriserCode, oublierCode } from '../../lib/codeBienvenue'
 
 /**
  * /bienvenue/:code — l'atterrissage d'un lien d'inscription.
@@ -49,6 +50,11 @@ export function Bienvenue() {
     horsIndex: true,
   })
 
+  // Mis de côté dès l'arrivée : si l'inscription passe par une confirmation
+  // par courriel, cette page est quittée avant que la session existe, et
+  // c'est la mémoire qui rattrape la réclamation. Voir lib/codeBienvenue.ts.
+  useEffect(() => { if (code) memoriserCode(code) }, [code])
+
   useEffect(() => {
     if (!supabase || !code) { setChargee(true); return }
     void supabase.rpc('code_inscription', { p_code: code }).then(({ data }) => {
@@ -70,6 +76,7 @@ export function Bienvenue() {
     }
     const r = (Array.isArray(data) ? data[0] : data) as { crampons: number; analyses: number } | null
     if (r) {
+      oublierCode()
       setRecu({ crampons: Number(r.crampons ?? 0), analyses: Number(r.analyses ?? 0) })
       await useAuth.getState().refreshProfile()
     }
