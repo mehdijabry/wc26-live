@@ -552,6 +552,48 @@ async function debugToken(env: Env, token: string): Promise<{ is_valid?: boolean
   const j = await r.json().catch(() => ({})) as { data?: { is_valid?: boolean; expires_at?: number; data_access_expires_at?: number; scopes?: string[]; error?: { message?: string } }; error?: { message?: string } }
   return j.data ?? { is_valid: false, error: j.error }
 }
+/**
+ * Forcer Facebook à relire nos métadonnées Open Graph.
+ *
+ * Il garde l'image de partage en cache plusieurs jours : une refonte de logo
+ * ne se voit nulle part sans ça (refonte du 10/10/2026).
+ *
+ * LE JETON SE RÉSOUT ICI, PAS DANS L'APPELANT. Le secret collé par Mehdi est
+ * échangé contre un jeton longue durée rangé en KV — c'est ce dernier qui
+ * sert, et lire `env.FB_PAGE_TOKEN` en direct attraperait une valeur
+ * périmée. `currentUserToken` fait déjà ce choix pour toutes les autres
+ * publications ; on passe par la même porte.
+ */
+export async function rafraichirOpenGraph(
+  env: Env,
+  urls: string[],
+): Promise<{ ok: boolean; faits: Array<{ url: string; ok: boolean; image: string | null; erreur: string | null }> }> {
+  // SEULEMENT NOS ADRESSES. Sans ce filtre, qui tient le secret d'ops
+  // pourrait faire aspirer n'importe quelle page du web par Facebook avec
+  // notre jeton.
+  const cibles = urls
+    .filter((u) => typeof u === 'string' && /^https:\/\/pressing90\.live(\/|$)/.test(u))
+    .slice(0, 25)
+  if (cibles.length === 0) return { ok: false, faits: [] }
+
+  const { token } = await currentUserToken(env)
+  const faits: Array<{ url: string; ok: boolean; image: string | null; erreur: string | null }> = []
+  for (const u of cibles) {
+    try {
+      const r = await fetch(
+        `https://graph.facebook.com/v21.0/?scrape=true&id=${encodeURIComponent(u)}&access_token=${encodeURIComponent(token)}`,
+        { method: 'POST' },
+      )
+      const d = (await r.json().catch(() => null)) as
+        { image?: Array<{ url?: string }>; error?: { message?: string } } | null
+      faits.push({ url: u, ok: r.ok, image: d?.image?.[0]?.url ?? null, erreur: d?.error?.message ?? null })
+    } catch (e) {
+      faits.push({ url: u, ok: false, image: null, erreur: String(e) })
+    }
+  }
+  return { ok: faits.every((f) => f.ok), faits }
+}
+
 export async function fbTokenStatus(env: Env): Promise<FbTokenStatus> {
   const explorerUrl = env.FB_APP_ID ? `https://developers.facebook.com/tools/explorer/${env.FB_APP_ID}/?method=GET&path=me%2Faccounts&version=v21.0` : 'https://developers.facebook.com/tools/explorer/'
   const base: FbTokenStatus = { ok: false, valid: false, source: 'none', expiresAt: null, daysLeft: null, obtainedAt: null, scopes: [], missing: REQUIRED_SCOPES, page: null, appId: env.FB_APP_ID ?? null, explorerUrl }
