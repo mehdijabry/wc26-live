@@ -304,6 +304,40 @@ export default {
             const body = await req.json().catch(() => ({})) as { job?: string } & Record<string, unknown>
             return json(await auto.runJobNow(env, body.job ?? '', body))
           }
+          if (action === 'og-refresh' && req.method === 'POST') {
+            // Forcer Facebook à relire nos métadonnées Open Graph. Il garde
+            // l'ancienne image de partage en cache plusieurs jours, et une
+            // refonte de logo ne se voit donc nulle part sans ça.
+            //
+            // Le JETON NE SORT PAS D'ICI. Il vit en secret du worker ; l'ops
+            // n'envoie que la liste d'adresses, et ne le voit jamais.
+            const jeton = (env as unknown as { FB_PAGE_TOKEN?: string }).FB_PAGE_TOKEN
+            if (!jeton) return json({ error: 'FB_PAGE_TOKEN absent' }, 400)
+            const b = await req.json().catch(() => ({})) as { urls?: string[] }
+            const demandees = Array.isArray(b.urls) && b.urls.length ? b.urls : ['https://pressing90.live/']
+            // SEULEMENT NOS ADRESSES. Sans ce filtre, qui tient l'ops
+            // pourrait faire aspirer n'importe quelle page du web par
+            // Facebook avec notre jeton.
+            const cibles = demandees
+              .filter((u) => typeof u === 'string' && /^https:\/\/pressing90\.live(\/|$)/.test(u))
+              .slice(0, 25)
+            if (cibles.length === 0) return json({ error: 'aucune adresse pressing90.live' }, 400)
+            const faits: Array<{ url: string; ok: boolean; image: string | null; erreur: string | null }> = []
+            for (const u of cibles) {
+              try {
+                const r = await fetch(
+                  `https://graph.facebook.com/v21.0/?scrape=true&id=${encodeURIComponent(u)}&access_token=${encodeURIComponent(jeton)}`,
+                  { method: 'POST' },
+                )
+                const d = await r.json().catch(() => null) as
+                  { image?: Array<{ url?: string }>; error?: { message?: string } } | null
+                faits.push({ url: u, ok: r.ok, image: d?.image?.[0]?.url ?? null, erreur: d?.error?.message ?? null })
+              } catch (e) {
+                faits.push({ url: u, ok: false, image: null, erreur: String(e) })
+              }
+            }
+            return json({ ok: faits.every((f) => f.ok), faits })
+          }
           if (action === 'settings' && req.method === 'POST') {
             const body = await req.json().catch(() => ({})) as Record<string, unknown>
             return json({ ok: true, settings: await auto.saveAutomationSettings(env, body as Partial<import('./automation').AutomationSettings>) })
