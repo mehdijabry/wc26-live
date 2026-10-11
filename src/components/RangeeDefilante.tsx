@@ -80,7 +80,7 @@ function Fondu({ cote, visible }: { cote: 'start' | 'end'; visible: boolean }) {
     <div
       aria-hidden="true"
       className={cn(
-        'pointer-events-none absolute inset-y-0 w-10 transition-opacity duration-200',
+        'pointer-events-none absolute inset-y-0 w-7 transition-opacity duration-200',
         cote === 'start' ? 'start-0' : 'end-0',
         visible ? 'opacity-100' : 'opacity-0',
       )}
@@ -88,7 +88,16 @@ function Fondu({ cote, visible }: { cote: 'start' | 'end'; visible: boolean }) {
         // Le sol de la page. Ces rangées y sont toutes posées ; si l'une
         // passait un jour sur une carte (#121916), il faudrait le passer en
         // paramètre plutôt que de laisser un fondu vers la mauvaise couleur.
-        background: `linear-gradient(to ${cote === 'start' ? 'right' : 'left'}, #0B0F0D, transparent)`,
+        //
+        // TROIS ARRÊTS, PAS DEUX. Un dégradé linéaire de l'opaque au
+        // transparent sur toute la largeur assombrit la pastille qu'il
+        // recouvre — « Serie A · 5 » arrivait avec son chiffre grisé, et ça
+        // se lisait comme une tache (Mehdi, 2026-10-11). Ici l'opacité
+        // s'effondre dans le premier tiers : le bord est net, le reste est
+        // déjà presque transparent.
+        background:
+          `linear-gradient(to ${cote === 'start' ? 'right' : 'left'},` +
+          ' #0B0F0D 0%, rgba(11,15,13,0.72) 34%, rgba(11,15,13,0) 100%)',
       }}
     />
   )
@@ -109,14 +118,23 @@ function revelerEnEntier(cible: HTMLElement | null, piste: HTMLDivElement | null
   while (el && el.parentElement !== piste) el = el.parentElement
   if (!el) return
 
-  const MARGE = 20 // laisse voir un bout du voisin : c'est ça qui dit « il y a une suite »
-  const gauche = el.offsetLeft - MARGE
-  const droite = el.offsetLeft + el.offsetWidth + MARGE
-  let cibleScroll = piste.scrollLeft
-  if (gauche < piste.scrollLeft) cibleScroll = gauche
-  else if (droite > piste.scrollLeft + piste.clientWidth) cibleScroll = droite - piste.clientWidth
-  if (Math.abs(cibleScroll - piste.scrollLeft) < 1) return
+  // ON MESURE EN COORDONNÉES ÉCRAN, pas avec `offsetLeft`. Ces rangées
+  // portent un `px-4` qui déborde sous le bord (`-mx-4`) : `offsetLeft` et
+  // `clientWidth` comptent ce rembourrage, et une marge demandée à 36 px
+  // arrivait à 20 à l'écran — l'élément révélé finissait sous le fondu.
+  // `getBoundingClientRect` ignore tout ça.
+  //
+  // La marge est volontairement PLUS LARGE que le fondu (28 px), sinon le
+  // dernier caractère de l'élément révélé reste grisé. Elle laisse en plus
+  // dépasser un bout du voisin — c'est ça qui dit « il y a une suite ».
+  const MARGE = 36
+  const vue = piste.getBoundingClientRect()
+  const boite = el.getBoundingClientRect()
+  let delta = 0
+  if (boite.left - MARGE < vue.left) delta = boite.left - MARGE - vue.left
+  else if (boite.right + MARGE > vue.right) delta = boite.right + MARGE - vue.right
+  if (Math.abs(delta) < 1) return
 
   const doux = !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
-  piste.scrollTo({ left: Math.max(0, cibleScroll), behavior: doux ? 'smooth' : 'auto' })
+  piste.scrollTo({ left: Math.max(0, piste.scrollLeft + delta), behavior: doux ? 'smooth' : 'auto' })
 }
