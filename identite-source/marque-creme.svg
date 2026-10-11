@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Pressing 90">
+  <!-- La marque telle que Gemini l'a proposée : tuile AJOURÉE, chiffres crème.
+       Le doré ne vit alors que dans le mot-symbole. -->
+  <rect x="34" y="34" width="444" height="444" rx="92" fill="none" stroke="#ECEFE8" stroke-width="13"/>
+  <text x="256" y="322" text-anchor="middle" font-family="'Big Shoulders Display','Archivo Black','Arial Narrow',sans-serif"
+        font-weight="800" font-size="248" fill="#ECEFE8" letter-spacing="-6">90&#8217;</text>
+  <path d="M110 384 H402" stroke="#ECEFE8" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="256" cy="384" r="30" fill="#0B0F0D" stroke="#ECEFE8" stroke-width="11"/>
+</svg>

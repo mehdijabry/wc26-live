@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1580 560" role="img"
+     aria-label="Pressing 90 — More than a game. Our field of expression.">
+  <!-- Pressing 90' — lockup horizontal.
+       D'après la proposition Gemini du 10/10/2026, redessinée au vectoriel :
+       le JPEG étalait le noir-vert de #0D130F à #101612 au lieu du #0B0F0D
+       de la marque, et pesait 390 Ko contre 1 Ko ici.
+
+       LES CHIFFRES SONT MESURÉS, PAS ESTIMÉS. Au rendu réel (Big Shoulders
+       Display 800 / IBM Plex Mono 400), le mot-symbole à 186 px faisait 809
+       de large et le slogan 924 : le slogan dépassait le nom. D'où la taille
+       du mot-symbole portée à 214, et `textLength` sur les deux lignes pour
+       que leurs bords restent alignés même si une police de repli prend la
+       main — un logo doit tenir partout, pas seulement là où la fonte est
+       chargée. -->
+  <rect width="1580" height="560" fill="#0B0F0D"/>
+
+  <g transform="translate(120,111) scale(0.66)">
+    <rect x="34" y="34" width="444" height="444" rx="92" fill="none" stroke="#ECEFE8" stroke-width="13"/>
+    <text x="256" y="322" text-anchor="middle"
+          font-family="'Big Shoulders Display','Archivo Black','Arial Narrow',sans-serif"
+          font-weight="800" font-size="248" fill="#ECEFE8" letter-spacing="-6">90&#8217;</text>
+    <path d="M110 384 H402" stroke="#ECEFE8" stroke-width="11" stroke-linecap="round"/>
+    <circle cx="256" cy="384" r="30" fill="#0B0F0D" stroke="#ECEFE8" stroke-width="11"/>
+  </g>
+
+  <text x="528" y="329" textLength="928" lengthAdjust="spacingAndGlyphs"
+        font-family="'Big Shoulders Display','Archivo Black','Arial Narrow',sans-serif"
+        font-weight="800" font-size="214" letter-spacing="-3" fill="#ECEFE8">Pressing <tspan fill="#D9B54A">90&#8217;</tspan></text>
+
+  <text x="528" y="433" textLength="928" lengthAdjust="spacing"
+        font-family="'IBM Plex Mono','SFMono-Regular',monospace" font-size="31"
+        fill="#ECEFE8" opacity="0.72">MORE THAN A GAME. OUR FIELD OF EXPRESSION.</text>
+</svg>
