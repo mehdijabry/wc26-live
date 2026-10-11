@@ -336,7 +336,7 @@ export function IosInstallPrompt() {
                 onClick={handlePrimaryAction}
                 className="flex items-center gap-2.5 pl-3.5 pr-4 py-2.5 active:bg-black/30 transition-colors min-w-0"
               >
-                <img src="/p90-logo.svg" alt="" className="w-7 h-7 shrink-0" />
+                <img src="/p90-logo.svg" alt="" className="w-9 h-9 shrink-0" />
                 <div className="flex flex-col text-left leading-tight min-w-0">
                   <span className="text-[9px] uppercase tracking-[0.2em] text-accent-gold font-mono">
                     {eyebrow}

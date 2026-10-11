@@ -81,10 +81,18 @@ export function Navigation() {
       >
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group">
+            {/* PAS DE `rounded-lg` ICI. Le SVG porte déjà ses propres coins
+                arrondis ; un second rognage par CSS coupait le filet doré de
+                la tuile, et le dessin se réduisait à « 90' » et un trait
+                (Mehdi, 2026-10-10).
+
+                La tuile fait une fois et demie la hauteur du bloc de texte,
+                comme sur le logo de référence — à égalité elle disparaissait
+                à côté du nom. */}
             <img
               src="/p90-logo.svg"
               alt="Pressing 90’"
-              className="w-8 h-8 rounded-lg group-hover:scale-110 transition-transform shrink-0"
+              className="w-11 h-11 sm:w-12 sm:h-12 group-hover:scale-110 transition-transform shrink-0"
             />
             {/* dir=ltr — the Latin wordmark must not reorder in RTL mode
                 (the trailing ’ jumps to the left side otherwise) */}
@@ -92,7 +100,15 @@ export function Navigation() {
               <div className="font-display font-bold tracking-tight text-base sm:text-lg whitespace-nowrap">
                 Pressing <span className="text-accent-gold">90’</span>
               </div>
-              <div className="text-[9px] uppercase tracking-[0.2em] font-mono whitespace-nowrap mt-0.5 text-slate-500">
+              {/* La signature de marque ne se traduit pas — une baseline
+                  vit dans une seule langue. Mais elle fait quarante-deux
+                  caractères : sur un téléphone elle pousserait le bouton de
+                  connexion hors de l'écran, donc en dessous de `sm` on garde
+                  la ligne courte qui dit ce qu'est le site. */}
+              <div className="hidden sm:block text-[9px] uppercase tracking-[0.18em] font-mono whitespace-nowrap mt-1 text-slate-500">
+                More than a game. Our field of expression.
+              </div>
+              <div className="sm:hidden text-[9px] uppercase tracking-[0.2em] font-mono whitespace-nowrap mt-0.5 text-slate-500">
                 {t('live football scores')}
               </div>
             </div>
@@ -176,7 +192,7 @@ export function Navigation() {
             >
               <div className="flex items-center justify-between mb-8">
                 <Link to="/" onClick={() => setMenuOpen(false)} className="flex items-center gap-2.5">
-                  <img src="/p90-logo.svg" alt="" className="w-7 h-7 rounded-md" />
+                  <img src="/p90-logo.svg" alt="" className="w-9 h-9" />
                   <div className="leading-tight" dir="ltr">
                     <div className="font-display font-bold tracking-tight text-sm">
                       Pressing <span className="text-accent-gold">90’</span>

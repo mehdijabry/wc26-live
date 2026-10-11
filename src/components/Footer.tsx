@@ -9,13 +9,13 @@ export function Footer() {
     <footer className="border-t border-slate-200/70 py-12 text-center text-xs text-slate-500">
       <div className="container max-w-6xl mx-auto px-6">
         <div className="flex items-center justify-center gap-2.5 mb-3">
-          <img src="/p90-logo.svg" alt="" className="w-7 h-7 rounded-md" />
+          <img src="/p90-logo.svg" alt="" className="w-9 h-9" />
           <div className="leading-tight text-left" dir="ltr">
             <div className="font-display font-bold text-base text-slate-900">
               Pressing <span className="text-accent-gold">90’</span>
             </div>
-            <div className="text-[9px] uppercase tracking-[0.2em] font-mono mt-0.5 text-slate-500">
-              live football scores
+            <div className="text-[9px] uppercase tracking-[0.18em] font-mono mt-1 text-slate-500">
+              More than a game. Our field of expression.
             </div>
           </div>
         </div>
