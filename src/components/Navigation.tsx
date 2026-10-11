@@ -85,7 +85,7 @@ export function Navigation() {
         }}
       >
         <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5 group">
+          <Link to="/" className="flex items-center gap-2.5 group min-w-0">
             {/* PAS DE `rounded-lg` ICI. Le SVG porte déjà ses propres coins
                 arrondis ; un second rognage par CSS coupait le filet doré de
                 la tuile, et le dessin se réduisait à « 90' » et un trait
@@ -101,7 +101,7 @@ export function Navigation() {
             />
             {/* dir=ltr — the Latin wordmark must not reorder in RTL mode
                 (the trailing ’ jumps to the left side otherwise) */}
-            <div className="leading-tight" dir="ltr">
+            <div className="leading-tight min-w-0" dir="ltr">
               <div className="font-display font-bold tracking-tight text-base sm:text-lg whitespace-nowrap">
                 Pressing <span className="text-accent-gold">90’</span>
               </div>
@@ -118,9 +118,13 @@ export function Navigation() {
                 <div>More than a game.</div>
                 <div>Our field of expression.</div>
               </div>
-              <div className="sm:hidden text-[9px] uppercase tracking-[0.2em] font-mono whitespace-nowrap mt-0.5 text-slate-500">
-                {t('live football scores')}
-              </div>
+              {/* RIEN SOUS `sm`. Mesuré le 11/10/2026 : avec la pastille du
+                  solde (148 px, davantage encore quand le joueur porte des
+                  médailles), la signature fait déborder l'en-tête de 5 px
+                  sur un écran de 390 — et elle passait sous la pastille sur
+                  celui de Mehdi. Un téléphone porte déjà la marque, le solde
+                  et le menu ; la signature vit sur ordinateur et au pied de
+                  page, où elle a la place. */}
             </div>
           </Link>
 

@@ -32,6 +32,49 @@ export const POINT = { un: 'pressing', plusieurs: 'pressings' } as const
  */
 export const SEMAINE = { jours: 7, base: 4, bonus: 100 } as const
 
+/**
+ * Un solde écrit court : 1 000 devient « 1 k », 999 000 000 « 999 M ».
+ *
+ * ── POURQUOI ────────────────────────────────────────────────────────────
+ * La pastille du compte tient dans l'en-tête à côté du logo, du pseudo et
+ * du menu. Un solde à six chiffres la fait déborder : sur un téléphone, il
+ * poussait la signature sous le bouton et la coupait en plein mot (Mehdi,
+ * 2026-10-11). « 1 M » dit la même chose en deux caractères.
+ *
+ * ── OÙ NE PAS L'UTILISER ────────────────────────────────────────────────
+ * Partout où le joueur a besoin du chiffre EXACT : le détail du menu, le
+ * bulletin de pari, les gains annoncés. Arrondir là tromperait. Ceci ne
+ * sert qu'aux endroits serrés où l'on donne un ordre de grandeur.
+ *
+ * `Intl` fait le travail et suit la langue : « 1,2 k » en français,
+ * « 1.2K » en anglais, « ألف 1.2 » en arabe. Le repli couvre les moteurs
+ * trop anciens pour `notation: 'compact'`.
+ */
+export function soldeCourt(v: number | null | undefined, locale: string): string {
+  const n = Number(v ?? 0)
+  if (!Number.isFinite(n)) return '0'
+  if (Math.abs(n) < 1000) return String(Math.trunc(n))
+  // ON TRONQUE, ON N'ARRONDIT PAS. `Intl` seul écrit « 1 M » pour 999 954 :
+  // un solde qui se gonfle tout seul au passage d'un seuil, le joueur le
+  // lit comme un gain qu'il n'a pas eu. On rabote donc à la décimale de
+  // l'unité AVANT de formater — 999 954 devient « 999,9 k ».
+  const unite = Math.abs(n) >= 1e9 ? 1e9 : Math.abs(n) >= 1e6 ? 1e6 : 1e3
+  const pas = unite / 10
+  const tronque = Math.sign(n) * Math.floor(Math.abs(n) / pas) * pas
+  try {
+    return new Intl.NumberFormat(locale, { notation: 'compact', maximumFractionDigits: 1 }).format(tronque)
+  } catch {
+    const u = [[1e9, 'G'], [1e6, 'M'], [1e3, 'k']] as const
+    for (const [seuil, suffixe] of u) {
+      if (Math.abs(tronque) >= seuil) {
+        const x = tronque / seuil
+        return (Math.abs(x) < 10 ? x.toFixed(1).replace(/\.0$/, '') : String(Math.round(x))) + ' ' + suffixe
+      }
+    }
+    return String(Math.trunc(tronque))
+  }
+}
+
 /** Ce que rapporte le `jour`-ième jour d'affilée. */
 export function gainDuJour(jour: number): number {
   return SEMAINE.base + Math.min(Math.max(jour, 1), SEMAINE.jours)

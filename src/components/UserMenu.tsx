@@ -5,7 +5,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useBracket } from '../store/bracket'
 import { AuthModal } from './AuthModal'
-import { JETON, POINT } from '../lib/jeu'
+import { JETON, POINT, soldeCourt } from '../lib/jeu'
 import { Jeton } from './Jeton'
 import { localeOf, useLang, useT } from '../lib/i18n'
 import Avatar from './Avatar'
@@ -134,6 +134,9 @@ export function UserMenu() {
   const su = profilEtat === 'pret' || !!profile
   const nb = (v: number | undefined | null, loc = false) =>
     su ? (loc ? Number(v ?? 0).toLocaleString(localeOf(lang)) : String(v ?? 0)) : '—'
+  /** La pastille de l'en-tête : un ordre de grandeur, pas le chiffre exact.
+   *  Celui-ci est juste en dessous, dans le menu, et il n'arrondit pas. */
+  const court = (v: number | undefined | null) => (su ? soldeCourt(v, localeOf(lang)) : '—')
 
   const alias = profile?.alias ?? 'fan'
 
@@ -155,11 +158,11 @@ export function UserMenu() {
         <span className="flex items-center gap-1.5 ps-2 ms-0.5 border-s border-slate-300/40 font-mono tabular-nums text-xs">
           <span className="flex items-center gap-1" title={JETON.plusieurs}>
             <Jeton type="crampon" />
-            {nb(profile?.crampons)}
+            {court(profile?.crampons)}
           </span>
           <span className="flex items-center gap-1 text-accent-violet" title={POINT.plusieurs}>
             <Jeton type="pressing" />
-            {nb(profile?.pressings, true)}
+            {court(profile?.pressings)}
           </span>
         </span>
       </button>
