@@ -8,8 +8,8 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
-import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
+import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -347,13 +347,47 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         await fs.rm(dir, { recursive: true, force: true })
         return { url: urls[0], urls, seconds: len }
       }
+      // ── Soirée de coupe d'Europe (Mehdi, 13/10/2026) ──────────────────────
+      // Les affiches livrées en fond, une carte d'ouverture sans données, et
+      // des cartes de match par-dessus le fond « stade » — le seul des trois
+      // dont le milieu est libre. Montage sans son, enchaîné par un éclair.
+      if (type === 'soiree') {
+        const ms = (data.matches || []).slice(0, 3)
+        if (!ms.length) throw new Error('no matches')
+        const fondUcl = (nom) => path.join(__dirname, 'assets', 'ucl', `fond-${nom}.jpg`)
+        const specs = [], durees = []
+        if (data.ouverture !== false) {
+          specs.push(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, ms.length + 1, undefined, data.lang))
+          durees.push(1.5)
+        }
+        for (const m of ms) {
+          specs.push(await drawUclMatchLayers({ ...m, bgImage: fondUcl('stade'), cover: specs.length === 0 ? data.cover : undefined }, specs.length, ms.length + (data.ouverture !== false ? 1 : 0), undefined, data.lang))
+          durees.push(2.5)
+        }
+        const slides = []
+        for (let i = 0; i < specs.length; i++) {
+          const layers = {}
+          for (const [k, buf] of Object.entries(specs[i].layers)) { layers[k] = path.join(dir, `so${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
+          slides.push({ layers, anims: specs[i].anims })
+        }
+        const out = path.join(dir, 'soiree.mp4')
+        const { seconds: len } = await renderSoireeReel({ slides, durees, transition: data.transition || 'fadewhite', out })
+        const url = await upload(`reel-soiree-${stamp()}.mp4`, await fs.readFile(out), 'video/mp4')
+        await fs.rm(dir, { recursive: true, force: true })
+        return { url, seconds: len }
+      }
+
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []
         if (type === 'matchday') {
           const ms = (data.matches || []).slice(0, 10)
           if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4')   // « يوم برشلونة » slide
-          for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang))
+          // « ucl » = soirée de coupe d'Europe : même squelette, peau de nuit
+          // et or (voir drawUclMatchLayers). Le worker ne le pose que si
+          // TOUTES les affiches de tête sont de la même compétition.
+          const carte = data.special === 'ucl' ? drawUclMatchLayers : drawMatchLayers
+          for (let i = 0; i < ms.length; i++) specs.push(await carte(ms[i], i, ms.length, data.heading, data.lang))
         }
         else if (type === 'goal') {
           // Barça special (2026-09-14): looping confetti video under the card + stadium roar at t=0

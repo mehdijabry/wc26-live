@@ -1236,6 +1236,37 @@ async function sendKitEmail(env: Env, kit: StoryKit, kitUrl: string): Promise<{ 
  */
 export const REEL_VEDETTES = 3
 
+/**
+ * Les soirées de coupe d'Europe, et le titre de leur affiche.
+ *
+ * Elles ont leur propre gabarit de reel (fond nuit et or, écussons sur
+ * disque clair — voir `drawUclMatchLayers` dans le studio) : dans un fil
+ * saturé, une vignette sombre se détache là où la vignette crème habituelle
+ * se fond dans les autres.
+ */
+const SOIREES_EUROPE: Record<string, { fr: string; ar: string }> = {
+  'uefa.champions': { fr: 'LIGUE DES CHAMPIONS', ar: 'دوري الأبطال' },
+  'uefa.europa': { fr: 'LIGUE EUROPA', ar: 'الدوري الأوروبي' },
+  'uefa.europa.conf': { fr: 'LIGUE CONFÉRENCE', ar: 'دوري المؤتمر' },
+  'uefa.super_cup': { fr: "SUPERCOUPE D'EUROPE", ar: 'كأس السوبر الأوروبي' },
+}
+
+/**
+ * La compétition européenne de la soirée — ou rien.
+ *
+ * Exige que TOUTES les affiches de tête soient de la même compétition.
+ * Mélanger deux peaux dans un reel de neuf secondes casserait la lecture,
+ * et un soir de Ligue des champions le classement par rang met de toute
+ * façon les trois matchs européens devant les championnats.
+ */
+function soireeEurope(pool: AutoMatch[]): { slug: string; fr: string; ar: string } | null {
+  if (!pool.length) return null
+  const slug = pool[0].slug
+  const titres = SOIREES_EUROPE[slug]
+  if (!titres) return null
+  return pool.every((m) => m.slug === slug) ? { slug, ...titres } : null
+}
+
 export async function queueMatchdayReel(env: Env, date: string, label: string, pool: AutoMatch[], barcaDay = false): Promise<void> {
   if (!reelsConfigured(env)) { await log(env, date, 'matchday-reel', false, 'skipped — set MAKE_FB_VIDEO_WEBHOOK_URL or FB_PAGE_TOKEN'); return }
   try {
@@ -1248,10 +1279,209 @@ export async function queueMatchdayReel(env: Env, date: string, label: string, p
     const voiceUrl = ar ? await arabicVoice(env, matchdayScriptAr(reelPool), key) : await englishVoice(env, matchdayScript(reelPool, label), key)
     const jobId = `reel-${date}-${Math.random().toString(36).slice(2, 7)}`
     await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'reel', date, description: ar ? reelCaptionAr(poolLegende, label) : reelCaption(poolLegende, label), title: ar ? `مباريات اليوم — ${labelAr()}` : `Today's matches — ${label}`, comment: ar ? `⚽ النتائج المباشرة والتشكيلات: ${SITE}/today?lang=ar&ref=fb-reel` : `⚽ Live scores, odds & line-ups: ${SITE}/today?ref=fb-reel` }), { expirationTtl: 6 * 3600 })
-    const cover = barcaDay ? { text: 'يوم برشلونة: هل يفوز الليلة؟', tone: 'barca' } : { text: 'مباريات اليوم: من يفوز؟', tone: 'matchday' }
-    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading: ar ? 'مباريات اليوم' : undefined, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : undefined }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
-    await log(env, date, 'matchday-reel', true, `rendering ${reelPool.length} slides (job ${jobId}) — voice ${voiceUrl}`)
+    // Le jour Barça garde sa carte à lui : il a déjà son fond vidéo et son
+    // titre, et c'est le repère de la page.
+    const europe = barcaDay ? null : soireeEurope(reelPool)
+    const cover = barcaDay ? { text: 'يوم برشلونة: هل يفوز الليلة؟', tone: 'barca' }
+      : europe ? { text: 'ليلة أوروبية: من يفوز؟', tone: 'matchday' }
+      : { text: 'مباريات اليوم: من يفوز؟', tone: 'matchday' }
+    const heading = europe ? (ar ? europe.ar : europe.fr) : ar ? 'مباريات اليوم' : undefined
+    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : europe ? 'ucl' : undefined }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+    await log(env, date, 'matchday-reel', true, `rendering ${reelPool.length} slides (job ${jobId})${europe ? ` — soirée ${europe.slug}` : ''} — voice ${voiceUrl}`)
   } catch (e) { await log(env, date, 'matchday-reel', false, String(e)) }
+}
+
+// ╔════════════════════════════════════════════════════════════════════════╗
+// ║ SOIRÉE DE COUPE D'EUROPE — quatre vidéos par soirée                    ║
+// ╚════════════════════════════════════════════════════════════════════════╝
+//
+// Mehdi, 13/10/2026 : « une vidéo à la moitié de la 1re mi-temps, une à la
+// mi-temps, une au milieu de la 2e et une en fin de match. »
+//
+// ── POURQUOI SE CALER SUR LE JEU ET NON SUR L'HORLOGE ─────────────────────
+// Un coup d'envoi se décale, un arrêt de jeu s'allonge, une soirée mêle des
+// matchs à 19 h et à 21 h. Les moments sont donc déclenchés par l'ÉTAT RÉEL
+// des matchs — la minute médiane de ceux qui jouent, la mi-temps déclarée
+// par le fournisseur, la fin effective — et non par une heure fixe.
+//
+// ── POURQUOI UNE FENÊTRE ET NON UN INSTANT ───────────────────────────────
+// La minuterie passe toutes les cinq minutes. Une condition ponctuelle
+// (« minute == 23 ») serait ratée une fois sur deux. Chaque moment a donc
+// une fenêtre large d'une douzaine de minutes, et une marque en cache qui
+// garantit qu'il ne part qu'une fois.
+
+type EtatSoiree = { minute: number | null; pause: number; finis: number; total: number }
+
+export const MOMENTS_SOIREE: Array<{
+  cle: string
+  quand: (e: EtatSoiree) => boolean
+  ar: string
+  fr: string
+  titreAr: string
+  titreFr: string
+}> = [
+  {
+    cle: 'mt1',
+    quand: (e) => e.minute !== null && e.minute >= 20 && e.minute <= 32,
+    ar: 'نصف ساعة من اللعب: أين وصلت المباريات؟', fr: 'Une demi-heure de jeu : où en sont les matchs ?',
+    titreAr: 'دوري الأبطال — بعد نصف ساعة', titreFr: 'Ligue des champions — après une demi-heure',
+  },
+  {
+    cle: 'repos',
+    // La mi-temps est DÉCLARÉE par le fournisseur : plus fiable qu'une
+    // minute, qui reste à 45 pendant tout l'arrêt de jeu.
+    quand: (e) => e.pause > 0 && e.pause >= Math.ceil(e.total / 2),
+    ar: 'نتائج الشوط الأول', fr: 'Les résultats à la mi-temps',
+    titreAr: 'دوري الأبطال — نهاية الشوط الأول', titreFr: 'Ligue des champions — mi-temps',
+  },
+  {
+    cle: 'mt2',
+    quand: (e) => e.minute !== null && e.minute >= 63 && e.minute <= 75,
+    ar: 'الشوط الثاني: من يقترب من الفوز؟', fr: 'Seconde période : qui tient sa victoire ?',
+    titreAr: 'دوري الأبطال — الشوط الثاني', titreFr: 'Ligue des champions — seconde période',
+  },
+  {
+    cle: 'fin',
+    quand: (e) => e.total > 0 && e.finis === e.total,
+    ar: 'نتائج ليلة دوري الأبطال', fr: 'Les résultats de la soirée',
+    titreAr: 'دوري الأبطال — النتائج النهائية', titreFr: 'Ligue des champions — résultats',
+  },
+]
+
+/** « 45'+2 » → 45, « 23' » → 23, le reste → null. */
+export function minuteDeJeu(clock?: string): number | null {
+  const m = String(clock ?? '').match(/(\d+)/)
+  return m ? Number(m[1]) : null
+}
+
+/** La médiane : un match arrêté ou mal horodaté ne doit pas décaler la soirée. */
+function mediane(xs: number[]): number | null {
+  if (!xs.length) return null
+  const t = [...xs].sort((a, b) => a - b)
+  return t[Math.floor(t.length / 2)]
+}
+
+/**
+ * Une affiche vaut par son côté le PLUS FAIBLE — un seul grand nom ne fait
+ * pas une affiche, il faut reconnaître les deux écussons d'un coup d'œil.
+ * Barcelone passe devant quoi qu'il arrive : c'est le sujet de la page.
+ */
+const POIDS_CLUB: Record<string, number> = {
+  barcelona: 100, 'real madrid': 90, 'manchester city': 86, liverpool: 84, 'bayern munich': 84,
+  'paris saint-germain': 82, 'manchester united': 80, arsenal: 78, 'atlético madrid': 76,
+  internazionale: 74, chelsea: 72, juventus: 70, 'borussia dortmund': 68, napoli: 66, 'ac milan': 66,
+  atalanta: 60, benfica: 58, 'fc porto': 58, 'ajax amsterdam': 56, 'bayer leverkusen': 56,
+  'rb leipzig': 54, 'psv eindhoven': 52, galatasaray: 52, 'sporting cp': 50, 'club brugge': 46,
+  villarreal: 46, lille: 44, 'olympique marseille': 56, 'tottenham hotspur': 62, newcastle: 58,
+}
+const poidsClub = (n: string) => POIDS_CLUB[n.toLowerCase()] ?? 20
+const estBarca = (m: AutoMatch) => /barcelona|barça/i.test(`${m.home} ${m.away}`)
+export function classerAffiches(ms: AutoMatch[]): AutoMatch[] {
+  return [...ms].sort((x, y) => {
+    if (estBarca(x) !== estBarca(y)) return estBarca(y) ? 1 : -1
+    const px = Math.min(poidsClub(x.home), poidsClub(x.away)) * 2 + Math.max(poidsClub(x.home), poidsClub(x.away))
+    const py = Math.min(poidsClub(y.home), poidsClub(y.away)) * 2 + Math.max(poidsClub(y.home), poidsClub(y.away))
+    return py - px
+  })
+}
+
+/** La ligne d'un match pour la légende : « غلطة سراي 1 – 2 برشلونة ». */
+const ligneSoiree = (m: AutoMatch) =>
+  m.state === 'pre' ? `${m.home} × ${m.away}` : `${m.home} ${m.homeScore} – ${m.awayScore} ${m.away}`
+
+/**
+ * Les quatre rendez-vous d'une soirée européenne.
+ *
+ * Ne fait rien les autres soirs : sans au moins trois matchs de la même
+ * compétition européenne, on sort immédiatement.
+ */
+export async function runSoireeEurope(env: Env, s: AutomationSettings, date: string): Promise<void> {
+  if (!s.reels || !reelsConfigured(env)) return
+  const pool = await bigMatchesToday(env, date)
+  const europeens = pool.filter((m) => SOIREES_EUROPE[m.slug])
+  if (europeens.length < 3) return
+  const slug = europeens[0].slug
+  // ── LE CRÉNEAU PRINCIPAL ───────────────────────────────────────────────
+  // Une journée de Ligue des champions mêle des coups d'envoi : deux matchs
+  // à 16 h 45, sept à 19 h. Sans ce tri, les deux matchs avancés armeraient
+  // la vidéo « après une demi-heure » alors que la vraie soirée n'a pas
+  // commencé, et les affiches de tête s'y afficheraient encore à l'heure du
+  // coup d'envoi. On ne garde donc que le créneau le plus fourni.
+  const parHeure = new Map<string, AutoMatch[]>()
+  for (const m of europeens.filter((x) => x.slug === slug)) {
+    const h = (m.kickoff || '').slice(0, 16)
+    parHeure.set(h, [...(parHeure.get(h) ?? []), m])
+  }
+  const soiree = [...parHeure.values()].sort((a, b) => b.length - a.length)[0] ?? []
+  if (soiree.length < 3) return
+
+  const enCours = soiree.filter((m) => m.state === 'in')
+  const etat: EtatSoiree = {
+    minute: mediane(enCours.map((m) => minuteDeJeu(m.clock)).filter((x): x is number => x !== null)),
+    pause: soiree.filter((m) => /halftime|half-time/i.test(m.statusName)).length,
+    finis: soiree.filter((m) => m.completed).length,
+    total: soiree.length,
+  }
+
+  for (const moment of MOMENTS_SOIREE) {
+    if (!moment.quand(etat)) continue
+    const marque = `auto:soiree:${date}:${slug}:${moment.cle}`
+    if (await env.CACHE.get(marque)) continue
+    await env.CACHE.put(marque, '1', { expirationTtl: 30 * 3600 })
+    try { await queueSoireeReel(env, s, date, slug, moment, soiree) }
+    catch (e) { await log(env, date, 'soiree-reel', false, `${moment.cle}: ${String(e)}`) }
+    return   // un seul moment par passage : deux vidéos d'affilée n'ont pas de sens
+  }
+}
+
+/** Fabrique et met en file la vidéo d'un moment de la soirée. */
+async function queueSoireeReel(
+  env: Env, s: AutomationSettings, date: string, slug: string,
+  moment: (typeof MOMENTS_SOIREE)[number], soiree: AutoMatch[],
+): Promise<void> {
+  const ar = s.mainLang !== 'en'
+  const titres = SOIREES_EUROPE[slug]
+  const classees = classerAffiches(soiree)
+  const vedettes = classees.slice(0, REEL_VEDETTES)
+
+  // La VIDÉO montre trois affiches, la LÉGENDE garde toute la soirée — la
+  // règle mesurée le 11/10 (334 caractères pour le reel à 1 036 vues).
+  const lignes = classees.slice(0, 8).map(ligneSoiree).join(' · ')
+  const description = [
+    ar ? moment.ar : moment.fr,
+    lignes,
+    ar ? `النتائج المباشرة والتشكيلات على ${SITE}/today?lang=ar&ref=fb-reel` : `Scores en direct et compositions sur ${SITE}/today?ref=fb-reel`,
+    ar ? '#دوري_الأبطال #برشلونة #الكرة_الأوروبية #Pressing90' : '#LigueDesChampions #Barca #FootballEuropeen #Pressing90',
+  ].join('\n')
+
+  const jobId = `soiree-${date}-${moment.cle}-${Math.random().toString(36).slice(2, 6)}`
+  await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({
+    kind: 'reel', date,
+    description,
+    title: ar ? moment.titreAr : moment.titreFr,
+    comment: ar ? `⚽ كل نتائج الليلة لحظة بلحظة: ${SITE}/today?lang=ar&ref=fb-reel` : `⚽ Tous les scores de la soirée : ${SITE}/today?ref=fb-reel`,
+  }), { expirationTtl: 6 * 3600 })
+
+  await studio(env, '/render/reel', {
+    type: 'soiree',
+    data: {
+      matches: vedettes.map((m) => ({
+        home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo,
+        league: titres.fr, round: undefined,
+        live: m.state === 'in',
+        score: m.state === 'pre' ? undefined : `${m.homeScore}–${m.awayScore}`,
+        time: m.state === 'pre' && m.kickoff ? localTime(m.kickoff) : undefined,
+      })),
+      // L'affiche « joueurs » ouvre les trois premiers moments ; la fin
+      // prend le trophée, qui dit mieux « c'est terminé ».
+      affiche: moment.cle === 'fin' ? 'trophee' : 'joueurs',
+      cover: { text: ar ? moment.ar : moment.fr, tone: 'matchday' },
+      lang: ar ? 'ar' : 'fr',
+    },
+    jobId,
+    callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
+  })
+  await log(env, date, 'soiree-reel', true, `${moment.cle} — ${vedettes.length} affiches (job ${jobId})`)
 }
 
 /** Studio → worker: a reel finished rendering. */
@@ -2559,6 +2789,9 @@ export async function runAutomationTick(env: Env): Promise<void> {
     try { await runFtPosts(env, s, date) } catch (e) { await log(env, date, 'ft-post', false, String(e)) }
   }
   try { await runGoalAlerts(env, s, date) } catch (e) { await log(env, date, 'goal-reel', false, String(e)) }
+  // Les soirées de coupe d'Europe : quatre vidéos, calées sur l'état réel
+  // des matchs. Ne fait rien les autres soirs (sortie immédiate).
+  try { await runSoireeEurope(env, s, date) } catch (e) { await log(env, date, 'soiree-reel', false, String(e)) }
   try { await runBarcaLineups(env, s, date) } catch (e) { await log(env, date, 'barca-lineup', false, String(e)) }
   if (hour === 8 && minute >= 20 && minute <= 34) { try { await runBarcaArticle(env, s, date, hour, minute) } catch (e) { await log(env, date, 'barca-article', false, String(e)) } }
   if (hour === 9 && minute <= 9) { try { await runBarcaDigest(env, s, date, hour, minute) } catch (e) { await log(env, date, 'barca-digest', false, String(e)) } }

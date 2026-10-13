@@ -205,6 +205,59 @@ export async function renderAnimatedReel({ slides, voice, music, musicGain, seco
 }
 
 /**
+ * Reel « soirée européenne » (Mehdi, 13/10/2026).
+ *
+ * Trois différences avec renderAnimatedReel, et c'est tout :
+ *
+ *  1. DES DURÉES INÉGALES. L'ouverture est une affiche sans données : une
+ *     seconde et demie suffit. Les cartes de match portent des chiffres à
+ *     lire, elles tiennent plus longtemps.
+ *  2. UNE TRANSITION, pas un fondu au noir. Par défaut chaque carte se
+ *     ferme au noir et la suivante rouvre : plus d'une demi-seconde sans
+ *     rien à lire sur une vidéo de neuf. L'éclair blanc enchaîne les deux
+ *     cartes et se lit comme un flash de photographe dans un stade.
+ *  3. AUCUNE PISTE AUDIO. `animSlide` écrit déjà ses segments avec `-an` et
+ *     aucune passe audio n'est appelée ensuite.
+ *
+ * Chaque transition MANGE sa propre durée sur le total : les cartes sont
+ * rallongées d'autant en amont pour que la vidéo tombe sur la durée visée.
+ */
+export async function renderSoireeReel({ slides, durees = [], transition = 'fadewhite', out }) {
+  const fps = 25, T = 0.28
+  const dir = path.resolve(path.dirname(out))
+  const segs = []
+  for (let i = 0; i < slides.length; i++) {
+    const seg = path.join(dir, `soir${i}.mp4`)
+    const d = (durees[i] ?? 2.5) + (i ? T : T / 2)
+    const dernier = i === slides.length - 1
+    const args = { spec: slides[i], seconds: d, fps, out: seg, fadeIn: 0, fadeOut: dernier ? 0.3 : 0 }
+    try { await animSlide(args) }
+    catch (e) { console.log('[soiree] 1080p failed, 720p:', String(e).slice(0, 160)); await animSlide({ ...args, small: true }) }
+    segs.push({ f: seg, d })
+  }
+
+  // Chaque entrée est remise à 1080×1920 : un segment qui a basculé en 720p
+  // ferait échouer xfade, qui exige des tailles identiques.
+  const fc = segs.map((_, i) => `[${i}:v]scale=1080:1920,setsar=1,format=yuv420p[a${i}]`)
+  let cur = 'a0', fin = segs[0].d
+  for (let i = 1; i < segs.length; i++) {
+    const nxt = i === segs.length - 1 ? 'v' : `x${i}`
+    fc.push(`[${cur}][a${i}]xfade=transition=${transition}:duration=${T}:offset=${(fin - T).toFixed(3)}[${nxt}]`)
+    fin = fin - T + segs[i].d
+    cur = nxt
+  }
+  if (segs.length === 1) fc.push('[a0]null[v]')
+
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1',
+    ...segs.flatMap((s) => ['-i', s.f]),
+    '-filter_complex', fc.join(';'), '-map', '[v]', '-an',
+    '-r', String(fps), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p',
+    '-maxrate', '8M', '-bufsize', '16M', '-movflags', '+faststart', out])
+  for (const s of segs) fs.rm(s.f, { force: true }).catch(() => {})
+  return { out, seconds: Math.round(fin) }
+}
+
+/**
  * Football Stories reel: n beats, each with its own voice clip (duration =
  * clip + 0.5 s), progress bar across the whole reel, voice track rebuilt by
  * concatenation, music bed under it, loudness normalised to -16 LUFS.

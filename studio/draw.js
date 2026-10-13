@@ -68,6 +68,13 @@ const imgCache = new Map()
 export async function loadImg(src) {
   if (!src) return null
   if (imgCache.has(src)) return imgCache.get(src)
+  // Un chemin local : les fonds livrés vivent dans assets/, pas sur le web.
+  // Sans cette branche, `fetch` répondait « Failed to parse URL » et la carte
+  // sortait sur un fond vide, sans que rien ne s'arrête.
+  if (!/^https?:\/\//.test(src)) {
+    try { const img = await loadImage(src); imgCache.set(src, img); return img }
+    catch (e) { console.warn('img locale', src, e.message); return null }
+  }
   // A browser user-agent coming from Render's datacentre addresses does not get through to our own worker,
   // so for our own hosts we say who we really are, exactly as the media upload does (2026-10-09). The
   // browser UA stays for everyone else: ESPN's CDN and the press sites 403 bare clients. And never ask for
@@ -575,6 +582,252 @@ export async function drawMatchLayers(m, idx, total, heading, lang) {
       { layer: 'home', x: 90, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
       { layer: 'away', x: 630, y: 700, slide: { dx: 460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
       { layer: 'score', x: 290, y: 730, w: 500, h: 200, pop: { from: 2.4, st: 0.6, d: 0.4 }, fade: { st: 0.6, d: 0.15 } },
+      { layer: 'pill', x: 340, y: 1380, slide: { dx: 0, dy: 90, st: 1.0, d: 0.4 }, fade: { st: 1.0, d: 0.3 } },
+    ],
+  }
+}
+
+/** Un dégradé doré, pour les titres et le « VS » des soirées de coupe d'Europe. */
+function orGradient(ctx, x0, w) {
+  const g = ctx.createLinearGradient(x0, 0, x0 + w, 0)
+  g.addColorStop(0, '#C9922F'); g.addColorStop(0.45, '#F3DC97'); g.addColorStop(1, '#C9922F')
+  return g
+}
+
+/**
+ * Un ruban de lumière : une courbe tracée plusieurs fois, de la plus large et
+ * la plus pâle à la plus fine et la plus vive.
+ *
+ * node-canvas n'a pas de flou : c'est l'empilement des passes qui fabrique le
+ * halo. Dix passes suffisent pour que la transition paraisse continue.
+ */
+function ruban(ctx, [x0, y0, cx1, cy1, cx2, cy2, x1, y1], { couleur = '255,255,255', largeur = 90, alpha = 0.3, passes = 10 } = {}) {
+  ctx.lineCap = 'round'
+  for (let i = 0; i < passes; i++) {
+    const k = i / (passes - 1)
+    ctx.strokeStyle = `rgba(${couleur},${(alpha * (0.08 + 0.92 * k * k)).toFixed(3)})`
+    ctx.lineWidth = largeur * (1 - 0.92 * k)
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.bezierCurveTo(cx1, cy1, cx2, cy2, x1, y1); ctx.stroke()
+  }
+}
+
+/**
+ * Carte de match — SOIRÉE DE COUPE D'EUROPE (Mehdi, 13/10/2026).
+ *
+ * ── POURQUOI UN GABARIT À PART ──────────────────────────────────────────
+ * La carte ordinaire est claire : papier crème, encre marine, silhouette de
+ * tribune. Elle marche pour une journée de championnat. Une soirée de Ligue
+ * des champions ne se regarde pas pareil — c'est une affiche de soir, et le
+ * fil d'actualité en est saturé : une vignette sombre et dorée se détache
+ * là où une vignette crème se fond dans les autres.
+ *
+ * ── LE PIÈGE DES ÉCUSSONS ───────────────────────────────────────────────
+ * Sur fond nuit, la moitié des écussons européens disparaissent : Chelsea,
+ * Inter, PSG, Porto sont eux-mêmes bleu nuit. Chaque écusson est donc posé
+ * sur un DISQUE CLAIR cerclé d'or. Sans ça, une affiche sur deux serait
+ * illisible — et on ne s'en apercevrait qu'après publication.
+ *
+ * ── CE QUI NE CHANGE PAS ────────────────────────────────────────────────
+ * Les positions, les temps d'animation et la règle « la première carte est
+ * entièrement lisible dès la première image » sont repris tels quels de la
+ * carte ordinaire : ils ont été mesurés, pas devinés (voir REEL_VEDETTES
+ * dans le worker). Seule la peau change.
+ */
+export async function drawUclMatchLayers(m, idx, total, heading, lang) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const NUIT = '#060C26', OR = '#E8C25A', CREME = ed.E.CREAM
+
+  // ── UN FOND FOURNI ──────────────────────────────────────────────────────
+  // `m.bgImage` remplace le fond dessiné par une image livrée (les affiches
+  // de Mehdi : le logo de la page et celui de la compétition y figurent
+  // déjà). La carte ne pose alors QUE le match par-dessus — redessiner le
+  // bandeau et l'écusson les mettrait en double.
+  const fourni = m.bgImage ? await loadImg(m.bgImage) : null
+
+  // ── CARTE D'OUVERTURE ───────────────────────────────────────────────────
+  // `m.ouverture` : l'affiche seule, avec sa phrase d'accroche et rien
+  // d'autre. Les fonds chargés (joueurs, trophée) occupent justement la
+  // bande où se posent les écussons — y mettre un match le rendait
+  // illisible. En ouverture, l'affiche travaille pour ce qu'elle est : une
+  // vignette qui arrête le pouce.
+  if (m.ouverture && fourni) {
+    const W2 = createCanvas(W, H), c2 = ctx2d(W2)
+    const sc = Math.max(W / fourni.width, H / fourni.height)
+    c2.drawImage(fourni, (W - fourni.width * sc) / 2, 0, fourni.width * sc, fourni.height * sc)
+    const vp = c2.createLinearGradient(0, H - 420, 0, H)
+    vp.addColorStop(0, 'rgba(4,9,32,0)'); vp.addColorStop(0.55, 'rgba(4,9,32,0.72)'); vp.addColorStop(1, 'rgba(4,9,32,0.94)')
+    c2.fillStyle = vp; c2.fillRect(0, H - 420, W, 420)
+    ed.spaced(c2, 'PRESSING90.LIVE', W / 2, 1856, { size: 15, align: 'center', tracking: 0.42, color: 'rgba(230,238,255,0.92)' })
+    return {
+      layers: { bg: PNG(W2), cover: PNG(coverBand(m.cover)) },
+      anims: [{ layer: 'cover', x: 40, y: 1600, fade: { st: 0, d: 0 } }],
+    }
+  }
+
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    if (fourni) {
+      const sc = Math.max(W / fourni.width, H / fourni.height)
+      const dw = fourni.width * sc, dh = fourni.height * sc
+      ctx.drawImage(fourni, (W - dw) / 2, (H - dh) / 2, dw, dh)
+      // Un voile sombre sous la zone du match : sur une affiche chargée
+      // (joueurs, trophée), les écussons et le texte s'y perdraient.
+      const v = ctx.createLinearGradient(0, 820, 0, 1560)
+      v.addColorStop(0, 'rgba(4,9,32,0)'); v.addColorStop(0.35, 'rgba(4,9,32,0.64)')
+      v.addColorStop(0.8, 'rgba(4,9,32,0.64)'); v.addColorStop(1, 'rgba(4,9,32,0)')
+      ctx.fillStyle = v; ctx.fillRect(0, 820, W, 740)
+      // Et un voile au pied : sur le fond « stade », les gradins éclairés
+      // montent jusqu'en bas et le compteur de cartes y disparaissait.
+      const vp = ctx.createLinearGradient(0, H - 200, 0, H)
+      vp.addColorStop(0, 'rgba(4,9,32,0)'); vp.addColorStop(1, 'rgba(4,9,32,0.9)')
+      ctx.fillStyle = vp; ctx.fillRect(0, H - 200, W, 200)
+      ed.spaced(ctx, `${idx + 1} / ${total}`, W / 2, 1812, { size: 14, align: 'center', tracking: 0.42, color: 'rgba(230,238,255,0.7)' })
+      ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1856, { size: 15, align: 'center', tracking: 0.42, color: 'rgba(230,238,255,0.92)' })
+    } else {
+    // ── LE SOL ────────────────────────────────────────────────────────────
+    // Bleu ÉLECTRIQUE, pas noir. C'est ce qui permet de se passer des
+    // disques derrière les écussons : sur un fond saturé et lumineux, un
+    // écusson bleu nuit comme celui du PSG se détache encore, alors qu'il
+    // disparaissait sur une nuit presque noire.
+    const sol = ctx.createLinearGradient(0, 0, 0, H)
+    sol.addColorStop(0, '#040A24'); sol.addColorStop(0.26, '#0A1E78'); sol.addColorStop(0.52, '#1534C4')
+    sol.addColorStop(0.78, '#0B1960'); sol.addColorStop(1, '#040920')
+    ctx.fillStyle = sol; ctx.fillRect(0, 0, W, H)
+
+    // Le lavis violet en diagonale, qui réchauffe le haut à droite.
+    const violet = ctx.createLinearGradient(W * 0.2, 0, W, H * 0.62)
+    violet.addColorStop(0, 'rgba(128,48,220,0)'); violet.addColorStop(0.5, 'rgba(128,48,220,0.45)'); violet.addColorStop(1, 'rgba(48,86,236,0)')
+    ctx.fillStyle = violet; ctx.fillRect(0, 0, W, H * 0.72)
+
+    // ── LES RUBANS ────────────────────────────────────────────────────────
+    // Trois courbes qui traversent le haut de l'affiche : c'est elles qui
+    // donnent le mouvement, à la place du semis d'étoiles qui encombrait.
+    ruban(ctx, [-140, 250, 320, 20, 780, 470, 1220, 140], { couleur: '130,190,255', largeur: 110, alpha: 0.3 })
+    ruban(ctx, [-100, 520, 340, 250, 840, 130, 1200, 380], { couleur: '175,125,255', largeur: 80, alpha: 0.26 })
+    ruban(ctx, [-80, 120, 440, 400, 720, 10, 1180, 280], { couleur: '225,240,255', largeur: 34, alpha: 0.3 })
+    // Un ruban bas, derrière l'affiche du match : sans lui le milieu de la
+    // carte retombait à plat entre les rubans du haut et le stade.
+    ruban(ctx, [-120, 1180, 300, 980, 820, 1180, 1220, 960], { couleur: '120,170,255', largeur: 150, alpha: 0.2 })
+
+    // ── LE STADE ──────────────────────────────────────────────────────────
+    // Recoloré en bleu électrique, il ferme le bas comme sur une affiche de
+    // soir de match, et éclaire la zone où Facebook pose sa légende.
+    await ed.stadium(ctx, W, H, { top: H - 560, dark: '#050B2C', light: '#4873D8', alpha: 0.5, fadeTo: 0.62 })
+    const lueur = ctx.createRadialGradient(W / 2, H - 300, 40, W / 2, H - 300, 620)
+    lueur.addColorStop(0, 'rgba(120,170,255,0.22)'); lueur.addColorStop(1, 'rgba(120,170,255,0)')
+    ctx.fillStyle = lueur; ctx.fillRect(0, H - 900, W, 900)
+    // Un voile sombre sur les 230 derniers pixels : le compteur de cartes et
+    // l'adresse du site tombaient en plein milieu des gradins.
+    const voile = ctx.createLinearGradient(0, H - 230, 0, H)
+    voile.addColorStop(0, 'rgba(4,9,32,0)'); voile.addColorStop(1, 'rgba(4,9,32,0.92)')
+    ctx.fillStyle = voile; ctx.fillRect(0, H - 230, W, 230)
+
+    // Le halo central, derrière l'affiche du match.
+    const halo = ctx.createRadialGradient(W / 2, 880, 60, W / 2, 880, 620)
+    halo.addColorStop(0, 'rgba(110,160,255,0.34)'); halo.addColorStop(1, 'rgba(110,160,255,0)')
+    ctx.fillStyle = halo; ctx.fillRect(0, 300, W, 1160)
+
+    await pageMark(ctx, W - 48, 70, 'light')
+    ed.stack(ctx, lang === 'ar' ? ['ليلة', 'أوروبية'] : ['SOIRÉE', 'EUROPE'], 48, 92, { size: 15, color: OR })
+    // Sous le titre : le TOUR. Réécrire « UEFA Champions League » juste sous
+    // « LIGUE DES CHAMPIONS » occupait la meilleure ligne de l'affiche pour
+    // répéter ce qu'on venait de lire.
+    const sousTitre = m.round || m.league || ''
+    if (sousTitre) ed.spaced(ctx, oneLine(ctx, String(sousTitre).toUpperCase(), 620, 'bold 16px Cairo'), W / 2, 620, { size: 16, align: 'center', tracking: 0.42, color: 'rgba(232,194,90,0.9)' })
+    ed.spaced(ctx, `${idx + 1} / ${total}`, W / 2, 1760, { size: 14, align: 'center', tracking: 0.42, color: 'rgba(230,238,255,0.6)' })
+    labelText(ctx, 'PRESSING90.LIVE', W / 2, 1800, { size: 16, align: 'center', color: CREME })
+    } }
+
+  // L'écusson de la compétition, à la même source que partout ailleurs sur
+  // le site (ESPN) : c'est ce qui dit en une image de quelle soirée il s'agit.
+  // L'écusson de la compétition, à la même source que partout ailleurs sur le
+  // site. Sans cercle (Mehdi, 13/10/2026) : c'est une LUEUR qui le détache du
+  // fond, pas un disque — le disque faisait pastille et cassait la continuité
+  // de l'affiche.
+  const badge = createCanvas(260, 260); if (!fourni) { const ctx = ctx2d(badge)
+    const img = await loadImg(m.leagueLogo || 'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png')
+    if (img) {
+      const h = ctx.createRadialGradient(130, 130, 10, 130, 130, 125)
+      h.addColorStop(0, 'rgba(150,195,255,0.3)'); h.addColorStop(1, 'rgba(120,170,255,0)')
+      ctx.fillStyle = h; ctx.fillRect(0, 0, 260, 260)
+      // EN BLANC. L'écusson fourni par la source est bleu nuit sur fond
+      // transparent : posé sur ce fond-ci il disparaissait. On le remplit
+      // d'un aplat blanc à travers sa propre silhouette, exactement comme
+      // la compétition l'utilise elle-même sur ses affiches de soir.
+      const t = createCanvas(160, 160), tc = ctx2d(t)
+      tc.drawImage(img, 0, 0, 160, 160)
+      tc.globalCompositeOperation = 'source-in'
+      tc.fillStyle = '#FFFFFF'; tc.fillRect(0, 0, 160, 160)
+      ctx.drawImage(t, 50, 50)
+    } }
+
+  const head = createCanvas(900, 200); if (!fourni) { const ctx = ctx2d(head)
+    const txt = heading || (lang === 'ar' ? 'دوري الأبطال' : 'LIGUE DES CHAMPIONS')
+    const ar = /[؀-ۿ]/.test(txt)
+    let sz = ar ? 104 : 74
+    for (;;) { ctx.font = ar ? `bold ${sz}px Aref` : `900 ${sz}px Playfair`; if (ctx.measureText(txt).width <= 860 || sz <= 30) break; sz -= 4 }
+    ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
+    const w = ctx.measureText(txt).width
+    ctx.fillStyle = orGradient(ctx, 450 - w / 2, w)
+    ctx.fillText(txt, 450, 130) }
+
+  const [hImg, aImg] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
+  /**
+   * Un écusson détaché par une LUEUR, sans cercle (Mehdi, 13/10/2026).
+   *
+   * Le disque clair réglait bien la lisibilité des écussons bleu nuit, mais
+   * il posait deux pastilles au milieu de l'affiche. La lueur fait le même
+   * travail — elle éclaircit le fond juste derrière l'écusson — sans
+   * dessiner de bord. Elle ne tient que parce que le fond est un bleu
+   * saturé et non un noir : sur un fond sombre, il faudrait le disque.
+   */
+  const team = (img, name) => {
+    const c = createCanvas(380, 460); const ctx = ctx2d(c)
+    const h = ctx.createRadialGradient(190, 180, 20, 190, 180, 185)
+    h.addColorStop(0, 'rgba(180,215,255,0.5)'); h.addColorStop(0.5, 'rgba(130,180,255,0.2)'); h.addColorStop(1, 'rgba(130,180,255,0)')
+    ctx.fillStyle = h; ctx.fillRect(0, 0, 380, 380)
+    ed.crestAt(ctx, img, 190, 180, 236)
+    labelText(ctx, fitLine(ctx, name, 350, 'Cairo', 24, 15).toUpperCase(), 190, 394, { size: 22, align: 'center', color: CREME })
+    return c
+  }
+  const home = team(hImg, m.home), away = team(aImg, m.away)
+
+  const score = createCanvas(500, 200); { const ctx = ctx2d(score); ctx.textAlign = 'center'
+    // Le score reste BLANC, même en direct : le saumon sur ce bleu perdait en
+    // lisibilité, et c'est la pastille LIVE qui dit que le match est en cours.
+    if (m.score) ed.digits(ctx, String(m.score).replace('–', ' – '), 250, 150, 104, '#FFFFFF')
+    else { ctx.font = '900 96px Playfair'; const w = ctx.measureText('VS').width
+      ctx.fillStyle = orGradient(ctx, 250 - w / 2, w); ctx.fillText('VS', 250, 150) } }
+
+  const pill = createCanvas(400, 100); { const ctx = ctx2d(pill); ctx.textAlign = 'center'
+    if (m.live) { roundedPath(ctx, 90, 10, 220, 76, 38); ctx.fillStyle = ed.E.GRANA; ctx.fill(); ctx.fillStyle = CREME; ctx.font = 'bold 34px Cairo'; ctx.fillText('LIVE', 200, 60) }
+    else if (m.time) { ctx.font = 'bold 30px Cairo'; const pw = Math.max(200, ctx.measureText(m.time).width + 70)
+      roundedPath(ctx, 200 - pw / 2, 10, pw, 76, 38); ctx.fillStyle = OR; ctx.fill(); ctx.fillStyle = '#10194A'; ctx.fillText(m.time, 200, 59) } }
+
+  return {
+    layers: { bg: PNG(bg), badge: PNG(badge), head: PNG(head), home: PNG(home), away: PNG(away), score: PNG(score), pill: PNG(pill), cover: PNG(coverBand(idx === 0 ? m.cover : null)) },
+    anims: fourni ? [
+      // Fond fourni : le haut appartient à l'affiche, le match se pose dans
+      // sa moitié basse, là où le voile vient de dégager la place.
+      { layer: 'home', x: 70, y: 880, fade: { st: 0, d: idx ? 0.25 : 0 }, ...(idx ? { slide: { dx: -420, dy: 0, st: 0.15, d: 0.5 } } : {}) },
+      { layer: 'away', x: 630, y: 880, fade: { st: 0, d: idx ? 0.25 : 0 }, ...(idx ? { slide: { dx: 420, dy: 0, st: 0.15, d: 0.5 } } : {}) },
+      { layer: 'score', x: 290, y: 930, w: 500, h: 200, pop: { from: idx ? 2.2 : 1.3, st: idx ? 0.5 : 0, d: 0.35 }, fade: { st: idx ? 0.5 : 0, d: 0.12 } },
+      { layer: 'pill', x: 340, y: 1320, fade: { st: idx ? 0.9 : 0, d: idx ? 0.3 : 0 }, ...(idx ? { slide: { dx: 0, dy: 80, st: 0.9, d: 0.4 } } : {}) },
+      ...(idx === 0 ? [{ layer: 'cover', x: 40, y: 1470, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
+    ] : idx === 0 ? [
+      { layer: 'badge', x: 410, y: 36, fade: { st: 0, d: 0 } },
+      { layer: 'head', x: 90, y: 300, w: 900, h: 200, fade: { st: 0, d: 0 } },
+      { layer: 'home', x: 70, y: 700, fade: { st: 0, d: 0 } },
+      { layer: 'away', x: 630, y: 700, fade: { st: 0, d: 0 } },
+      { layer: 'score', x: 290, y: 750, w: 500, h: 200, pop: { from: 1.3, st: 0, d: 0.3 }, fade: { st: 0, d: 0 } },
+      { layer: 'pill', x: 340, y: 1380, fade: { st: 0, d: 0 } },
+      { layer: 'cover', x: 40, y: 1180, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } },
+    ] : [
+      { layer: 'badge', x: 410, y: 36, pop: { from: 1.5, st: 0, d: 0.3 }, fade: { st: 0, d: 0.2 } },
+      { layer: 'head', x: 90, y: 300, w: 900, h: 200, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
+      { layer: 'home', x: 70, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
+      { layer: 'away', x: 630, y: 700, slide: { dx: 460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
+      { layer: 'score', x: 290, y: 750, w: 500, h: 200, pop: { from: 2.4, st: 0.6, d: 0.4 }, fade: { st: 0.6, d: 0.15 } },
       { layer: 'pill', x: 340, y: 1380, slide: { dx: 0, dy: 90, st: 1.0, d: 0.4 }, fade: { st: 1.0, d: 0.3 } },
     ],
   }
