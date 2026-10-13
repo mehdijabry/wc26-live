@@ -1499,9 +1499,10 @@ async function queueSoireeReel(
         // ne distingue un score en route d'un résultat définitif.
         etat: m.completed ? 'انتهت' : m.state === 'in' ? (/halftime|half-time/i.test(m.statusName) ? 'الاستراحة' : (m.clock ?? '')) : '',
       })),
-      // L'affiche « joueurs » ouvre les trois premiers moments ; la fin
-      // prend le trophée, qui dit mieux « c'est terminé ».
-      affiche: moment.cle === 'fin' ? 'trophee' : 'joueurs',
+      // TOUJOURS l'affiche joueurs en ouverture (Mehdi, 13/10/2026). J'avais
+      // réservé le trophée au moment « fin » ; c'est la photo des joueurs qui
+      // doit arrêter le pouce, quel que soit le moment de la soirée.
+      affiche: 'joueurs',
       cover: { text: ar ? moment.ar : moment.fr, tone: 'matchday' },
       lang: ar ? 'ar' : 'fr',
     },

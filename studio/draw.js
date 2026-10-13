@@ -660,8 +660,11 @@ export async function drawUclMatchLayers(m, idx, total, heading, lang) {
     c2.fillStyle = vp; c2.fillRect(0, H - 420, W, 420)
     ed.spaced(c2, 'PRESSING90.LIVE', W / 2, 1856, { size: 15, align: 'center', tracking: 0.42, color: 'rgba(230,238,255,0.92)' })
     return {
-      layers: { bg: PNG(W2), cover: PNG(coverBand(m.cover)) },
-      anims: [{ layer: 'cover', x: 40, y: 1600, fade: { st: 0, d: 0 } }],
+      layers: { bg: PNG(W2), cover: PNG(coverBand(m.cover)), qr: PNG(await blocQr(lang === 'ar' ? 'امسح للتسجيل' : 'Scannez pour vous inscrire')) },
+      anims: [
+        { layer: 'cover', x: 40, y: 1600, fade: { st: 0, d: 0 } },
+        { layer: 'qr', x: W - 338, y: 1250, fade: { st: 0.35, d: 0.4 } },
+      ],
     }
   }
 
@@ -834,6 +837,39 @@ export async function drawUclMatchLayers(m, idx, total, heading, lang) {
 }
 
 /**
+ * Le QR d'inscription, sur sa plaque blanche.
+ *
+ * ── POURQUOI UNE PLAQUE ──────────────────────────────────────────────────
+ * Un QR ne se lit que sur fond clair et avec sa marge de silence. Posé tel
+ * quel sur une affiche de nuit, il devient indéchiffrable même pour un
+ * téléphone à dix centimètres.
+ *
+ * ── POURQUOI SI GRAND ────────────────────────────────────────────────────
+ * Celui-ci porte un logo en son centre : l'habillage mange de la redondance
+ * d'erreur et la lecture devient sensible à la taille. Il est en plus DENSE
+ * (beaucoup de modules), donc chaque module est petit. 268 px sur 1080 — un
+ * quart de la largeur — est le minimum raisonnable pour un téléphone tenu à
+ * bout de bras devant un écran.
+ *
+ * À faire vérifier sur un vrai appareil avant publication : aucun décodeur
+ * ne lit ce QR en automatique, précisément à cause de son habillage.
+ */
+let qrImg = null
+async function blocQr(legende) {
+  const T = 268, M = 15, H = T + M * 2 + (legende ? 36 : 0)
+  const c = createCanvas(T + M * 2, H); const ctx = ctx2d(c)
+  roundedPath(ctx, 0, 0, T + M * 2, T + M * 2, 22)
+  ctx.fillStyle = '#FFFFFF'; ctx.fill()
+  if (qrImg === null) { try { qrImg = await loadImage(path.join(__dirname, 'assets', 'qr-inscription.png')) } catch { qrImg = false } }
+  if (qrImg) ctx.drawImage(qrImg, M, M, T, T)
+  if (legende) {
+    ctx.font = 'bold 26px Tajawal'; ctx.textAlign = 'center'; ctx.fillStyle = '#E8E9F2'
+    ctx.fillText(legende, (T + M * 2) / 2, T + M * 2 + 28)
+  }
+  return c
+}
+
+/**
  * Carte RÉCAPITULATIVE d'une soirée européenne (Mehdi, 13/10/2026 :
  * « pas juste Barça, récap de tous les matchs »).
  *
@@ -922,6 +958,10 @@ export async function drawUclRecapLayers(matchs, page, pages, { bgImage, titre, 
   }
   layers.cover = PNG(coverBand(cover))
   if (cover) anims.push({ layer: 'cover', x: 40, y: HAUT + matchs.length * LIGNE + 50, fade: { st: 0, d: 0 }, out: { st: 2.8, d: 0.4 } })
+  // Le QR en bas à droite, sous les rencontres : il ne recouvre aucune
+  // donnée et reste visible pendant toute la carte.
+  layers.qr = PNG(await blocQr(lang === 'ar' ? 'امسح للتسجيل' : 'Scannez pour vous inscrire'))
+  anims.push({ layer: 'qr', x: W - 338, y: 1440, fade: { st: 0.5, d: 0.4 } })
   return { layers, anims }
 }
 
