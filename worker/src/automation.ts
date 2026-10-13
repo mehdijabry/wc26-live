@@ -1414,6 +1414,12 @@ export async function runSoireeEurope(env: Env, s: AutomationSettings, date: str
   }
   const soiree = [...parHeure.values()].sort((a, b) => b.length - a.length)[0] ?? []
   if (soiree.length < 3) return
+  // Le créneau décide QUAND déclencher ; le récap, lui, montre TOUTE la
+  // journée. Au premier essai les deux étaient confondus, et la vidéo de fin
+  // du 13/10 est sortie sans Lens – Sporting ni Sabah – Slavia, joués à
+  // 16 h 45 : des matchs de la même soirée, absents du « récap de tous les
+  // matchs ».
+  const journee = europeens.filter((m) => m.slug === slug)
 
   const enCours = soiree.filter((m) => m.state === 'in')
   const etat: EtatSoiree = {
@@ -1438,7 +1444,7 @@ export async function runSoireeEurope(env: Env, s: AutomationSettings, date: str
     if (await env.CACHE.get(verrou)) return
     await env.CACHE.put(verrou, '1', { expirationTtl: 180 })
     try {
-      await queueSoireeReel(env, s, date, slug, moment, soiree)
+      await queueSoireeReel(env, s, date, slug, moment, journee)
       await env.CACHE.put(marque, '1', { expirationTtl: 30 * 3600 })
     } catch (e) {
       await env.CACHE.delete(verrou)
@@ -1451,7 +1457,7 @@ export async function runSoireeEurope(env: Env, s: AutomationSettings, date: str
 /** Fabrique et met en file la vidéo d'un moment de la soirée. */
 async function queueSoireeReel(
   env: Env, s: AutomationSettings, date: string, slug: string,
-  moment: (typeof MOMENTS_SOIREE)[number], soiree: AutoMatch[],
+  moment: (typeof MOMENTS_SOIREE)[number], journee: AutoMatch[],
 ): Promise<void> {
   const ar = s.mainLang !== 'en'
   const titres = SOIREES_EUROPE[slug]
@@ -1459,7 +1465,7 @@ async function queueSoireeReel(
   // « pas juste Barça, récap de tous les matchs »). La carte est une LISTE :
   // neuf rencontres tiennent sur trois cartes, là où une affiche par match
   // aurait donné neuf cartes et une vidéo de trente secondes.
-  const classees = [...soiree].sort((a, b) => (a.kickoff || '').localeCompare(b.kickoff || ''))
+  const classees = [...journee].sort((a, b) => (a.kickoff || '').localeCompare(b.kickoff || ''))
   const lignes = classees.slice(0, 10).map(ligneSoiree).join(' · ')
   const description = [
     ar ? moment.ar : moment.fr,
