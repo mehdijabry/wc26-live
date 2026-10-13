@@ -28,7 +28,10 @@ for (let i = 0; i < cartes.length; i++) {
 }
 
 const out = path.join(dir, 'soiree.mp4')
-const { seconds } = await renderSoireeReel({ slides, durees: DUREES, transition: process.env.TRANSITION || 'fadewhite', out })
+// La musique est prise dans le dépôt, pas sur le site : on vérifie le
+// fichier qu'on vient de poser, avant qu'il ne soit déployé.
+const musique = new URL('../public/audio/matchday2.m4a', import.meta.url).pathname
+const { seconds } = await renderSoireeReel({ slides, durees: DUREES, transition: process.env.TRANSITION || 'flash', music: musique, out })
 const sortie = `/tmp/soiree-ucl-${jour}.mp4`
 await writeFile(sortie, await readFile(out))
 console.log(`\n→ ${sortie}  (${seconds} s)`)

@@ -1470,7 +1470,10 @@ async function queueSoireeReel(
 
   const jobId = `soiree-${date}-${moment.cle}-${Math.random().toString(36).slice(2, 6)}`
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({
-    kind: 'reel', date,
+    // `label` : sans lui, le retour du studio se journalise sous
+    // « matchday-reel » et on ne distingue plus une vidéo de soirée d'un
+    // reel du matin.
+    kind: 'reel', label: 'soiree-reel', date,
     description,
     title: ar ? moment.titreAr : moment.titreFr,
     comment: ar ? `⚽ كل نتائج الليلة لحظة بلحظة: ${SITE}/today?lang=ar&ref=fb-reel` : `⚽ Tous les scores de la soirée : ${SITE}/today?ref=fb-reel`,
@@ -2132,7 +2135,7 @@ async function queueResultsReel(env: Env, date: string, label: string, finished:
   const heading = resultsHeading(date, matchDate)
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'reel', label: jobLabel, date, title: `${heading} — ${labelAr(matchDate)}`, description: resultsCaption(list, label, date, matchDate), comment: `⏱ كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb-reel` }), { expirationTtl: 6 * 3600 })
   const cover = { text: matchDate === date ? 'نتائج اليوم: هل فاجأتك؟' : 'نتائج الأمس: هل فاجأتك؟', tone: 'results' }
-  await studio(env, '/render/reel', { type: 'matchday', data: { matches: vedettes.map((m, i) => (i === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar' }, seconds: 9, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+  await studio(env, '/render/reel', { type: 'matchday', data: { matches: vedettes.map((m, i) => (i === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar', musique: 'scores' }, seconds: 9, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
   await log(env, date, jobLabel, true, `rendering ${vedettes.length} of ${list.length} results (job ${jobId}): ${list.map((m) => `${m.home} ${m.homeScore}-${m.awayScore} ${m.away}`).join(' · ').slice(0, 160)}`)
   return jobId
 }
@@ -2846,6 +2849,33 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     if (job === 'ft-flush') { await env.CACHE.delete('auto:lastpost'); await runFtPosts(env, s, date, true, true); return { ok: true, note: `grouped FT post forced — see log (pending: ${(await ftPending(env, date)).length})` } }
     if (job === 'ft-pending') { return { ok: true, note: JSON.stringify(await ftPending(env, date)).slice(0, 3000) } }
     if (job === 'cleanup') { const n = await cleanupMedia(env, 7); return { ok: true, note: `${n} files deleted` } }
+    if (job === 'soiree-preview') {
+      // Rendu à blanc d'une carte de soirée : RIEN N'EST PUBLIÉ, l'URL
+      // atterrit dans le journal. Sert à vérifier que le studio sait traiter
+      // le type avant qu'un vrai moment ne parte — sans ça, on ne le
+      // découvre qu'en perdant une vidéo.
+      const pool = await bigMatchesToday(env)
+      const euro = pool.filter((m) => SOIREES_EUROPE[m.slug])
+      if (euro.length < 3) return { ok: false, note: 'aucune soirée européenne aujourd\'hui' }
+      const vedettes = classerAffiches(euro.filter((m) => m.slug === euro[0].slug)).slice(0, REEL_VEDETTES)
+      const jobId = `soiree-preview-${date}-${Math.random().toString(36).slice(2, 6)}`
+      await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'preview', label: 'soiree-preview', date }), { expirationTtl: 3600 })
+      await studio(env, '/render/reel', {
+        type: 'soiree',
+        data: {
+          matches: vedettes.map((m) => ({
+            home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo,
+            league: SOIREES_EUROPE[euro[0].slug].fr,
+            live: m.state === 'in',
+            score: m.state === 'pre' ? undefined : `${m.homeScore}–${m.awayScore}`,
+            time: m.state === 'pre' && m.kickoff ? localTime(m.kickoff) : undefined,
+          })),
+          affiche: 'joueurs', cover: { text: 'ليلة دوري الأبطال: من يفوز؟', tone: 'matchday' }, lang: 'ar',
+        },
+        jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
+      })
+      return { ok: true, note: `rendu à blanc lancé (${vedettes.length} affiches, job ${jobId}) — l'URL arrivera au journal, rien ne sera publié` }
+    }
     if (job === 'test-image') {
       const pool = await bigMatchesToday(env)
       const m = pool[0]

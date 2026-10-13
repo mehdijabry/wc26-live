@@ -371,7 +371,8 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           slides.push({ layers, anims: specs[i].anims })
         }
         const out = path.join(dir, 'soiree.mp4')
-        const { seconds: len } = await renderSoireeReel({ slides, durees, transition: data.transition || 'fadewhite', out })
+        const musique = await musicPath(data.musique || 'matchday')
+        const { seconds: len } = await renderSoireeReel({ slides, durees, transition: data.transition || 'flash', music: musique, out })
         const url = await upload(`reel-soiree-${stamp()}.mp4`, await fs.readFile(out), 'video/mp4')
         await fs.rm(dir, { recursive: true, force: true })
         return { url, seconds: len }
@@ -405,7 +406,9 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         }
         let voice = null
         if (voiceUrl) { const r = await fetch(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
-        const music = await musicPath(type === 'matchday' || type === 'goal' ? 'matchday' : 'article')
+        // `data.musique` l'emporte : c'est ainsi que le reel de résultats
+        // demande sa propre piste alors qu'il emprunte le type 'matchday'.
+        const music = await musicPath(data.musique || (type === 'goal' ? 'goal' : type === 'matchday' ? 'matchday' : 'article'))
         const out = path.join(dir, 'reel.mp4')
         const dflt = type === 'goal' ? 9 : type === 'article' ? 12 : type === 'articles' ? 10 * slides.length : 4 * slides.length
         const sfx = type === 'goal' && data.special === 'barca' && data.sfx !== false ? await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3') : null

@@ -9,7 +9,21 @@ import os from 'node:os'
 
 const SITE = process.env.SITE_URL || 'https://pressing90.live'
 // Signature tracks (Mehdi's, never regenerated). `story` is EXCLUSIVE to stories.
-const MUSIC = { matchday: 'matchday.m4a', article: 'articles.m4a', story: 'stories.m4a', tale: 'tales.m4a' }
+// Les musiques, par usage. `matchday2` et `scores` sont les pistes fournies
+// par Mehdi le 13/10/2026, normalisées au niveau de l'ancienne (voir
+// scripts/poser-musique.mjs) pour qu'elles se comportent pareil sous le gain
+// fixe appliqué au mixage.
+//
+// Les reels de BUT gardent la piste d'origine : c'est un format validé à
+// part, on ne change pas sa bande-son en passant.
+//
+// Provenance et licence de chaque piste : public/audio/LICENCES.md. Ne pas
+// remplacer un fichier sans l'y noter — une musique dont on ignore l'origine
+// ne peut plus être défendue si Meta la revendique.
+const MUSIC = {
+  matchday: 'matchday2.m4a', scores: 'scores.m4a', goal: 'matchday.m4a',
+  article: 'articles.m4a', story: 'stories.m4a', tale: 'tales.m4a',
+}
 
 function run(cmd, args) {
   return new Promise((resolve, reject) => {
@@ -91,6 +105,13 @@ async function muxAudio({ video, music, musicGain, voice, sfx, total, out }) {
   if (voice) { fc.push('[2:a]volume=1.0[vo]'); mixIns.unshift('vo') }
   if (sfx) { fc.push(`[${voice ? 3 : 2}:a]volume=0.9,afade=t=out:st=3.2:d=1.6[fx]`); mixIns.push('fx') }
   if (mixIns.length > 1) { fc.push(`${mixIns.map((x) => `[${x}]`).join('')}amix=inputs=${mixIns.length}:duration=longest:dropout_transition=0:normalize=0,alimiter=limit=0.95[mix]`); alast = 'mix' }
+  // MUSIQUE SEULE : il n'y avait aucun limiteur sur ce chemin — seulement
+  // sur le mixage à plusieurs entrées. Tant que la piste tenait sous 0 dB
+  // cela ne se voyait pas ; une piste dense ressort d'un encodage AAC
+  // au-dessus de 0 dB (mesuré : +1,7 dB sur « scores »), et le reel
+  // écrêtait. `level=disabled` est indispensable : par défaut `alimiter`
+  // REMONTE le signal jusqu'à sa limite au lieu de seulement l'écrêter.
+  else { fc.push(`[m]alimiter=limit=0.95:level=disabled[lim]`); alast = 'lim' }
   args.push('-filter_complex', fc.join(';'), '-map', '0:v', '-map', `[${alast}]`, '-t', total.toFixed(2),
     '-c:v', 'copy', '-c:a', 'aac', '-b:a', '128k', '-movflags', '+faststart', out)
   await run('ffmpeg', args)
@@ -222,39 +243,55 @@ export async function renderAnimatedReel({ slides, voice, music, musicGain, seco
  * Chaque transition MANGE sa propre durée sur le total : les cartes sont
  * rallongées d'autant en amont pour que la vidéo tombe sur la durée visée.
  */
-export async function renderSoireeReel({ slides, durees = [], transition = 'fadewhite', out }) {
+export async function renderSoireeReel({ slides, durees = [], transition = 'flash', music = null, musicGain = 0.9, out }) {
   const fps = 25, T = 0.28
   const dir = path.resolve(path.dirname(out))
+
+  // ── L'ÉCLAIR EST DESSINÉ DANS LA CARTE, PAS ENTRE LES CARTES ───────────
+  // Première version : un `xfade` enchaînait les segments deux à deux. Il
+  // décodait QUATRE vidéos 1080×1920 en même temps et réencodait le tout —
+  // et il a tué l'instance de 512 Mo à chaque rendu (trois redémarrages
+  // mesurés, chacun à la seconde où un moment partait). Le reste de ce
+  // fichier est « à mémoire plate » pour exactement cette raison : un reel
+  // de huit cartes avait déjà eu la peau du studio le 08/09.
+  //
+  // Un calque blanc qui s'efface en 0,28 s au début de chaque carte donne le
+  // même éclair, à l'intérieur du segment, pour rien de plus — et les
+  // segments se recollent en COPIE DE FLUX, sans réencodage.
+  //
+  // Jamais sur la première carte : son image 0 est la vignette que Facebook
+  // affiche, et elle serait blanche.
+  const flash = path.join(dir, 'flash.png')
+  if (transition !== 'aucune') {
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'lavfi', '-i', 'color=c=white:s=1080x1920', '-frames:v', '1', flash])
+  }
+
   const segs = []
   for (let i = 0; i < slides.length; i++) {
     const seg = path.join(dir, `soir${i}.mp4`)
-    const d = (durees[i] ?? 2.5) + (i ? T : T / 2)
+    const d = durees[i] ?? 2.5
     const dernier = i === slides.length - 1
-    const args = { spec: slides[i], seconds: d, fps, out: seg, fadeIn: 0, fadeOut: dernier ? 0.3 : 0 }
+    const avecFlash = i > 0 && transition !== 'aucune'
+    const spec = avecFlash
+      ? { ...slides[i], layers: { ...slides[i].layers, flash }, anims: [...slides[i].anims, { layer: 'flash', x: 0, y: 0, out: { st: 0, d: T } }] }
+      : slides[i]
+    const args = { spec, seconds: d, fps, out: seg, fadeIn: 0, fadeOut: dernier ? 0.3 : 0 }
     try { await animSlide(args) }
     catch (e) { console.log('[soiree] 1080p failed, 720p:', String(e).slice(0, 160)); await animSlide({ ...args, small: true }) }
-    segs.push({ f: seg, d })
+    segs.push(seg)
   }
 
-  // Chaque entrée est remise à 1080×1920 : un segment qui a basculé en 720p
-  // ferait échouer xfade, qui exige des tailles identiques.
-  const fc = segs.map((_, i) => `[${i}:v]scale=1080:1920,setsar=1,format=yuv420p[a${i}]`)
-  let cur = 'a0', fin = segs[0].d
-  for (let i = 1; i < segs.length; i++) {
-    const nxt = i === segs.length - 1 ? 'v' : `x${i}`
-    fc.push(`[${cur}][a${i}]xfade=transition=${transition}:duration=${T}:offset=${(fin - T).toFixed(3)}[${nxt}]`)
-    fin = fin - T + segs[i].d
-    cur = nxt
-  }
-  if (segs.length === 1) fc.push('[a0]null[v]')
-
-  await run('ffmpeg', ['-y', '-loglevel', 'error', '-threads', '1', '-filter_complex_threads', '1',
-    ...segs.flatMap((s) => ['-i', s.f]),
-    '-filter_complex', fc.join(';'), '-map', '[v]', '-an',
-    '-r', String(fps), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '21', '-pix_fmt', 'yuv420p',
-    '-maxrate', '8M', '-bufsize', '16M', '-movflags', '+faststart', out])
-  for (const s of segs) fs.rm(s.f, { force: true }).catch(() => {})
-  return { out, seconds: Math.round(fin) }
+  const liste = path.join(dir, 'soiree-segs.txt')
+  await fs.writeFile(liste, segs.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n') + '\n')
+  const muet = music ? path.join(dir, 'soiree-muet.mp4') : out
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', liste, '-c', 'copy', '-an', muet])
+  const total = durees.slice(0, slides.length).reduce((a, b) => a + b, 0)
+  // La musique passe par la même fonction que tous les autres reels : fondu
+  // d'entrée, fondu de sortie, et le limiteur qui protège de l'écrêtage.
+  if (music) { await muxAudio({ video: muet, music, musicGain, voice: null, sfx: null, total, out }); fs.rm(muet, { force: true }).catch(() => {}) }
+  for (const f of segs) fs.rm(f, { force: true }).catch(() => {})
+  fs.rm(flash, { force: true }).catch(() => {})
+  return { out, seconds: Math.round(total) }
 }
 
 /**
