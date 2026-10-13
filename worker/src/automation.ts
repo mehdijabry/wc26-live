@@ -1427,9 +1427,23 @@ export async function runSoireeEurope(env: Env, s: AutomationSettings, date: str
     if (!moment.quand(etat)) continue
     const marque = `auto:soiree:${date}:${slug}:${moment.cle}`
     if (await env.CACHE.get(marque)) continue
-    await env.CACHE.put(marque, '1', { expirationTtl: 30 * 3600 })
-    try { await queueSoireeReel(env, s, date, slug, moment, soiree) }
-    catch (e) { await log(env, date, 'soiree-reel', false, `${moment.cle}: ${String(e)}`) }
+    // ── DEUX VERROUS, ET NON UN ──────────────────────────────────────────
+    // Un verrou court AVANT l'appel empêche deux passages simultanés de
+    // lancer la même vidéo ; la marque définitive n'est posée qu'APRÈS le
+    // succès. Poser la marque d'emblée, comme je l'avais fait d'abord,
+    // faisait qu'un studio endormi ou en cours de redéploiement brûlait le
+    // moment pour de bon — alors que la fenêtre de treize minutes est
+    // justement là pour laisser réessayer.
+    const verrou = `${marque}:en-cours`
+    if (await env.CACHE.get(verrou)) return
+    await env.CACHE.put(verrou, '1', { expirationTtl: 180 })
+    try {
+      await queueSoireeReel(env, s, date, slug, moment, soiree)
+      await env.CACHE.put(marque, '1', { expirationTtl: 30 * 3600 })
+    } catch (e) {
+      await env.CACHE.delete(verrou)
+      await log(env, date, 'soiree-reel', false, `${moment.cle}: ${String(e)}`)
+    }
     return   // un seul moment par passage : deux vidéos d'affilée n'ont pas de sens
   }
 }
