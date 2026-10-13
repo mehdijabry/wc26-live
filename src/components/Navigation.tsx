@@ -34,7 +34,7 @@ const BASE_LINKS: Array<{ label: string; to: string }> = [
   // n'y menait (Mehdi, 2026-10-10). /board est maintenant la section
   // entière — ma saison, mes groupes, mes prix, le général — et ce lien est
   // sa porte. Un deuxième lien vers /leagues ne ferait que diviser.
-  { label: 'Standings', to: '/board' },
+  { label: 'Leaderboard', to: '/board' },
 ]
 const WC26_LINK = { label: 'WC26 Archive', to: '/wc26' }
 

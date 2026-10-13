@@ -68,7 +68,7 @@ const tabs: Tab[] = [
       // Le classement et les groupes. Mehdi n'a pas trouvé la section le
       // 10/10/2026 : elle n'était dans aucune barre. Sur mobile, une
       // fonctionnalité absente de cette barre n'existe pas.
-      to: '/board', label: 'Standings',
+      to: '/board', label: 'Leaderboard',
       icon: (a) => (
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
           <path d="M4 20h16" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" />

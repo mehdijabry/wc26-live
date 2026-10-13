@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "verifier": "node verifier-appariement.mjs"
+    "verifier": "node verifier-appariement.mjs",
+    "verifier-cotes": "node verifier-cotes-live.mjs"
   },
   "devDependencies": {
     "wrangler": "^4.0.0",

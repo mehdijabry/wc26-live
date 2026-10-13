@@ -323,3 +323,156 @@ export function motifLisible(a: Absent, t: (s: string) => string): string {
   if (a.reason) return a.reason
   return a.status === 'injured' ? t('injured') : a.status
 }
+
+/**
+ * ╔════════════════════════════════════════════════════════════════════════╗
+ * ║ LA SYNTHÈSE — ce que la carte dit, en quatre phrases au plus           ║
+ * ╚════════════════════════════════════════════════════════════════════════╝
+ *
+ * La carte de pronostic montre tout : trois blocs de probabilités, soixante
+ * statistiques par équipe, deux compositions, les absents, les
+ * confrontations directes. C'est exactement ce que Mehdi avait demandé — et
+ * c'est devenu illisible pour la question qu'on se pose vraiment avant de
+ * miser : « alors, je joue quoi ? »
+ *
+ * Cette fonction ne calcule RIEN de neuf. Elle va chercher, dans ce qui est
+ * déjà affiché plus bas, les quatre faits qui décident d'un pari, et les
+ * écrit en toutes lettres. Le détail reste dessous pour qui veut vérifier.
+ *
+ * ── TROIS RÈGLES ──────────────────────────────────────────────────────────
+ *
+ * 1. ELLE N'INVENTE PAS. Chaque phrase sort d'un nombre présent dans la
+ *    carte. Une donnée absente ne produit pas une phrase prudente, elle ne
+ *    produit AUCUNE phrase — trois phrases justes valent mieux que quatre
+ *    dont une brode.
+ *
+ * 2. LES CHANCES VIENNENT DE LA COTE, pas du fournisseur. C'est la même
+ *    source que la barre juste au-dessous, et surtout que le prix auquel le
+ *    joueur mise. Deux chiffres différents pour la même question, à trois
+ *    centimètres l'un de l'autre, ruineraient la confiance dans les deux.
+ *
+ * 3. ELLE EST COURTE. Quatre phrases au plus, et chacune peut disparaître.
+ *    « Surtout que ça ne soit pas trop long » (Mehdi, 12/10/2026).
+ */
+
+export type Synthese = {
+  /** Le verdict, à mettre en avant. */
+  verdict: string
+  /** Les faits qui suivent, zéro à trois. */
+  details: string[]
+}
+
+/** Le nom court d'un joueur, pour ne pas allonger la phrase. */
+function nomCourt(a: Absent): string {
+  return a.short_name || a.name
+}
+
+/**
+ * Les absents qui changent quelque chose, au plus deux par équipe.
+ *
+ * On ne liste pas les onze remplaçants blessés d'un effectif : au-delà de
+ * deux noms la phrase cesse d'être lue. Les blessés passent avant les
+ * suspendus — une suspension est connue de tous depuis une semaine, une
+ * blessure de la veille est l'information qui vaut quelque chose.
+ */
+function absentsMarquants(liste: Absent[]): Absent[] {
+  return [...liste]
+    .sort((x, y) => Number(y.status === 'injured') - Number(x.status === 'injured'))
+    .slice(0, 2)
+}
+
+export function synthese(args: {
+  carte: Carte
+  /** Nos chances, en pourcentage, dérivées de la cote. */
+  chances: { dom: number; nul: number; ext: number } | null
+  domicile: string
+  exterieur: string
+  /** Le buteur le mieux coté, quand la liste a été chargée. */
+  buteur: { nom: string; cote: number } | null
+  t: (s: string) => string
+  /** Formate un nombre dans la langue courante. */
+  nb: (n: number, decimales?: number) => string
+}): Synthese | null {
+  const { carte, chances, domicile, exterieur, buteur, t, nb } = args
+  if (!chances) return null
+
+  // ── 1. Le verdict ──────────────────────────────────────────────────────
+  const favoriEstDom = chances.dom >= chances.ext
+  const favori = favoriEstDom ? domicile : exterieur
+  const autre = favoriEstDom ? exterieur : domicile
+  const pFavori = favoriEstDom ? chances.dom : chances.ext
+  const pAutre = favoriEstDom ? chances.ext : chances.dom
+
+  // Sous 40 %, personne n'est favori : le dire franchement vaut mieux que
+  // de couronner une équipe à 37 %.
+  const serre = pFavori < 40
+  const verdict = (
+    serre
+      ? t('Wide open: {fav} {p}%, draw {d}%, {oth} {q}%.')
+      : t('{fav} should take it — {p}% to win, against {d}% for a draw and {q}% for {oth}.')
+  )
+    .replace('{fav}', favori)
+    .replace('{oth}', autre)
+    .replace('{p}', nb(Math.round(pFavori)))
+    .replace('{q}', nb(Math.round(pAutre)))
+    .replace('{d}', nb(Math.round(chances.nul)))
+
+  const details: string[] = []
+  const leurs = carte.leurs && !carte.leurs.incoherent ? carte.leurs : null
+
+  // ── 2. Les buts ────────────────────────────────────────────────────────
+  if (leurs) {
+    const bouts: string[] = []
+    if (leurs.xg) {
+      bouts.push(
+        t('around {g} goals').replace('{g}', nb(leurs.xg.dom + leurs.xg.ext, 1)),
+      )
+    }
+    if (leurs.plusDe) {
+      bouts.push(
+        t('over 2.5 at {o}%').replace('{o}', nb(Math.round(leurs.plusDe.deux5))),
+      )
+    }
+    if (leurs.lesDeuxMarquent != null) {
+      bouts.push(
+        t('both scoring at {b}%').replace('{b}', nb(Math.round(leurs.lesDeuxMarquent))),
+      )
+    }
+    if (bouts.length) {
+      let phrase = t('Expect {list}.').replace('{list}', bouts.join(t(', ')))
+      if (leurs.scoreProbable) {
+        phrase += ' ' + t('Likeliest score {s}.').replace('{s}', leurs.scoreProbable)
+      }
+      details.push(phrase)
+    }
+  }
+
+  // ── 3. Les absents ─────────────────────────────────────────────────────
+  if (carte.absents) {
+    const morceaux: string[] = []
+    for (const [liste, nom] of [
+      [carte.absents.home, domicile],
+      [carte.absents.away, exterieur],
+    ] as const) {
+      const gens = absentsMarquants(liste ?? [])
+      if (!gens.length) continue
+      morceaux.push(
+        t('{team} without {who}')
+          .replace('{team}', nom)
+          .replace('{who}', gens.map(nomCourt).join(t(' and '))),
+      )
+    }
+    if (morceaux.length) details.push(morceaux.join(t('; ')) + '.')
+  }
+
+  // ── 4. Le buteur ───────────────────────────────────────────────────────
+  if (buteur) {
+    details.push(
+      t('{p} is the likeliest scorer, at {c}.')
+        .replace('{p}', buteur.nom)
+        .replace('{c}', nb(buteur.cote, 2)),
+    )
+  }
+
+  return { verdict, details }
+}

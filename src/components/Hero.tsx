@@ -230,7 +230,7 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
                     key={i}
                     onClick={() => go(i)}
                     aria-label={`Featured match ${i + 1}`}
-                    className={'h-1 w-7 rounded-full transition-colors ' + (i === cur ? 'bg-accent-gold' : 'bg-slate-200 hover:bg-slate-300')}
+                    className={'h-1 w-7 rounded-full transition-colors ' + (i === cur ? 'bg-accent-gold' : 'bg-slate-400 hover:bg-slate-500')}
                   />
                 ))}
               </div>

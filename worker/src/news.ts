@@ -1533,6 +1533,9 @@ async function insertDraft(
       source_name: source.source,
       source_attribution: `Based on reporting by ${source.source}`,
       status: 'draft',
+      // Le worker DÉCLARE ce qu'il produit plutôt que de laisser le site le
+      // deviner d'après le slug (migration 026). Ici : une dépêche réécrite.
+      kind: 'news',
       score: scoreCandidate(source),
     }),
   })

@@ -34,6 +34,9 @@ import { withPlaybook, checkCaption, playbookSummary, pinnedComment } from './pl
 import { playbookReview } from './review'
 import { enqueueGoalAnim, processGoalAnim, goalAnimCallback, goalAnimJob, goalAnimQueue, resetGoalAnim, pickBestGoal, buildScene, type GoalAnimItem } from './goalanim'
 
+/** Le seul hôte ESPN fiable depuis un Worker — même que `syncCotes`. */
+const ESPN_SOCCER_OPS = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
+
 export const SITE = 'https://pressing90.live'
 export const WORKER_PUBLIC = 'https://wc26-api.nameless-violet-5dc1.workers.dev'
 const TZ = 'Africa/Casablanca'
@@ -240,7 +243,13 @@ export async function cleanupMedia(env: Env, days = 7): Promise<number> {
   const aJeter = (i: { name: string; created_at?: string }) => {
     const t = i.created_at ? Date.parse(i.created_at) : NaN
     if (!Number.isFinite(t)) return false
-    if (/^tale-img-/.test(i.name)) return t < vieux
+    // ── LES COUVERTURES DE RÉCIT NE SONT PAS JETABLES ────────────────────
+    // `tale-cover-2026-10-12-x.png` porte une date, donc la règle générique
+    // ci-dessous la supprimait au bout de sept jours — alors que l'article
+    // publié pointe dessus POUR TOUJOURS. Mesuré le 13/10/2026 :
+    // **29 articles publiés avec une couverture morte** (HTTP 400), sans
+    // que rien ne le signale. Même traitement que `tale-img-` : un an.
+    if (/^tale-(img|cover)-/.test(i.name)) return t < vieux
     return t < cutoff && jetable.test(i.name)
   }
   const old = items.filter(aJeter).map((i) => i.name)
@@ -2351,6 +2360,9 @@ async function publishTaleArticle(env: Env, date: string, t: Tale): Promise<stri
     slug, title: t.en.title.slice(0, 200), excerpt: t.en.excerpt.slice(0, 300), body: t.en.article.join('\n\n'), image_url: image,
     source_url: `${SITE}/news/${slug}`, source_name: "Pressing 90' · Football Stories", score: 100, status: 'published', published_at: nowIso, archived_at: null,
     title_ar: t.ar.title.slice(0, 160), excerpt_ar: t.ar.excerpt.slice(0, 300), body_ar: t.ar.article.join('\n\n'),
+    // Un RÉCIT, pas une dépêche : vérifié à la main, et destiné à être lu
+    // des mois plus tard. C'est ce qui le range à part sur /news.
+    kind: 'story',
   }
   const ex = await fetch(`${env.SUPABASE_URL}/rest/v1/articles?slug=eq.${encodeURIComponent(slug)}&select=id&limit=1`, { headers: sbHeaders(env) })
   const exists = ((await ex.json().catch(() => [])) as Array<{ id: string }>).length > 0
@@ -3304,6 +3316,66 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
         const t = await r.text()
         return { ok: r.ok, note: `${r.status} · ${t.slice(0, Math.min(Number(x.max ?? 1400), 60000))}` }
       } catch (e) { return { ok: false, note: String(e).slice(0, 200) } }
+    }
+    if (job === 'cotes-live') {
+      // ── LA QUESTION QU'ON N'A PAS PU TRANCHER AU BUREAU ─────────────────
+      // Notre front appelle déjà l'API « core » d'ESPN et y cherche un
+      // fournisseur dont le nom contient « live » (`fetchLiveOdds`). Le
+      // 12/10/2026, aucun match n'était en cours au moment de la mesure :
+      // impossible de savoir si un tel fournisseur existe en football, ou si
+      // ce filtre ne trouve jamais rien. Sur les matchs d'avant et d'après
+      // on ne voit que DraftKings et Bet 365, et sur un match TERMINÉ le
+      // bloc `current` est identique à `close` — donc la cote de clôture
+      // d'avant-match, pas une cote en jeu.
+      //
+      // Cette sonde répond toute seule à la prochaine occasion : lancée
+      // pendant qu'un match se joue, elle dit ce que `core` publie vraiment.
+      // Si un vrai prix en jeu apparaît, on pourra préférer le marché à
+      // notre modèle. Tant qu'elle ne montre rien, le modèle reste la seule
+      // source possible — et c'est la conclusion sur laquelle on a bâti.
+      const x = extra as { max?: number }
+      const r = await fetch(`${ESPN_SOCCER_OPS}/all/scoreboard?limit=400`, {
+        signal: AbortSignal.timeout(15000),
+      })
+      if (!r.ok) return { ok: false, note: `scoreboard ${r.status}` }
+      const d = (await r.json()) as {
+        events?: Array<{ id?: string; name?: string; status?: { type?: { state?: string }; displayClock?: string } }>
+      }
+      const live = (d.events ?? []).filter((e) => e.status?.type?.state === 'in').slice(0, 5)
+      if (!live.length) return { ok: true, note: 'aucun match en cours — relancer pendant une soirée de matchs' }
+
+      const lignes: string[] = []
+      for (const e of live) {
+        const id = e.id
+        if (!id) continue
+        try {
+          const o = await fetch(
+            `https://sports.core.api.espn.com/v2/sports/soccer/leagues/all/events/${id}/competitions/${id}/odds`,
+            { signal: AbortSignal.timeout(12000) },
+          )
+          if (!o.ok) { lignes.push(`${e.name} : core ${o.status}`); continue }
+          const j = (await o.json()) as {
+            items?: Array<{
+              provider?: { name?: string }
+              homeTeamOdds?: { moneyLine?: number; current?: { moneyLine?: { value?: number } } }
+              close?: unknown
+            }>
+          }
+          const fournisseurs = (j.items ?? []).map((i) => i.provider?.name ?? '?')
+          const enJeu = fournisseurs.filter((n) => /live/i.test(n))
+          // `current` différent de `close` serait la signature d'un prix qui
+          // bouge encore : c'est le test décisif, plus fiable que le nom.
+          const bouge = (j.items ?? []).some(
+            (i) => JSON.stringify(i.homeTeamOdds?.current) !== JSON.stringify((i as { homeTeamOdds?: { close?: unknown } }).homeTeamOdds?.close),
+          )
+          lignes.push(
+            `${e.name} (${e.status?.displayClock ?? '?'}) : ${fournisseurs.join(', ') || 'aucun'}` +
+            ` · fournisseur « live » : ${enJeu.length ? enJeu.join(', ') : 'NON'}` +
+            ` · current≠close : ${bouge ? 'OUI' : 'non'}`,
+          )
+        } catch (err) { lignes.push(`${e.name} : ${String(err).slice(0, 80)}`) }
+      }
+      return { ok: true, note: lignes.join(' | ').slice(0, Math.min(Number(x.max ?? 2500), 60000)) }
     }
     if (job === 'bsd-carte') {
       // Monte la carte d'un match SANS passer par la porte de déblocage :

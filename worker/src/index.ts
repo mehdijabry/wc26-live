@@ -23,6 +23,14 @@ import {
 } from './security'
 import { handleAdmin } from './admin'
 import { construireAppariement, cartePronostic, appariement } from './pronostics'
+import {
+  cotesLive1X2,
+  grilleLive,
+  minuteDuMatch,
+  fermetureLive,
+  suspensionJusqua,
+  CARTON_ROUGE_FERME,
+} from './cotes-live'
 
 export interface Env {
   CACHE: KVNamespace
@@ -758,6 +766,19 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
       }
     } catch (e) {
       console.log('[cotes] passe échouée:', e)
+    }
+
+    // Les cotes en direct, en FILET DE SÉCURITÉ.
+    // Le Durable Object `LivePoller` s'en charge normalement, toutes les cinq
+    // secondes. Mais c'est lui qui décide de se réarmer, et il ne le fait que
+    // tant qu'il voit un match en cours sur le scoreboard du MONDIAL — pas
+    // sur les quarante autres compétitions. Sans ce rappel d'une minute, un
+    // samedi sans match de sélection laisserait les cotes figées au coup
+    // d'envoi. Son propre garde, comme les autres passes.
+    try {
+      await syncCotesLive(env)
+    } catch (e) {
+      console.log('[cotes-live] passe échouée:', e)
     }
 
     // Les buteurs, par tranches de cinq matchs : deux effectifs par match,
@@ -2977,6 +2998,12 @@ async function syncCotes(env: Env): Promise<void> {
       // Les trois ou rien : un marché incomplet ne doit pas être pariable.
       if (!home || !draw || !away) continue
 
+      // Les espérances de buts d'avant-match, FIGÉES ici une fois pour
+      // toutes. C'est d'elles que partira chaque recalcul en direct : les
+      // redériver depuis la cote live ajouterait ses arrondis à chaque tour,
+      // et au bout d'une heure le prix ne décrirait plus le match.
+      const lam = esperancesDeButs(home, draw, away)
+
       lignes.push({
         match_id: `e${ev.id}`,
         home,
@@ -2987,6 +3014,14 @@ async function syncCotes(env: Env): Promise<void> {
         // marché différent de celui affiché.
         exact: grilleScoresExacts(home, draw, away),
         kickoff: ev.date ?? null,
+        lam_home: lam?.dom ?? null,
+        lam_away: lam?.ext ?? null,
+        live: false,
+        // Avant le coup d'envoi, la fermeture EST le coup d'envoi. Dès que
+        // le match démarre, `syncCotesLive` la repousse tour après tour
+        // jusqu'à dix minutes de la fin. Une ligne qu'il n'a pas reprise
+        // reste donc fermée — la panne ferme, elle n'ouvre jamais.
+        closes_at: ev.date ?? null,
         updated_at: new Date().toISOString(),
       })
 
@@ -3025,6 +3060,206 @@ async function syncCotes(env: Env): Promise<void> {
   } else {
     console.log(`[cotes] ${lignes.length} match(s) pariables mis à jour`)
   }
+}
+
+/**
+ * Les cotes des matchs EN COURS, recalculées et republiées.
+ *
+ * Tourne dans le Durable Object `LivePoller`, qui bat déjà toutes les cinq
+ * secondes tant qu'un match est en cours. C'est ce qui rend le pari en
+ * direct tenable : entre le but et sa prise en compte il s'écoule quelques
+ * secondes, pas une minute de cron.
+ *
+ * ── ON N'ÉCRIT PAS À CHAQUE TOUR ──────────────────────────────────────────
+ * Cinq secondes × cinquante matchs un samedi, ce serait 864 000 écritures
+ * par jour pour des prix qui, à score constant, ne bougent que d'un
+ * centième par minute. On ne republie donc que lorsque l'état OBSERVABLE
+ * change : le score, ou la minute. En pratique une écriture par match et par
+ * minute, plus une immédiate à chaque but.
+ */
+async function syncCotesLive(env: Env): Promise<boolean> {
+  type Ev = {
+    id?: string
+    status?: { type?: { state?: string }; displayClock?: string; clock?: number; period?: number }
+    competitions?: Array<{
+      competitors?: Array<{ homeAway?: string; score?: string }>
+      details?: Array<{ redCard?: boolean }>
+    }>
+  }
+
+  // AUCUN CACHE ICI, et c'est le point. Une réponse vieille de cinq secondes
+  // s'ajouterait aux cinq secondes de cadence du poller : jusqu'à dix
+  // secondes de retard sur un but, soit exactement la fenêtre qu'on cherche
+  // à fermer. Le surcoût est d'une requête par tour.
+  const r = await fetch(`${ESPN_SOCCER}/all/scoreboard?limit=400`, {
+    cf: { cacheTtl: 0 },
+  })
+  if (!r.ok) return false
+  const data = (await r.json()) as { events?: Ev[] }
+
+  const enCours = new Map<string, { minute: number; dom: number; ext: number; rouge: boolean }>()
+  const termines: string[] = []
+  for (const ev of data.events ?? []) {
+    if (!ev.id) continue
+    const etat = ev.status?.type?.state
+    const id = `e${ev.id}`
+    if (etat === 'post') { termines.push(id); continue }
+    if (etat !== 'in') continue
+    const eq = ev.competitions?.[0]?.competitors ?? []
+    const dom = Number(eq.find((x) => x.homeAway === 'home')?.score ?? NaN)
+    const ext = Number(eq.find((x) => x.homeAway === 'away')?.score ?? NaN)
+    if (!Number.isFinite(dom) || !Number.isFinite(ext)) continue
+    const rouge = (ev.competitions?.[0]?.details ?? []).some((d) => d.redCard === true)
+    enCours.set(id, { minute: minuteDuMatch(ev.status ?? {}), dom, ext, rouge })
+  }
+
+  // Un match terminé se ferme explicitement. Sa date de fermeture est déjà
+  // passée dans le cas normal, mais si le poller a manqué les derniers tours
+  // elle pourrait rester dans le futur — et un match fini resterait pariable.
+  if (termines.length) await fermerMatchs(env, termines)
+
+  if (!enCours.size) return false
+
+  // On ne lit QUE les colonnes nécessaires, pour les seuls matchs en cours.
+  const ids = [...enCours.keys()]
+  const q = `${env.SUPABASE_URL}/rest/v1/match_odds` +
+    `?select=match_id,lam_home,lam_away,minute,home_score,away_score,suspended_until` +
+    `&match_id=in.(${ids.join(',')})`
+  const lu = await fetch(q, {
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    },
+  })
+  if (!lu.ok) return true
+  const rows = (await lu.json()) as Array<{
+    match_id: string
+    lam_home: number | null
+    lam_away: number | null
+    minute: number | null
+    home_score: number | null
+    away_score: number | null
+    suspended_until: string | null
+  }>
+
+  const maintenant = Date.now()
+  const lignes: Array<Record<string, unknown>> = []
+
+  for (const row of rows) {
+    const etat = enCours.get(row.match_id)
+    if (!etat) continue
+    // Pas d'espérances d'avant-match : ce match n'a jamais eu de cote
+    // publiable, il n'en aura pas en direct non plus. « Pas de cote, pas de
+    // bouton » vaut aussi pendant le match.
+    if (row.lam_home == null || row.lam_away == null) continue
+
+    const scoreAChange =
+      row.home_score !== etat.dom || row.away_score !== etat.ext
+    // Premier passage sur ce match : la ligne n'a encore ni minute ni score.
+    // Ce n'est pas un but, c'est le coup d'envoi — on ne gèle pas.
+    const premierTour = row.minute == null
+    if (!scoreAChange && row.minute === etat.minute) continue
+
+    const c = cotesLive1X2(row.lam_home, row.lam_away, {
+      minute: etat.minute, butsDom: etat.dom, butsExt: etat.ext,
+    })
+
+    // Un carton rouge ferme le match, définitivement. Notre modèle ne sait
+    // pas le prix d'une équipe à dix ; rouvrir au tarif d'avant l'expulsion
+    // reviendrait à vendre un prix qu'on sait faux à qui a vu le match.
+    const ferme = CARTON_ROUGE_FERME && etat.rouge
+
+    lignes.push({
+      match_id: row.match_id,
+      home: c.home,
+      draw: c.draw,
+      away: c.away,
+      exact: grilleLive(
+        row.lam_home, row.lam_away,
+        { minute: etat.minute, butsDom: etat.dom, butsExt: etat.ext },
+        MARGE_EXACT, BUTS_MAX,
+      ),
+      live: true,
+      minute: etat.minute,
+      home_score: etat.dom,
+      away_score: etat.ext,
+      closes_at: ferme
+        ? new Date(maintenant).toISOString()
+        : fermetureLive(etat.minute, maintenant),
+      // ATTENTION, PIÈGE. Toutes les lignes d'un envoi groupé doivent porter
+      // les mêmes colonnes : on est donc OBLIGÉ d'écrire `suspended_until` à
+      // chaque tour. Y mettre `null` dès qu'aucun but n'est tombé lèverait
+      // le gel au premier changement de minute — un but à la 57ᵉ minute et
+      // 10 secondes verrait sa suspension sautée 50 secondes trop tôt, à
+      // l'instant précis où elle protège le plus. On reconduit donc celle en
+      // cours tant qu'elle court.
+      suspended_until:
+        suspensionJusqua(scoreAChange && !premierTour, maintenant) ??
+        (row.suspended_until && Date.parse(row.suspended_until) > maintenant
+          ? row.suspended_until
+          : null),
+      updated_at: new Date(maintenant).toISOString(),
+    })
+  }
+
+  if (lignes.length) await publierCotes(env, lignes)
+  return true
+}
+
+/**
+ * Ferme d'un coup tous les matchs qui viennent de se terminer.
+ *
+ * ── POURQUOI UN SEUL APPEL, ET PAS UNE BOUCLE ─────────────────────────────
+ * Cette passe tourne toutes les CINQ SECONDES. Un samedi après-midi, la
+ * liste des matchs terminés du jour dépasse la cinquantaine : une requête
+ * par match, ce serait cinquante sous-requêtes toutes les cinq secondes
+ * pour refermer des marchés déjà fermés — et un Worker a un plafond de
+ * sous-requêtes par invocation. Le filtre `in.()` de PostgREST fait le
+ * travail en un appel.
+ *
+ * Le `live=eq.true` est ce qui rend l'appel presque toujours gratuit : il ne
+ * touche QUE les lignes encore marquées en cours, donc zéro ligne dans le
+ * cas normal.
+ */
+async function fermerMatchs(env: Env, ids: string[]): Promise<void> {
+  const liste = ids.map((x) => encodeURIComponent(x)).join(',')
+  const resp = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/match_odds?match_id=in.(${liste})&live=eq.true`,
+    {
+      method: 'PATCH',
+      headers: {
+        apikey: env.SUPABASE_SERVICE_KEY,
+        authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+        'content-type': 'application/json',
+        prefer: 'return=minimal',
+      },
+      body: JSON.stringify({ live: false, closes_at: new Date().toISOString() }),
+    },
+  )
+  if (!resp.ok) console.log(`[cotes-live] fermeture refusée ${resp.status}`)
+}
+
+/**
+ * Publie les cotes recalculées, en un seul envoi.
+ *
+ * `merge-duplicates` écrirait une ligne neuve pour un match inconnu — ce
+ * serait un marché sans espérances d'avant-match, donc impossible à tenir.
+ * Ici le danger n'existe pas : chaque ligne de `lignes` a été construite à
+ * partir d'une ligne LUE en base quelques instructions plus tôt, et elle
+ * reporte ses trois cotes. L'insertion ne peut donc pas se déclencher.
+ */
+async function publierCotes(env: Env, lignes: Array<Record<string, unknown>>): Promise<void> {
+  const resp = await fetch(`${env.SUPABASE_URL}/rest/v1/match_odds?on_conflict=match_id`, {
+    method: 'POST',
+    headers: {
+      apikey: env.SUPABASE_SERVICE_KEY,
+      authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+      'content-type': 'application/json',
+      prefer: 'resolution=merge-duplicates,return=minimal',
+    },
+    body: JSON.stringify(lignes),
+  })
+  if (!resp.ok) console.log(`[cotes-live] publication refusée ${resp.status} (${lignes.length} ligne(s))`)
 }
 
 async function upsertMatchResult(
@@ -3655,6 +3890,23 @@ export class LivePoller {
         await fireMatchAlerts(this.env, events)
       } catch (e) {
         console.log('[live-poller] fireMatchAlerts failed:', e)
+      }
+
+      // Les cotes des matchs en cours, à la même cadence de cinq secondes.
+      // Dans son PROPRE garde : une panne du recalcul ne doit pas emporter
+      // les alertes, et inversement. (Même leçon que le cron, qui était
+      // entièrement derrière un `if (!sb.ok) return` sur le scoreboard
+      // Mondial — un hoquet de cette requête arrêtait tout le reste.)
+      // Les cotes des matchs en cours, à la même cadence de cinq secondes.
+      // LE RETOUR COMPTE : le poller ne se réarmait que tant qu'un match du
+      // MONDIAL était en cours, alors que les paris portent sur quarante
+      // compétitions. Un samedi de Liga sans match de sélection, les cotes
+      // n'auraient bougé qu'au cron d'une minute — douze fois trop lent pour
+      // ce qu'on cherche à protéger.
+      try {
+        if (await syncCotesLive(this.env)) stillLive = true
+      } catch (e) {
+        console.log('[live-poller] syncCotesLive failed:', e)
       }
     } catch (e) {
       console.log('[live-poller] alarm fetch failed:', e)

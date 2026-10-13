@@ -27,6 +27,42 @@
       crossorigin="anonymous"
     ></script>
 
+    <!-- ── CONSENTEMENT (Google Funding Choices) ──────────────────────────
+         Posé le 12/10/2026. En théorie la balise AdSense ci-dessus injecte
+         elle-même la fenêtre de consentement une fois le message publié.
+         Mesuré ce soir-là : elle ne le faisait pas — `window.googlefc`
+         restait indéfini, même avec le paramètre de prévisualisation forcée
+         `?fc=alwaysshow`, et aucune fenêtre ne sortait depuis un VPN France.
+
+         Or l'endpoint de Google répond bien pour ce compte (227 Ko de JS),
+         donc le message EST configuré de leur côté. C'est l'installation
+         manuelle, documentée par Google pour ce cas précis, qui va le
+         chercher sans dépendre de l'injection automatique.
+
+         Le second bloc est leur sonde : une iframe nommée `googlefcPresent`
+         qui signale au script que la page sait l'accueillir. Sans elle, le
+         script se charge mais ne s'affiche jamais. -->
+    <script async src="https://fundingchoicesmessages.google.com/i/pub-4325585331982020?ers=1"></script>
+    <script>
+      (function () {
+        function signalGooglefcPresent() {
+          if (!window.frames['googlefcPresent']) {
+            if (document.body) {
+              const iframe = document.createElement('iframe')
+              iframe.style =
+                'width: 0; height: 0; border: none; z-index: -1000; left: -1000px; top: -1000px;'
+              iframe.style.display = 'none'
+              iframe.name = 'googlefcPresent'
+              document.body.appendChild(iframe)
+            } else {
+              setTimeout(signalGooglefcPresent, 0)
+            }
+          }
+        }
+        signalGooglefcPresent()
+      })()
+    </script>
+
     <!-- PWA manifest + iOS "Add to Home Screen" support.
          iOS doesn't honor manifest.json fully, so we duplicate the
          critical metadata via apple-* tags so the saved icon + standalone
@@ -75,9 +111,6 @@
 
     <!-- Google Search Console verification -->
     <meta name="google-site-verification" content="ooSl9AUG8WbW5zaA8Ezq6-JSe4jtxn_L4Ch4z2vhskY" />
-
-    <!-- Gambling Affiliation site verification -->
-    <meta name="ga-site-verification" content="aTZziRL_U4b1UEzXgLq_BwvB" />
 
     <!-- Primary SEO -->
     <title>Pressing 90’ — Live Football Scores, Results & News</title>

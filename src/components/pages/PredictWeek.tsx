@@ -20,6 +20,7 @@ import {
   prochainJourDeSemaine,
   POINT,
   MISE_MINIMUM,
+  MISE_MAX_LIVE,
   PALIER,
   PALIERS,
   palierDe,
@@ -27,6 +28,7 @@ import {
   JAMBES_MAX,
   coteCombinee,
   cotes as chargerCotes,
+  cotesEnDirect,
   buteursDuMatch,
   grilleDuMatch,
   jambesParMatch,
@@ -35,6 +37,7 @@ import {
   portefeuille as chargerPortefeuille,
   reclamableAujourdhui,
   reclamerDuJour,
+  pariOuvert,
   type Choix,
   type Buteur,
   type Cote,
@@ -177,7 +180,12 @@ function CarteMatch({
 
   const id = idDePronostic(ev)
   const e = etat(ev)
-  const ouvert = e === 'avant'
+  // LA FERMETURE VIENT DU SERVEUR, plus de l'état ESPN. Depuis le 12/10/2026
+  // on parie aussi pendant le match : « le match a commencé » n'est plus une
+  // raison de fermer, et seul le worker sait jusqu'à quand il tient sa cote.
+  const ouvert = pariOuvert(cote)
+  const geleParUnBut =
+    !!cote.suspended_until && Date.parse(cote.suspended_until) > Date.now()
   const valeur = (ch: Choix) => (ch === 'home' ? cote.home : ch === 'draw' ? cote.draw : cote.away)
   const titre = `${c.dom.nom} — ${c.ext.nom}`
   const nomDuChoix = (ch: Choix) => (ch === 'home' ? c.dom.nom : ch === 'away' ? c.ext.nom : t('Draw'))
@@ -205,6 +213,9 @@ function CarteMatch({
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-accent-red" />
               </span>
               {t('LIVE')}
+              {cote.minute != null && (
+                <span className="tabular-nums">{cote.minute}&rsquo;</span>
+              )}
             </span>
           ) : (
             heure(ev, lang)
@@ -271,6 +282,16 @@ function CarteMatch({
           )
         })}
       </div>
+
+      {/* Un but vient de tomber : on le DIT. Sans ce mot, des cotes qui
+          refusent le clic pendant quatre-vingt-dix secondes passent pour une
+          panne. Le gel est ce qui empêche quelqu'un devant sa télévision de
+          miser sur un but que nous n'avons pas encore enregistré. */}
+      {geleParUnBut && (
+        <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-accent-red">
+          {t('Odds updating — a goal just went in')}
+        </p>
+      )}
 
       {/* Le score exact, replié. Déplié d'office, vingt-cinq boutons par
           match rendraient la liste illisible — c'est le marché d'un joueur
@@ -463,6 +484,7 @@ function CarteMatch({
 function Bulletin({
   selections,
   solde,
+  enDirect,
   occupe,
   erreur,
   onMiser,
@@ -473,6 +495,8 @@ function Bulletin({
 }: {
   selections: Selection[]
   solde: number
+  /** Le bulletin contient au moins un match en cours : la mise est plafonnée. */
+  enDirect: boolean
   occupe: boolean
   erreur: string | null
   onMiser: (mise: number) => void
@@ -485,7 +509,10 @@ function Bulletin({
   // `saisie` double `mise` en texte : sans elle on ne peut pas vider le
   // champ pour retaper, le zéro se réinsérant à chaque frappe.
   const [saisie, setSaisie] = useState(String(MISE_MINIMUM))
-  const max = Math.max(MISE_MINIMUM, solde)
+  // Le plafond en direct s'applique au BULLETIN entier : un combiné qui
+  // contient un seul match en cours est plafonné, sinon il suffirait d'y
+  // ajouter un match à venir pour contourner. La base dit la même chose.
+  const max = Math.max(MISE_MINIMUM, enDirect ? Math.min(solde, MISE_MAX_LIVE) : solde)
 
   /** Pose une mise depuis un bouton : le champ suit. */
   function poser(n: number) {
@@ -618,16 +645,16 @@ function Bulletin({
               )}
             />
             <span className="pointer-events-none absolute end-3 top-1/2 -translate-y-1/2 font-mono text-[10px] tabular-nums text-slate-500">
-              /{solde}
+              /{max}
             </span>
           </label>
           <button
             type="button"
             disabled={solde < MISE_MINIMUM}
-            onClick={() => poser(solde)}
+            onClick={() => poser(max)}
             className={cn(
               'shrink-0 px-2 py-1 font-mono text-[11px] uppercase tracking-wider transition-colors',
-              utilisable === solde && solde >= MISE_MINIMUM
+              utilisable === max && solde >= MISE_MINIMUM
                 ? 'text-accent-gold'
                 : 'text-slate-500 hover:text-slate-900',
               solde < MISE_MINIMUM && 'opacity-30',
@@ -647,6 +674,14 @@ function Bulletin({
             ? avec(t('You need {n} {jeton}'), { n: MISE_MINIMUM, jeton: JETON.plusieurs })
             : avec(t('Stake {n} · win {g}'), { n: utilisable, g: gain.toLocaleString(localeOf(lang)) })}
         </button>
+
+        {/* Le plafond se DIT. Un champ qui refuse d'aller au-delà de cent sans
+            rien expliquer passe pour un bogue, et le joueur réessaie. */}
+        {enDirect && solde > MISE_MAX_LIVE && (
+          <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-wider text-slate-500">
+            {avec(t('In-play: {n} max per slip'), { n: MISE_MAX_LIVE })}
+          </p>
+        )}
 
         {erreur && <p className="mt-2 text-center text-xs text-accent-red">{erreur}</p>}
       </div>
@@ -778,6 +813,38 @@ export function PredictWeek() {
     void charger()
     return () => { vivant = false }
   }, [jourChoisi, aRejoindre])
+
+  // ── Les cotes en direct ne valent que fraîches ───────────────────────────
+  // Un match en cours voit son prix recalculé par le worker à chaque minute
+  // et à chaque but. Sans ce rappel, un joueur qui laisse l'onglet ouvert
+  // mise sur la cote de la 20ᵉ minute à la 70ᵉ — et le serveur la lui
+  // refuse, ce qui ressemble à une panne. On ne relance QUE s'il y a un
+  // match en cours : une page de matchs à venir n'a rien à rafraîchir.
+  const aDuDirect = useMemo(
+    () => [...cotes.values()].some((c) => c.live),
+    [cotes],
+  )
+  useEffect(() => {
+    if (!aDuDirect) return
+    let vivant = true
+    const t = setInterval(() => {
+      // On ne relit QUE les matchs en cours, pas toute la table. Relire les
+      // 374 lignes toutes les vingt secondes coûtait une quinzaine de
+      // mégaoctets par heure et par onglet ouvert, pour suivre trois
+      // matchs — et l'organisation Supabase a dépassé son quota.
+      void cotesEnDirect()
+        .then((live) => {
+          if (!vivant || !live.length) return
+          setCotes((avant) => {
+            const apres = new Map(avant)
+            for (const c of live) apres.set(c.match_id, c)
+            return apres
+          })
+        })
+        .catch(() => { /* on garde les cotes précédentes : la base retranchera */ })
+    }, 20_000)
+    return () => { vivant = false; clearInterval(t) }
+  }, [aDuDirect])
 
   const rafraichirJoueur = useCallback(async () => {
     if (!user) {
@@ -1002,21 +1069,60 @@ export function PredictWeek() {
         {t('Pick a side, set your stake, the odds do the rest.')}
       </p>
 
-      {/* Les règles sont là pour qui les cherche, pas en travers du chemin. */}
+      {/* ── LES RÈGLES, EN TROIS NIVEAUX ────────────────────────────────
+          Tout tenait dans UN paragraphe replié : les jetons du jour, la mise
+          minimum, la cote, les gains, les cinq paliers, les pénalités et le
+          bonus de série. Personne ne lit ça, et surtout personne n'y trouve
+          la seule réponse qu'il cherche avant de miser — « ça me coûte quoi,
+          au juste ? ».
+
+          Trois niveaux maintenant : une phrase visible sans rien ouvrir, les
+          deux jetons définis côte à côte, et le détail replié pour qui le
+          veut. La phrase sur l'absence de valeur monétaire est au PREMIER
+          niveau : c'est la chose à savoir avant de jouer, pas une note de
+          bas de page. */}
+      <p className="mt-4 text-sm text-slate-700 leading-relaxed">
+        {avec(
+          t(
+            'It is free. You get {d} {jeton} a day just by signing in, you stake them on a result at the real match odds, and you win {point}. Nothing to deposit, no bookmaker — {jeton} and {point} have no cash value and cannot be exchanged for money.',
+          ),
+          { d: JETONS_PAR_JOUR, jeton: t(JETON.plusieurs), point: t(POINT.plusieurs) },
+        )}
+      </p>
+
+      <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <div className="glass rounded-xl px-3 py-2.5">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <Jeton type="crampon" taille={11} />
+            {t(JETON.plusieurs)}
+          </div>
+          <p className="mt-1 text-[13px] leading-snug text-slate-600">
+            {avec(t('What you stake. {d} offered every day, to be claimed by signing in — unclaimed, they are lost. Minimum stake: {min}.'),
+              { d: JETONS_PAR_JOUR, min: MISE_MINIMUM })}
+          </p>
+        </div>
+        <div className="glass rounded-xl px-3 py-2.5">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+            <Jeton type="pressing" taille={11} />
+            {t(POINT.plusieurs)}
+          </div>
+          <p className="mt-1 text-[13px] leading-snug text-slate-600">
+            {avec(t('What you win, in proportion to the odds. This is your score and your place on the table.'), {})}
+          </p>
+        </div>
+      </div>
+
       <details className="mt-3 group">
         <summary className="cursor-pointer font-mono text-[11px] uppercase tracking-wider text-slate-500 hover:text-accent-gold transition-colors">
-          {t('How it works')}
+          {t('The full rules')}
         </summary>
         <p className="mt-2 text-sm text-slate-600 leading-relaxed">
           {avec(
             t(
-              'You get {d} {jeton} a day, claimed by signing in — unclaimed, they are lost. Stake at least {min} of them on a result, at the real match odds: the clearer the favourite, the less it pays. Winnings are {point}, and {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Nothing to deposit, no bookmaker. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.',
+              'The clearer the favourite, the less a win pays. {palier} {point} unlock {prix}. The climb has five tiers: below {libre} {point} a failed slip costs you nothing but your stake, above it each one costs {perte1}, then {perte2}, then {perte3} {point}. Every match we have a price for is playable — leagues, cups and national teams, the biggest competitions first.',
             ),
             {
-              d: JETONS_PAR_JOUR,
-              jeton: JETON.plusieurs,
-              min: MISE_MINIMUM,
-              point: POINT.plusieurs,
+              point: t(POINT.plusieurs),
               palier: PALIER.points.toLocaleString(localeOf(lang)),
               prix: t(PALIER.recompense),
               libre: PALIERS[2].de.toLocaleString(localeOf(lang)),
@@ -1298,6 +1404,7 @@ export function PredictWeek() {
         <Bulletin
           selections={selections}
           solde={solde}
+          enDirect={selections.some((x) => cotes.get(x.matchId)?.live)}
           occupe={occupe}
           erreur={erreurPari}
           onMiser={(m) => void onMiser(m)}

@@ -176,14 +176,27 @@ export default function JaugeCoureur({
           </div>
         </div>
 
-        {/* La surface de réparation. Grise tant qu'il reste du chemin, elle
-            prend la couleur d'arrivée quand le coureur y est : c'est le but
-            marqué, et c'est la seule récompense visuelle du parcours. */}
+        {/* La surface de réparation. EN CRÈME tant qu'il reste du chemin,
+            elle prend la couleur d'arrivée quand le coureur y est : c'est le
+            but marqué, et c'est la seule récompense visuelle du parcours.
+
+            ── POURQUOI PAS `slate-200` ───────────────────────────────────
+            C'était la couleur d'origine, et elle vaut #212B26 : la teinte
+            des FILETS, prévue pour un trait d'un demi-pixel, pas pour un
+            dessin. Sur la carte (#121916) elle donne un contraste de
+            **1,22:1** — mesuré. Le minimum lisible est 3:1, et le but
+            était donc littéralement invisible (Mehdi, 12/10/2026).
+
+            La crème (#ECEFE8, « blanc de craie ») monte à 15:1. Elle ne
+            vole pas la vedette à l'arrivée pour autant : le fichier est un
+            TRACÉ, pas un aplat — on obtient une surface de réparation
+            dessinée à la craie, et la récompense se lit au changement de
+            TEINTE (craie → vert) plutôt qu'à un gain de luminosité. */}
         <span
           aria-hidden="true"
           className={cn(
             'absolute transition-colors duration-700 motion-reduce:transition-none',
-            fini ? couleurCoureur : 'text-slate-200',
+            fini ? couleurCoureur : 'text-slate-900',
           )}
           style={{
             bottom: 0,

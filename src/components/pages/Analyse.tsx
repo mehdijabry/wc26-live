@@ -134,7 +134,7 @@ export default function Analyse() {
       </h1>
       <p className="mt-2 text-slate-600 text-[15px] leading-relaxed">
         {t(
-          'Probable line-ups, ten-match form, head-to-head and expected goals. Nothing is staked here — to back a result, go to the bets page.',
+          'Probable line-ups, ten-match form, head-to-head and expected goals. Nothing is staked here — to back a result, go to the predictions page.',
         )}
       </p>
 
@@ -144,19 +144,71 @@ export default function Analyse() {
         className="mt-3 inline-flex items-center gap-2 font-mono text-[11px] uppercase tracking-wider text-slate-500 hover:text-accent-gold transition-colors"
       >
         <Icone nom="football-club-flag" taille={24} />
-        {t('Place a bet instead')} →
+        {t('Make a prediction instead')} →
       </Link>
 
+      {/* ── L'APERÇU PUBLIC ─────────────────────────────────────────────
+          Un visiteur non connecté ne voyait qu'« Connectez-vous pour ouvrir
+          une analyse » : on lui demandait de créer un compte pour obtenir
+          une chose qu'on ne lui avait jamais montrée. Il part.
+
+          Ce bloc montre la FORME de ce qu'il obtiendra, sans en livrer le
+          contenu d'un vrai match — les chiffres sont des exemples, et c'est
+          écrit en toutes lettres plutôt que laissé à deviner. L'argument
+          décisif est en bas : la première analyse de chaque jour ne coûte
+          rien, le compte est la seule barrière. */}
       {!user && (
-        <div className="mt-6 glass rounded-sm p-6">
-          <Icone nom="referee" taille={56} className="mb-3 opacity-90" />
-          <p className="text-sm text-slate-700">{t('Sign in to open an analysis.')}</p>
+        <div className="mt-6 glass rounded-sm p-5">
+          <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-slate-500">
+            {t('Example — not a real match')}
+          </div>
+          <p className="mt-2 text-[15px] leading-snug font-semibold text-slate-900">
+            {t('Here is what every analysis gives you.')}
+          </p>
+
+          {/* La barre des chances, dans sa vraie forme */}
+          <div className="mt-4 flex h-7 rounded-lg overflow-hidden font-mono text-[11px] tabular-nums">
+            <div className="flex items-center justify-center bg-accent-gold text-ink-900" style={{ width: '61%' }}>61</div>
+            <div className="flex items-center justify-center bg-slate-600 text-ink-900" style={{ width: '22%' }}>22</div>
+            <div className="flex items-center justify-center bg-slate-400 text-slate-900" style={{ width: '17%' }}>17</div>
+          </div>
+          <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-slate-500">
+            {/* PAS `t('Home')` : cette clé-là vaut « Accueil », l'entrée de
+                menu. Il faut des libellés propres au contexte d'un match. */}
+            <span>{t('home side')}</span>
+            <span>{t('draw')}</span>
+            <span>{t('away side')}</span>
+          </div>
+
+          <p className="mt-3 text-sm leading-relaxed text-slate-600">
+            {t('“The home side should take it — 61% to win, against 22% for a draw and 17% for the visitors. Expect around 2.8 goals, over 2.5 at 57%. Likeliest score 2-1. Their first-choice striker is out, hamstring.”')}
+          </p>
+
+          <ul className="mt-4 grid grid-cols-2 gap-2">
+            {[
+              t('Probable line-ups'),
+              t('Who is missing, and why'),
+              t('Ten-match form, both sides'),
+              t('Head-to-head history'),
+              t('Expected goals and likeliest score'),
+              t('Sixty match statistics'),
+            ].map((x) => (
+              <li key={x} className="font-mono text-[11px] text-slate-600 leading-snug flex gap-1.5">
+                <span className="text-accent-gold" aria-hidden>·</span>
+                {x}
+              </li>
+            ))}
+          </ul>
+
           <button
             onClick={() => setAuthOuvert(true)}
-            className="mt-4 px-4 py-2 rounded-sm bg-accent-gold text-paper text-sm font-semibold hover:opacity-90 transition-opacity"
+            className="mt-5 w-full px-4 py-2.5 rounded-sm bg-accent-gold text-ink-900 text-sm font-semibold hover:opacity-90 transition-opacity"
           >
             {t('Sign in')}
           </button>
+          <p className="mt-2 text-center font-mono text-[10px] uppercase tracking-wider text-slate-500">
+            {t('The first analysis of each day is free.')}
+          </p>
         </div>
       )}
 

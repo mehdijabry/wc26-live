@@ -77,7 +77,7 @@ export function StickyCountdown() {
             <span className="text-slate-500 uppercase tracking-[0.16em]">
               {hn} <span className="text-slate-400 normal-case">vs</span> {an}
             </span>
-            <span className="text-slate-300">·</span>
+            <span className="text-slate-400">·</span>
             <span className="inline-flex items-center gap-1.5 text-slate-900 font-semibold">
               {t.d > 0 && <Digit v={t.d} l="d" />}
               <Digit v={t.h} l="h" />

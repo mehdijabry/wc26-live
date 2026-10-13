@@ -27,17 +27,27 @@ export function Footer() {
           <Link to="/about" className="text-slate-600 hover:text-accent-gold transition-colors">
             {t('About')}
           </Link>
-          <span className="text-slate-300">·</span>
+          <span className="text-slate-400">·</span>
           <Link to="/contact" className="text-slate-600 hover:text-accent-gold transition-colors">
             {t('Contact')}
           </Link>
-          <span className="text-slate-300">·</span>
+          <span className="text-slate-400">·</span>
           <Link to="/privacy" className="text-slate-600 hover:text-accent-gold transition-colors">
             {t('Privacy')}
           </Link>
-          <span className="text-slate-300">·</span>
+          <span className="text-slate-400">·</span>
           <Link to="/terms" className="text-slate-600 hover:text-accent-gold transition-colors">
             {t('Terms')}
+          </Link>
+          <span className="text-slate-400">·</span>
+          {/* Le bandeau 18+ qui menait à cette page a été retiré le
+              12/10/2026 avec les traces d'affiliation, et la page s'est
+              retrouvée ORPHELINE : indexée, utile, mais atteignable par
+              personne. Elle reprend sa place ici, sous son vrai sujet —
+              ce que sont les cotes affichées et pourquoi le jeu est
+              gratuit. */}
+          <Link to="/responsible-gambling" className="text-slate-600 hover:text-accent-gold transition-colors">
+            {t('Odds & fair play')}
           </Link>
         </nav>
 
@@ -52,17 +62,20 @@ export function Footer() {
           </a>
           .
         </div>
-        {/* Gambling disclaimer — required by the ANJ risk-message rule and
-            by affiliate networks' site review before any bookmaker
-            affiliation. Keep it on every page (footer), short, with the
-            full detail on /responsible-gambling. */}
-        <div className="mt-4 font-mono text-[11px] text-slate-500">
-          <span className="font-semibold text-slate-600">18+</span>{' · '}
-          {t('Gambling involves risks: debt, isolation, addiction.')}{' '}
-          <Link to="/responsible-gambling" className="text-accent-gold hover:text-yellow-300 underline decoration-accent-gold/40 transition-colors">
-            {t('Play responsibly')}
-          </Link>
-        </div>
+        {/* ── LE BANDEAU « 18+ · LES JEUX D'ARGENT COMPORTENT DES RISQUES »
+            A ÉTÉ RETIRÉ LE 12/10/2026 ────────────────────────────────────
+            Il n'avait jamais été posé pour nos joueurs : il était là pour
+            la revue des RÉGIES D'AFFILIATION, en prévision d'une
+            affiliation bookmaker qui n'a jamais été mise en place (voir le
+            meta « Gambling Affiliation » retiré d'index.html le même jour).
+
+            Or il décrivait faux. On ne prend pas d'argent, on n'en verse
+            pas, il n'y a aucun lien sortant vers un opérateur : on mise des
+            crampons gratuits sur des cotes réelles. Afficher sur CHAQUE
+            page « les jeux d'argent comportent des risques : endettement,
+            isolement, dépendance » décrivait un produit qui n'existe pas —
+            et le décrivait à Google, en plein examen AdSense, qui refuse
+            les sites de jeux d'argent. */}
         <div className="mt-4 text-slate-700">
           {t('⚽ Live scores · news')}
           {wc26Visible && (

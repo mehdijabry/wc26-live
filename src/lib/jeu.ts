@@ -95,6 +95,23 @@ export const JETONS_PAR_JOUR = gainDuJour(1)
 export const MISE_MINIMUM = 1
 
 /**
+ * Le plafond de mise sur un bulletin qui contient un match EN DIRECT.
+ *
+ * ── POURQUOI UN PLAFOND, ET PAS SEULEMENT DE LA VITESSE ───────────────────
+ * Entre le but et le moment où le worker l'apprend d'ESPN, notre prix décrit
+ * un match qui n'existe plus. Tout a été fait pour réduire cette fenêtre —
+ * relecture toutes les cinq secondes, sans cache, gel immédiat dès qu'un
+ * score bouge — mais elle ne peut pas être supprimée : ESPN ne publie aucun
+ * signal AVANT le but (mesuré le 12/10/2026 : cartons, buts et penalties
+ * marqués, rien d'autre), et son tableau de bord a lui-même du retard sur la
+ * télévision.
+ *
+ * Une faille qu'on ne sait pas supprimer, on la borne. Le vrai garde-fou est
+ * en base (`place_slip`, migration 025) : ceci n'est que l'affichage.
+ */
+export const MISE_MAX_LIVE = 100
+
+/**
  * Le palier de récompense. Volontairement une constante unique et affichée
  * partout : un joueur doit pouvoir mesurer où il en est, sinon le score ne
  * veut rien dire.
@@ -192,6 +209,39 @@ export type Cote = {
   draw: number
   away: number
   kickoff: string | null
+  /** Le match est en cours : la cote suit le score et l'horloge. */
+  live: boolean
+  /** Minute de jeu, quand le match est en cours. */
+  minute: number | null
+  home_score: number | null
+  away_score: number | null
+  /**
+   * Fermeture des paris. C'EST LA SEULE AUTORITÉ, et elle vient du serveur.
+   *
+   * Avant, le site décidait seul : `etat(ev) === 'avant'`, d'après l'état
+   * ESPN. Maintenant qu'on parie pendant le match, cette question n'a plus
+   * de réponse côté client — c'est le worker qui repousse la date tour
+   * après tour, et la base qui refuse au-delà. On se contente de la lire.
+   */
+  closes_at: string | null
+  /** Un score vient de changer : marché gelé le temps de republier. */
+  suspended_until: string | null
+}
+
+/**
+ * Peut-on encore parier sur ce match ?
+ *
+ * ── CE N'EST QU'UN AFFICHAGE ──────────────────────────────────────────────
+ * `place_slip()` repose exactement la question en base, dans la transaction
+ * qui débite. Une horloge de téléphone en retard de dix minutes ne fait donc
+ * rien gagner à personne : elle montre un bouton qui finira en erreur. On
+ * garde ce calcul local uniquement pour ne pas proposer un bouton mort.
+ */
+export function pariOuvert(c: Cote | null | undefined, maintenant = Date.now()): boolean {
+  if (!c?.closes_at) return false
+  if (Date.parse(c.closes_at) <= maintenant) return false
+  if (c.suspended_until && Date.parse(c.suspended_until) > maintenant) return false
+  return true
 }
 
 export type Choix = 'home' | 'draw' | 'away'
@@ -335,7 +385,17 @@ export async function cotes(): Promise<Map<string, Cote>> {
   if (!supabase) return new Map()
   const { data, error } = await supabase
     .from('match_odds')
-    .select('match_id, home, draw, away, kickoff')
+    .select('match_id, home, draw, away, kickoff, live, minute, home_score, away_score, closes_at, suspended_until')
+    // ── LA FENÊTRE, ET POURQUOI ELLE EXISTE ────────────────────────────
+    // Cette requête ramenait TOUTE la table : 778 lignes, 173 Ko à chaque
+    // ouverture de /predictions, dont la moitié de matchs joués il y a des
+    // semaines que la page ne montre jamais. Elle n'affiche que sept jours
+    // à partir d'aujourd'hui.
+    //
+    // On remonte quand même à hier : un match commencé hier soir peut
+    // encore être en cours, et le perdre le ferait disparaître de la page
+    // en plein direct. Mesuré : 374 lignes, 85 Ko.
+    .gte('kickoff', new Date(Date.now() - 86_400_000).toISOString())
     .order('kickoff', { ascending: true })
   // On REMONTE l'erreur au lieu de rendre une carte vide. La page n'affiche
   // que les matchs présents dans cette carte : une requête ratée silencieuse
@@ -345,6 +405,24 @@ export async function cotes(): Promise<Map<string, Cote>> {
   const m = new Map<string, Cote>()
   for (const c of (data as Cote[]) ?? []) m.set(c.match_id, c)
   return m
+}
+
+/**
+ * Les cotes des seuls matchs EN COURS.
+ *
+ * Le rafraîchissement du direct relisait la table entière toutes les vingt
+ * secondes — 85 Ko × 180 par heure et par onglet ouvert, soit une quinzaine
+ * de mégaoctets de bande passante Supabase pour suivre trois matchs. Ici on
+ * ne demande que ce qui bouge : quelques lignes, deux ou trois kilooctets.
+ */
+export async function cotesEnDirect(): Promise<Cote[]> {
+  if (!supabase) return []
+  const { data, error } = await supabase
+    .from('match_odds')
+    .select('match_id, home, draw, away, kickoff, live, minute, home_score, away_score, closes_at, suspended_until')
+    .eq('live', true)
+  if (error) throw new Error(error.message)
+  return (data as Cote[]) ?? []
 }
 
 /**

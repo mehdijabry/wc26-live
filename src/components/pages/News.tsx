@@ -47,9 +47,37 @@ interface Article {
   title_ar?: string | null
   excerpt_ar?: string | null
   body_ar?: string | null
+  /**
+   * Ce que le worker a produit, DÉCLARÉ à l'insertion (migration 026) :
+   * `news` pour une dépêche réécrite depuis les flux, `story` pour un récit
+   * vérifié à la main. On ne le devine pas d'après le slug.
+   */
+  kind?: 'news' | 'story' | 'analysis' | null
 }
 
-const SELECT = 'id,slug,title,excerpt,body,image_url,source_url,source_name,source_attribution,published_at,created_at,title_ar,excerpt_ar,body_ar'
+const SELECT = 'id,slug,title,excerpt,body,image_url,source_url,source_name,source_attribution,published_at,created_at,title_ar,excerpt_ar,body_ar,kind'
+
+/**
+ * ── LA LISTE NE DEMANDE PLUS LE CORPS DES ARTICLES ───────────────────────
+ * Elle réclamait `body` ET `body_ar` pour cinquante articles — soit les deux
+ * versions intégrales de chaque texte — alors qu'elle n'affiche qu'un titre,
+ * un chapô et une image. Mesuré le 13/10/2026 : **174 Ko par ouverture de
+ * /news, contre 28 Ko sans les corps.** Six fois trop, à chaque visite, sur
+ * une page qui est l'une des portes d'entrée du site.
+ *
+ * C'est de la bande passante Supabase pure perte, et l'organisation a
+ * dépassé son quota. La fiche d'un article garde `SELECT`, elle, puisqu'elle
+ * a bien besoin du texte.
+ */
+const SELECT_LISTE =
+  'id,slug,title,excerpt,image_url,source_name,published_at,created_at,title_ar,excerpt_ar,kind'
+
+/** Ce que la LISTE connaît d'un article : tout sauf les textes longs. */
+type Resume = Pick<
+  Article,
+  'id' | 'slug' | 'title' | 'excerpt' | 'image_url' | 'source_name' |
+  'published_at' | 'created_at' | 'title_ar' | 'excerpt_ar' | 'kind'
+>
 const SITE = 'https://pressing90.live'
 
 // ─── Interstitial throttle ─────────────────────────────────────────
@@ -84,7 +112,14 @@ function markInterstitialShown() {
 
 export function NewsListPage() {
   const t = useT()
-  const [items, setItems] = useState<Article[] | null>(null)
+  const [items, setItems] = useState<Resume[] | null>(null)
+  /**
+   * Le genre affiché. La page mêlait les dépêches du jour et les récits
+   * « Football Stories » — écrits à la main, et faits pour être lus des
+   * mois plus tard. Quelqu'un venu pour l'actualité tombait sur un récit
+   * de 1974, et l'inverse.
+   */
+  const [genre, setGenre] = useState<'tous' | 'news' | 'story'>('tous')
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -98,15 +133,25 @@ export function NewsListPage() {
     if (!supabase) { setError('Database not configured'); return }
     void supabase
       .from('articles')
-      .select(SELECT)
+      .select(SELECT_LISTE)
       .eq('status', 'published')
       .order('published_at', { ascending: false })
       .limit(50)
       .then(({ data, error }) => {
         if (error) setError(error.message)
-        else setItems(data as Article[])
+        else setItems(data as Resume[])
       })
   }, [])
+
+  /** Combien d'articles par genre. Un article sans genre compte comme news :
+   *  c'est le défaut de la colonne, et c'était le cas de tout l'existant. */
+  const comptes = {
+    news: items?.filter((a) => (a.kind ?? 'news') === 'news').length ?? 0,
+    story: items?.filter((a) => a.kind === 'story').length ?? 0,
+  }
+
+  const visibles =
+    genre === 'tous' ? items : items?.filter((a) => (a.kind ?? 'news') === genre)
 
   return (
     <section className="container max-w-5xl mx-auto px-6 py-8 sm:py-12">
@@ -146,13 +191,42 @@ export function NewsListPage() {
         </div>
       )}
 
+      {/* Les genres. Comme sur /today : on ne montre que ceux qui ont
+          quelque chose dedans, et le compte est écrit. */}
+      {items && items.length > 0 && comptes.story > 0 && comptes.news > 0 && (
+        <div className="mb-6 flex flex-wrap items-center gap-1.5">
+          {([
+            ['tous', t('All'), items.length],
+            ['news', t('Latest news'), comptes.news],
+            ['story', t('Football stories'), comptes.story],
+          ] as const).map(([cle, libelle, n]) => {
+            const actif = genre === cle
+            return (
+              <button
+                key={cle}
+                type="button"
+                onClick={() => setGenre(cle)}
+                aria-pressed={actif}
+                className={
+                  'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono transition-colors ' +
+                  (actif ? 'bg-slate-900 text-white' : 'glass glass-hover text-slate-600')
+                }
+              >
+                {libelle}
+                <span className={actif ? 'opacity-70' : 'text-slate-400'}>{n}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
+
       <div className="space-y-5">
-        {items?.map((a, i) => (
+        {visibles?.map((a, i) => (
           <Fragment key={a.id}>
             <ArticleCard article={a} />
             {/* Mid-list ad after the 3rd card — one impression per 50
                 articles, doesn't drown the feed. */}
-            {i === 2 && items.length > 4 && <Ad slot="news-list-mid" className="my-2" />}
+            {i === 2 && visibles.length > 4 && <Ad slot="news-list-mid" className="my-2" />}
           </Fragment>
         ))}
       </div>
@@ -160,7 +234,7 @@ export function NewsListPage() {
   )
 }
 
-function ArticleCard({ article }: { article: Article }) {
+function ArticleCard({ article }: { article: Resume }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}

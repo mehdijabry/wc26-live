@@ -213,7 +213,23 @@ app.post('/render/image', async (req, res) => {
         case 'fulltime-post': canvas = await drawScoreCard(data); break         // editorial full-time poster (scorers + player bust)
         default: throw new Error('unknown image type')
       }
-      return upload(`${type}-${stamp()}.png`, canvas.toBuffer('image/png'), 'image/png')
+      // ── JPEG, PAS PNG ───────────────────────────────────────────────
+      // Ces rendus sont des affiches pleine page : dégradés, photo de
+      // stade, aucune transparence. En PNG une couverture 1200×675 pèse
+      // **1,6 Mo** ; la même en JPEG qualité 82 pèse **337 Ko**.
+      //
+      // Ce n'est pas un détail d'optimisation. Mesuré le 13/10/2026 : sept
+      // couvertures vivantes sur /news faisaient **11 Mo par visite**, soit
+      // tout le quota mensuel de bande passante Supabase (5 Go) en quatre
+      // cent cinquante visites — et l'organisation l'avait dépassé.
+      //
+      // 1200×675 est conservé : c'est la taille que réclame Facebook pour
+      // une image de partage, et la fiche d'article s'en sert en bandeau.
+      return upload(
+        `${type}-${stamp()}.jpg`,
+        canvas.toBuffer('image/jpeg', { quality: 0.82 }),
+        'image/jpeg',
+      )
     })
     res.json({ ok: true, url })
   } catch (e) {

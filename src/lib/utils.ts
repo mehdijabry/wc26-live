@@ -40,7 +40,7 @@ export function userTimezone() {
 // occasionally still emits (TPE for Taiwan, KOR/PRK split, etc.). We map from
 // ESPN's 3-letter code (mostly IOC/FIFA), with ENG/SCO/WAL/NIR mapped to the
 // UK constituent flag subdomains flagcdn supports.
-const ESPN_ABBR_TO_ISO2: Record<string, string> = {
+export const ESPN_ABBR_TO_ISO2: Record<string, string> = {
   // ─── CAF (Africa, 54) ───
   MAR: 'ma', SEN: 'sn', EGY: 'eg', ALG: 'dz', NGA: 'ng', GHA: 'gh', CIV: 'ci', CMR: 'cm',
   TUN: 'tn', RSA: 'za', MLI: 'ml', BFA: 'bf', GNB: 'gw', GAB: 'ga', CGO: 'cg', AGO: 'ao',

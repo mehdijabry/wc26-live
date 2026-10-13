@@ -15,7 +15,9 @@ import {
   type Prix,
   type Forme,
   type FaceAFace,
+  synthese,
 } from '../lib/pronostic'
+import { buteursDuMatch } from '../lib/jeu'
 
 /**
  * La carte de pronostic d'un match.
@@ -84,12 +86,35 @@ export default function CartePronostic(p: Props) {
   const carte = etudeFinie ? donnee : null
   const chargement = p.ouvert && !carte && !echec
 
+  // Le buteur le mieux coté, pour la synthèse. CHARGÉ À PART et sans
+  // bloquer : la liste vit dans une autre table, la carte n'en dépend pas,
+  // et une requête qui échoue doit retirer UNE phrase du résumé, pas la
+  // carte entière.
+  const [meilleurButeur, setMeilleurButeur] =
+    useState<{ match: string; nom: string; cote: number } | null>(null)
+
   useEffect(() => {
     if (!p.ouvert) return
     let vivant = true
     chargerCarte(p.match)
       .then((c) => { if (vivant) setResultat({ match: p.match, carte: c }) })
       .catch((e) => { if (vivant) setResultat({ match: p.match, echec: String((e as Error).message) }) })
+    return () => { vivant = false }
+  }, [p.ouvert, p.match])
+
+  useEffect(() => {
+    if (!p.ouvert) return
+    let vivant = true
+    void buteursDuMatch(p.match)
+      .then((l) => {
+        // La cote la plus BASSE est le buteur le plus probable.
+        const meilleur = l.reduce<{ nom: string; cote: number } | null>(
+          (acc, b) => (!acc || b.cote < acc.cote ? { nom: b.nom, cote: b.cote } : acc),
+          null,
+        )
+        if (vivant && meilleur) setMeilleurButeur({ match: p.match, ...meilleur })
+      })
+      .catch(() => { /* une phrase de moins dans le résumé, rien de plus */ })
     return () => { vivant = false }
   }, [p.ouvert, p.match])
 
@@ -119,6 +144,25 @@ export default function CartePronostic(p: Props) {
   const offerte = !!p.prix && p.prix.crampons > 0 && (p.solde?.offertes ?? 0) > 0
 
   const nos = p.cote ? chancesDeLaCote(p.cote) : null
+
+  // La synthèse. Calculée seulement quand la carte est là, et jamais à
+  // partir d'un buteur chargé pour un AUTRE match — la carte se réutilise
+  // d'un match à l'autre et le nom traînerait d'une rencontre à la suivante.
+  const resume = carte
+    ? synthese({
+        carte,
+        chances: nos,
+        domicile: p.domicile,
+        exterieur: p.exterieur,
+        buteur: meilleurButeur?.match === p.match ? meilleurButeur : null,
+        t,
+        nb: (n, d) =>
+          n.toLocaleString(localeOf(lang), {
+            minimumFractionDigits: d ?? 0,
+            maximumFractionDigits: d ?? 0,
+          }),
+      })
+    : null
 
   return (
     <div className="mt-3 glass rounded-2xl p-4">
@@ -212,14 +256,29 @@ export default function CartePronostic(p: Props) {
 
       {carte && (
         <div className="mt-4 space-y-5">
+          {/* ── LE RÉSUMÉ, avant tout le reste ────────────────────────── */}
+          {resume && (
+            <section className="rounded-xl border border-accent-gold/30 bg-accent-gold/[0.06] p-3">
+              <Titre>{t('In short')}</Titre>
+              <p className="mt-1.5 text-[15px] leading-snug font-semibold text-slate-900">
+                {resume.verdict}
+              </p>
+              {resume.details.length > 0 && (
+                <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
+                  {resume.details.join(' ')}
+                </p>
+              )}
+            </section>
+          )}
+
           {/* ── Les chances, les nôtres ───────────────────────────────── */}
           {nos && (
             <section>
               <Titre>{t('Chances')}</Titre>
               <div className="mt-2 flex h-7 rounded-lg overflow-hidden font-mono text-[11px] tabular-nums">
                 <Part valeur={nos.dom} classe="bg-accent-gold text-ink-900" />
-                <Part valeur={nos.nul} classe="bg-slate-200 text-slate-900" />
-                <Part valeur={nos.ext} classe="bg-slate-100 text-slate-900" />
+                <Part valeur={nos.nul} classe="bg-slate-600 text-ink-900" />
+                <Part valeur={nos.ext} classe="bg-slate-400 text-slate-900" />
               </div>
               <div className="mt-1 flex justify-between font-mono text-[10px] uppercase tracking-wider text-slate-500">
                 <span className="truncate max-w-[40%]">{p.domicile}</span>
@@ -390,7 +449,7 @@ function Serie({ serie }: { serie: string }) {
   // renverse, pour que le match le plus récent soit lu en premier.
   const cinq = serie.slice(-5).split('').reverse()
   const ton = (r: string) =>
-    r === 'W' ? 'bg-accent-green text-ink-900' : r === 'D' ? 'bg-slate-300 text-ink-900' : 'bg-accent-red text-ink-900'
+    r === 'W' ? 'bg-accent-green text-ink-900' : r === 'D' ? 'bg-slate-600 text-ink-900' : 'bg-accent-red text-ink-900'
   return (
     <div className="flex gap-1" dir="ltr">
       {cinq.map((r, i) => (

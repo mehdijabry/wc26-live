@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CHAMPIONNATS, CONTINENTS, clubsDuChampionnat, logoChampionnat, monogrammeChampionnat, type Continent } from '../../lib/clubs'
+import { CHAMPIONNATS, CONTINENTS, clubsDuChampionnat, logoChampionnat, monogrammeChampionnat, type Continent, type Championnat } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
-import { trLeague, useLang, useT } from '../../lib/i18n'
+import { localeOf, trLeague, useLang, useT } from '../../lib/i18n'
+import { ESPN_ABBR_TO_ISO2 } from '../../lib/utils'
 
 /**
  * /clubs — l'arborescence continent → pays → championnat.
@@ -55,6 +56,49 @@ export function Clubs() {
   const lang = useLang((s) => s.lang)
   const [etat, setEtat] = useState<Etat>({})
 
+  /**
+   * La recherche. Vingt-neuf championnats sur quatre sections : trouver
+   * « Botola » ou « Copa del Rey » demandait de parcourir toute la page. On
+   * cherche dans le NOM, le PAYS et le slug à la fois — un visiteur tape
+   * aussi bien « maroc » que « botola » que « espagne ».
+   */
+  const [recherche, setRecherche] = useState('')
+
+  /**
+   * Les championnats mis en favori.
+   *
+   * ── POURQUOI LE STOCKAGE LOCAL ET PAS LE COMPTE ────────────────────────
+   * C'est une préférence d'affichage, pas une donnée de jeu : la ranger
+   * dans le profil obligerait à se connecter pour s'en servir, alors que
+   * l'écrasante majorité des visiteurs de cette page n'a pas de compte.
+   * Ici elle marche pour tout le monde, tout de suite.
+   *
+   * La contrepartie est assumée : elle ne suit pas d'un appareil à l'autre.
+   * Le jour où ça gêne, une colonne sur `profiles` prendra le relais pour
+   * les connectés, ce stockage restant le repli des autres.
+   *
+   * Tout est sous try/catch : en navigation privée, lire ou écrire ici peut
+   * lever une exception, et une page de championnats ne doit pas tomber
+   * pour une étoile.
+   */
+  const [favoris, setFavoris] = useState<string[]>(() => {
+    try {
+      const brut = localStorage.getItem('p90.liguesFavorites')
+      const liste = brut ? (JSON.parse(brut) as unknown) : []
+      return Array.isArray(liste) ? liste.filter((x): x is string => typeof x === 'string') : []
+    } catch {
+      return []
+    }
+  })
+
+  function basculerFavori(slug: string) {
+    setFavoris((avant) => {
+      const apres = avant.includes(slug) ? avant.filter((x) => x !== slug) : [...avant, slug]
+      try { localStorage.setItem('p90.liguesFavorites', JSON.stringify(apres)) } catch { /* privée */ }
+      return apres
+    })
+  }
+
   usePageHead(
     Object.keys(etat).length
       ? {
@@ -67,6 +111,56 @@ export function Clubs() {
 
   const pret = Object.keys(etat).length
   const nombreDeLigues = CONTINENTS.flatMap((c) => CHAMPIONNATS[c]).length
+
+  /** Minuscules, sans accents : « Corée » et « coree » doivent se trouver. */
+  const sansAccent = (x: string) =>
+    x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+  const q = sansAccent(recherche.trim())
+
+  /**
+   * Le nom du pays dans la langue du visiteur, depuis le code à trois
+   * lettres d'ESPN. `ch.pays` vaut « ESP », pas « Espagne » : chercher
+   * « espagne » ne trouvait donc rien, alors que c'est exactement ce qu'on
+   * tape. On passe par la table FIFA → ISO déjà tenue pour les drapeaux,
+   * puis par `Intl.DisplayNames`, qui connaît les noms de pays dans les
+   * trois langues — rien de nouveau à maintenir à la main.
+   */
+  const nomDuPays = (code: string): string => {
+    // LES QUATRE NATIONS BRITANNIQUES D'ABORD. Leur code ISO est « gb-eng »,
+    // « gb-sct »… et `Intl.DisplayNames` n'en connaît que la première
+    // moitié : tronquer donnait « Royaume-Uni », si bien que chercher
+    // « angleterre » ne trouvait pas la Premier League — le championnat le
+    // plus cherché du site.
+    const nations: Record<string, string> = {
+      ENG: t('England'), SCO: t('Scotland'), WAL: t('Wales'), NIR: t('Northern Ireland'),
+    }
+    if (nations[code]) return nations[code]
+
+    const iso2 = ESPN_ABBR_TO_ISO2[code]
+    if (!iso2) return ''
+    try {
+      return new Intl.DisplayNames([localeOf(lang)], { type: 'region' })
+        .of(iso2.toUpperCase().slice(0, 2)) ?? ''
+    } catch {
+      return ''
+    }
+  }
+
+  /** Un championnat correspond-il à la recherche ? */
+  const correspond = (ch: Championnat) => {
+    if (!q) return true
+    const nom = trLeague(etat[ch.slug]?.nom ?? joliSlug(ch.slug), lang)
+    return [nom, ch.pays ?? '', nomDuPays(ch.pays ?? ''), ch.slug.replace(/[.-]/g, ' ')]
+      .some((champ) => sansAccent(champ).includes(q))
+  }
+
+  const aucunResultat =
+    !!q && CONTINENTS.every((c) => CHAMPIONNATS[c].every((ch) => !correspond(ch)))
+
+  /** Les favoris encore présents dans le tableau, et retenus par la recherche. */
+  const liguesFavorites = CONTINENTS.flatMap((c) => CHAMPIONNATS[c])
+    .filter((ch) => favoris.includes(ch.slug) && correspond(ch))
   useJsonLd(
     'clubs-index',
     pret
@@ -123,6 +217,77 @@ export function Clubs() {
     }
   }, [])
 
+
+  /**
+   * La carte d'un championnat. Extraite parce qu'elle sert à DEUX endroits :
+   * la section Favoris en tête, et les sections par continent.
+   *
+   * L'étoile est un `button` SŒUR du lien, pas un enfant : un bouton dans
+   * une ancre n'est pas du HTML valide, et le clic partirait vers la fiche
+   * du championnat au lieu de poser le favori.
+   */
+  const carteLigue = (ch: Championnat) => {
+    const info = etat[ch.slug]
+    // ESPN colle un qualificatif de pays que personne n'emploie — « English
+    // Premier League ». `trLeague` ne traduit pas le nom, il le normalise.
+    const nom = trLeague(info?.nom ?? joliSlug(ch.slug), lang)
+    const ecusson = logoChampionnat(ch)
+    const aime = favoris.includes(ch.slug)
+    return (
+      <li key={ch.slug} className="relative">
+        <Link
+          to={`/clubs/${ch.slug}`}
+          className="group h-full flex items-center gap-3.5 rounded-xl glass glass-hover px-3.5 py-3.5 pe-10"
+        >
+          <span className="shrink-0 w-11 h-11 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
+            {ecusson ? (
+              // Dimensions explicites et chargement différé : vingt-neuf
+              // images sur une page d'index, autant qu'elles n'entrent pas
+              // toutes dans le premier rendu.
+              <img
+                src={ecusson}
+                alt=""
+                width={32}
+                height={32}
+                loading="lazy"
+                decoding="async"
+                className="w-8 h-8 object-contain"
+              />
+            ) : (
+              <EcussonMaison lettres={monogrammeChampionnat(ch.slug)} />
+            )}
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-display text-[15px] leading-tight text-slate-900 group-hover:text-accent-gold transition-colors">
+              {nom}
+            </span>
+            <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-slate-500 tabular-nums truncate">
+              {ch.pays || t('continental')}
+              {info && ` · ${t('{n} clubs').replace('{n}', String(info.clubs))}`}
+            </span>
+          </span>
+        </Link>
+        <button
+          type="button"
+          onClick={() => basculerFavori(ch.slug)}
+          aria-pressed={aime}
+          aria-label={aime ? t('Remove from favourites') : t('Add to favourites')}
+          title={aime ? t('Remove from favourites') : t('Add to favourites')}
+          className={
+            'absolute top-2 end-2 w-7 h-7 flex items-center justify-center rounded-md transition-colors ' +
+            (aime ? 'text-accent-gold' : 'text-slate-400 hover:text-accent-gold')
+          }
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" aria-hidden
+               fill={aime ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+            <path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9L12 3.5z"
+                  strokeLinejoin="round" />
+          </svg>
+        </button>
+      </li>
+    )
+  }
+
   return (
     <div className="container max-w-5xl mx-auto px-6 py-10">
       <h1 className="text-3xl md:text-4xl font-bold tracking-tight">{t('Leagues')}</h1>
@@ -132,6 +297,41 @@ export function Clubs() {
           .replace('{c}', String(CONTINENTS.length))}
       </p>
 
+      <label className="mt-6 block">
+        <span className="sr-only">{t('Search a league or a country')}</span>
+        <input
+          type="search"
+          value={recherche}
+          onChange={(e) => setRecherche(e.target.value)}
+          placeholder={t('Search a league or a country')}
+          className="w-full rounded-xl glass px-4 py-2.5 text-[15px] text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-accent-gold/60 border border-slate-200 transition-colors"
+        />
+      </label>
+
+      {aucunResultat && (
+        <p className="mt-8 text-sm text-slate-500">
+          {t('No league matches “{q}”.').replace('{q}', recherche)}
+        </p>
+      )}
+
+      {/* ── LES FAVORIS, EN TÊTE ────────────────────────────────────────
+          Même grammaire de section que les continents : filet doré,
+          intitulé en capitales, compte à droite. La section n'existe que
+          s'il y a quelque chose dedans — un bandeau « Favoris » vide
+          apprendrait seulement qu'on n'en a pas. */}
+      {liguesFavorites.length > 0 && (
+        <section className="mt-8">
+          <div className="flex items-center gap-3">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent-gold">{t('Favourites')}</h2>
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="font-mono text-[11px] tabular-nums text-slate-500">{liguesFavorites.length}</span>
+          </div>
+          <ul className="mt-4 grid gap-3 grid-cols-2 lg:grid-cols-3">
+            {liguesFavorites.map(carteLigue)}
+          </ul>
+        </section>
+      )}
+
       {CONTINENTS.map((continent: Continent) => {
         // On rend TOUS les championnats du tableau, pas seulement ceux dont
         // l'appel a abouti. Sinon un hoquet d'ESPN pendant le prérendu fait
@@ -139,7 +339,9 @@ export function Clubs() {
         // avec lui, puisque c'est d'ici qu'on y accède. C'est arrivé à la
         // J-League le 8 octobre 2026. Le nom et le compte restent, eux,
         // conditionnés à la réponse : on n'invente rien.
-        const ligues = CHAMPIONNATS[continent]
+        const ligues = CHAMPIONNATS[continent].filter((ch) => correspond(ch))
+        // Un continent vidé par la recherche disparaît : garder son bandeau
+        // au-dessus du vide ferait croire à un défaut de chargement.
         if (!ligues.length) return null
         return (
           <section key={continent} className="mt-10">
@@ -156,51 +358,7 @@ export function Clubs() {
               <span className="font-mono text-[11px] tabular-nums text-slate-500">{ligues.length}</span>
             </div>
             <ul className="mt-4 grid gap-3 grid-cols-2 lg:grid-cols-3">
-              {ligues.map((ch) => {
-                const info = etat[ch.slug]
-                // ESPN colle un qualificatif de pays que personne n'emploie —
-                // « English Premier League ». `trLeague` ne traduit pas le
-                // nom, il le normalise.
-                const nom = trLeague(info?.nom ?? joliSlug(ch.slug), lang)
-                const ecusson = logoChampionnat(ch)
-                return (
-                  <li key={ch.slug}>
-                    <Link
-                      to={`/clubs/${ch.slug}`}
-                      className="group h-full flex items-center gap-3.5 rounded-xl glass glass-hover px-3.5 py-3.5"
-                    >
-                      <span className="shrink-0 w-11 h-11 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
-                        {ecusson ? (
-                          // Dimensions explicites et chargement différé :
-                          // vingt-et-une images sur une page d'index, autant
-                          // qu'elles n'entrent pas toutes dans le premier
-                          // rendu et ne fassent pas sauter la mise en page.
-                          <img
-                            src={ecusson}
-                            alt=""
-                            width={32}
-                            height={32}
-                            loading="lazy"
-                            decoding="async"
-                            className="w-8 h-8 object-contain"
-                          />
-                        ) : (
-                          <EcussonMaison lettres={monogrammeChampionnat(ch.slug)} />
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block font-display text-[15px] leading-tight text-slate-900 group-hover:text-accent-gold transition-colors">
-                          {nom}
-                        </span>
-                        <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-slate-500 tabular-nums truncate">
-                          {ch.pays || t('continental')}
-                          {info && ` · ${t('{n} clubs').replace('{n}', String(info.clubs))}`}
-                        </span>
-                      </span>
-                    </Link>
-                  </li>
-                )
-              })}
+              {ligues.map(carteLigue)}
             </ul>
           </section>
         )

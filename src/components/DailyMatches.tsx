@@ -9,6 +9,7 @@ import { localeOf, trLeague, useLang, useT } from '../lib/i18n'
 import { Link } from 'react-router-dom'
 import { SectionHeader } from './Groups'
 import { MatchSheet } from './MatchSheet'
+import { etat } from '../lib/matchEspn'
 
 /**
  * DailyMatches — the "every game everywhere" board.
@@ -67,6 +68,14 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
   const [data, setData] = useState<DailyResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeSlugs, setActiveSlugs] = useState<Set<string> | null>(null) // null = all
+  /**
+   * Filtre par ÉTAT du match. Un samedi, la page affiche cent quatre-vingts
+   * rencontres mêlées : celles qui se jouent en ce moment, celles qui n'ont
+   * pas commencé, et celles qui sont finies. Le filtre par compétition ne
+   * répond pas à la question qu'on se pose en arrivant — « qu'est-ce qui se
+   * joue LÀ ? ». Celui-ci si.
+   */
+  const [etatFiltre, setEtatFiltre] = useState<'tous' | 'direct' | 'avant' | 'fini'>('tous')
   const [openMatch, setOpenMatch] = useState<{ id: string; slug: string } | null>(null)
   // When did we last receive ESPN data? Used by liveClock() to add the
   // elapsed minutes since the last poll so the on-screen minute ticks.
@@ -201,9 +210,27 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
         .map((slug) => data.competitions.find((c) => c.slug === slug))
         .filter((c): c is NonNullable<typeof c> => !!c && c.events.length > 0)
     }
-    if (!activeSlugs) return data.competitions
-    return data.competitions.filter((c) => activeSlugs.has(c.slug))
-  }, [data, activeSlugs, vitrine])
+    const parCompetition = !activeSlugs
+      ? data.competitions
+      : data.competitions.filter((c) => activeSlugs.has(c.slug))
+
+    if (etatFiltre === 'tous') return parCompetition
+    // On filtre les ÉVÉNEMENTS, puis on retire les compétitions vidées :
+    // laisser un en-tête de championnat sans un seul match dessous ferait
+    // croire à un défaut d'affichage.
+    return parCompetition
+      .map((c) => ({ ...c, events: c.events.filter((ev) => etat(ev) === etatFiltre) }))
+      .filter((c) => c.events.length > 0)
+  }, [data, activeSlugs, vitrine, etatFiltre])
+
+  /** Combien de matchs dans chaque état, sur le jour affiché. */
+  const comptes = useMemo(() => {
+    const n = { tous: 0, direct: 0, avant: 0, fini: 0 }
+    for (const c of data?.competitions ?? []) {
+      for (const ev of c.events) { n.tous++; n[etat(ev)]++ }
+    }
+    return n
+  }, [data])
 
   function toggleSlug(slug: string) {
     setActiveSlugs((prev) => {
@@ -303,6 +330,54 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
         <div className="mt-2 text-[10px] font-mono text-slate-400 text-center">
           {data?.total ?? 0} {t(data?.total === 1 ? 'match' : 'matches')}
         </div>
+
+        {/* ── FILTRE PAR ÉTAT ─────────────────────────────────────────
+            La question qu'on se pose en arrivant un samedi n'est pas « quel
+            championnat ? » mais « qu'est-ce qui se joue maintenant ? ». Le
+            filtre par compétition existait déjà ; celui-ci manquait.
+
+            On ne montre QUE les états réellement présents ce jour-là : un
+            onglet « En direct · 0 » un mardi matin n'apprend rien et ajoute
+            un geste pour rien. */}
+        {!vitrine && data && comptes.tous > 0 && (
+          <div className="mt-5 flex justify-center">
+            <div className="inline-flex flex-wrap items-center justify-center gap-1.5">
+              {([
+                ['tous', t('All'), comptes.tous],
+                ['direct', t('Live'), comptes.direct],
+                ['avant', t('Upcoming'), comptes.avant],
+                ['fini', t('Finished'), comptes.fini],
+              ] as const)
+                .filter(([cle, , n]) => cle === 'tous' || n > 0)
+                .map(([cle, libelle, n]) => {
+                  const actif = etatFiltre === cle
+                  return (
+                    <button
+                      key={cle}
+                      type="button"
+                      onClick={() => setEtatFiltre(cle)}
+                      aria-pressed={actif}
+                      className={
+                        'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-mono transition-colors ' +
+                        (actif
+                          ? 'bg-slate-900 text-white'
+                          : 'glass glass-hover text-slate-600')
+                      }
+                    >
+                      {cle === 'direct' && (
+                        <span className="relative flex h-1.5 w-1.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-500 opacity-75" />
+                          <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-red-500" />
+                        </span>
+                      )}
+                      {libelle}
+                      <span className={actif ? 'opacity-70' : 'text-slate-400'}>{n}</span>
+                    </button>
+                  )
+                })}
+            </div>
+          </div>
+        )}
 
         {/* Competition filter — compact dropdown. The old chip wall
             (one pill per competition, ~80 on a busy day) ate half the

@@ -148,11 +148,23 @@ export default function TerrainChargement({
         role="img"
         aria-label={t('Loading the prediction')}
       >
-        <rect x="2" y="2" width="96" height="96" fill="#0E1411" stroke="#212B26" strokeWidth="0.5" rx="1" />
-        <line x1="50" y1="2" x2="50" y2="98" stroke="#212B26" strokeWidth="0.5" />
-        <circle cx="50" cy="50" r="12" fill="none" stroke="#212B26" strokeWidth="0.5" />
-        <rect x="2" y="30" width="12" height="40" fill="none" stroke="#212B26" strokeWidth="0.5" />
-        <rect x="86" y="30" width="12" height="40" fill="none" stroke="#212B26" strokeWidth="0.5" />
+        {/* ── LES LIGNES DU TERRAIN, EN CRÈME ────────────────────────────
+            Elles étaient tracées en #212B26 sur un fond #0E1411, soit un
+            contraste de **1,28:1** — mesuré, c'est-à-dire invisible : la
+            norme place le minimum lisible à 3:1. On ne voyait littéralement
+            pas les buts.
+
+            La crème du site (#ECEFE8) est posée en opacité plutôt qu'en
+            teinte figée, pour deux raisons : la couleur reste celle du
+            thème si elle change un jour, et surtout on peut HIÉRARCHISER.
+            Le terrain est un décor, les buts sont ce qu'on regarde — ils
+            méritent d'être plus marqués que la ligne médiane. */}
+        <rect x="2" y="2" width="96" height="96" fill="#0E1411" stroke="#ECEFE8" strokeOpacity="0.28" strokeWidth="0.5" rx="1" />
+        <line x1="50" y1="2" x2="50" y2="98" stroke="#ECEFE8" strokeOpacity="0.28" strokeWidth="0.5" />
+        <circle cx="50" cy="50" r="12" fill="none" stroke="#ECEFE8" strokeOpacity="0.28" strokeWidth="0.5" />
+        {/* Les deux buts : 4,08:1 au lieu de 1,28:1. */}
+        <rect x="2" y="30" width="12" height="40" fill="none" stroke="#ECEFE8" strokeOpacity="0.45" strokeWidth="0.6" />
+        <rect x="86" y="30" width="12" height="40" fill="none" stroke="#ECEFE8" strokeOpacity="0.45" strokeWidth="0.6" />
 
         {/* La passe qui vient d'être jouée. Elle se redessine à chaque
             changement de porteur, et s'efface d'elle-même. */}
@@ -210,7 +222,7 @@ export default function TerrainChargement({
                 key={e.cle}
                 className={cn(
                   'flex items-center gap-2 font-mono text-[11px] transition-colors duration-300',
-                  faite ? 'text-slate-500' : courante ? 'text-accent-gold' : 'text-slate-300',
+                  faite ? 'text-slate-500' : courante ? 'text-accent-gold' : 'text-slate-400',
                 )}
               >
                 <span className="w-3 shrink-0 text-center" aria-hidden>

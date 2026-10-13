@@ -429,7 +429,7 @@ export function NewsTicker() {
               aria-label={`Jump to page ${page + 1}`}
               className={
                 'h-1 rounded-full transition-all ' +
-                (page === currentPage ? 'w-6 bg-accent-gold' : 'w-1.5 bg-slate-300 hover:bg-slate-400')
+                (page === currentPage ? 'w-6 bg-accent-gold' : 'w-1.5 bg-slate-400 hover:bg-slate-500')
               }
             />
           )

@@ -251,7 +251,7 @@ export function MatchSheet({
             <div className="px-4 py-3 border-b border-slate-200 flex items-center justify-between bg-paper">
               <div className="text-[10px] uppercase tracking-[0.22em] font-mono text-slate-500 truncate">
                 {kickoff ? kickoff.toLocaleString(undefined, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
-                {venue && <span className="mx-2 text-slate-300">·</span>}
+                {venue && <span className="mx-2 text-slate-400">·</span>}
                 {venue && <span className="text-slate-600">{venue}{venueLoc?.city ? ` · ${venueLoc.city}` : ''}</span>}
               </div>
               <button
@@ -305,11 +305,11 @@ export function MatchSheet({
                       {isLive || isDone ? (
                         <>
                           <ScoreNumber c={home} other={away} />
-                          <span className="mx-2 text-slate-300">–</span>
+                          <span className="mx-2 text-slate-400">–</span>
                           <ScoreNumber c={away} other={home} />
                         </>
                       ) : (
-                        <span className="text-slate-300">vs</span>
+                        <span className="text-slate-400">vs</span>
                       )}
                     </div>
                   </div>
@@ -324,7 +324,7 @@ export function MatchSheet({
                     )}
                     {roundLabel && (
                       <>
-                        <span className="text-slate-300">·</span>
+                        <span className="text-slate-400">·</span>
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-900 text-cream text-[10px] uppercase tracking-wider font-mono">
                           {roundLabel}
                         </span>
@@ -622,7 +622,7 @@ function EventIcon({ type }: { type: string | undefined }) {
     )
   }
 
-  return <span className="text-slate-300">•</span>
+  return <span className="text-slate-400">•</span>
 }
 
 
