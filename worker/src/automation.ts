@@ -1455,12 +1455,12 @@ async function queueSoireeReel(
 ): Promise<void> {
   const ar = s.mainLang !== 'en'
   const titres = SOIREES_EUROPE[slug]
-  const classees = classerAffiches(soiree)
-  const vedettes = classees.slice(0, REEL_VEDETTES)
-
-  // La VIDÉO montre trois affiches, la LÉGENDE garde toute la soirée — la
-  // règle mesurée le 11/10 (334 caractères pour le reel à 1 036 vues).
-  const lignes = classees.slice(0, 8).map(ligneSoiree).join(' · ')
+  // TOUTE la soirée, dans l'ordre des coups d'envoi (Mehdi, 13/10/2026 :
+  // « pas juste Barça, récap de tous les matchs »). La carte est une LISTE :
+  // neuf rencontres tiennent sur trois cartes, là où une affiche par match
+  // aurait donné neuf cartes et une vidéo de trente secondes.
+  const classees = [...soiree].sort((a, b) => (a.kickoff || '').localeCompare(b.kickoff || ''))
+  const lignes = classees.slice(0, 10).map(ligneSoiree).join(' · ')
   const description = [
     ar ? moment.ar : moment.fr,
     lignes,
@@ -1482,12 +1482,16 @@ async function queueSoireeReel(
   await studio(env, '/render/reel', {
     type: 'soiree',
     data: {
-      matches: vedettes.map((m) => ({
+      matches: classees.map((m) => ({
         home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo,
-        league: titres.fr, round: undefined,
+        league: titres.fr,
         live: m.state === 'in',
         score: m.state === 'pre' ? undefined : `${m.homeScore}–${m.awayScore}`,
         time: m.state === 'pre' && m.kickoff ? localTime(m.kickoff) : undefined,
+        // L'état se LIT sur la carte : une pastille rouge et la minute pour
+        // un match en cours, « terminé » pour les autres. Sans lui, personne
+        // ne distingue un score en route d'un résultat définitif.
+        etat: m.completed ? 'انتهت' : m.state === 'in' ? (/halftime|half-time/i.test(m.statusName) ? 'الاستراحة' : (m.clock ?? '')) : '',
       })),
       // L'affiche « joueurs » ouvre les trois premiers moments ; la fin
       // prend le trophée, qui dit mieux « c'est terminé ».
@@ -1498,7 +1502,7 @@ async function queueSoireeReel(
     jobId,
     callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
   })
-  await log(env, date, 'soiree-reel', true, `${moment.cle} — ${vedettes.length} affiches (job ${jobId})`)
+  await log(env, date, 'soiree-reel', true, `${moment.cle} — récap de ${classees.length} matchs (job ${jobId})`)
 }
 
 /** Studio → worker: a reel finished rendering. */

@@ -103,7 +103,7 @@ console.log(`\nlégende (${legende.length} caractères — viser 200 à 400) :\n
 // le fond « stade ». Quatre cartes, mais l'ouverture est courte : 1,5 s puis
 // 2,5 s par affiche, soit neuf secondes — la durée mesurée comme gagnante.
 const ouverture = existsSync(FONDS + 'fond-joueurs.jpg')
-  ? [{ ouverture: true, bgImage: FONDS + 'fond-joueurs.jpg', cover: { text: 'ليلة دوري الأبطال: من يفوز؟', tone: 'matchday' } }]
+  ? [{ ouverture: true, bgImage: FONDS + 'fond-joueurs.jpg', cover: { text: process.env.COVER || 'ليلة دوري الأبطال: من يفوز؟', tone: 'matchday' } }]
   : []
 export const cartes = [...ouverture, ...choisis.map((m) => ({ ...m, bgImage: fond() }))]
 export const legendeSoiree = legende

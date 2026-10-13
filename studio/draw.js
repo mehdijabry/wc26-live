@@ -833,6 +833,98 @@ export async function drawUclMatchLayers(m, idx, total, heading, lang) {
   }
 }
 
+/**
+ * Carte RÉCAPITULATIVE d'une soirée européenne (Mehdi, 13/10/2026 :
+ * « pas juste Barça, récap de tous les matchs »).
+ *
+ * Une affiche par match ne passe pas à l'échelle : neuf matchs feraient neuf
+ * cartes, donc une vidéo de trente secondes — le format mesuré comme perdant
+ * (217 vues contre 1 036 pour celui de neuf secondes). Une LISTE tient cinq
+ * rencontres par carte : toute la soirée en deux cartes, et la durée reste
+ * celle qui marche.
+ *
+ * La bande centrale du fond « stade » est libre : c'est là que les lignes se
+ * posent, sur le voile sombre déjà prévu pour les écussons.
+ */
+export async function drawUclRecapLayers(matchs, page, pages, { bgImage, titre, cover, lang } = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const CREME = ed.E.CREAM, OR = '#E8C25A'
+  // 850 et non 880 : le bloc logo du fond descend jusqu'à 820, et la
+  // cinquième ligne tombait sinon dans le stade, sous le voile.
+  const HAUT = 844, LIGNE = 128
+
+  const fourni = bgImage ? await loadImg(bgImage) : null
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    if (fourni) {
+      const sc = Math.max(W / fourni.width, H / fourni.height)
+      ctx.drawImage(fourni, (W - fourni.width * sc) / 2, 0, fourni.width * sc, fourni.height * sc)
+    } else { ctx.fillStyle = '#071634'; ctx.fillRect(0, 0, W, H) }
+    // Le voile couvre toute la hauteur des lignes, pas une bande fixe : avec
+    // cinq rencontres il descend plus bas qu'avec trois.
+    // Le voile descend 90 px SOUS la dernière ligne et reste pleinement
+    // opaque jusqu'à 94 % : réglé plus court, la dernière rencontre tombait
+    // dans les gradins éclairés et devenait illisible.
+    const bas = HAUT + matchs.length * LIGNE + 90
+    const v = ctx.createLinearGradient(0, HAUT - 80, 0, bas)
+    v.addColorStop(0, 'rgba(4,9,32,0)'); v.addColorStop(0.1, 'rgba(4,9,32,0.82)')
+    v.addColorStop(0.94, 'rgba(4,9,32,0.82)'); v.addColorStop(1, 'rgba(4,9,32,0)')
+    ctx.fillStyle = v; ctx.fillRect(0, HAUT - 80, W, bas - HAUT + 80)
+    const vp = ctx.createLinearGradient(0, H - 200, 0, H)
+    vp.addColorStop(0, 'rgba(4,9,32,0)'); vp.addColorStop(1, 'rgba(4,9,32,0.9)')
+    ctx.fillStyle = vp; ctx.fillRect(0, H - 200, W, 200)
+    // Pas de titre : le fond porte déjà « UEFA CHAMPIONS LEAGUE » en grand,
+    // et toute ligne ajoutée au-dessus des rencontres chevauchait son dernier
+    // mot.
+    if (pages > 1) ed.spaced(ctx, `${page} / ${pages}`, W / 2, 1812, { size: 14, align: 'center', tracking: 0.42, color: 'rgba(230,238,255,0.7)' })
+    ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1856, { size: 15, align: 'center', tracking: 0.42, color: 'rgba(230,238,255,0.92)' }) }
+
+  // Une couche par ligne : elles entrent en cascade, et une ligne manquante
+  // ne casse pas les autres.
+  const layers = { bg: PNG(bg) }
+  const anims = []
+  for (let i = 0; i < matchs.length; i++) {
+    const m = matchs[i]
+    const [hImg, aImg] = await Promise.all([crest(m.homeLogo, m.home), crest(m.awayLogo, m.away)])
+    const c = createCanvas(W, LIGNE); const ctx = ctx2d(c)
+    ed.crestAt(ctx, hImg, 104, LIGNE / 2 - 10, 68)
+    ed.crestAt(ctx, aImg, W - 104, LIGNE / 2 - 10, 68)
+    labelText(ctx, fitLine(ctx, m.home, 235, 'Cairo', 20, 13).toUpperCase(), 162, LIGNE / 2 - 6, { size: 19, align: 'left', color: CREME })
+    labelText(ctx, fitLine(ctx, m.away, 235, 'Cairo', 20, 13).toUpperCase(), W - 162, LIGNE / 2 - 6, { size: 19, align: 'right', color: CREME })
+    // Le score au centre ; « VS » et l'heure pour un match qui n'a pas commencé.
+    ctx.textAlign = 'center'
+    if (m.score) ed.digits(ctx, String(m.score).replace('–', ' – '), W / 2, LIGNE / 2 + 4, 48, '#FFFFFF')
+    else { ctx.font = 'bold 26px Cairo'; ctx.fillStyle = OR; ctx.fillText(m.time || 'VS', W / 2, LIGNE / 2 + 8) }
+    // ── L'ÉTAT, SOUS LE SCORE ────────────────────────────────────────────
+    // Il était écrit en 12 px à 55 % d'opacité : personne ne distinguait un
+    // match en cours d'un match terminé. Un match EN DIRECT porte désormais
+    // une pastille rouge et sa minute ; un match fini le dit en toutes
+    // lettres. C'est l'information qui fait la différence entre « regarde le
+    // score » et « va voir la fin ».
+    if (m.etat) {
+      const txt = String(m.etat)
+      ctx.font = 'bold 21px Tajawal'
+      const larg = ctx.measureText(txt).width
+      if (m.live) {
+        const x0 = W / 2 - (larg + 26) / 2
+        ctx.beginPath(); ctx.arc(x0 + 7, LIGNE / 2 + 32, 7, 0, Math.PI * 2)
+        ctx.fillStyle = '#FF4D4D'; ctx.fill()
+        ctx.fillStyle = '#FF9B9B'; ctx.textAlign = 'left'
+        ctx.fillText(txt, x0 + 24, LIGNE / 2 + 39)
+      } else {
+        ctx.fillStyle = 'rgba(230,238,255,0.78)'; ctx.textAlign = 'center'
+        ctx.fillText(txt, W / 2, LIGNE / 2 + 39)
+      }
+    }
+    if (i < matchs.length - 1) { ctx.fillStyle = 'rgba(232,194,90,0.22)'; ctx.fillRect(140, LIGNE - 1, W - 280, 1) }
+    layers[`l${i}`] = PNG(c)
+    anims.push({ layer: `l${i}`, x: 0, y: HAUT + i * LIGNE, fade: { st: page === 1 && i === 0 ? 0 : 0.1 + i * 0.12, d: 0.3 } })
+  }
+  layers.cover = PNG(coverBand(cover))
+  if (cover) anims.push({ layer: 'cover', x: 40, y: HAUT + matchs.length * LIGNE + 50, fade: { st: 0, d: 0 }, out: { st: 2.8, d: 0.4 } })
+  return { layers, anims }
+}
+
 /** Article slide (article reels): bg + kicker + photo + title + QR card. */
 // heading + lang (2026-09-13): the Arabic « برشلونة اليوم » digest reuses this
 // layout with Tajawal, right-to-left title and an Arabic QR card.

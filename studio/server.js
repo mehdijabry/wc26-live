@@ -8,7 +8,7 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawUclRecapLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
@@ -352,17 +352,29 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
       // des cartes de match par-dessus le fond « stade » — le seul des trois
       // dont le milieu est libre. Montage sans son, enchaîné par un éclair.
       if (type === 'soiree') {
-        const ms = (data.matches || []).slice(0, 3)
+        const ms = (data.matches || []).slice(0, 12)
         if (!ms.length) throw new Error('no matches')
         const fondUcl = (nom) => path.join(__dirname, 'assets', 'ucl', `fond-${nom}.jpg`)
         const specs = [], durees = []
         if (data.ouverture !== false) {
-          specs.push(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, ms.length + 1, undefined, data.lang))
+          specs.push(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
           durees.push(1.5)
         }
-        for (const m of ms) {
-          specs.push(await drawUclMatchLayers({ ...m, bgImage: fondUcl('stade'), cover: specs.length === 0 ? data.cover : undefined }, specs.length, ms.length + (data.ouverture !== false ? 1 : 0), undefined, data.lang))
-          durees.push(2.5)
+        // RÉCAPITULATIF (Mehdi, 13/10/2026 : « pas juste Barça, récap de tous
+        // les matchs »). Les rencontres sont réparties ÉQUITABLEMENT sur le
+        // nombre de cartes nécessaires : neuf par paquets de quatre
+        // donneraient 4+4+1, et la dernière carte afficherait une seule ligne
+        // perdue au milieu du vide.
+        const PAR_CARTE = 4
+        const nbCartes = Math.max(1, Math.ceil(ms.length / PAR_CARTE))
+        const parCarte = Math.ceil(ms.length / nbCartes)
+        for (let i = 0; i < ms.length; i += parCarte) {
+          const page = ms.slice(i, i + parCarte)
+          specs.push(await drawUclRecapLayers(page, specs.length, nbCartes, { bgImage: fondUcl('stade'), lang: data.lang }))
+          // 4 s : trois ou quatre rencontres à lire demandent plus de temps
+          // qu'une seule affiche. Mehdi, 13/10 : « les tables de score passent
+          // trop vite, pas le temps de les lire ».
+          durees.push(4)
         }
         const slides = []
         for (let i = 0; i < specs.length; i++) {
