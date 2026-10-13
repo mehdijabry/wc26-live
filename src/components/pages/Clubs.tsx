@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { CHAMPIONNATS, CONTINENTS, clubsDuChampionnat, logoChampionnat, monogrammeChampionnat, type Continent, type Championnat } from '../../lib/clubs'
+import { CHAMPIONNATS, CONTINENTS, clubsDuChampionnat, logoChampionnat, monogrammeChampionnat, type Continent, type Championnat, type ClubResume } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { localeOf, trLeague, useLang, useT } from '../../lib/i18n'
 import { ESPN_ABBR_TO_ISO2 } from '../../lib/utils'
@@ -13,7 +13,16 @@ import { ESPN_ABBR_TO_ISO2 } from '../../lib/utils'
  * page une fois les réponses arrivées. Ajouter un championnat dans
  * `lib/clubs.ts` le fait apparaître ici sans toucher à ce fichier.
  */
-type Etat = Record<string, { nom: string; clubs: number }>
+/**
+ * Ce qu'on retient d'un championnat après l'appel à ESPN.
+ *
+ * On ne gardait que le NOMBRE de clubs, alors que l'appel ramène la liste
+ * entière. On la garde maintenant : elle ne coûte rien de plus, et c'est
+ * elle qui permet de chercher un club par son nom depuis cette page —
+ * « barcelona », « raja », « al hilal » — au lieu de devoir deviner dans
+ * quel championnat il joue (Mehdi, 13/10/2026).
+ */
+type Etat = Record<string, { nom: string; clubs: ClubResume[] }>
 
 /** Le repli quand l'API n'a pas répondu : « saudi-pro-league » → « Saudi Pro League ». */
 function joliSlug(slug: string): string {
@@ -155,8 +164,31 @@ export function Clubs() {
       .some((champ) => sansAccent(champ).includes(q))
   }
 
+  /**
+   * Les CLUBS qui correspondent à la recherche, avec leur championnat.
+   *
+   * Deux caractères au minimum : sous ce seuil, « a » renverrait la moitié
+   * des quatre cents clubs chargés, ce qui n'aide personne et fait ramer la
+   * page. Et vingt-quatre résultats au plus, pour la même raison — qui
+   * cherche un club précis le trouve dans les premiers.
+   */
+  const clubsTrouves =
+    q.length < 2
+      ? []
+      : CONTINENTS.flatMap((c) => CHAMPIONNATS[c])
+          .flatMap((ch) =>
+            (etat[ch.slug]?.clubs ?? [])
+              .filter((cl) =>
+                [cl.nom, cl.nomCourt, cl.abbr].some((x) => sansAccent(x ?? '').includes(q)),
+              )
+              .map((cl) => ({ club: cl, ligue: ch })),
+          )
+          .slice(0, 24)
+
   const aucunResultat =
-    !!q && CONTINENTS.every((c) => CHAMPIONNATS[c].every((ch) => !correspond(ch)))
+    !!q &&
+    clubsTrouves.length === 0 &&
+    CONTINENTS.every((c) => CHAMPIONNATS[c].every((ch) => !correspond(ch)))
 
   /** Les favoris encore présents dans le tableau, et retenus par la recherche. */
   const liguesFavorites = CONTINENTS.flatMap((c) => CHAMPIONNATS[c])
@@ -201,7 +233,7 @@ export function Clubs() {
           try {
             const { nomLigue, clubs } = await clubsDuChampionnat(ch.espn)
             if (!vivant) return
-            setEtat((e) => ({ ...e, [ch.slug]: { nom: nomLigue, clubs: clubs.length } }))
+            setEtat((e) => ({ ...e, [ch.slug]: { nom: nomLigue, clubs } }))
             break
           } catch {
             if (!vivant) return
@@ -263,7 +295,7 @@ export function Clubs() {
             </span>
             <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-slate-500 tabular-nums truncate">
               {ch.pays || t('continental')}
-              {info && ` · ${t('{n} clubs').replace('{n}', String(info.clubs))}`}
+              {info && ` · ${t('{n} clubs').replace('{n}', String(info.clubs.length))}`}
             </span>
           </span>
         </Link>
@@ -298,12 +330,12 @@ export function Clubs() {
       </p>
 
       <label className="mt-6 block">
-        <span className="sr-only">{t('Search a league or a country')}</span>
+        <span className="sr-only">{t('Search a club, a league or a country')}</span>
         <input
           type="search"
           value={recherche}
           onChange={(e) => setRecherche(e.target.value)}
-          placeholder={t('Search a league or a country')}
+          placeholder={t('Search a club, a league or a country')}
           className="w-full rounded-xl glass px-4 py-2.5 text-[15px] text-slate-900 placeholder:text-slate-500 focus:outline-none focus:border-accent-gold/60 border border-slate-200 transition-colors"
         />
       </label>
@@ -312,6 +344,48 @@ export function Clubs() {
         <p className="mt-8 text-sm text-slate-500">
           {t('No league matches “{q}”.').replace('{q}', recherche)}
         </p>
+      )}
+
+      {/* ── LES CLUBS TROUVÉS ───────────────────────────────────────────
+          Avant cette section, chercher « barcelona » sur cette page ne
+          donnait rien : elle n'indexait que les championnats, alors qu'elle
+          chargeait déjà la liste de leurs clubs pour en compter les lignes.
+          Le visiteur devait savoir dans quel championnat jouait le club
+          qu'il cherchait — c'est exactement ce qu'il vient demander. */}
+      {clubsTrouves.length > 0 && (
+        <section className="mt-8">
+          <div className="flex items-center gap-3">
+            <h2 className="font-mono text-[11px] uppercase tracking-[0.18em] text-accent-gold">{t('Clubs')}</h2>
+            <div className="h-px flex-1 bg-slate-200" />
+            <span className="font-mono text-[11px] tabular-nums text-slate-500">{clubsTrouves.length}</span>
+          </div>
+          <ul className="mt-4 grid gap-3 grid-cols-2 lg:grid-cols-3">
+            {clubsTrouves.map(({ club, ligue }) => (
+              <li key={`${ligue.slug}/${club.slug}`}>
+                <Link
+                  to={`/club/${ligue.slug}/${club.slug}`}
+                  className="group h-full flex items-center gap-3.5 rounded-xl glass glass-hover px-3.5 py-3.5"
+                >
+                  <span className="shrink-0 w-11 h-11 rounded-lg bg-slate-50 border border-slate-200 flex items-center justify-center overflow-hidden">
+                    {club.logo ? (
+                      <img src={club.logo} alt="" width={32} height={32} loading="lazy" decoding="async" className="w-8 h-8 object-contain" />
+                    ) : (
+                      <EcussonMaison lettres={club.abbr?.slice(0, 3) || club.nom.slice(0, 2)} />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-display text-[15px] leading-tight text-slate-900 group-hover:text-accent-gold transition-colors truncate">
+                      {club.nomCourt || club.nom}
+                    </span>
+                    <span className="mt-1 block font-mono text-[10px] uppercase tracking-wider text-slate-500 truncate">
+                      {trLeague(etat[ligue.slug]?.nom ?? joliSlug(ligue.slug), lang)}
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {/* ── LES FAVORIS, EN TÊTE ────────────────────────────────────────
