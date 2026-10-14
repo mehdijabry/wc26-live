@@ -8,8 +8,8 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawUclRecapLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
-import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
+import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -347,60 +347,13 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         await fs.rm(dir, { recursive: true, force: true })
         return { url: urls[0], urls, seconds: len }
       }
-      // ── Soirée de coupe d'Europe (Mehdi, 13/10/2026) ──────────────────────
-      // Les affiches livrées en fond, une carte d'ouverture sans données, et
-      // des cartes de match par-dessus le fond « stade » — le seul des trois
-      // dont le milieu est libre. Montage sans son, enchaîné par un éclair.
-      if (type === 'soiree') {
-        const ms = (data.matches || []).slice(0, 12)
-        if (!ms.length) throw new Error('no matches')
-        const fondUcl = (nom) => path.join(__dirname, 'assets', 'ucl', `fond-${nom}.jpg`)
-        const specs = [], durees = []
-        if (data.ouverture !== false) {
-          specs.push(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
-          durees.push(1.5)
-        }
-        // RÉCAPITULATIF (Mehdi, 13/10/2026 : « pas juste Barça, récap de tous
-        // les matchs »). Les rencontres sont réparties ÉQUITABLEMENT sur le
-        // nombre de cartes nécessaires : neuf par paquets de quatre
-        // donneraient 4+4+1, et la dernière carte afficherait une seule ligne
-        // perdue au milieu du vide.
-        const PAR_CARTE = 4
-        const nbCartes = Math.max(1, Math.ceil(ms.length / PAR_CARTE))
-        const parCarte = Math.ceil(ms.length / nbCartes)
-        for (let i = 0; i < ms.length; i += parCarte) {
-          const page = ms.slice(i, i + parCarte)
-          specs.push(await drawUclRecapLayers(page, specs.length, nbCartes, { bgImage: fondUcl('stade'), lang: data.lang }))
-          // 4 s : trois ou quatre rencontres à lire demandent plus de temps
-          // qu'une seule affiche. Mehdi, 13/10 : « les tables de score passent
-          // trop vite, pas le temps de les lire ».
-          durees.push(4)
-        }
-        const slides = []
-        for (let i = 0; i < specs.length; i++) {
-          const layers = {}
-          for (const [k, buf] of Object.entries(specs[i].layers)) { layers[k] = path.join(dir, `so${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
-          slides.push({ layers, anims: specs[i].anims })
-        }
-        const out = path.join(dir, 'soiree.mp4')
-        const musique = await musicPath(data.musique || 'matchday')
-        const { seconds: len } = await renderSoireeReel({ slides, durees, transition: data.transition || 'flash', music: musique, out })
-        const url = await upload(`reel-soiree-${stamp()}.mp4`, await fs.readFile(out), 'video/mp4')
-        await fs.rm(dir, { recursive: true, force: true })
-        return { url, seconds: len }
-      }
-
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []
         if (type === 'matchday') {
           const ms = (data.matches || []).slice(0, 10)
           if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4')   // « يوم برشلونة » slide
-          // « ucl » = soirée de coupe d'Europe : même squelette, peau de nuit
-          // et or (voir drawUclMatchLayers). Le worker ne le pose que si
-          // TOUTES les affiches de tête sont de la même compétition.
-          const carte = data.special === 'ucl' ? drawUclMatchLayers : drawMatchLayers
-          for (let i = 0; i < ms.length; i++) specs.push(await carte(ms[i], i, ms.length, data.heading, data.lang))
+          for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang))
         }
         else if (type === 'goal') {
           // Barça special (2026-09-14): looping confetti video under the card + stadium roar at t=0
@@ -418,9 +371,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         }
         let voice = null
         if (voiceUrl) { const r = await fetch(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
-        // `data.musique` l'emporte : c'est ainsi que le reel de résultats
-        // demande sa propre piste alors qu'il emprunte le type 'matchday'.
-        const music = await musicPath(data.musique || (type === 'goal' ? 'goal' : type === 'matchday' ? 'matchday' : 'article'))
+        const music = await musicPath(type === 'matchday' || type === 'goal' ? 'matchday' : 'article')
         const out = path.join(dir, 'reel.mp4')
         const dflt = type === 'goal' ? 9 : type === 'article' ? 12 : type === 'articles' ? 10 * slides.length : 4 * slides.length
         const sfx = type === 'goal' && data.special === 'barca' && data.sfx !== false ? await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3') : null

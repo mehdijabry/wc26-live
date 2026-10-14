@@ -1236,6 +1236,9 @@ async function sendKitEmail(env: Env, kit: StoryKit, kitUrl: string): Promise<{ 
  */
 export const REEL_VEDETTES = 3
 
+/** Interrupteur des soirées européennes. Voir runSoireeEurope. */
+const SOIREE_ACTIVE = false
+
 /**
  * Les soirées de coupe d'Europe, et le titre de leur affiche.
  *
@@ -1286,7 +1289,7 @@ export async function queueMatchdayReel(env: Env, date: string, label: string, p
       : europe ? { text: 'ليلة أوروبية: من يفوز؟', tone: 'matchday' }
       : { text: 'مباريات اليوم: من يفوز؟', tone: 'matchday' }
     const heading = europe ? (ar ? europe.ar : europe.fr) : ar ? 'مباريات اليوم' : undefined
-    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : europe ? 'ucl' : undefined }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : undefined   // gabarit « ucl » coupé avec SOIREE_ACTIVE }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
     await log(env, date, 'matchday-reel', true, `rendering ${reelPool.length} slides (job ${jobId})${europe ? ` — soirée ${europe.slug}` : ''} — voice ${voiceUrl}`)
   } catch (e) { await log(env, date, 'matchday-reel', false, String(e)) }
 }
@@ -1396,6 +1399,13 @@ const ligneSoiree = (m: AutoMatch) =>
  * compétition européenne, on sort immédiatement.
  */
 export async function runSoireeEurope(env: Env, s: AutomationSettings, date: string): Promise<void> {
+  // ── COUPÉ LE 14/10/2026 ─────────────────────────────────────────────────
+  // Plus rien n'était publié depuis la veille : trois rendus de types
+  // différents lancés le matin ne sont jamais revenus, et le studio redémarre
+  // à chaque tentative. Tant que la cause n'est pas établie, la soirée ne
+  // doit pas consommer de rendus — la page perd des vues sur TOUS ses
+  // formats, pas seulement celui-ci.
+  if (!SOIREE_ACTIVE) return
   if (!s.reels || !reelsConfigured(env)) return
   const pool = await bigMatchesToday(env, date)
   const europeens = pool.filter((m) => SOIREES_EUROPE[m.slug])
@@ -2146,7 +2156,7 @@ async function queueResultsReel(env: Env, date: string, label: string, finished:
   const heading = resultsHeading(date, matchDate)
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'reel', label: jobLabel, date, title: `${heading} — ${labelAr(matchDate)}`, description: resultsCaption(list, label, date, matchDate), comment: `⏱ كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb-reel` }), { expirationTtl: 6 * 3600 })
   const cover = { text: matchDate === date ? 'نتائج اليوم: هل فاجأتك؟' : 'نتائج الأمس: هل فاجأتك؟', tone: 'results' }
-  await studio(env, '/render/reel', { type: 'matchday', data: { matches: vedettes.map((m, i) => (i === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar', musique: 'scores' }, seconds: 9, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+  await studio(env, '/render/reel', { type: 'matchday', data: { matches: vedettes.map((m, i) => (i === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar' }, seconds: 9, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
   await log(env, date, jobLabel, true, `rendering ${vedettes.length} of ${list.length} results (job ${jobId}): ${list.map((m) => `${m.home} ${m.homeScore}-${m.awayScore} ${m.away}`).join(' · ').slice(0, 160)}`)
   return jobId
 }
