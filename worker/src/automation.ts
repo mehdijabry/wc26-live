@@ -1237,7 +1237,7 @@ async function sendKitEmail(env: Env, kit: StoryKit, kitUrl: string): Promise<{ 
 export const REEL_VEDETTES = 3
 
 /** Interrupteur des soirées européennes. Voir runSoireeEurope. */
-const SOIREE_ACTIVE = false
+const SOIREE_ACTIVE = true
 
 /**
  * Les soirées de coupe d'Europe, et le titre de leur affiche.
@@ -1289,7 +1289,7 @@ export async function queueMatchdayReel(env: Env, date: string, label: string, p
       : europe ? { text: 'ليلة أوروبية: من يفوز؟', tone: 'matchday' }
       : { text: 'مباريات اليوم: من يفوز؟', tone: 'matchday' }
     const heading = europe ? (ar ? europe.ar : europe.fr) : ar ? 'مباريات اليوم' : undefined
-    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : undefined   // gabarit « ucl » coupé avec SOIREE_ACTIVE }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : europe ? 'ucl' : undefined }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
     await log(env, date, 'matchday-reel', true, `rendering ${reelPool.length} slides (job ${jobId})${europe ? ` — soirée ${europe.slug}` : ''} — voice ${voiceUrl}`)
   } catch (e) { await log(env, date, 'matchday-reel', false, String(e)) }
 }
