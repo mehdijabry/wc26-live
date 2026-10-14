@@ -383,9 +383,26 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const ms = (data.matches || []).slice(0, 12)
         if (!ms.length) throw new Error('no matches')
         const fondUcl = (nom) => path.join(__dirname, 'assets', 'ucl', `fond-${nom}.jpg`)
-        const specs = [], durees = []
+        const slides = [], durees = []
+        // CHAQUE CARTE EST ÉCRITE SUR DISQUE DÈS QU'ELLE EST DESSINÉE.
+        //
+        // Avant, les quatre cartes étaient dessinées d'abord et écrites
+        // ensuite : leurs calques — plusieurs tampons PNG de 1080×1920 par
+        // carte — tenaient donc TOUS en mémoire en même temps. Une soirée à
+        // neuf rencontres fait quatre cartes, et l'instance de 512 Mo était
+        // tuée en plein rendu. Pas de rappel, pas d'erreur, rien : c'est ce
+        // qui a fait perdre les moments mt1 et repos du 14/10/2026.
+        //
+        // En écrivant au fil de l'eau, un seul jeu de calques est vivant à la
+        // fois et le pic ne dépend plus du nombre de cartes.
+        const poser = async (spec) => {
+          const i = slides.length
+          const layers = {}
+          for (const [k, buf] of Object.entries(spec.layers)) { layers[k] = path.join(dir, `so${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
+          slides.push({ layers, anims: spec.anims })
+        }
         if (data.ouverture !== false) {
-          specs.push(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
+          await poser(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
           durees.push(1.5)
         }
         // RÉCAPITULATIF (Mehdi, 13/10/2026 : « pas juste Barça, récap de tous
@@ -398,17 +415,11 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const parCarte = Math.ceil(ms.length / nbCartes)
         for (let i = 0; i < ms.length; i += parCarte) {
           const page = ms.slice(i, i + parCarte)
-          specs.push(await drawUclRecapLayers(page, specs.length, nbCartes, { bgImage: fondUcl('stade'), lang: data.lang }))
+          await poser(await drawUclRecapLayers(page, slides.length, nbCartes, { bgImage: fondUcl('stade'), lang: data.lang }))
           // 4 s : trois ou quatre rencontres à lire demandent plus de temps
           // qu'une seule affiche. Mehdi, 13/10 : « les tables de score passent
           // trop vite, pas le temps de les lire ».
           durees.push(4)
-        }
-        const slides = []
-        for (let i = 0; i < specs.length; i++) {
-          const layers = {}
-          for (const [k, buf] of Object.entries(specs[i].layers)) { layers[k] = path.join(dir, `so${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
-          slides.push({ layers, anims: specs[i].anims })
         }
         const out = path.join(dir, 'soiree.mp4')
         const musique = await musicPath(data.musique || 'matchday')
