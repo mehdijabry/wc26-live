@@ -8,8 +8,8 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
-import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath } from './video.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawUclRecapLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
+import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -25,12 +25,40 @@ app.use(express.json({ limit: '2mb' }))
 
 let queue = Promise.resolve()
 let pending = 0
+
+// AUCUN RENDU NE PEUT BLOQUER LA FILE POUR DE BON.
+//
+// `queue.then(fn)` attend que `fn` se termine. Si `fn` ne se termine JAMAIS —
+// un `fetch` qui traîne sans délai de garde suffit — toute la file reste
+// derrière, indéfiniment. Et comme le rappel part après le rendu, le worker
+// n'apprend rien : ni succès, ni échec. Le journal montre « rendering… » et
+// plus rien.
+//
+// C'est ce qui a coûté une journée entière de publications, du 13/10 au soir
+// au 14/10 à midi : six rendus de cinq types différents, aucun rappel, et un
+// code de rendu qui n'avait pas changé pour cinq d'entre eux. Seul un
+// redémarrage débloquait.
+//
+// Le plafond ne tue pas le travail bloqué — on ne peut pas interrompre un
+// `fetch` déjà parti — mais il libère la file ET fait partir un rappel
+// d'ÉCHEC. Une panne visible dans le journal vaut infiniment mieux qu'un
+// silence qu'on ne découvre qu'en regardant la page Facebook.
+const PLAFOND_RENDU_MS = 8 * 60 * 1000
+const avecPlafond = (p, ms) => new Promise((resolve, reject) => {
+  const t = setTimeout(() => reject(new Error(`rendu abandonné après ${Math.round(ms / 1000)} s (plafond de la file)`)), ms)
+  p.then(resolve, reject).finally(() => clearTimeout(t))
+})
+
 const serialize = (fn) => {
   pending++
-  const p = queue.then(fn).finally(() => { pending-- })
+  const p = avecPlafond(queue.then(fn), PLAFOND_RENDU_MS).finally(() => { pending-- })
   queue = p.catch(() => {})
   return p
 }
+
+/** `fetch` avec délai de garde. Tout appel réseau du rendu passe par ici :
+ *  un seul appel sans plafond rend la file vulnérable (voir ci-dessus). */
+const recuperer = (url, opts = {}, ms = 30000) => fetch(url, { ...opts, signal: AbortSignal.timeout(ms) })
 
 app.get('/health', (_req, res) => res.json({ ok: true, pending, uptime: Math.round(process.uptime()) }))
 
@@ -184,7 +212,7 @@ app.use((req, res, next) => {
 
 /** Upload a rendered asset through the worker (which owns the storage key). */
 async function upload(key, buf, contentType) {
-  const r = await fetch(`${WORKER}/studio/media/${key}`, {
+  const r = await recuperer(`${WORKER}/studio/media/${key}`, {
     method: 'PUT',
     headers: { 'x-studio-secret': SECRET, 'content-type': contentType, 'user-agent': 'p90-studio/1.0' },
     body: buf,
@@ -250,7 +278,7 @@ const BARCA_ASSETS = {
 async function cachedAsset(url, name) {
   const p = path.join(os.tmpdir(), name)
   try { const st = await fs.stat(p); if (st.size > 1000) return p } catch { /* download */ }
-  const r = await fetch(url); if (!r.ok) throw new Error(`asset ${name} fetch failed ${r.status}`)
+  const r = await recuperer(url); if (!r.ok) throw new Error(`asset ${name} fetch failed ${r.status}`)
   // The assets are served by the site, whose SPA fallback answers 200 with index.html for an unknown path
   // (2026-10-09). Without this check a missing asset is cached as 40 kB of HTML named .mp3 and ffmpeg fails
   // later with something unreadable — say plainly that the file is not on the site.
@@ -270,7 +298,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const urls = data.voiceUrls || []
         if (!urls.length) throw new Error('goal-anim: voiceUrls required')
         const voices = []
-        for (let i = 0; i < urls.length; i++) { const r = await fetch(urls[i]); if (!r.ok) throw new Error(`voice ${i} fetch failed ${r.status}`); const p = path.join(dir, `v${i}.mp3`); await fs.writeFile(p, Buffer.from(await r.arrayBuffer())); voices.push(p) }
+        for (let i = 0; i < urls.length; i++) { const r = await recuperer(urls[i]); if (!r.ok) throw new Error(`voice ${i} fetch failed ${r.status}`); const p = path.join(dir, `v${i}.mp3`); await fs.writeFile(p, Buffer.from(await r.arrayBuffer())); voices.push(p) }
         const music = await cachedAsset(GOAL_ASSETS.music, 'p90-music-quake.mp3')
         const roar = data.roar === false ? null : await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3')
         const confetti = spec.card && spec.card.special === 'barca' ? await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti-paper.mp4') : null
@@ -327,7 +355,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const beats = []
         for (let i = 0; i < beatsIn.length; i++) {
           let voice = null
-          if (beatsIn[i].voiceUrl) { const r = await fetch(beatsIn[i].voiceUrl); if (!r.ok) throw new Error(`voice ${i} fetch failed ${r.status}`); voice = path.join(dir, `tv${i}.mp3`); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
+          if (beatsIn[i].voiceUrl) { const r = await recuperer(beatsIn[i].voiceUrl); if (!r.ok) throw new Error(`voice ${i} fetch failed ${r.status}`); voice = path.join(dir, `tv${i}.mp3`); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
           beats.push({ voice, min: beatsIn[i].min })
         }
         const music = await musicPath('tale')
@@ -347,13 +375,60 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         await fs.rm(dir, { recursive: true, force: true })
         return { url: urls[0], urls, seconds: len }
       }
+      // ── Soirée de coupe d'Europe (Mehdi, 13/10/2026) ──────────────────────
+      // Les affiches livrées en fond, une carte d'ouverture sans données, et
+      // des cartes de match par-dessus le fond « stade » — le seul des trois
+      // dont le milieu est libre. Montage sans son, enchaîné par un éclair.
+      if (type === 'soiree') {
+        const ms = (data.matches || []).slice(0, 12)
+        if (!ms.length) throw new Error('no matches')
+        const fondUcl = (nom) => path.join(__dirname, 'assets', 'ucl', `fond-${nom}.jpg`)
+        const specs = [], durees = []
+        if (data.ouverture !== false) {
+          specs.push(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
+          durees.push(1.5)
+        }
+        // RÉCAPITULATIF (Mehdi, 13/10/2026 : « pas juste Barça, récap de tous
+        // les matchs »). Les rencontres sont réparties ÉQUITABLEMENT sur le
+        // nombre de cartes nécessaires : neuf par paquets de quatre
+        // donneraient 4+4+1, et la dernière carte afficherait une seule ligne
+        // perdue au milieu du vide.
+        const PAR_CARTE = 4
+        const nbCartes = Math.max(1, Math.ceil(ms.length / PAR_CARTE))
+        const parCarte = Math.ceil(ms.length / nbCartes)
+        for (let i = 0; i < ms.length; i += parCarte) {
+          const page = ms.slice(i, i + parCarte)
+          specs.push(await drawUclRecapLayers(page, specs.length, nbCartes, { bgImage: fondUcl('stade'), lang: data.lang }))
+          // 4 s : trois ou quatre rencontres à lire demandent plus de temps
+          // qu'une seule affiche. Mehdi, 13/10 : « les tables de score passent
+          // trop vite, pas le temps de les lire ».
+          durees.push(4)
+        }
+        const slides = []
+        for (let i = 0; i < specs.length; i++) {
+          const layers = {}
+          for (const [k, buf] of Object.entries(specs[i].layers)) { layers[k] = path.join(dir, `so${i}-${k}.png`); await fs.writeFile(layers[k], buf) }
+          slides.push({ layers, anims: specs[i].anims })
+        }
+        const out = path.join(dir, 'soiree.mp4')
+        const musique = await musicPath(data.musique || 'matchday')
+        const { seconds: len } = await renderSoireeReel({ slides, durees, transition: data.transition || 'flash', music: musique, out })
+        const url = await upload(`reel-soiree-${stamp()}.mp4`, await fs.readFile(out), 'video/mp4')
+        await fs.rm(dir, { recursive: true, force: true })
+        return { url, seconds: len }
+      }
+
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
       if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []
         if (type === 'matchday') {
           const ms = (data.matches || []).slice(0, 10)
           if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4')   // « يوم برشلونة » slide
-          for (let i = 0; i < ms.length; i++) specs.push(await drawMatchLayers(ms[i], i, ms.length, data.heading, data.lang))
+          // « ucl » = soirée de coupe d'Europe : même squelette, peau de nuit
+          // et or (voir drawUclMatchLayers). Le worker ne le pose que si
+          // TOUTES les affiches de tête sont de la même compétition.
+          const carte = data.special === 'ucl' ? drawUclMatchLayers : drawMatchLayers
+          for (let i = 0; i < ms.length; i++) specs.push(await carte(ms[i], i, ms.length, data.heading, data.lang))
         }
         else if (type === 'goal') {
           // Barça special (2026-09-14): looping confetti video under the card + stadium roar at t=0
@@ -370,8 +445,10 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           slides.push({ layers, anims: specs[i].anims, bgVideo: specs[i].bgVideo })   // bgVideo: Barça special (was dropped here → black background, 2026-09-14)
         }
         let voice = null
-        if (voiceUrl) { const r = await fetch(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
-        const music = await musicPath(type === 'matchday' || type === 'goal' ? 'matchday' : 'article')
+        if (voiceUrl) { const r = await recuperer(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
+        // `data.musique` l'emporte : c'est ainsi que le reel de résultats
+        // demande sa propre piste alors qu'il emprunte le type 'matchday'.
+        const music = await musicPath(data.musique || (type === 'goal' ? 'goal' : type === 'matchday' ? 'matchday' : 'article'))
         const out = path.join(dir, 'reel.mp4')
         const dflt = type === 'goal' ? 9 : type === 'article' ? 12 : type === 'articles' ? 10 * slides.length : 4 * slides.length
         const sfx = type === 'goal' && data.special === 'barca' && data.sfx !== false ? await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3') : null
@@ -401,7 +478,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const layers = {}
         for (const k of ['bg', 'flash', 'goal', 'home', 'away', 'score', 'scorer', 'minute']) { layers[k] = path.join(dir, `${k}.png`); await fs.writeFile(layers[k], L[k]) }
         let voice = null
-        if (voiceUrl) { const r = await fetch(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
+        if (voiceUrl) { const r = await recuperer(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
         const music = await musicPath('matchday')
         const out = path.join(dir, 'reel.mp4')
         const { seconds: len } = await renderGoalAnim({ layers, rest: L.rest, seconds: seconds || 9, music, musicGain: voice ? 0.22 : 0.9, voice, out })
@@ -431,7 +508,7 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
       if (scenes.length === 0) throw new Error('no scenes')
       let voice = null
       if (voiceUrl) {
-        const r = await fetch(voiceUrl)
+        const r = await recuperer(voiceUrl)
         if (!r.ok) throw new Error('voice fetch failed ' + r.status)
         voice = path.join(dir, 'voice.mp3')
         await fs.writeFile(voice, Buffer.from(await r.arrayBuffer()))
@@ -469,7 +546,7 @@ app.get('/debug/audio', async (req, res) => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dbg-'))
     const voiceUrl = String(req.query.voice || '')
     if (!/^https:/.test(voiceUrl)) return res.status(400).json({ error: 'voice url required' })
-    const voice = path.join(dir, 'v0.mp3'); const r0 = await fetch(voiceUrl); await fs.writeFile(voice, Buffer.from(await r0.arrayBuffer()))
+    const voice = path.join(dir, 'v0.mp3'); const r0 = await recuperer(voiceUrl); await fs.writeFile(voice, Buffer.from(await r0.arrayBuffer()))
     const music = await cachedAsset(GOAL_ASSETS.music, 'p90-music-quake.mp3'), roar = await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3')
     out.probeVoice = (await sh('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_name,sample_rate,channels', '-of', 'csv=p=0', voice])).out.trim()
     out.probeMusic = (await sh('ffprobe', ['-v', 'error', '-show_entries', 'format=duration', '-of', 'csv=p=0', music])).out.trim()
@@ -521,7 +598,7 @@ app.post('/render/reel', async (req, res) => {
       .catch((e) => ({ jobId, ok: false, error: String(e.message || e) }))
       .then(async (payload) => {
         try {
-          await fetch(callbackUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-studio-secret': SECRET, 'user-agent': 'p90-studio/1.0' }, body: JSON.stringify(payload) })
+          await recuperer(callbackUrl, { method: 'POST', headers: { 'content-type': 'application/json', 'x-studio-secret': SECRET, 'user-agent': 'p90-studio/1.0' }, body: JSON.stringify(payload) })
         } catch (e) { console.error('callback failed', jobId, e.message) }
       })
     return
