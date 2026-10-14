@@ -49,9 +49,15 @@ const avecPlafond = (p, ms) => new Promise((resolve, reject) => {
   p.then(resolve, reject).finally(() => clearTimeout(t))
 })
 
+// Le chronomètre part quand le rendu COMMENCE, pas quand il entre dans la file.
+// Première version fautive (14/10) : `avecPlafond(queue.then(fn))` armait le
+// compte à rebours dès la mise en file, donc un travail coincé derrière quatre
+// autres sur 0,1 CPU était annulé sans jamais avoir démarré. Exactement le cas
+// d'une fin de soirée, quand neuf affiches, les animations de but et la vidéo
+// de récap tombent en même temps.
 const serialize = (fn) => {
   pending++
-  const p = avecPlafond(queue.then(fn), PLAFOND_RENDU_MS).finally(() => { pending-- })
+  const p = queue.then(() => avecPlafond(fn(), PLAFOND_RENDU_MS)).finally(() => { pending-- })
   queue = p.catch(() => {})
   return p
 }
