@@ -1237,7 +1237,12 @@ async function sendKitEmail(env: Env, kit: StoryKit, kitUrl: string): Promise<{ 
 export const REEL_VEDETTES = 3
 
 /** Interrupteur des soirées européennes. Voir runSoireeEurope. */
-const SOIREE_ACTIVE = true
+// COUPÉ EN URGENCE le 15/10/2026 : le gabarit de soirée porte le logo UEFA
+// CHAMPIONS LEAGUE INCRUSTÉ DANS SON FOND, et les légendes écrivent « دوري
+// الأبطال ». Il a donc été publié trois fois ce soir sur une soirée de LIGUE
+// EUROPA et de CONFERENCE — mauvaise compétition annoncée sur la page.
+// Ne pas rallumer avant d'avoir un fond par compétition (ou un fond neutre).
+const SOIREE_ACTIVE = false
 
 /**
  * Les soirées de coupe d'Europe, et le titre de leur affiche.
@@ -1723,12 +1728,37 @@ function lignesStats(sum: MatchSummary): Array<[string, number, number, string, 
   return out
 }
 
+/**
+ * La ligne la plus desequilibree du tableau, pour la case « المفارقة ».
+ *
+ * On ne retient QUE les mesures offensives. Prendre le plus grand ecart brut
+ * donnait « +55 التمريرات » sur City-PSG : c'est vrai, et ca ne raconte rien.
+ * L'histoire de ce match, c'est +12 tirs et +9 corners pour l'equipe qui a
+ * perdu. Les passes et la possession sont donc ecartees.
+ */
+function ecartStats(lignes: Array<[string, number, number, string, string]>): { valeur: string; libelle: string } | undefined {
+  const OFFENSIF = ['التسديدات', 'على المرمى', 'الركنيات']
+  const volumes = lignes.filter(([lab]) => OFFENSIF.includes(lab))
+  let best: { valeur: string; libelle: string } | undefined
+  let max = 0
+  for (const [lab, g, d] of volumes) {
+    const e = Math.abs(g - d)
+    if (e > max) { max = e; best = { valeur: `${g >= d ? '+' : '-'}${e}`, libelle: lab } }
+  }
+  return max >= 3 ? best : undefined
+}
+
 /** Render the posters and publish the grouped post. Returns a log note. */
 async function flushFtGroup(env: Env, s: AutomationSettings, date: string, list: FtPending[], why: string): Promise<string> {
   const photos: string[] = []
   for (const m of list.slice(0, 10)) {
     const am = { ...m, rank: 0, state: 'post', completed: true, statusName: 'STATUS_FULL_TIME' } as unknown as AutoMatch
-    try { photos.push(await renderImage(env, 'score', ftPosterData(am, await matchSummary(env, am), s.mainLang !== 'en' ? 'ar' : 'en'))) } catch (e) { await log(env, date, 'ft-group', false, `${m.home} v ${m.away}: render failed ${String(e).slice(0, 100)}`) }
+    // Gabarit « album de fin de match » de Mehdi, comme la carte de stats qui
+    // ferme l'album. Avant, les affiches sortaient de l'ancienne carte `score`
+    // — fond clair et bandes de couleur — et se retrouvaient a cote du tableau
+    // de stats en carbone sombre : deux styles sans rapport dans le meme album
+    // (Mehdi, 15/10 : « c'est pas compatible, je veux un seul style »).
+    try { photos.push(await renderImage(env, 'gabarit-album', ftPosterData(am, await matchSummary(env, am), s.mainLang !== 'en' ? 'ar' : 'en'))) } catch (e) { await log(env, date, 'ft-group', false, `${m.home} v ${m.away}: render failed ${String(e).slice(0, 100)}`) }
   }
   // Le tableau de statistiques du match le plus marquant du lot (Mehdi,
   // 15/10/2026). Il s'ajoute a l'album plutot que de faire un post de plus :
@@ -1743,7 +1773,7 @@ async function flushFtGroup(env: Env, s: AutomationSettings, date: string, list:
       if (lignes.length >= 4) {
         photos.push(await renderImage(env, 'gabarit-stats', {
           home: av.home, away: av.away, homeLogo: av.homeLogo, awayLogo: av.awayLogo,
-          homeScore: av.homeScore, awayScore: av.awayScore, lignes,
+          homeScore: av.homeScore, awayScore: av.awayScore, lignes, ecart: ecartStats(lignes),
         }))
       }
     } catch (e) { await log(env, date, 'ft-group', false, `tableau de stats ignore: ${String(e).slice(0, 90)}`) }
@@ -3316,6 +3346,32 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       if (!r || r.players.length < 11) return { ok: false, note: `event ${ev}: no XI for ${side}` }
       const predicted = String((extra as { predicted?: unknown }).predicted ?? '') === 'true'
       return { ok: true, note: await renderImage(env, 'lineup-post', lineupData(m, side, { formation: r.formation, players: r.players }, predicted, sum.venue)) }
+    }
+    if (job === 'gabarit-apercu') {
+      // RENDU A BLANC des gabarits de Mehdi, sur un vrai match termine :
+      // { event, league } — rien n'est publie, l'URL revient dans la reponse.
+      // Sert a verifier en production, a froid, ce qu'on ne veut pas decouvrir
+      // en direct pendant une soiree.
+      const ev = String((extra as { event?: string }).event ?? '')
+      const slug = String((extra as { league?: string }).league ?? 'uefa.champions')
+      if (!ev) return { ok: false, note: 'event requis' }
+      const sum = await matchSummary(env, { id: ev, slug })
+      const dom = sum.teams.find((t) => t.side === 'home'), ext = sum.teams.find((t) => t.side === 'away')
+      if (!dom || !ext) return { ok: false, note: `match ${ev} introuvable` }
+      const base = {
+        home: dom.name, away: ext.name, homeLogo: dom.logo ?? '', awayLogo: ext.logo ?? '',
+        homeScore: dom.score ?? '', awayScore: ext.score ?? '',
+      }
+      const lignes = lignesStats(sum)
+      const out: Record<string, string> = {}
+      // goalsWithSide, comme la vraie chaine : sans lui, tous les buteurs
+      // sortent de la meme couleur et la distinction domicile/exterieur est
+      // perdue. L'apercu doit etre fidele, sinon il ne prouve rien.
+      const faux = { home: dom.name, away: ext.name } as unknown as AutoMatch
+      out.album = await renderImage(env, 'gabarit-album', { ...base, league: slug, goals: goalsWithSide(faux, sum.goals), dateLabel: label })
+      if (lignes.length >= 4) out.stats = await renderImage(env, 'gabarit-stats', { ...base, lignes, ecart: ecartStats(lignes) })
+      else out.stats = `pas assez de statistiques (${lignes.length} lignes)`
+      return { ok: true, note: JSON.stringify(out) }
     }
     if (job === 'preview-image') {
       // Synchronous image previews of a Barça day: { type: 'matchday-post' | 'matchday-story' }
