@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -312,7 +312,7 @@ app.post('/render/image', async (req, res) => {
         case 'matchday-post': canvas = await drawMatchdayPost(data.matches, data.dateLabel, { featured: !!data.featured }); break
         case 'tale-cover': canvas = await drawTaleCover(data); break
         case 'matchday-story': canvas = await drawMatchStory(data.matches, data.dateLabel, data.page || 1, data.pages || 1, { featured: !!data.featured }); break
-        case 'article-post': canvas = await drawArticlePost(data); break
+        case 'article-post': canvas = data.ancien ? await drawArticlePost(data) : await gabaritArticlePost(data); break
         case 'article-story': canvas = await drawArticleStory(data); break
         case 'lineup-post': canvas = await drawLineupPost(data); break          // editorial lineup (2026-09-14)
         case 'fulltime-post': canvas = await drawScoreCard(data); break         // editorial full-time poster (scorers + player bust)
@@ -551,7 +551,14 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           specs.push(await drawGoalAnimSpec(data))
         }
         else if (type === 'article') specs.push(await drawArticleLayers(data))
-        else { const arts = (data.articles || []).slice(0, 4); for (let i = 0; i < arts.length; i++) specs.push(await drawArticleLayers({ ...arts[i], first: i === 0 }, data.heading, data.lang)) }
+        else {
+          // Gabarit de Mehdi par defaut depuis le 15/10 : c'est le reel des
+          // infos Barca, publie chaque matin, et il etait reste en style clair.
+          // `data.ancien` rebascule sur l'ancienne carte sans redeploiement.
+          const carte = data.ancien ? drawArticleLayers : gabaritArticleSlide
+          const arts = (data.articles || []).slice(0, 4)
+          for (let i = 0; i < arts.length; i++) specs.push(await carte({ ...arts[i], first: i === 0 }, data.heading, data.lang))
+        }
         if (specs.length === 0) throw new Error('no scenes')
         const slides = []
         for (let i = 0; i < specs.length; i++) {

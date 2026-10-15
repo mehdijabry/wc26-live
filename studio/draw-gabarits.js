@@ -19,7 +19,7 @@
 import { createCanvas, loadImage, Image } from 'canvas'
 import fsSync from 'node:fs'
 import path from 'node:path'
-import { registerBrandFonts, paintLogo } from './draw.js'
+import { registerBrandFonts, paintLogo, loadImgOuRepli } from './draw.js'
 import { dossierGabarits, CASES, UTILE, couvrir, ar, arNombre, OR, CREME, MENTHE, tableauComparatif } from './gabarits.js'
 
 const ECH = 1080 / 768
@@ -666,5 +666,169 @@ export async function gabaritRecapSoiree(matchs, page = 0, pages = 1, d = {}) {
     layers[`l${i}`] = png(c)
     anims.push({ layer: `l${i}`, x: 0, y: Y0 + i * LIG, slide: { dx: 0, dy: 26, st: 0.15 + i * 0.12, d: 0.35 }, fade: { st: 0.15 + i * 0.12, d: 0.3 } })
   }
+  return { layers, anims }
+}
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LE POST D'ARTICLE — plaque « post-4-5 », 1080×1350                   ║
+// ║                                                                      ║
+// ║ Remplace drawArticlePost, qui etait reste en style CLAIR (fond creme,║
+// ║ encre bleu nuit) alors que tout le reste de la page est passe au     ║
+// ║ style de nuit. Mehdi, 15/10 : « je veux avoir un seul style ».       ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+/**
+ * Ecrit de l'arabe sur PLUSIEURS lignes, coupe aux espaces.
+ *
+ * Les titres d'article font de dix a vingt mots : sur une seule ligne ils
+ * sortaient du cadre ou retrecissaient jusqu'a l'illisible. On coupe aux
+ * espaces — jamais a l'interieur d'un mot, l'arabe etant une ecriture liee.
+ * Rend le nombre de lignes reellement ecrites, pour que l'appelant sache ou
+ * reprendre.
+ */
+function arLignes(ctx, texte, x, y, { size = 48, maxW = 940, max = 3, interligne = 1.35, color = CREME } = {}) {
+  ctx.save()
+  ctx.font = `bold ${size}px Tajawal`
+  const mots = String(texte ?? '').trim().split(/\s+/)
+  const lignes = []
+  let cour = ''
+  for (const m of mots) {
+    const essai = cour ? `${cour} ${m}` : m
+    if (ctx.measureText(essai).width <= maxW || !cour) cour = essai
+    else { lignes.push(cour); cour = m; if (lignes.length === max) break }
+  }
+  if (lignes.length < max && cour) lignes.push(cour)
+  ctx.restore()
+  const h = Math.round(size * interligne)
+  for (let i = 0; i < lignes.length; i++) ar(ctx, lignes[i], x, y + i * h, { size, color })
+  return lignes.length
+}
+
+export async function gabaritArticlePost(a = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1350
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poser(ctx, 'post-4-5', W, H)
+  paintLogo(ctx, 40, 40, 130)
+
+  // Le surtitre, en or : il dit de quoi parle la page, pas ce que dit l'article.
+  ar(ctx, a.kicker || 'خبر جديد', W / 2, 232, { size: 36, color: OR })
+
+  // ── LA PHOTO, cadre arrondi et liseré crème ────────────────────────────
+  // `loadImgOuRepli` et non `loadImg` : c'est le studio qui charge, donc
+  // c'est lui qui decide de se rabattre (voir draw.js).
+  const PX = 60, PY = 292, PW = W - 120, PH = 560
+  const img = await loadImgOuRepli(a.image_url, a.repli)
+  ctx.save()
+  arrondi(ctx, PX, PY, PW, PH, 24); ctx.clip()
+  if (img) {
+    const s = Math.max(PW / img.width, PH / img.height), dw = img.width * s, dh = img.height * s
+    ctx.drawImage(img, PX + (PW - dw) / 2, PY + (PH - dh) / 2, dw, dh)
+  } else { ctx.fillStyle = '#0B1536'; ctx.fillRect(PX, PY, PW, PH) }
+  ctx.restore()
+  ctx.save(); arrondi(ctx, PX, PY, PW, PH, 24)
+  ctx.strokeStyle = 'rgba(244,243,238,0.55)'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore()
+
+  // ── LE TITRE ───────────────────────────────────────────────────────────
+  // Un voile le porte : sous la photo commence la pelouse eclairee de la
+  // plaque, et un titre pose dessus devenait illisible.
+  const TY = 912
+  const voile = ctx.createLinearGradient(0, TY - 56, 0, TY + 190)
+  voile.addColorStop(0, 'rgba(5,8,15,0)')
+  voile.addColorStop(0.22, 'rgba(5,8,15,0.9)')
+  voile.addColorStop(0.8, 'rgba(5,8,15,0.9)')
+  voile.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, TY - 56, W, 246); ctx.restore()
+  arLignes(ctx, a.title, W / 2, TY, { size: 48, maxW: 940, max: 3 })
+
+  blocInscription(ctx, W / 2, 1118, 112, W, { compact: true })
+  return c
+}
+
+/** Chemin d'un rectangle a coins arrondis. */
+function arrondi(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath()
+}
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LA CARTE D'ARTICLE EN REEL — « reel-barca » ou « reel-neutre »       ║
+// ║                                                                      ║
+// ║ C'est le format des infos Barça, publie chaque matin. Il etait reste ║
+// ║ en style CLAIR — papier creme, encre bleu nuit — a cote de tout le   ║
+// ║ reste de la page passe au style de nuit (Mehdi, 15/10 : « je veux    ║
+// ║ avoir un seul style »).                                             ║
+// ║                                                                      ║
+// ║ Meme contrat que drawArticleLayers : (a, heading, lang) ->           ║
+// ║ { layers, anims }, et les memes minutages, pour que le montage et la ║
+// ║ vignette ne changent pas de comportement.                            ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+export async function gabaritArticleSlide(a = {}, heading, lang = 'ar') {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const PX = 60, PY = 330, PW = W - 120, PH = 620
+  const TY = 1030
+
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    // La plaque blaugrana des que la carte parle de Barcelone ; la neutre
+    // sinon. Le reel des infos Barca porte donc ses couleurs sans qu'aucun
+    // ecusson n'ait a etre dessine.
+    await poser(ctx, a.barca === false ? 'reel-neutre' : 'reel-barca', W, H)
+    paintLogo(ctx, 44, 44, 150)
+    blocInscription(ctx, W / 2, 1240, 200, W)
+  }
+
+  const kicker = createCanvas(W, 100); { const ctx = ctx2d(kicker)
+    ar(ctx, heading || (lang === 'ar' ? 'خبر جديد' : 'NEW ARTICLE'), W / 2, 50, { size: 46, color: OR })
+  }
+
+  // ── LA PHOTO ───────────────────────────────────────────────────────────
+  // `loadImgOuRepli` et non `loadImg` : c'est le studio qui charge, donc
+  // c'est lui qui decide de se rabattre (voir draw.js, 15/10/2026).
+  const photo = createCanvas(PW, PH); { const ctx = ctx2d(photo)
+    const img = await loadImgOuRepli(a.image_url, a.repli)
+    ctx.save(); arrondi(ctx, 0, 0, PW, PH, 26); ctx.clip()
+    if (img) {
+      const s = Math.max(PW / img.width, PH / img.height), dw = img.width * s, dh = img.height * s
+      ctx.drawImage(img, (PW - dw) / 2, (PH - dh) / 2, dw, dh)
+    } else { ctx.fillStyle = '#0B1536'; ctx.fillRect(0, 0, PW, PH) }
+    ctx.restore()
+    ctx.save(); arrondi(ctx, 0, 0, PW, PH, 26)
+    ctx.strokeStyle = 'rgba(244,243,238,0.55)'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore()
+  }
+
+  // ── LE TITRE, sur son voile ────────────────────────────────────────────
+  // Sous la photo commencent les tribunes eclairees de la plaque : un titre
+  // pose dessus devient illisible des la deuxieme ligne.
+  const titre = createCanvas(W, 250); { const ctx = ctx2d(titre)
+    const v = ctx.createLinearGradient(0, 0, 0, 250)
+    v.addColorStop(0, 'rgba(5,8,15,0)')
+    v.addColorStop(0.18, 'rgba(5,8,15,0.9)')
+    v.addColorStop(0.82, 'rgba(5,8,15,0.9)')
+    v.addColorStop(1, 'rgba(5,8,15,0)')
+    ctx.fillStyle = v; ctx.fillRect(0, 0, W, 250)
+    arLignes(ctx, a.title, W / 2, 62, { size: 52, maxW: 950, max: 3 })
+  }
+
+  const layers = { bg: png(bg), kicker: png(kicker), photo: png(photo), titre: png(titre) }
+  if (a.cover) { const cv = createCanvas(W - 80, 150); const ctx = ctx2d(cv)
+    couvrir(ctx, [0, 0, W - 80, 150], '#070B16', 18)
+    ar(ctx, a.cover.text || '', (W - 80) / 2, 75, { size: 38 })
+    layers.cover = png(cv) }
+
+  const anims = a.first ? [
+    // Premiere carte = vignette : tout est visible des la premiere image.
+    { layer: 'photo', x: PX, y: PY, slide: { dx: 0, dy: 24, st: 0, d: 0.6 }, fade: { st: 0, d: 0 } },
+    { layer: 'kicker', x: 0, y: 206, fade: { st: 0, d: 0 } },
+    { layer: 'titre', x: 0, y: TY - 62, fade: { st: 0, d: 0 } },
+    ...(a.cover ? [{ layer: 'cover', x: 40, y: PY + PH - 160, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } }] : []),
+  ] : [
+    { layer: 'photo', x: PX, y: PY, slide: { dx: 0, dy: 70, st: 0.1, d: 0.7 }, fade: { st: 0.1, d: 0.45 } },
+    { layer: 'kicker', x: 0, y: 206, w: W, h: 100, pop: { from: 1.8, st: 0.55, d: 0.35 }, fade: { st: 0.55, d: 0.15 } },
+    { layer: 'titre', x: 0, y: TY - 62, slide: { dx: -90, dy: 0, st: 0.85, d: 0.5 }, fade: { st: 0.85, d: 0.3 } },
+  ]
   return { layers, anims }
 }

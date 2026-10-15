@@ -421,7 +421,7 @@ export async function processRepublishQueue(env: Env, date: string, label: strin
       if (!row) throw new Error('article not found ' + item.slug)
       const link = `${SITE}/news/${row.slug}?ref=fb`
       let card: string | null = null
-      try { card = await renderImage(env, 'article-post', { title: row.title, slug: row.slug, image_url: row.image_url }) } catch { /* raw image */ }
+      try { card = await renderImage(env, 'article-post', { title: row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE }) } catch { /* raw image */ }
       const image = card ?? (row.image_url ? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url)}` : `${SITE}/icon-512.png`)
       r = await fbPost(env, { message: `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article on pressing90.live (link in the comments)`, link, image_url: image, title: row.title, comment: `📰 Read the full article: ${link}` })
     }
@@ -1289,6 +1289,15 @@ const SOIREE_ACTIVE = true
  * Ligue des champions par defaut, et une soiree de Ligue Europa sortait
  * estampillee Champions League. Verifies a l'oeil le 15/10/2026.
  */
+/**
+ * Le visuel de secours d'un article.
+ *
+ * Servi par le SITE et non par Supabase : le menage de nuit l'a efface du
+ * seau le 09/10/2026. Il part a cote de l'URL d'origine, et c'est le studio
+ * — seul a savoir si le chargement a reussi — qui s'en sert ou non.
+ */
+const REPLI_ARTICLE = 'https://pressing90.live/media/barca-news-fallback.jpg'
+
 const SOIREES_EUROPE: Record<string, { fr: string; ar: string; logo: number; motAr: string; motFr: string }> = {
   'uefa.champions': { fr: 'LIGUE DES CHAMPIONS', ar: 'دوري الأبطال', logo: 2, motAr: '#دوري_الأبطال', motFr: '#LigueDesChampions' },
   'uefa.europa': { fr: 'LIGUE EUROPA', ar: 'الدوري الأوروبي', logo: 2310, motAr: '#الدوري_الأوروبي', motFr: '#LigueEuropa' },
@@ -1947,7 +1956,7 @@ export async function maybeAutoPublishArticle(env: Env, articleId: string): Prom
   const ar = !!arCols.title_ar
   const link = `${SITE}/news/${row.slug}?${ar ? 'lang=ar&' : ''}ref=fb`
   let card: string | null = null
-  try { card = await renderImage(env, 'article-post', { title: ar ? arCols.title_ar : row.title, slug: row.slug, image_url: row.image_url, lang: ar ? 'ar' : 'en' }) } catch (e) { await log(env, date, 'article-card', false, String(e)) }
+  try { card = await renderImage(env, 'article-post', { title: ar ? arCols.title_ar : row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE, lang: ar ? 'ar' : 'en' }) } catch (e) { await log(env, date, 'article-card', false, String(e)) }
   const image = card ?? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url!)}`
   const message = ar
     ? `${arCols.title_ar}${arCols.excerpt_ar ? '\n\n' + arCols.excerpt_ar : ''}\n\nما رأيك؟ 👇\n👉 المقال كاملاً على pressing90.live (الرابط في التعليقات)\n\n${row.title}\n\n#كرة_القدم #أخبار #Pressing90`
@@ -2296,7 +2305,7 @@ export async function runBarcaDigest(env: Env, s: AutomationSettings, date: stri
   list = list.slice(0, 3)
   if (!list.length) { await log(env, date, 'barca-digest', false, 'no Barça article on the site — nothing to publish'); return 'no article' }
   const items: Array<{ title: string; slug: string; image_url?: string | null; repli: string; excerpt: string }> = []
-  const REPLI = 'https://pressing90.live/media/barca-news-fallback.jpg'   // servi par le site, pas par Supabase : le menage de nuit l'a efface du seau (2026-10-09, voir public/media/README.md)
+  const REPLI = REPLI_ARTICLE   // servi par le site, pas par Supabase : le menage de nuit l'a efface du seau (2026-10-09, voir public/media/README.md)
   // ── PLUS DE CONTROLE PREALABLE DE L'IMAGE ──────────────────────────────
   // Il y en avait un : le worker ouvrait l'image avec l'en-tete du studio et
   // remplacait par le repli celles qu'il jugeait inutilisables. Le verdict
