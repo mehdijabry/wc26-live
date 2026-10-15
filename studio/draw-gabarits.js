@@ -420,11 +420,15 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
   // ── Le fond : plaque, marque, QR, et le titre de la competition
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
     await poser(ctx, m.barca ? 'reel-barca' : 'reel-neutre', W, H)
-    paintLogo(ctx, 44, 44, 96)
-    blocQr(ctx, W - 44 - 104, 44, 92)
-    if (heading) ar(ctx, heading, W / 2, 238, { size: 46 })
+    // La marque plus grande : a 96 px elle se perdait sur une plaque de nuit,
+    // alors que le coin avait de la place (Mehdi, 15/10).
+    paintLogo(ctx, 44, 44, 150)
+    // LE QR DESCEND AU CENTRE BAS, sur les tribunes : en haut a droite il
+    // concurrencait la marque et laissait un vide au milieu de la carte.
+    blocQr(ctx, (W - 220) / 2, 1200, 220)
+    if (heading) ar(ctx, heading, W / 2, 262, { size: 46 })
     // La pagination dit au spectateur qu'il y a une suite.
-    if (total > 1) txt(ctx, `${idx + 1}/${total}`, W / 2, 300, { size: 24, font: 'Archivo', color: OR })
+    if (total > 1) txt(ctx, `${idx + 1}/${total}`, W / 2, 324, { size: 24, font: 'Archivo', color: OR })
   }
 
   // ── L'ecusson de la competition, s'il est fourni. JAMAIS de valeur par
@@ -465,7 +469,7 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
 
   const layers = { bg: PNG(bg), badge: PNG(badge), noms: PNG(noms), centre: PNG(centre) }
   const anims = [
-    { layer: 'badge', x: 440, y: 330, w: 200, h: 200, fade: { st: 0, d: 0.25 } },
+    { layer: 'badge', x: 440, y: 356, w: 200, h: 200, fade: { st: 0, d: 0.25 } },
     { layer: 'home', x: 110, y: 620, slide: { dx: -420, dy: 0, st: 0.15, d: 0.5 }, fade: { st: 0.15, d: 0.25 } },
     { layer: 'away', x: 710, y: 620, slide: { dx: 420, dy: 0, st: 0.15, d: 0.5 }, fade: { st: 0.15, d: 0.25 } },
     { layer: 'centre', x: 330, y: 650, w: 420, h: 200, pop: { from: 1.4, st: 0.35, d: 0.3 }, fade: { st: 0.35, d: 0.25 } },
