@@ -21,6 +21,7 @@ import fsSync from 'node:fs'
 import path from 'node:path'
 import { registerBrandFonts, paintLogo, loadImgOuRepli } from './draw.js'
 import { dossierGabarits, CASES, UTILE, couvrir, ar, arNombre, OR, CREME, MENTHE, tableauComparatif } from './gabarits.js'
+import { jersey, pitch, lineupRows, surname, spaced } from './editorial.js'
 
 const ECH = 1080 / 768
 const e = (n) => Math.round(n * ECH)
@@ -919,5 +920,52 @@ export async function gabaritArticleStory(a = {}) {
   arLignes(ctx, a.title, W / 2, TY, { size: 52, maxW: 950, max: 3 })
 
   blocInscription(ctx, W / 2, 1300, 200, W)
+  return c
+}
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LES COMPOSITIONS — plaque « post-4-5 », 1080×1350                    ║
+// ║                                                                      ║
+// ║ Le maillot et le terrain viennent d'editorial.js, inchanges : ils    ║
+// ║ sont deja blaugrana et or, et se lisent sur une plaque de nuit.      ║
+// ║                                                                      ║
+// ║ En revanche jersey() trace le NOM en bleu nuit, sans option de       ║
+// ║ couleur — invisible sur cette plaque. On lui demande donc le maillot ║
+// ║ sans nom et on ecrit les noms en creme par-dessus.                   ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+export async function gabaritLineupPost(d = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1350
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poser(ctx, 'post-4-5', W, H)
+  paintLogo(ctx, 36, 36, 118)
+
+  const prevue = d.predicted !== false
+  ar(ctx, prevue ? 'التشكيلة المتوقعة' : 'التشكيلة الرسمية', W / 2, 198, { size: 56 })
+  txt(ctx, `${d.home || ''}  v  ${d.away || ''}`.toUpperCase(), W / 2, 256, { size: 30, font: 'Archivo' })
+  // La competition et le schema sur la meme ligne, en or. Le schema est un
+  // nombre : il se trace en Archivo, et SEPAREMENT du texte arabe, sinon le
+  // bidi l'envoie a l'autre bout de la ligne.
+  if (d.leagueAr) ar(ctx, d.leagueAr, W / 2, 302, { size: 24, color: OR })
+  if (d.formation) txt(ctx, d.formation, W - 56, 302, { size: 26, align: 'right', color: OR })
+
+  const X = pitch(ctx, 120, 340, 840, 700, { topW: 0.88, color: 'rgba(244,243,238,0.4)' })
+  const rangs = lineupRows(d.players || [], d.formation)
+  const ys = [965, 830, 695, 560].slice(0, rangs.length)
+  const TAILLE = 98
+  rangs.forEach((rang, ri) => {
+    const n = rang.length, pas = n === 1 ? 0 : Math.min(230, 700 / (n - 1))
+    rang.forEach((p, i) => {
+      const u = 0.5 + ((i - (n - 1) / 2) * pas) / 840
+      const x = X(u, ys[ri]), y = ys[ri] - Math.round(TAILLE * 0.7)
+      jersey(ctx, x, y, TAILLE, { kind: ri === 0 ? 'gk' : (d.kit || 'home'), number: p.jersey || '' })
+      spaced(ctx, String(surname(p.name)).toUpperCase(), x, y + TAILLE + 28, {
+        size: 18, align: 'center', tracking: 0.12, color: CREME,
+      })
+    })
+  })
+
+  blocInscription(ctx, W / 2, 1090, 124, W, { compact: true })
   return c
 }

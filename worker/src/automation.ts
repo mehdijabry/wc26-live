@@ -413,8 +413,17 @@ export async function processRepublishQueue(env: Env, date: string, label: strin
     let r: { ok: boolean; note?: string } = { ok: false }
     if (item.kind === 'matchday') {
       const pool = await bigMatchesToday(env)
-      const img = await renderImage(env, 'matchday-post', { matches: pool.slice(0, 6).map(toDraw), dateLabel: label })
-      r = await fbPost(env, { message: matchdayMessageAr(pool, label), link: `${SITE}/today?lang=ar&ref=fb`, image_url: img, title: `مباريات اليوم — ${labelAr()}`, comment: `⚽ النتائج المباشرة والتشكيلات: ${SITE}/today?lang=ar&ref=fb` })
+      // LE MEME GABARIT QUE LE PREMIER ENVOI. La republication rendait encore
+      // l'ancien « matchday-post » : un post reparti ressortait en style
+      // clair, a cote de son original en style de nuit.
+      const imgs = await renderImages(env, 'gabarit-matchday', {
+        titre: 'مباريات اليوم', sousTitre: labelAr(),
+        matchs: pool.map((m) => { const t = toDraw(m) as Record<string, unknown>; return { ...t, heure: m.kickoff ? localTime(m.kickoff) : '' } }),
+      })
+      const commentaire = `⚽ النتائج المباشرة والتشكيلات: ${SITE}/today?lang=ar&ref=fb`
+      r = imgs.length > 1
+        ? await fbAlbumPost(env, { message: matchdayMessageAr(pool, label), photos: imgs, comment: commentaire })
+        : await fbPost(env, { message: matchdayMessageAr(pool, label), link: `${SITE}/today?lang=ar&ref=fb`, image_url: imgs[0], title: `مباريات اليوم — ${labelAr()}`, comment: commentaire })
     } else if (item.slug) {
       const rr = await fetch(`${env.SUPABASE_URL}/rest/v1/articles?slug=eq.${encodeURIComponent(item.slug)}&select=title,slug,excerpt,image_url&limit=1`, { headers: sbHeaders(env) })
       const row = ((await rr.json().catch(() => [])) as Array<{ title: string; slug: string; excerpt?: string | null; image_url?: string | null }>)[0]
@@ -3140,8 +3149,11 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       const pool = await bigMatchesToday(env)
       const m = pool[0]
       const url = m
-        ? await renderImage(env, 'score', { home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo, homeScore: m.homeScore, awayScore: m.awayScore, league: m.league, venue: m.venue, status: 'FT' })
-        : await renderImage(env, 'score', { home: 'Morocco', away: 'France', homeLogo: null, awayLogo: null, homeScore: 2, awayScore: 1, league: 'International friendly', status: 'FT' })
+        // « score » rendait la fiche de fin de match d'origine, que la chaine
+        // ne publie plus depuis le 15/10 : elle sort en gabarit-album. Un
+        // bouton de test qui montre un format mort ne teste rien.
+        ? await renderImage(env, 'gabarit-album', { home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo, homeScore: m.homeScore, awayScore: m.awayScore, league: m.slug, goals: [], dateLabel: label })
+        : await renderImage(env, 'gabarit-album', { home: 'Morocco', away: 'France', homeLogo: null, awayLogo: null, homeScore: 2, awayScore: 1, league: 'fifa.friendly', goals: [], dateLabel: label })
       await log(env, date, 'test-image', true, url)
       return { ok: true, note: url }
     }
@@ -3433,7 +3445,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
         if (!th || !ta) return { ok: false, note: `event ${ev}: no summary` }
         m = { id: ev, rank: 1, league: AUTO_LEAGUES[slug]?.label ?? slug, slug, kickoff: sum.date, state: sum.state === 'post' ? 'post' : 'pre', completed: sum.state === 'post', statusName: '', home: th.name, away: ta.name, homeLogo: th.logo ?? null, awayLogo: ta.logo ?? null, homeScore: th.score ?? '', awayScore: ta.score ?? '', venue: sum.venue }
       }
-      if (type === 'fulltime-post') return { ok: true, note: await renderImage(env, 'fulltime-post', ftPosterData(m, sum, 'ar')) }
+      if (type === 'fulltime-post') return { ok: true, note: await renderImage(env, 'gabarit-album', ftPosterData(m, sum, 'ar')) }   // la chaine publie gabarit-album depuis le 15/10 ; l'apercu doit montrer ce qui part vraiment
       const side: 'home' | 'away' = /barcelona|barça/i.test(m.home) ? 'home' : 'away'
       const r = sum.rosters.find((x) => x.side === side)
       if (!r || r.players.length < 11) return { ok: false, note: `event ${ev}: no XI for ${side}` }

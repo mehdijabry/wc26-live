@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -314,7 +314,7 @@ app.post('/render/image', async (req, res) => {
         case 'matchday-story': canvas = await (data.ancien ? drawMatchStory : gabaritMatchdayStory)(data.matches, data.dateLabel, data.page || 1, data.pages || 1, { featured: !!data.featured }); break
         case 'article-post': canvas = data.ancien ? await drawArticlePost(data) : await gabaritArticlePost(data); break
         case 'article-story': canvas = data.ancien ? await drawArticleStory(data) : await gabaritArticleStory(data); break
-        case 'lineup-post': canvas = await drawLineupPost(data); break          // editorial lineup (2026-09-14)
+        case 'lineup-post': canvas = data.ancien ? await drawLineupPost(data) : await gabaritLineupPost(data); break          // editorial lineup (2026-09-14)
         case 'fulltime-post': canvas = await drawScoreCard(data); break         // editorial full-time poster (scorers + player bust)
         default: throw new Error('unknown image type')
       }
