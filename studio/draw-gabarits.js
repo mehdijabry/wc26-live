@@ -339,6 +339,71 @@ export async function gabaritQuatreMoments(d) {
   return { layers: { bg: png(c) }, anims: [] }
 }
 
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LE POST DES MATCHS DU JOUR — plaque « post-4-5 », 1080×1350          ║
+// ║                                                                      ║
+// ║ Nouvelle fonction plutot qu'une reprise de drawMatchdayPost : celle-  ║
+// ║ ci est un design CLAIR, fond creme et encre bleu nuit. Poser une      ║
+// ║ plaque sombre dessous rendrait tout son texte illisible. Elle reste   ║
+// ║ donc intacte, disponible en repli.                                    ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+export const MATCHS_PAR_PAGE = 7
+
+/**
+ * Rend AUTANT DE PAGES qu'il faut pour montrer toutes les rencontres, sept par
+ * image (Mehdi, 15/10). Au-dela de sept, les lignes deviennent trop fines pour
+ * un telephone ; en tronquant, on cachait des matchs. Les pages partent en
+ * album, comme les affiches de fin de match.
+ *
+ * Rend un TABLEAU de toiles, meme quand il n'y en a qu'une.
+ */
+export async function gabaritMatchdayPost(d) {
+  const tous = d.matchs || []
+  const pages = Math.max(1, Math.ceil(tous.length / MATCHS_PAR_PAGE))
+  const out = []
+  for (let p = 0; p < pages; p++) {
+    out.push(await unePageMatchday(d, tous.slice(p * MATCHS_PAR_PAGE, (p + 1) * MATCHS_PAR_PAGE), p + 1, pages))
+  }
+  return out
+}
+
+async function unePageMatchday(d, ms, page, pages) {
+  registerBrandFonts()
+  const W = 1080, H = 1350
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poser(ctx, 'post-4-5', W, H)
+
+  paintLogo(ctx, 44, 44, 92)
+  blocQr(ctx, W - 44 - 100, 44, 88)
+
+  ar(ctx, d.titre || 'مباريات اليوم', W / 2, 232, { size: 58 })
+  if (d.sousTitre) ar(ctx, d.sousTitre, W / 2, 294, { size: 24, color: OR })
+  // Le numero de page n'apparait QUE s'il y en a plusieurs : sur une image
+  // unique, « 1/1 » n'informe de rien et encombre.
+  if (pages > 1) txt(ctx, `${page}/${pages}`, W - 56, 294, { size: 24, font: 'Archivo', align: 'right', color: OR })
+
+  const Y0 = 352, LIG = 104
+  for (let i = 0; i < ms.length; i++) {
+    const m = ms[i]
+    const y = Y0 + i * LIG
+    couvrir(ctx, [56, y, W - 112, LIG - 14], '#070B16', 12)
+    const cy = y + (LIG - 14) / 2
+    const dom = await crest(m.homeLogo), ext = await crest(m.awayLogo)
+    if (dom) ctx.drawImage(dom, 82, cy - 29, 58, 58)
+    if (ext) ctx.drawImage(ext, W - 140, cy - 29, 58, 58)
+    ar(ctx, nomAr(m.home), 166, cy, { size: 22, align: 'left' })
+    ar(ctx, nomAr(m.away), W - 166, cy, { size: 22, align: 'right' })
+    // L'heure ou le score, au centre : c'est ce que l'oeil cherche en premier.
+    txt(ctx, m.score || m.heure || '', W / 2, cy, { size: m.score ? 36 : 30, font: 'Anton', color: OR })
+  }
+
+  const yB = Y0 + ms.length * LIG + 16
+  if (d.pied && pages === 1) ar(ctx, d.pied, W / 2, yB + 30, { size: 24, color: 'rgba(244,243,238,0.8)' })
+  ar(ctx, 'كل المباريات على pressing90.live', W / 2, H - 56, { size: 21, color: OR })
+  return c
+}
+
 // ── Petits utilitaires ─────────────────────────────────────────────────────
 /** Les noms de clubs et de joueurs arrivent en latin : on les laisse tels
  *  quels faute de table de translittération. Le point d'extension est ici. */

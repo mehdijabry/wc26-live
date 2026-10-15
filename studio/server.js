@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -289,11 +289,22 @@ const stamp = () => new Date().toISOString().slice(0, 10) + '-' + Math.random().
 app.post('/render/image', async (req, res) => {
   const { type, data, theme } = req.body || {}
   try {
-    const url = await serialize(async () => {
+    const rendu = await serialize(async () => {
       registerBrandFonts()
       setTheme(theme || (data && data.theme) || process.env.P90_THEME || 'barca')
       let canvas
       switch (type) {
+        case 'gabarit-matchday': {
+          // SEUL TYPE QUI REND PLUSIEURS IMAGES : sept rencontres par page, et
+          // autant de pages qu'il en faut. On repond `urls` (et `url` pour la
+          // premiere, afin que les appelants d'avant continuent de marcher).
+          const pages = await gabaritMatchdayPost(data)
+          const urls = []
+          for (let i = 0; i < pages.length; i++) {
+            urls.push(await upload(`matchday-${stamp()}-${i + 1}.jpg`, pages[i].toBuffer('image/jpeg', { quality: 0.92 }), 'image/jpeg'))
+          }
+          return { url: urls[0], urls }
+        }
         case 'gabarit-album': canvas = await gabaritAlbumFinal(data); break
         case 'gabarit-stats': canvas = await gabaritStatsMatch(data); break
         case 'gabarit-tableau': canvas = await gabaritTableauSoiree(data); break
@@ -325,7 +336,10 @@ app.post('/render/image', async (req, res) => {
         'image/jpeg',
       )
     }, 'image')   // voie « image » : ne jamais attendre derrière un rendu vidéo
-    res.json({ ok: true, url })
+    // Un type peut rendre PLUSIEURS images (gabarit-matchday) : il repond alors
+    // un objet { url, urls }. Les autres rendent une chaine. On normalise ici
+    // pour que les appelants d'avant continuent de lire `url`.
+    res.json(typeof rendu === 'string' ? { ok: true, url: rendu } : { ok: true, ...rendu })
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })
   }

@@ -277,6 +277,17 @@ export async function studio(env: Env, path: string, body: unknown): Promise<Rec
   if (!r.ok || j.error) throw new Error(`studio ${path} → ${j.error ?? r.status}`)
   return j
 }
+/**
+ * Comme renderImage, mais pour les types qui rendent PLUSIEURS pages
+ * (gabarit-matchday : sept rencontres par image). Retombe sur l'url unique
+ * quand le studio n'en a rendu qu'une.
+ */
+export async function renderImages(env: Env, type: string, data: unknown): Promise<string[]> {
+  const j = await studio(env, '/render/image', { type, data })
+  if (Array.isArray(j.urls) && j.urls.length) return j.urls as string[]
+  if (typeof j.url === 'string') return [j.url]
+  throw new Error('studio returned no url')
+}
 export async function renderImage(env: Env, type: string, data: unknown): Promise<string> {
   const j = await studio(env, '/render/image', { type, data })
   if (typeof j.url !== 'string') throw new Error('studio returned no url')
@@ -1078,11 +1089,24 @@ export async function runMatchday(env: Env, s: AutomationSettings, date: string,
   const draw = (m: AutoMatch, i: number) => (barcaDay && i === 0 ? { ...toDraw(m), feature: true } : toDraw(m))
   // 1. Post
   try {
-    const img = await renderImage(env, 'matchday-post', { matches: pool.slice(0, 6).map(draw), dateLabel: label, featured: barcaDay })
+    // TOUTES les rencontres, sept par image (Mehdi, 15/10). L'ancienne carte
+    // s'arretait a six et le reste disparaissait ; le studio pagine desormais
+    // et rend autant d'images qu'il en faut.
     const ar = s.mainLang !== 'en'
-    const r = await fbPost(env, { message: ar ? matchdayMessageAr(pool, label) : matchdayMessage(pool, label), link: `${SITE}/today?${ar ? 'lang=ar&' : ''}ref=fb`, image_url: img, title: ar ? `مباريات اليوم — ${labelAr()}` : `Today's matches — ${label}`, comment: ar ? `⚽ النتائج المباشرة والتشكيلات: ${SITE}/today?lang=ar&ref=fb` : `⚽ Live scores, odds & line-ups: ${SITE}/today?ref=fb` })
+    const imgs = await renderImages(env, 'gabarit-matchday', {
+      titre: ar ? 'مباريات اليوم' : "TODAY'S MATCHES",
+      sousTitre: ar ? labelAr() : label,
+      matchs: pool.map((m) => { const t = toDraw(m) as Record<string, unknown>; return { ...t, heure: m.kickoff ? localTime(m.kickoff) : '' } }),
+    })
+    const message = ar ? matchdayMessageAr(pool, label) : matchdayMessage(pool, label)
+    const commentaire = ar ? `⚽ النتائج المباشرة والتشكيلات: ${SITE}/today?lang=ar&ref=fb` : `⚽ Live scores, odds & line-ups: ${SITE}/today?ref=fb`
+    // Une seule page part en post simple, avec son lien ; plusieurs partent en
+    // album, qui est le seul format Facebook portant plusieurs photos.
+    const r = imgs.length > 1
+      ? await fbAlbumPost(env, { message, photos: imgs, comment: commentaire })
+      : await fbPost(env, { message, link: `${SITE}/today?${ar ? 'lang=ar&' : ''}ref=fb`, image_url: imgs[0], title: ar ? `مباريات اليوم — ${labelAr()}` : `Today's matches — ${label}`, comment: commentaire })
     if (r.ok) await bump(env, date, 'post')
-    await log(env, date, 'matchday-post', r.ok, r.ok ? `${pool.length} matches · ${r.note ?? ''} · ${img}` : `${r.note ?? r.status ?? 'error'}`)
+    await log(env, date, 'matchday-post', r.ok, r.ok ? `${pool.length} matches en ${imgs.length} image(s) · ${r.note ?? ''} · ${imgs[0]}` : `${r.note ?? 'error'}`)
   } catch (e) { await log(env, date, 'matchday-post', false, String(e)) }
   // 2. Stories (6 per page, max 3 pages)
   if (s.stories) {
