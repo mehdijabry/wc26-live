@@ -1261,12 +1261,17 @@ async function sendKitEmail(env: Env, kit: StoryKit, kitUrl: string): Promise<{ 
 export const REEL_VEDETTES = 3
 
 /** Interrupteur des soirées européennes. Voir runSoireeEurope. */
-// COUPÉ EN URGENCE le 15/10/2026 : le gabarit de soirée porte le logo UEFA
-// CHAMPIONS LEAGUE INCRUSTÉ DANS SON FOND, et les légendes écrivent « دوري
-// الأبطال ». Il a donc été publié trois fois ce soir sur une soirée de LIGUE
-// EUROPA et de CONFERENCE — mauvaise compétition annoncée sur la page.
-// Ne pas rallumer avant d'avoir un fond par compétition (ou un fond neutre).
-const SOIREE_ACTIVE = false
+// COUPÉ EN URGENCE le 15/10/2026 : le gabarit de soirée portait le logo UEFA
+// CHAMPIONS LEAGUE INCRUSTÉ DANS SON FOND et les légendes écrivaient « دوري
+// الأبطال ». Il est sorti trois fois ce soir-là sur une soirée de LIGUE EUROPA
+// et de CONFÉRENCE — mauvaise compétition annoncée sur la page, trois reels
+// supprimés.
+//
+// RALLUMÉ LE 15/10/2026 au soir, la condition posée étant remplie : les fonds
+// sont neutres (soiree-ouverture / soiree-recap / soiree-fin), le nom et
+// l'écusson de la compétition sont posés AU RENDU depuis ecussonLigue(slug),
+// et il n'existe plus ni défaut ni repli vers une plaque Champions.
+const SOIREE_ACTIVE = true
 
 /**
  * Les soirées de coupe d'Europe, et le titre de leur affiche.
@@ -3079,6 +3084,28 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     if (job === 'ft-flush') { await env.CACHE.delete('auto:lastpost'); await runFtPosts(env, s, date, true, true); return { ok: true, note: `grouped FT post forced — see log (pending: ${(await ftPending(env, date)).length})` } }
     if (job === 'ft-pending') { return { ok: true, note: JSON.stringify(await ftPending(env, date)).slice(0, 3000) } }
     if (job === 'cleanup') { const n = await cleanupMedia(env, 7); return { ok: true, note: `${n} files deleted` } }
+    if (job === 'soiree-rejouer') {
+      // REJOUER LA VIDÉO D'UN MOMENT DE SOIRÉE, ET ELLE SEULE.
+      //
+      // Sert quand une soirée est partie avec un défaut : on supprime la
+      // publication sur la page, on corrige, on rejoue. Volontairement SANS
+      // le tableau de la soirée — il est lié au moment « fin » dans
+      // runSoireeEurope, et le rejouer en ferait un doublon sur la page.
+      //
+      // La marque du moment n'est pas touchée non plus : rejouer est un acte
+      // délibéré, pas une réouverture de la fenêtre automatique.
+      const pool = await bigMatchesToday(env)
+      const euro = pool.filter((m) => SOIREES_EUROPE[m.slug])
+      if (euro.length < 3) return { ok: false, note: 'aucune soirée européenne aujourd\'hui' }
+      const slug = (extra.slug as string) || euro[0].slug
+      if (!SOIREES_EUROPE[slug]) return { ok: false, note: `compétition inconnue : ${slug}` }
+      const cle = (extra.moment as string) || 'fin'
+      const moment = MOMENTS_SOIREE.find((m) => m.cle === cle)
+      if (!moment) return { ok: false, note: `moment inconnu : ${cle} (mt1, repos, mt2, fin)` }
+      const journee = euro.filter((m) => m.slug === slug)
+      await queueSoireeReel(env, s, date, slug, moment, journee)
+      return { ok: true, note: `soirée ${SOIREES_EUROPE[slug].fr} rejouée au moment « ${cle} » — ${journee.length} matchs, vidéo seule (pas de tableau)` }
+    }
     if (job === 'soiree-preview') {
       // Rendu à blanc d'une carte de soirée : RIEN N'EST PUBLIÉ, l'URL
       // atterrit dans le journal. Sert à vérifier que le studio sait traiter

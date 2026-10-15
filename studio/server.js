@@ -508,9 +508,13 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const parCarte = Math.ceil(ms.length / nbCartes)
         for (let i = 0; i < ms.length; i += parCarte) {
           const page = ms.slice(i, i + parCarte)
+          // LE NUMERO DE PAGE SE COMPTE SUR LES CARTES DE RESULTATS, pas sur
+          // `slides` : l'ouverture occupe deja la place 0, et la pagination
+          // sortait « 2/3 · 3/3 · 4/3 » (vu sur la publication du 15/10).
+          const noPage = Math.floor(i / parCarte)
           // La plaque suit l'heure de la soiree : les tribunes en bokeh tant
           // qu'on joue, le stade vide quand tout est termine.
-          await poser(await gabaritRecapSoiree(page, slides.length, nbCartes, {
+          await poser(await gabaritRecapSoiree(page, noPage, nbCartes, {
             titre: data.heading, leagueLogo: data.leagueLogo,
             plaque: data.moments ? 'soiree-fin' : 'soiree-recap',
           }))
