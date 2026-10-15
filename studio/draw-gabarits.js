@@ -20,7 +20,7 @@ import { createCanvas, loadImage, Image } from 'canvas'
 import fsSync from 'node:fs'
 import path from 'node:path'
 import { registerBrandFonts, paintLogo } from './draw.js'
-import { dossierGabarits, CASES, UTILE, couvrir, ar, OR, CREME, MENTHE, tableauComparatif } from './gabarits.js'
+import { dossierGabarits, CASES, UTILE, couvrir, ar, arNombre, OR, CREME, MENTHE, tableauComparatif } from './gabarits.js'
 
 const ECH = 1080 / 768
 const e = (n) => Math.round(n * ECH)
@@ -434,10 +434,13 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
     // droite par rapport au bandeau du dessus (vu par Mehdi, 15/10).
     const QR = 220
     blocQr(ctx, (W - largeurQr(QR)) / 2, 1180, QR)
-    // L'APPEL A L'ACTION, sous le code. Le chiffre n'est PAS invente : un
-    // nouveau compte demarre a 5 crampons (migration 004), et les 100 sont un
-    // bonus de pressings du septieme jour de serie (migration 020) — annoncer
-    // « 100 crampons a l'inscription » aurait ete faux deux fois.
+    // L'APPEL A L'ACTION, sous le code. Les chiffres sont VERIFIES sur la page
+    // d'atterrissage elle-meme (https://pressing90.live/bienvenue/APMVZ2CJ,
+    // ouverte le 15/10) : 100 crampons et 3 analyses IA. J'avais d'abord
+    // refuse d'ecrire « 100 », parce qu'un compte ordinaire demarre a 5
+    // crampons (migration 004) — mais ce lien porte un CODE D'INSCRIPTION
+    // (table signup_codes, migration 019) qui passe outre le defaut. Les mots
+    // arabes sont ceux de la page, pas une traduction maison.
     const yA = 1180 + largeurQr(QR) + 52
     // Les deux lignes tombent sur la PELOUSE ECLAIREE et s'y noient. Un voile
     // degrade les porte — meme remede que sur la carte de soiree.
@@ -447,8 +450,11 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
     voile.addColorStop(0.78, 'rgba(5,8,15,0.9)')
     voile.addColorStop(1, 'rgba(5,8,15,0)')
     ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, yA - 54, W, 188); ctx.restore()
-    ar(ctx, 'امسح الرمز وابدأ توقعك الأول', W / 2, yA, { size: 32 })
-    ar(ctx, 'كرامبون مجانية كل يوم', W / 2, yA + 48, { size: 25, color: OR })
+    ar(ctx, 'امسح الرمز واحصل على هديتك الترحيبية', W / 2, yA, { size: 31 })
+    // Le nombre est ENTOURE de mots arabes (« على 100 كرامبون »). Place en tete
+    // de ligne il partait a l'autre bout, donc lu en dernier ; entoure, l'ordre
+    // bidirectionnel le pose juste.
+    ar(ctx, 'احصل على 100 كرامبون و3 تحليلات ذكاء اصطناعي', W / 2, yA + 48, { size: 24, color: OR })
     if (heading) ar(ctx, heading, W / 2, 262, { size: 46 })
     // La pagination dit au spectateur qu'il y a une suite.
     if (total > 1) txt(ctx, `${idx + 1}/${total}`, W / 2, 324, { size: 24, font: 'Archivo', color: OR })
