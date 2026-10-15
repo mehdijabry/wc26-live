@@ -5,7 +5,7 @@ import { useAuth } from '../../store/auth'
 import { usePageHead } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
 import { cn } from '../../lib/utils'
-import { trLeague, useLang, useT } from '../../lib/i18n'
+import { localeOf, trLeague, useLang, useT } from '../../lib/i18n'
 import { Icone } from '../Icone'
 import RangeeDefilante from '../RangeeDefilante'
 import BoutonPronostic from '../BoutonPronostic'
@@ -230,7 +230,7 @@ export default function Analyse() {
               ? t('Today')
               : i === 1
                 ? t('Tomorrow')
-                : d.toLocaleDateString(lang === 'ar' ? 'ar' : lang, { weekday: 'short', day: 'numeric' })}
+                : d.toLocaleDateString(localeOf(lang), { weekday: 'short', day: 'numeric' })}
           </button>
         ))}
       </RangeeDefilante>
