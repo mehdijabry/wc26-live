@@ -1276,11 +1276,23 @@ const SOIREE_ACTIVE = false
  * saturé, une vignette sombre se détache là où la vignette crème habituelle
  * se fond dans les autres.
  */
-const SOIREES_EUROPE: Record<string, { fr: string; ar: string }> = {
-  'uefa.champions': { fr: 'LIGUE DES CHAMPIONS', ar: 'دوري الأبطال' },
-  'uefa.europa': { fr: 'LIGUE EUROPA', ar: 'الدوري الأوروبي' },
-  'uefa.europa.conf': { fr: 'LIGUE CONFÉRENCE', ar: 'دوري المؤتمر' },
-  'uefa.super_cup': { fr: "SUPERCOUPE D'EUROPE", ar: 'كأس السوبر الأوروبي' },
+/**
+ * Les soirees europeennes, AVEC l'ecusson de chaque competition.
+ *
+ * L'identifiant `logo` est celui d'ESPN (leaguelogos/soccer/500/<id>.png) et
+ * il n'est pas decoratif : sans lui, la carte tombait sur l'ecusson de la
+ * Ligue des champions par defaut, et une soiree de Ligue Europa sortait
+ * estampillee Champions League. Verifies a l'oeil le 15/10/2026.
+ */
+const SOIREES_EUROPE: Record<string, { fr: string; ar: string; logo: number }> = {
+  'uefa.champions': { fr: 'LIGUE DES CHAMPIONS', ar: 'دوري الأبطال', logo: 2 },
+  'uefa.europa': { fr: 'LIGUE EUROPA', ar: 'الدوري الأوروبي', logo: 2310 },
+  'uefa.europa.conf': { fr: 'LIGUE CONFÉRENCE', ar: 'دوري المؤتمر', logo: 20296 },
+  'uefa.super_cup': { fr: "SUPERCOUPE D'EUROPE", ar: 'كأس السوبر الأوروبي', logo: 2 },
+}
+const ecussonLigue = (slug: string): string | undefined => {
+  const l = SOIREES_EUROPE[slug]?.logo
+  return l ? `https://a.espncdn.com/i/leaguelogos/soccer/500/${l}.png` : undefined
 }
 
 /**
@@ -1318,7 +1330,7 @@ export async function queueMatchdayReel(env: Env, date: string, label: string, p
       : europe ? { text: 'ليلة أوروبية: من يفوز؟', tone: 'matchday' }
       : { text: 'مباريات اليوم: من يفوز؟', tone: 'matchday' }
     const heading = europe ? (ar ? europe.ar : europe.fr) : ar ? 'مباريات اليوم' : undefined
-    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : europe ? 'ucl' : undefined }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
+    await studio(env, '/render/reel', { type: 'matchday', data: { matches: reelPool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: barcaDay, cover } : toDraw(m))), heading, lang: ar ? 'ar' : 'en', special: barcaDay ? 'barca' : europe ? 'ucl' : undefined, leagueLogo: europe ? ecussonLigue(europe.slug) : undefined }, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
     await log(env, date, 'matchday-reel', true, `rendering ${reelPool.length} slides (job ${jobId})${europe ? ` — soirée ${europe.slug}` : ''} — voice ${voiceUrl}`)
   } catch (e) { await log(env, date, 'matchday-reel', false, String(e)) }
 }

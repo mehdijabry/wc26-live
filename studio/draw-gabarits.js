@@ -404,6 +404,85 @@ async function unePageMatchday(d, ms, page, pages) {
   return c
 }
 
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LA CARTE DE REEL — plaque « reel-neutre », 1080×1920                 ║
+// ║                                                                      ║
+// ║ Meme contrat que drawMatchLayers / drawUclMatchLayers :              ║
+// ║ (m, idx, total, heading, lang) -> { layers, anims }. Le montage      ║
+// ║ n'a donc rien a savoir du changement.                                ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const PNG = (c) => c.toBuffer('image/png')
+
+  // ── Le fond : plaque, marque, QR, et le titre de la competition
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    await poser(ctx, m.barca ? 'reel-barca' : 'reel-neutre', W, H)
+    paintLogo(ctx, 44, 44, 96)
+    blocQr(ctx, W - 44 - 104, 44, 92)
+    if (heading) ar(ctx, heading, W / 2, 238, { size: 46 })
+    // La pagination dit au spectateur qu'il y a une suite.
+    if (total > 1) txt(ctx, `${idx + 1}/${total}`, W / 2, 300, { size: 24, font: 'Archivo', color: OR })
+  }
+
+  // ── L'ecusson de la competition, s'il est fourni. JAMAIS de valeur par
+  //    defaut : un faux blason est pire qu'aucun.
+  const lig = m.leagueLogo ? await crest(m.leagueLogo) : null
+  // L'ECUSSON EST REPEINT EN CREME. Ceux d'ESPN sont dessines en noir sur fond
+  // transparent : pose tel quel sur une plaque de nuit, il disparait purement
+  // et simplement (constate sur la Ligue Europa, 15/10). On garde sa SILHOUETTE
+  // et on la remplit — `source-in` ne peint que la ou le dessin existe.
+  const badge = createCanvas(200, 200)
+  if (lig) { const bc = badge.getContext('2d')
+    bc.drawImage(lig, 0, 0, 200, 200)
+    bc.globalCompositeOperation = 'source-in'
+    bc.fillStyle = CREME; bc.fillRect(0, 0, 200, 200)
+  }
+
+  // ── Les deux equipes
+  const dom = await crest(m.homeLogo), ext = await crest(m.awayLogo)
+  const ecusson = (im) => { const c = createCanvas(260, 260); if (im) c.getContext('2d').drawImage(im, 0, 0, 260, 260); return c }
+
+  const noms = createCanvas(W, 120); { const ctx = ctx2d(noms)
+    ar(ctx, nomAr(m.home), 230, 60, { size: 34 })
+    ar(ctx, nomAr(m.away), W - 230, 60, { size: 34 })
+  }
+
+  // ── Le score, ou l'heure du coup d'envoi
+  const centre = createCanvas(420, 200); { const ctx = ctx2d(centre)
+    if (m.score) txt(ctx, String(m.score).replace('–', ' – '), 210, 100, { size: 92, font: 'Anton', color: OR })
+    else { ar(ctx, m.time || '', 210, 100, { size: 56, color: OR }) }
+  }
+
+  // ── L'etat : une pastille rouge et la minute pour un match en cours.
+  const etat = createCanvas(360, 70); if (m.etat) { const ctx = ctx2d(etat)
+    couvrir(ctx, [0, 0, 360, 70], '#070B16', 14)
+    if (m.live) { ctx.save(); ctx.fillStyle = '#FF4D5E'; ctx.beginPath(); ctx.arc(60, 35, 11, 0, Math.PI * 2); ctx.fill(); ctx.restore() }
+    ar(ctx, m.etat, m.live ? 205 : 180, 35, { size: 26, color: m.live ? '#FF4D5E' : CREME })
+  }
+
+  const layers = { bg: PNG(bg), badge: PNG(badge), noms: PNG(noms), centre: PNG(centre) }
+  const anims = [
+    { layer: 'badge', x: 440, y: 330, w: 200, h: 200, fade: { st: 0, d: 0.25 } },
+    { layer: 'home', x: 110, y: 620, slide: { dx: -420, dy: 0, st: 0.15, d: 0.5 }, fade: { st: 0.15, d: 0.25 } },
+    { layer: 'away', x: 710, y: 620, slide: { dx: 420, dy: 0, st: 0.15, d: 0.5 }, fade: { st: 0.15, d: 0.25 } },
+    { layer: 'centre', x: 330, y: 650, w: 420, h: 200, pop: { from: 1.4, st: 0.35, d: 0.3 }, fade: { st: 0.35, d: 0.25 } },
+    { layer: 'noms', x: 0, y: 920, fade: { st: 0.5, d: 0.3 } },
+  ]
+  layers.home = PNG(ecusson(dom)); layers.away = PNG(ecusson(ext))
+  if (m.etat) { layers.etat = PNG(etat); anims.push({ layer: 'etat', x: 360, y: 1050, fade: { st: 0.65, d: 0.3 } }) }
+  if (idx === 0 && m.cover) {
+    const cv = createCanvas(W - 80, 150); const ctx = ctx2d(cv)
+    couvrir(ctx, [0, 0, W - 80, 150], '#070B16', 18)
+    ar(ctx, m.cover.text || '', (W - 80) / 2, 75, { size: 38 })
+    layers.cover = PNG(cv)
+    anims.push({ layer: 'cover', x: 40, y: 1520, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } })
+  }
+  return { layers, anims }
+}
+
 // ── Petits utilitaires ─────────────────────────────────────────────────────
 /** Les noms de clubs et de joueurs arrivent en latin : on les laisse tels
  *  quels faute de table de translittération. Le point d'extension est ici. */

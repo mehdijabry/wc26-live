@@ -751,7 +751,11 @@ export async function drawUclMatchLayers(m, idx, total, heading, lang) {
   // fond, pas un disque — le disque faisait pastille et cassait la continuité
   // de l'affiche.
   const badge = createCanvas(260, 260); if (!fourni) { const ctx = ctx2d(badge)
-    const img = await loadImg(m.leagueLogo || 'https://a.espncdn.com/i/leaguelogos/soccer/500/2.png')
+    // SANS logo par defaut. Avant, l'absence de `leagueLogo` faisait tomber
+    // sur l'ecusson de la Ligue des champions (id 2) : une soiree de Ligue
+    // Europa sortait donc estampillee Champions League. Mieux vaut pas de
+    // blason du tout qu'un faux.
+    const img = m.leagueLogo ? await loadImg(m.leagueLogo) : null
     if (img) {
       const h = ctx.createRadialGradient(130, 130, 10, 130, 130, 125)
       h.addColorStop(0, 'rgba(150,195,255,0.3)'); h.addColorStop(1, 'rgba(120,170,255,0)')
@@ -829,7 +833,11 @@ export async function drawUclMatchLayers(m, idx, total, heading, lang) {
       { layer: 'pill', x: 340, y: 1380, fade: { st: 0, d: 0 } },
       { layer: 'cover', x: 40, y: 1180, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } },
     ] : [
-      { layer: 'badge', x: 410, y: 36, pop: { from: 1.5, st: 0, d: 0.3 }, fade: { st: 0, d: 0.2 } },
+      // w/h OBLIGATOIRES avec un pop : le montage recentre le calque sur son
+      // centre de repos pendant qu'il grandit, et sans dimensions il leve
+      // « anim 'badge': pop/pulse need w,h ». Le reel des matchs du jour est
+      // mort la-dessus tout le 15/10. Le calque fait 260x260 (ligne ~753).
+      { layer: 'badge', x: 410, y: 36, w: 260, h: 260, pop: { from: 1.5, st: 0, d: 0.3 }, fade: { st: 0, d: 0.2 } },
       { layer: 'head', x: 90, y: 300, w: 900, h: 200, pop: { from: 1.6, st: 0.05, d: 0.35 }, fade: { st: 0.05, d: 0.2 } },
       { layer: 'home', x: 70, y: 700, slide: { dx: -460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },
       { layer: 'away', x: 630, y: 700, slide: { dx: 460, dy: 0, st: 0.2, d: 0.55 }, fade: { st: 0.2, d: 0.25 } },

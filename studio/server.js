@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -522,7 +522,9 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           // « ucl » = soirée de coupe d'Europe : même squelette, peau de nuit
           // et or (voir drawUclMatchLayers). Le worker ne le pose que si
           // TOUTES les affiches de tête sont de la même compétition.
-          const carte = data.special === 'ucl' ? drawUclMatchLayers : drawMatchLayers
+          // Gabarit de Mehdi par defaut depuis le 15/10 ; `data.ancien` rebascule
+          // sur les anciennes cartes sans redeploiement.
+          const carte = data.ancien ? (data.special === 'ucl' ? drawUclMatchLayers : drawMatchLayers) : gabaritMatchSlide
           for (let i = 0; i < ms.length; i++) specs.push(await carte(ms[i], i, ms.length, data.heading, data.lang))
         }
         else if (type === 'goal') {
