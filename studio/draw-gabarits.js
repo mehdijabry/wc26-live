@@ -832,3 +832,92 @@ export async function gabaritArticleSlide(a = {}, heading, lang = 'ar') {
   ]
   return { layers, anims }
 }
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LES STORIES — plaque « reel-neutre » / « reel-barca », 1080×1920     ║
+// ║                                                                      ║
+// ║ C'est la plus grosse surface restee en style clair : dix sorties le  ║
+// ║ 15/10 (six matchday-story, quatre article-story-kit). Chaque carte   ║
+// ║ sert DEUX fois — en image fixe et comme unique plan de la story      ║
+// ║ video — donc une seule fonction par format suffit.                   ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+/**
+ * Les rencontres du jour, en story. Six par page, le worker pagine.
+ *
+ * Meme signature que drawMatchStory : (matches, dateLabel, page, pages,
+ * opts) -> canvas.
+ */
+export async function gabaritMatchdayStory(matches = [], dateLabel, page = 1, pages = 1, opts = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  const vedette = opts.featured && page === 1 && matches[0]
+  await poser(ctx, vedette ? 'reel-barca' : 'reel-neutre', W, H)
+  paintLogo(ctx, 44, 44, 150)
+
+  ar(ctx, vedette ? 'يوم برشلونة' : 'مباريات اليوم', W / 2, 300, { size: 68 })
+  if (dateLabel) ar(ctx, String(dateLabel), W / 2, 372, { size: 26, color: OR })
+  // Le numero de page n'apparait QUE s'il y en a plusieurs : sur une story
+  // unique, « 1/1 » n'informe de rien.
+  if (pages > 1) txt(ctx, `${page}/${pages}`, W - 64, 372, { size: 26, align: 'right', color: OR })
+
+  const Y0 = 470, LIG = 136
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i]
+    const y = Y0 + i * LIG
+    couvrir(ctx, [56, y, W - 112, LIG - 16], '#070B16', 14)
+    const cy = y + (LIG - 16) / 2
+    const dom = await crest(m.homeLogo), ext = await crest(m.awayLogo)
+    if (dom) ctx.drawImage(dom, 86, cy - 33, 66, 66)
+    if (ext) ctx.drawImage(ext, W - 152, cy - 33, 66, 66)
+    ar(ctx, nomAr(m.home), 178, cy, { size: 26, align: 'left' })
+    ar(ctx, nomAr(m.away), W - 178, cy, { size: 26, align: 'right' })
+    // L'heure ou le score, au centre : c'est ce que l'oeil cherche d'abord.
+    txt(ctx, m.score || m.time || m.heure || '', W / 2, cy, { size: m.score ? 44 : 36, font: 'Anton', color: OR })
+  }
+
+  blocInscription(ctx, W / 2, Y0 + matches.length * LIG + 24, 200, W)
+  return c
+}
+
+/**
+ * Un article en story. Meme composition que la carte de reel, aplatie :
+ * une story n'a qu'un plan, les calques n'y servent a rien.
+ */
+export async function gabaritArticleStory(a = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const PX = 60, PY = 330, PW = W - 120, PH = 620
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poser(ctx, a.barca ? 'reel-barca' : 'reel-neutre', W, H)
+  paintLogo(ctx, 44, 44, 150)
+
+  ar(ctx, a.kicker || (a.lang === 'ar' ? 'خبر جديد' : 'NEW ARTICLE'), W / 2, 256, { size: 46, color: OR })
+
+  // `loadImgOuRepli` et non `loadImg` : c'est le studio qui charge, donc
+  // c'est lui qui decide de se rabattre (voir draw.js, 15/10/2026).
+  const img = await loadImgOuRepli(a.image_url, a.repli)
+  ctx.save(); arrondi(ctx, PX, PY, PW, PH, 26); ctx.clip()
+  if (img) {
+    const s = Math.max(PW / img.width, PH / img.height), dw = img.width * s, dh = img.height * s
+    ctx.drawImage(img, PX + (PW - dw) / 2, PY + (PH - dh) / 2, dw, dh)
+  } else { ctx.fillStyle = '#0B1536'; ctx.fillRect(PX, PY, PW, PH) }
+  ctx.restore()
+  ctx.save(); arrondi(ctx, PX, PY, PW, PH, 26)
+  ctx.strokeStyle = 'rgba(244,243,238,0.55)'; ctx.lineWidth = 3; ctx.stroke(); ctx.restore()
+
+  // Le titre sur son voile : sous la photo commencent les tribunes eclairees.
+  const TY = 1030
+  const v = ctx.createLinearGradient(0, TY - 62, 0, TY + 188)
+  v.addColorStop(0, 'rgba(5,8,15,0)')
+  v.addColorStop(0.18, 'rgba(5,8,15,0.9)')
+  v.addColorStop(0.82, 'rgba(5,8,15,0.9)')
+  v.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.save(); ctx.fillStyle = v; ctx.fillRect(0, TY - 62, W, 250); ctx.restore()
+  arLignes(ctx, a.title, W / 2, TY, { size: 52, maxW: 950, max: 3 })
+
+  blocInscription(ctx, W / 2, 1300, 200, W)
+  return c
+}
