@@ -10,6 +10,9 @@ import os from 'node:os'
 import path from 'node:path'
 import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawUclRecapLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
+// Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
+// format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -208,7 +211,21 @@ app.get('/espn/summary', async (req, res) => {
     }))
     const comp = j.header?.competitions?.[0]
     const teams = (comp?.competitors || []).map((t) => ({ side: t.homeAway, id: t.id, name: t.team?.displayName, abbr: t.team?.abbreviation, logo: t.team?.logos?.[0]?.href, score: t.score, color: t.team?.color || '', altColor: t.team?.alternateColor || '' }))
-    res.json({ status: 200, goals, plays: String(req.query.plays || '') === '1' ? plays : undefined, rosters, teams, venue: j.gameInfo?.venue?.fullName || '', attendance: j.gameInfo?.attendance || 0, date: comp?.date || '', state: comp?.status?.type?.state || '' })
+    // Les statistiques d'équipe, pour le gabarit « tableau de statistiques »
+    // (15/10/2026). ESPN les range dans boxscore.teams[].statistics, une liste
+    // de { name, label, displayValue } par équipe ; on la replie en un objet
+    // { nom: [domicile, extérieur] } pour que le worker n'ait rien à démêler.
+    const stats = {}
+    const bst = j.boxscore?.teams || []
+    bst.forEach((t, i) => {
+      for (const st of t.statistics || []) {
+        const k = st.name || st.label
+        if (!k) continue
+        if (!stats[k]) stats[k] = [null, null]
+        stats[k][i] = st.displayValue
+      }
+    })
+    res.json({ status: 200, goals, plays: String(req.query.plays || '') === '1' ? plays : undefined, rosters, teams, stats, venue: j.gameInfo?.venue?.fullName || '', attendance: j.gameInfo?.attendance || 0, date: comp?.date || '', state: comp?.status?.type?.state || '' })
   } catch (e) { res.json({ status: 0, goals: [], error: String(e.message || e) }) }
 })
 
@@ -277,6 +294,9 @@ app.post('/render/image', async (req, res) => {
       setTheme(theme || (data && data.theme) || process.env.P90_THEME || 'barca')
       let canvas
       switch (type) {
+        case 'gabarit-album': canvas = await gabaritAlbumFinal(data); break
+        case 'gabarit-stats': canvas = await gabaritStatsMatch(data); break
+        case 'gabarit-tableau': canvas = await gabaritTableauSoiree(data); break
         case 'score': canvas = await drawScoreCard(data); break
         case 'matchday-post': canvas = await drawMatchdayPost(data.matches, data.dateLabel, { featured: !!data.featured }); break
         case 'tale-cover': canvas = await drawTaleCover(data); break
@@ -448,7 +468,11 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           slides.push({ layers, anims: spec.anims })
         }
         if (data.ouverture !== false) {
-          await poser(await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
+          // Gabarit « أربع لحظات » de Mehdi dès que le worker envoie les quatre
+          // moments ; sinon l'ouverture d'origine, sur l'affiche joueurs.
+          await poser(data.moments
+            ? await gabaritQuatreMoments({ moments: data.moments, ligne: data.ligne })
+            : await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
           durees.push(1.5)
         }
         // RÉCAPITULATIF (Mehdi, 13/10/2026 : « pas juste Barça, récap de tous
@@ -531,7 +555,8 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         scenes.push(p)
       } else if (type === 'goal') {
         // Animated goal reel: layered PNGs composited by ffmpeg (renderGoalAnim).
-        const L = await drawGoalLayers(data)
+        // Gabarit de Mehdi depuis le 15/10 ; `data.ancien` rebascule sur l'ancienne carte.
+        const L = data.ancien ? await drawGoalLayers(data) : await gabaritGoalLayers(data)
         const layers = {}
         for (const k of ['bg', 'flash', 'goal', 'home', 'away', 'score', 'scorer', 'minute']) { layers[k] = path.join(dir, `${k}.png`); await fs.writeFile(layers[k], L[k]) }
         let voice = null

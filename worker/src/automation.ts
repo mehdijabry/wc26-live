@@ -1456,6 +1456,14 @@ export async function runSoireeEurope(env: Env, s: AutomationSettings, date: str
     try {
       await queueSoireeReel(env, s, date, slug, moment, journee)
       await env.CACHE.put(marque, '1', { expirationTtl: 30 * 3600 })
+      // LE TABLEAU DE LA SOIREE, en fin de soiree seulement (Mehdi,
+      // 15/10/2026). Toutes les rencontres sont alors terminees : le tableau
+      // les montre d'un coup, avec l'ecart de chaque match. Un echec ici ne
+      // doit pas remettre en cause la video, qui est deja partie.
+      if (moment.cle === 'fin') {
+        try { await publierTableauSoiree(env, date, slug, journee) }
+        catch (e2) { await log(env, date, 'soiree-tableau', false, String(e2).slice(0, 140)) }
+      }
     } catch (e) {
       await env.CACHE.delete(verrou)
       await log(env, date, 'soiree-reel', false, `${moment.cle}: ${String(e)}`)
@@ -1465,6 +1473,58 @@ export async function runSoireeEurope(env: Env, s: AutomationSettings, date: str
 }
 
 /** Fabrique et met en file la vidéo d'un moment de la soirée. */
+/**
+ * Le tableau de la soiree : les neuf rencontres en une image paysage.
+ *
+ * Il part APRES la video de fin, comme post d'image separe. C'est le seul
+ * format qui ajoute une publication au compteur du jour ; les autres gabarits
+ * remplacent un visuel existant ou s'ajoutent a un album.
+ */
+async function publierTableauSoiree(env: Env, date: string, slug: string, journee: AutoMatch[]): Promise<void> {
+  const finis = journee.filter((m) => m.completed)
+  if (finis.length < 3) return
+  const titres = SOIREES_EUROPE[slug]
+  const buts = finis.reduce((n, m) => n + (Number(m.homeScore) || 0) + (Number(m.awayScore) || 0), 0)
+  const large = [...finis].sort((a, b) =>
+    Math.abs(Number(b.homeScore) - Number(b.awayScore)) - Math.abs(Number(a.homeScore) - Number(a.awayScore)))[0]
+  const img = await renderImage(env, 'gabarit-tableau', {
+    titre: `نتائج ${titres?.ar ?? ''}`,
+    sousTitre: `${finis.length} مباريات`,
+    matchs: [...finis].sort((a, b) => (a.kickoff || '').localeCompare(b.kickoff || '')).slice(0, 9)
+      .map((m) => ({ home: m.home, away: m.away, homeScore: m.homeScore, awayScore: m.awayScore })),
+    chiffres: [
+      { valeur: String(buts), libelle: 'أهداف' },
+      { valeur: String(finis.length), libelle: 'مباريات' },
+      { valeur: (buts / finis.length).toFixed(1), libelle: 'معدل المباراة' },
+      { valeur: large ? `${large.homeScore}-${large.awayScore}` : '—', libelle: 'أكبر فوز' },
+    ],
+  })
+  const message = `جدول نتائج ${titres?.ar ?? ''} — ${finis.length} مباريات و${buts} هدفاً\n\nأي نتيجة فاجأتك أكثر؟ 👇`
+  const r = await fbAlbumPost(env, { message, photos: [img], comment: `كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb` })
+  await log(env, date, 'soiree-tableau', r.ok, r.ok ? `tableau de la soiree publie · ${r.note ?? ''} · ${img}` : (r.note ?? 'echec'))
+}
+
+/** Les quatre moments d'une soirée, tels que la carte d'ouverture les montre. */
+function momentsSoiree(journee: AutoMatch[]): Array<{ titre: string; minute: number; phrase: string }> {
+  const finis = journee.filter((m) => m.completed)
+  const buts = finis.reduce((n, m) => n + (Number(m.homeScore) || 0) + (Number(m.awayScore) || 0), 0)
+  const large = [...finis].sort((a, b) =>
+    Math.abs(Number(b.homeScore) - Number(b.awayScore)) - Math.abs(Number(a.homeScore) - Number(a.awayScore)))[0]
+  return [
+    { titre: 'الشوط الأول', minute: 20, phrase: `${finis.length} مباريات` },
+    { titre: 'الاستراحة', minute: 45, phrase: `${buts} أهداف` },
+    { titre: 'الشوط الثاني', minute: 63, phrase: 'اللقاءات تُحسم' },
+    { titre: 'النهاية', minute: 90, phrase: large ? `${large.home} ${large.homeScore}-${large.awayScore} ${large.away}` : '' },
+  ]
+}
+/** La rencontre la plus marquante de la soirée, pour la ligne sous les cases. */
+function ligneVedette(journee: AutoMatch[]): string {
+  const finis = journee.filter((m) => m.completed)
+  const t = [...finis].sort((a, b) =>
+    (Number(b.homeScore) + Number(b.awayScore)) - (Number(a.homeScore) + Number(a.awayScore)))[0]
+  return t ? `${t.home} ${t.homeScore} - ${t.awayScore} ${t.away}` : ''
+}
+
 async function queueSoireeReel(
   env: Env, s: AutomationSettings, date: string, slug: string,
   moment: (typeof MOMENTS_SOIREE)[number], journee: AutoMatch[],
@@ -1509,6 +1569,12 @@ async function queueSoireeReel(
         // ne distingue un score en route d'un résultat définitif.
         etat: m.completed ? 'انتهت' : m.state === 'in' ? (/halftime|half-time/i.test(m.statusName) ? 'الاستراحة' : (m.clock ?? '')) : '',
       })),
+      // Le gabarit « أربع لحظات » récapitule les quatre moments : il n'a de sens
+      // qu'À LA FIN, quand les quatre sont connus. Plus tôt, deux cases sur
+      // quatre seraient vides. Les trois premiers moments gardent donc
+      // l'ouverture sur l'affiche joueurs.
+      moments: moment.cle === 'fin' ? momentsSoiree(journee) : undefined,
+      ligne: moment.cle === 'fin' ? ligneVedette(journee) : undefined,
       // TOUJOURS l'affiche joueurs en ouverture (Mehdi, 13/10/2026). J'avais
       // réservé le trophée au moment « fin » ; c'est la photo des joueurs qui
       // doit arrêter le pouce, quel que soit le moment de la soirée.
@@ -1627,12 +1693,60 @@ function ftGroupMessageAr(list: FtPending[], label: string): string {
   lines.push('أي نتيجة فاجأتك أكثر؟ 👇', '👉 كل النتائج والتفاصيل على pressing90.live (الرابط في التعليقات)', '', '#كرة_القدم #نتائج #Pressing90')
   return lines.join('\n')
 }
+/**
+ * Les lignes du tableau de statistiques, en arabe.
+ *
+ * ESPN nomme ses mesures en anglais et ne les livre pas toutes a chaque match :
+ * on ne garde que celles qui sont presentes, et la carte se dessine avec ce
+ * qu'il y a. Les valeurs sont des chaines (« 53.9 », « 27 ») : le nombre sert
+ * a la barre proportionnelle, la chaine a l'affichage.
+ */
+function lignesStats(sum: MatchSummary): Array<[string, number, number, string, string]> {
+  const st = sum.stats ?? {}
+  const table: Array<[string, string, (v: string) => string]> = [
+    ['possessionPct', 'الاستحواذ', (v) => `${v}%`],
+    ['totalShots', 'التسديدات', (v) => v],
+    ['shotsOnTarget', 'على المرمى', (v) => v],
+    ['wonCorners', 'الركنيات', (v) => v],
+    ['totalPasses', 'التمريرات', (v) => v],
+    ['foulsCommitted', 'الأخطاء', (v) => v],
+    ['saves', 'التصديات', (v) => v],
+  ]
+  const out: Array<[string, number, number, string, string]> = []
+  for (const [cle, libelle, fmt] of table) {
+    const v = st[cle]
+    if (!v || v[0] == null || v[1] == null) continue
+    const g = Number(String(v[0]).replace('%', '')), d = Number(String(v[1]).replace('%', ''))
+    if (!Number.isFinite(g) || !Number.isFinite(d)) continue
+    out.push([libelle, g, d, fmt(String(v[0])), fmt(String(v[1]))])
+  }
+  return out
+}
+
 /** Render the posters and publish the grouped post. Returns a log note. */
 async function flushFtGroup(env: Env, s: AutomationSettings, date: string, list: FtPending[], why: string): Promise<string> {
   const photos: string[] = []
   for (const m of list.slice(0, 10)) {
     const am = { ...m, rank: 0, state: 'post', completed: true, statusName: 'STATUS_FULL_TIME' } as unknown as AutoMatch
     try { photos.push(await renderImage(env, 'score', ftPosterData(am, await matchSummary(env, am), s.mainLang !== 'en' ? 'ar' : 'en'))) } catch (e) { await log(env, date, 'ft-group', false, `${m.home} v ${m.away}: render failed ${String(e).slice(0, 100)}`) }
+  }
+  // Le tableau de statistiques du match le plus marquant du lot (Mehdi,
+  // 15/10/2026). Il s'ajoute a l'album plutot que de faire un post de plus :
+  // le plafond quotidien ne bouge pas. Un echec ici ne doit jamais empecher
+  // l'album de partir, d'ou le catch.
+  const vedette = [...list].sort((a2, b) =>
+    (Number(b.homeScore) + Number(b.awayScore)) - (Number(a2.homeScore) + Number(a2.awayScore)))[0]
+  if (vedette && photos.length > 0) {
+    try {
+      const av = { ...vedette, rank: 0, state: 'post', completed: true, statusName: 'STATUS_FULL_TIME' } as unknown as AutoMatch
+      const lignes = lignesStats(await matchSummary(env, av))
+      if (lignes.length >= 4) {
+        photos.push(await renderImage(env, 'gabarit-stats', {
+          home: av.home, away: av.away, homeLogo: av.homeLogo, awayLogo: av.awayLogo,
+          homeScore: av.homeScore, awayScore: av.awayScore, lignes,
+        }))
+      }
+    } catch (e) { await log(env, date, 'ft-group', false, `tableau de stats ignore: ${String(e).slice(0, 90)}`) }
   }
   if (photos.length === 0) throw new Error('no poster rendered')
   const r = await fbAlbumPost(env, { message: ftGroupMessageAr(list, localParts().label), photos, comment: '⏱ كل النتائج والتفاصيل: https://pressing90.live/today?lang=ar&ref=fb' })
@@ -1934,9 +2048,9 @@ function scorersBySide(m: AutoMatch, goals: MatchGoal[]): { home: string; away: 
 }
 // Full match summary through the studio proxy (2026-09-14): goals + starting XIs + venue.
 type XIPlayer = { name: string; full?: string; jersey: string; pos: string; place: number }
-export type MatchSummary = { goals: MatchGoal[]; plays?: Array<{ t: string; type: string; id: string; team: string; text: string; x: number | null; y: number | null; x2: number | null; y2: number | null }>; rosters: Array<{ side: 'home' | 'away'; team: string; abbr: string; formation: string; players: XIPlayer[]; bench?: Array<XIPlayer & { in?: boolean }> }>; teams: Array<{ side: string; id: string; name: string; abbr: string; logo?: string; score?: string; color?: string; altColor?: string }>; venue: string; attendance: number; date: string; state: string }
+export type MatchSummary = { goals: MatchGoal[]; stats?: Record<string, [string | null, string | null]>; plays?: Array<{ t: string; type: string; id: string; team: string; text: string; x: number | null; y: number | null; x2: number | null; y2: number | null }>; rosters: Array<{ side: 'home' | 'away'; team: string; abbr: string; formation: string; players: XIPlayer[]; bench?: Array<XIPlayer & { in?: boolean }> }>; teams: Array<{ side: string; id: string; name: string; abbr: string; logo?: string; score?: string; color?: string; altColor?: string }>; venue: string; attendance: number; date: string; state: string }
 export async function matchSummary(env: Env, m: Pick<AutoMatch, 'id' | 'slug'>, withPlays = false): Promise<MatchSummary> {
-  const empty: MatchSummary = { goals: [], rosters: [], teams: [], venue: '', attendance: 0, date: '', state: '' }
+  const empty: MatchSummary = { goals: [], stats: {}, rosters: [], teams: [], venue: '', attendance: 0, date: '', state: '' }
   try {
     const r = await fetch(`${env.STUDIO_URL}/espn/summary?league=${encodeURIComponent(m.slug)}&event=${encodeURIComponent(m.id)}${withPlays ? '&plays=1' : ''}`, { headers: { 'x-studio-secret': env.STUDIO_SECRET!, 'user-agent': 'p90-worker/1.0' }, signal: AbortSignal.timeout(15000) })
     const j = await r.json() as Partial<MatchSummary>
@@ -1955,7 +2069,9 @@ function ftPosterData(m: AutoMatch, sum: MatchSummary, lang: 'ar' | 'en') {
 /** Barça full time as an editorial poster (Mehdi, 2026-09-14: « fais-en la base des designs de tous les posts »). Returns the image URL. */
 async function queueBarcaFtPoster(env: Env, date: string, m: AutoMatch, preview = false): Promise<string> {
   const sum = await matchSummary(env, m)
-  const img = await renderImage(env, 'fulltime-post', ftPosterData(m, sum, 'ar'))
+  // Gabarit « album de fin de match » de Mehdi (15/10/2026). ftPosterData
+  // fournit déjà `goals`, que le gabarit sait lire : rien d'autre à changer.
+  const img = await renderImage(env, 'gabarit-album', ftPosterData(m, sum, 'ar'))
   if (preview) return img
   const sc = scorersBySide(m, sum.goals)
   const line = `${m.home} ${m.homeScore}–${m.awayScore} ${m.away}`
