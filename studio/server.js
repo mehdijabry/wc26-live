@@ -23,7 +23,6 @@ const WORKER = process.env.WORKER_URL || 'https://wc26-api.nameless-violet-5dc1.
 const app = express()
 app.use(express.json({ limit: '2mb' }))
 
-let queue = Promise.resolve()
 let pending = 0
 
 // AUCUN RENDU NE PEUT BLOQUER LA FILE POUR DE BON.
@@ -55,12 +54,30 @@ const avecPlafond = (p, ms) => new Promise((resolve, reject) => {
 // autres sur 0,1 CPU était annulé sans jamais avoir démarré. Exactement le cas
 // d'une fin de soirée, quand neuf affiches, les animations de but et la vidéo
 // de récap tombent en même temps.
-const serialize = (fn) => {
-  pending++
-  const p = queue
+// DEUX FILES, PAS UNE : les vidéos d'un côté, les images de l'autre.
+//
+// Une seule file mettait les affiches derrière les vidéos. Or une vidéo occupe
+// la machine une à trois minutes sur 0,1 CPU, pendant que /render/image est
+// SYNCHRONE — le worker attend la réponse HTTP. Le proxy de Render coupe vers
+// 100 s, donc l'affiche mourait en 524 sans avoir jamais été dessinée, le
+// worker réessayait, et chaque essai repartait au fond de la même file
+// bloquée. C'est ainsi que l'affiche de Betis–FC Porto a été perdue le
+// 14/10 après trois tentatives.
+//
+// Une affiche est un seul dessin canvas de deux ou trois secondes. Elle n'a
+// rien à faire derrière trois minutes de ffmpeg. Les deux files avancent donc
+// en parallèle : au pire deux rendus à la fois au lieu d'un, et le surcoût est
+// borné par la brièveté des images.
+const files = { video: Promise.resolve(), image: Promise.resolve() }
+const enAttente = { video: 0, image: 0 }
+
+const serialize = (fn, voie = 'video') => {
+  const v = voie === 'image' ? 'image' : 'video'
+  pending++; enAttente[v]++
+  const p = files[v]
     .then(() => { mesurerRss(); return avecPlafond(fn(), PLAFOND_RENDU_MS) })
-    .finally(() => { mesurerRss(); pending-- })
-  queue = p.catch(() => {})
+    .finally(() => { mesurerRss(); pending--; enAttente[v]-- })
+  files[v] = p.catch(() => {})
   return p
 }
 
@@ -88,6 +105,7 @@ setInterval(mesurerRss, 2000).unref()
 app.get('/health', (_req, res) => res.json({
   ok: true, pending, uptime: Math.round(process.uptime()),
   rss: Math.round(mesurerRss() / MO), pic: Math.round(picRss / MO), limite: 512,
+  files: { video: enAttente.video, image: enAttente.image },
 }))
 
 // ESPN proxy — ESPN's site API 403s Cloudflare Workers egress IPs, so the
@@ -286,7 +304,7 @@ app.post('/render/image', async (req, res) => {
         canvas.toBuffer('image/jpeg', { quality: 0.82 }),
         'image/jpeg',
       )
-    })
+    }, 'image')   // voie « image » : ne jamais attendre derrière un rendu vidéo
     res.json({ ok: true, url })
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) })
