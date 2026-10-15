@@ -72,6 +72,45 @@ async function poser(ctx, nom, W, H) {
  * a regenerer.
  */
 let qrImg = null
+/**
+ * LE BLOC D'INSCRIPTION COMPLET : le code, son voile, et les deux lignes.
+ *
+ * Mehdi, 15/10 : « c'est parfait comme ca pour le QR, ca va etre comme ca sur
+ * tous les formats. » D'ou cette fonction unique — recopier le bloc dans
+ * chaque gabarit garantissait qu'ils divergeraient a la premiere retouche.
+ *
+ * `cx` est le centre voulu : on centre sur la PLAQUE (code + marge de
+ * silence), pas sur le code seul, sinon l'ensemble se decale.
+ *
+ * Les chiffres sont ceux de la page d'atterrissage du lien porte par le code
+ * (https://pressing90.live/bienvenue/APMVZ2CJ) : 100 crampons et 3 analyses.
+ * Les mots arabes viennent de cette meme page en ?lang=ar.
+ */
+function blocInscription(ctx, cx, y, taille, W, { compact = false, sansTexte = false } = {}) {
+  const T = largeurQr(taille)
+  blocQr(ctx, cx - T / 2, y, taille)
+  // Regle de Mehdi, 15/10 : la ou la phrase ne tient pas dans la zone, on ne
+  // l'ecrit PAS plutot que de la laisser deborder. Le tableau paysage n'a
+  // qu'une colonne de 196 px : il porte le code seul.
+  if (sansTexte) return
+  const yA = y + T + (compact ? 38 : 52)
+  const h = compact ? 100 : 188
+  const voile = ctx.createLinearGradient(0, yA - (compact ? 32 : 54), 0, yA - (compact ? 32 : 54) + h)
+  voile.addColorStop(0, 'rgba(5,8,15,0)')
+  voile.addColorStop(0.3, 'rgba(5,8,15,0.9)')
+  voile.addColorStop(0.78, 'rgba(5,8,15,0.9)')
+  voile.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, yA - (compact ? 32 : 54), W, h); ctx.restore()
+  if (compact) {
+    // Le nombre est ENTOURE de mots arabes : en tete de ligne, l'algorithme
+    // bidirectionnel l'expedie a l'autre bout et il se lit en dernier.
+    ar(ctx, 'امسح واحصل على 100 كرامبون', cx, yA, { size: 24, color: OR })
+  } else {
+    ar(ctx, 'امسح الرمز واحصل على هديتك الترحيبية', cx, yA, { size: 31 })
+    ar(ctx, 'احصل على 100 كرامبون و3 تحليلات ذكاء اصطناعي', cx, yA + 48, { size: 24, color: OR })
+  }
+}
+
 /** La largeur TOTALE de la plaque, code + marge de silence. */
 export const largeurQr = (taille) => taille + Math.round(taille * 0.055) * 2
 
@@ -263,7 +302,7 @@ export async function gabaritTableauSoiree(d) {
   // ne peut pas — et `assets/logo-page.png` est l'ecusson du Barca, qui n'a
   // rien a faire sur un tableau de Ligue Europa.
   paintLogo(ctx, 48, 48, 104)
-  blocQr(ctx, 1204, 592, 110)
+  blocInscription(ctx, 1260, 586, 118, W, { sansTexte: true })
 
   ar(ctx, d.titre || 'نتائج الليلة الأوروبية', 600, 120, { size: 42 })
   // Le nombre se trace À PART du texte arabe : mélangés, l'ordre s'inverse.
@@ -307,7 +346,7 @@ export async function gabaritQuatreMoments(d) {
 
   // Le fond livre le 15/10 ne porte plus de logo : on le dessine, vectoriel.
   paintLogo(ctx, e(40), e(40), e(96))
-  blocQr(ctx, W - e(40) - e(104), e(40), e(92))
+
 
   ar(ctx, 'أربع لحظات', W / 2, e(330), { size: e(54) })
   const cases = CASES['soiree-4-moments'].moments
@@ -325,6 +364,8 @@ export async function gabaritQuatreMoments(d) {
     txt(ctx, String(m.minute), x + w / 2, y + e(94), { size: e(52), font: 'Anton' })
     ar(ctx, m.phrase, x + w / 2, y + e(152), { size: e(19), color: 'rgba(244,243,238,0.82)' })
   }
+  blocInscription(ctx, W / 2, e(1000), e(170), W)
+
   // Les deux lignes du bas tombaient SUR LES TRIBUNES ECLAIREES du fond et
   // devenaient illisibles. Un voile sombre les porte, degrade des deux cotes
   // pour ne pas trancher sur la photo.
@@ -377,8 +418,7 @@ async function unePageMatchday(d, ms, page, pages) {
   const c = createCanvas(W, H); const ctx = ctx2d(c)
   await poser(ctx, 'post-4-5', W, H)
 
-  paintLogo(ctx, 44, 44, 92)
-  blocQr(ctx, W - 44 - 100, 44, 88)
+  paintLogo(ctx, 44, 44, 130)
 
   ar(ctx, d.titre || 'مباريات اليوم', W / 2, 232, { size: 58 })
   if (d.sousTitre) ar(ctx, d.sousTitre, W / 2, 294, { size: 24, color: OR })
@@ -401,9 +441,9 @@ async function unePageMatchday(d, ms, page, pages) {
     txt(ctx, m.score || m.heure || '', W / 2, cy, { size: m.score ? 36 : 30, font: 'Anton', color: OR })
   }
 
-  const yB = Y0 + ms.length * LIG + 16
-  if (d.pied && pages === 1) ar(ctx, d.pied, W / 2, yB + 30, { size: 24, color: 'rgba(244,243,238,0.8)' })
-  ar(ctx, 'كل المباريات على pressing90.live', W / 2, H - 56, { size: 21, color: OR })
+  // Version COMPACTE du bloc : 1350 de haut contre 1920 pour un reel, et sept
+  // rencontres au-dessus. Une seule ligne d'appel, et un code plus petit.
+  blocInscription(ctx, W / 2, Y0 + ms.length * LIG + 14, 148, W, { compact: true })
   return c
 }
 
@@ -432,29 +472,7 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
     // On centre sur la PLAQUE, pas sur le code : elle porte la marge de
     // silence, et centrer sur le code seul decalait l'ensemble de 12 px a
     // droite par rapport au bandeau du dessus (vu par Mehdi, 15/10).
-    const QR = 220
-    blocQr(ctx, (W - largeurQr(QR)) / 2, 1180, QR)
-    // L'APPEL A L'ACTION, sous le code. Les chiffres sont VERIFIES sur la page
-    // d'atterrissage elle-meme (https://pressing90.live/bienvenue/APMVZ2CJ,
-    // ouverte le 15/10) : 100 crampons et 3 analyses IA. J'avais d'abord
-    // refuse d'ecrire « 100 », parce qu'un compte ordinaire demarre a 5
-    // crampons (migration 004) — mais ce lien porte un CODE D'INSCRIPTION
-    // (table signup_codes, migration 019) qui passe outre le defaut. Les mots
-    // arabes sont ceux de la page, pas une traduction maison.
-    const yA = 1180 + largeurQr(QR) + 52
-    // Les deux lignes tombent sur la PELOUSE ECLAIREE et s'y noient. Un voile
-    // degrade les porte — meme remede que sur la carte de soiree.
-    const voile = ctx.createLinearGradient(0, yA - 54, 0, yA + 134)
-    voile.addColorStop(0, 'rgba(5,8,15,0)')
-    voile.addColorStop(0.3, 'rgba(5,8,15,0.9)')
-    voile.addColorStop(0.78, 'rgba(5,8,15,0.9)')
-    voile.addColorStop(1, 'rgba(5,8,15,0)')
-    ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, yA - 54, W, 188); ctx.restore()
-    ar(ctx, 'امسح الرمز واحصل على هديتك الترحيبية', W / 2, yA, { size: 31 })
-    // Le nombre est ENTOURE de mots arabes (« على 100 كرامبون »). Place en tete
-    // de ligne il partait a l'autre bout, donc lu en dernier ; entoure, l'ordre
-    // bidirectionnel le pose juste.
-    ar(ctx, 'احصل على 100 كرامبون و3 تحليلات ذكاء اصطناعي', W / 2, yA + 48, { size: 24, color: OR })
+    blocInscription(ctx, W / 2, 1180, 220, W)
     if (heading) ar(ctx, heading, W / 2, 262, { size: 46 })
     // La pagination dit au spectateur qu'il y a une suite.
     if (total > 1) txt(ctx, `${idx + 1}/${total}`, W / 2, 324, { size: 24, font: 'Archivo', color: OR })
