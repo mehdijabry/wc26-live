@@ -332,9 +332,9 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     ed.backdrop(ctx, W, H, { tone: 'blue' })
     await ed.stadium(ctx, W, H, { top: H - 420, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 })
     ed.stack(ctx, spec.stack || ['BARÇA', 'FIRST'], 48, 92, { size: 15 })
-    try { const logo = await loadImage(path.join(__dirname, 'assets', 'logo-page.png')); const s = 104, cx = W - 48 - s / 2, cy = 62 + s / 2
-      ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.35)'; ctx.shadowBlur = 24; ctx.shadowOffsetY = 8; ctx.fillStyle = E.NAVY; ctx.beginPath(); ctx.arc(cx, cy, s / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore()
-      ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, s / 2 - 2, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(logo, cx - s / 2, cy - s / 2, s, s); ctx.restore() } catch (e) { console.warn('logo', e.message) }
+    // La marque, posee par paintLogo. Avant : assets/logo-page.png, l'ecusson
+    // du Barca, dans une pastille ronde — supprime le 15/10/2026.
+    d.paintLogo(ctx, W - 48 - 104, 62, 104)
     ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1830, { size: 16, align: 'center', tracking: 0.42 })
     ed.grain(ctx, W, H)
   }

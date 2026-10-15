@@ -2,9 +2,10 @@
 // Same "Match Night" designs as the admin studio (src/lib/newsCards.ts),
 // ported to node-canvas so the worker can publish without a browser.
 // Automation is ENGLISH ONLY (Mehdi's rule) — `lang` kept for parity.
-import { createCanvas, loadImage, registerFont } from 'canvas'
+import { createCanvas, loadImage, registerFont, Image } from 'canvas'
 import QRCode from 'qrcode'
 import * as ed from './editorial.js'
+import fsSync from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -116,37 +117,30 @@ export async function loadImg(src) {
 
 /** Brand mark drawn natively (mirror of public/p90-logo.svg): navy tile,
  *  gold "90’", pitch line + centre circle. */
+/**
+ * LA MARQUE, telle que Mehdi l'a livree le 15/10/2026 (marque-creme.svg,
+ * rasterisee en assets/marque.png).
+ *
+ * Avant, cette fonction dessinait la marque au trace, et sortait une version
+ * Senyera rouge et or sous le theme « barca » : elle est partie sur un but de
+ * Manchester City. Il n'y a plus qu'UNE marque, pour tout le monde.
+ *
+ * Le chargement est SYNCHRONE — `Image.src = Buffer` decode sur place dans
+ * node-canvas — pour que la signature de paintLogo ne change pas et que tous
+ * ses appelants continuent de fonctionner sans devenir asynchrones.
+ */
+let marqueImg = null
 export function paintLogo(ctx, x, y, size) {
-  const s = size / 512
-  ctx.save()
-  ctx.translate(x, y)
-  ctx.scale(s, s)
-  if (THEME === 'barca') {
-    // Our own mark, inspired by the Senyera (Mehdi, 2026-09-13): 9 bands — 5 gold,
-    // 4 red — under a night-blue "90’". Not a club crest, not the official flag.
-    roundedPath(ctx, 0, 0, 512, 512, 96); ctx.save(); ctx.clip()
-    ctx.fillStyle = '#F2C230'; ctx.fillRect(0, 0, 512, 512)
-    ctx.fillStyle = '#C8102E'
-    for (let i = 1; i < 9; i += 2) ctx.fillRect(0, Math.round(i * 512 / 9), 512, Math.round(512 / 9) + 1)
-    ctx.restore()
-    ctx.font = '236px Anton'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
-    ctx.shadowColor = 'rgba(0,0,0,0.30)'; ctx.shadowBlur = 14; ctx.shadowOffsetY = 5
-    ctx.lineJoin = 'round'; ctx.lineWidth = 10; ctx.strokeStyle = '#0B1F4B'; ctx.strokeText('90’', 250, 344)
-    ctx.shadowColor = 'transparent'
-    ctx.fillStyle = '#0B1F4B'; ctx.fillText('90’', 250, 344)
-    ctx.restore()
-    return
+  if (marqueImg === null) {
+    try {
+      const im = new Image()
+      im.src = fsSync.readFileSync(path.join(__dirname, 'assets', 'marque.png'))
+      marqueImg = im
+    } catch (e) { console.warn('marque', e.message); marqueImg = false }
   }
-  roundedPath(ctx, 0, 0, 512, 512, 96)
-  ctx.fillStyle = '#0a2540'; ctx.fill()
-  ctx.fillStyle = '#d4af37'
-  ctx.font = '210px Anton'
-  ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'
-  ctx.fillText('90’', 256, 300)
-  ctx.globalAlpha = 0.55
-  roundedPath(ctx, 96, 368, 320, 10, 5); ctx.fill()
-  ctx.beginPath(); ctx.arc(256, 373, 16, 0, Math.PI * 2)
-  ctx.strokeStyle = '#d4af37'; ctx.lineWidth = 8; ctx.stroke()
+  if (!marqueImg) return
+  ctx.save()
+  ctx.drawImage(marqueImg, x, y, size, size)
   ctx.restore()
 }
 
@@ -273,16 +267,10 @@ function labelText(ctx, text, x, y, { size = 18, align = 'left', color = ed.E.NA
   if (/[؀-ۿ]/.test(t)) { ctx.font = `bold ${Math.round(size * 1.5)}px Tajawal`; ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.fillStyle = color; ctx.fillText(t, x, y); return }
   ed.spaced(ctx, t, x, y, { size, align, color, tracking })
 }
-let pageLogoImg = null
-/** Page mark (Mehdi, 2026-09-16: « mets le nouveau logo sur les reels ») = the page's profile logo (navy circle, crest, PRESSING 90’), right-aligned at x. Falls back to the Senyera mark. */
+/** La marque de la page, alignee a droite sur x. */
 async function pageMark(ctx, x, y, mode = 'dark') {
-  if (pageLogoImg === null) { try { pageLogoImg = await loadImage(path.join(__dirname, 'assets', 'logo-page.png')) } catch { pageLogoImg = false } }
-  if (pageLogoImg) {
-    const s = 104, cx = x - s / 2, cy = y - 8 + s / 2
-    ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.35)'; ctx.shadowBlur = 18; ctx.shadowOffsetY = 6; ctx.fillStyle = '#0B1F4B'; ctx.beginPath(); ctx.arc(cx, cy, s / 2, 0, Math.PI * 2); ctx.fill(); ctx.restore()
-    ctx.save(); ctx.beginPath(); ctx.arc(cx, cy, s / 2, 0, Math.PI * 2); ctx.clip(); ctx.drawImage(pageLogoImg, x - s, y - 8, s, s); ctx.restore()   // the profile PNG is square: shown as the round badge
-    return
-  }
+  // La pastille ronde affichait assets/logo-page.png — l'ecusson du Barca.
+  // Supprime le 15/10/2026 : il n'y a plus qu'UNE marque (voir paintLogo).
   paintLogo(ctx, x - 72, y, 72); ctx.fillStyle = mode === 'light' ? ed.E.CREAM : ed.E.NAVY; ctx.font = '22px Anton'; ctx.textAlign = 'right'; ctx.textBaseline = 'alphabetic'; ctx.fillText('PRESSING 90’', x, y + 100)
 }
 

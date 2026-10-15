@@ -16,7 +16,8 @@
 // Tant que les fonds ne sont pas regénérés en 1080×1920, le rendu est
 // légèrement adouci — c'est connu et assumé.
 
-import { createCanvas, loadImage } from 'canvas'
+import { createCanvas, loadImage, Image } from 'canvas'
+import fsSync from 'node:fs'
 import path from 'node:path'
 import { registerBrandFonts, paintLogo } from './draw.js'
 import { dossierGabarits, CASES, UTILE, couvrir, ar, OR, CREME, MENTHE, tableauComparatif } from './gabarits.js'
@@ -56,6 +57,40 @@ async function poser(ctx, nom, W, H) {
   // agrandirait une seconde fois.
   const ech = W / f.width
   ctx.drawImage(f, 0, 0, f.width, hUtile, 0, 0, W, Math.round(hUtile * ech))
+}
+
+/**
+ * LE QR D'INSCRIPTION, sur sa plaque blanche.
+ *
+ * Un QR ne se lit que sur fond clair et avec sa marge de silence : pose tel
+ * quel sur une photo de nuit, aucun telephone ne l'accroche. Celui-ci porte un
+ * logo en son centre, ce qui mange de la redondance d'erreur — d'ou une taille
+ * genereuse.
+ *
+ * Il est dessine ICI et non incruste dans les fonds : un seul fichier a
+ * remplacer le jour ou l'adresse d'inscription change, au lieu de sept fonds
+ * a regenerer.
+ */
+let qrImg = null
+function blocQr(ctx, x, y, taille) {
+  if (qrImg === null) {
+    try {
+      const im = new Image()
+      im.src = fsSync.readFileSync(path.join(dossierGabarits, '..', 'qr-inscription.png'))
+      qrImg = im
+    } catch (e) { console.warn('qr', e.message); qrImg = false }
+  }
+  if (!qrImg) return
+  const M = Math.round(taille * 0.055)
+  ctx.save()
+  const r = Math.round(taille * 0.08)
+  const T = taille + M * 2
+  ctx.beginPath(); ctx.moveTo(x + r, y)
+  ctx.arcTo(x + T, y, x + T, y + T, r); ctx.arcTo(x + T, y + T, x, y + T, r)
+  ctx.arcTo(x, y + T, x, y, r); ctx.arcTo(x, y, x + T, y, r); ctx.closePath()
+  ctx.fillStyle = '#FFFFFF'; ctx.fill()
+  ctx.drawImage(qrImg, x + M, y + M, taille, taille)
+  ctx.restore()
 }
 
 function txt(ctx, t, x, y, { size = 40, font = 'Archivo', color = CREME, align = 'center' } = {}) {
@@ -216,6 +251,7 @@ export async function gabaritTableauSoiree(d) {
   // ne peut pas — et `assets/logo-page.png` est l'ecusson du Barca, qui n'a
   // rien a faire sur un tableau de Ligue Europa.
   paintLogo(ctx, 48, 48, 104)
+  blocQr(ctx, 1204, 592, 110)
 
   ar(ctx, d.titre || 'نتائج الليلة الأوروبية', 600, 120, { size: 42 })
   // Le nombre se trace À PART du texte arabe : mélangés, l'ordre s'inverse.
@@ -259,6 +295,7 @@ export async function gabaritQuatreMoments(d) {
 
   // Le fond livre le 15/10 ne porte plus de logo : on le dessine, vectoriel.
   paintLogo(ctx, e(40), e(40), e(96))
+  blocQr(ctx, W - e(40) - e(104), e(40), e(92))
 
   ar(ctx, 'أربع لحظات', W / 2, e(330), { size: e(54) })
   const cases = CASES['soiree-4-moments'].moments
