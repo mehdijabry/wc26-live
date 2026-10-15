@@ -3467,8 +3467,19 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       return { ok: true, note: JSON.stringify(out) }
     }
     if (job === 'preview-image') {
-      // Synchronous image previews of a Barça day: { type: 'matchday-post' | 'matchday-story' }
+      // Synchronous image previews of a Barça day: { type: 'matchday-post' | 'matchday-story' | 'article-story' }
       const type = String((extra as { type?: string }).type ?? 'matchday-post')
+      if (type === 'article-story') {
+        // La story d'article, a blanc. Elle part d'ordinaire dans un kit
+        // envoye par courriel ; ici rien n'est publie ni envoye, l'URL
+        // revient dans la reponse.
+        const [art] = await barcaArticles(env, 24 * 10)
+        if (!art) return { ok: false, note: 'aucun article recent a montrer' }
+        return { ok: true, note: await renderImage(env, 'article-story', {
+          title: (art.title_ar || '').trim() || art.title, kicker: 'خبر جديد', lang: 'ar',
+          barca: true, image_url: art.image_url, repli: REPLI_ARTICLE, slug: art.slug,
+        }) }
+      }
       let pool = prioritizeBarca(await bigMatchesToday(env), true).slice(0, 6)
       if (!(pool[0] && isBarca(pool[0]))) pool = [fakeBarcaMatch(date), ...pool].slice(0, 6)
       const matches = pool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: true } : toDraw(m)))
