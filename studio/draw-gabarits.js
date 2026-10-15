@@ -72,6 +72,9 @@ async function poser(ctx, nom, W, H) {
  * a regenerer.
  */
 let qrImg = null
+/** La largeur TOTALE de la plaque, code + marge de silence. */
+export const largeurQr = (taille) => taille + Math.round(taille * 0.055) * 2
+
 function blocQr(ctx, x, y, taille) {
   if (qrImg === null) {
     try {
@@ -425,7 +428,27 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
     paintLogo(ctx, 44, 44, 150)
     // LE QR DESCEND AU CENTRE BAS, sur les tribunes : en haut a droite il
     // concurrencait la marque et laissait un vide au milieu de la carte.
-    blocQr(ctx, (W - 220) / 2, 1200, 220)
+    //
+    // On centre sur la PLAQUE, pas sur le code : elle porte la marge de
+    // silence, et centrer sur le code seul decalait l'ensemble de 12 px a
+    // droite par rapport au bandeau du dessus (vu par Mehdi, 15/10).
+    const QR = 220
+    blocQr(ctx, (W - largeurQr(QR)) / 2, 1180, QR)
+    // L'APPEL A L'ACTION, sous le code. Le chiffre n'est PAS invente : un
+    // nouveau compte demarre a 5 crampons (migration 004), et les 100 sont un
+    // bonus de pressings du septieme jour de serie (migration 020) — annoncer
+    // « 100 crampons a l'inscription » aurait ete faux deux fois.
+    const yA = 1180 + largeurQr(QR) + 52
+    // Les deux lignes tombent sur la PELOUSE ECLAIREE et s'y noient. Un voile
+    // degrade les porte — meme remede que sur la carte de soiree.
+    const voile = ctx.createLinearGradient(0, yA - 54, 0, yA + 134)
+    voile.addColorStop(0, 'rgba(5,8,15,0)')
+    voile.addColorStop(0.3, 'rgba(5,8,15,0.9)')
+    voile.addColorStop(0.78, 'rgba(5,8,15,0.9)')
+    voile.addColorStop(1, 'rgba(5,8,15,0)')
+    ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, yA - 54, W, 188); ctx.restore()
+    ar(ctx, 'امسح الرمز وابدأ توقعك الأول', W / 2, yA, { size: 32 })
+    ar(ctx, 'كرامبون مجانية كل يوم', W / 2, yA + 48, { size: 25, color: OR })
     if (heading) ar(ctx, heading, W / 2, 262, { size: 46 })
     // La pagination dit au spectateur qu'il y a une suite.
     if (total > 1) txt(ctx, `${idx + 1}/${total}`, W / 2, 324, { size: 24, font: 'Archivo', color: OR })
@@ -482,7 +505,7 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
     couvrir(ctx, [0, 0, W - 80, 150], '#070B16', 18)
     ar(ctx, m.cover.text || '', (W - 80) / 2, 75, { size: 38 })
     layers.cover = PNG(cv)
-    anims.push({ layer: 'cover', x: 40, y: 1520, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } })
+    anims.push({ layer: 'cover', x: 40, y: 1620, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } })
   }
   return { layers, anims }
 }
