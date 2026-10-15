@@ -34,7 +34,9 @@ export const MENTHE = '#7FE7C4'
 export const UTILE = {
   'but-neutre': 1190,
   'but-barca': 1190,
-  'soiree-4-moments': 1234,
+  // Fond remplace le 15/10 par une plaque propre en 1080x1920 : plus de
+  // fausse barre Facebook a couper, la hauteur utile est la hauteur entiere.
+  'soiree-4-moments': 1920,
   'terrain-iso': 1184,
   'album-final': 1024,
   'stats-match': 1024,

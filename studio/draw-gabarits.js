@@ -50,7 +50,12 @@ async function poser(ctx, nom, W, H) {
   const f = await fond(nom)
   const hUtile = UTILE[nom] || f.height
   ctx.fillStyle = '#05080F'; ctx.fillRect(0, 0, W, H)
-  ctx.drawImage(f, 0, 0, f.width, hUtile, 0, 0, W, e(hUtile))
+  // L'ECHELLE SE CALCULE SUR LE FOND REEL, jamais sur une constante. Les
+  // premiers fonds faisaient 768 de large et ECH valait 1080/768 ; depuis le
+  // 15/10 certains arrivent deja en 1080, et leur appliquer ECH les
+  // agrandirait une seconde fois.
+  const ech = W / f.width
+  ctx.drawImage(f, 0, 0, f.width, hUtile, 0, 0, W, Math.round(hUtile * ech))
 }
 
 function txt(ctx, t, x, y, { size = 40, font = 'Archivo', color = CREME, align = 'center' } = {}) {
@@ -252,6 +257,9 @@ export async function gabaritQuatreMoments(d) {
   const c = createCanvas(W, H); const ctx = ctx2d(c)
   await poser(ctx, 'soiree-4-moments', W, H)
 
+  // Le fond livre le 15/10 ne porte plus de logo : on le dessine, vectoriel.
+  paintLogo(ctx, e(40), e(40), e(96))
+
   ar(ctx, 'أربع لحظات', W / 2, e(330), { size: e(54) })
   const cases = CASES['soiree-4-moments'].moments
   const moments = (d.moments || []).slice(0, 4)
@@ -268,7 +276,18 @@ export async function gabaritQuatreMoments(d) {
     txt(ctx, String(m.minute), x + w / 2, y + e(94), { size: e(52), font: 'Anton' })
     ar(ctx, m.phrase, x + w / 2, y + e(152), { size: e(19), color: 'rgba(244,243,238,0.82)' })
   }
-  if (d.ligne) ar(ctx, d.ligne, W / 2, e(880), { size: e(26) })
+  // Les deux lignes du bas tombaient SUR LES TRIBUNES ECLAIREES du fond et
+  // devenaient illisibles. Un voile sombre les porte, degrade des deux cotes
+  // pour ne pas trancher sur la photo.
+  const yB = e(880)
+  const voile = ctx.createLinearGradient(0, yB - e(46), 0, yB + e(80))
+  voile.addColorStop(0, 'rgba(5,8,15,0)')
+  voile.addColorStop(0.35, 'rgba(5,8,15,0.88)')
+  voile.addColorStop(0.75, 'rgba(5,8,15,0.88)')
+  voile.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, yB - e(46), W, e(126)); ctx.restore()
+
+  if (d.ligne) ar(ctx, d.ligne, W / 2, yB, { size: e(26) })
   ar(ctx, 'أفضل لحظات الليلة الأوروبية', W / 2, e(926), { size: e(22), color: 'rgba(244,243,238,0.75)' })
 
   return { layers: { bg: png(c) }, anims: [] }
