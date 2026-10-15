@@ -57,7 +57,9 @@ const avecPlafond = (p, ms) => new Promise((resolve, reject) => {
 // de récap tombent en même temps.
 const serialize = (fn) => {
   pending++
-  const p = queue.then(() => avecPlafond(fn(), PLAFOND_RENDU_MS)).finally(() => { pending-- })
+  const p = queue
+    .then(() => { mesurerRss(); return avecPlafond(fn(), PLAFOND_RENDU_MS) })
+    .finally(() => { mesurerRss(); pending-- })
   queue = p.catch(() => {})
   return p
 }
@@ -66,7 +68,27 @@ const serialize = (fn) => {
  *  un seul appel sans plafond rend la file vulnérable (voir ci-dessus). */
 const recuperer = (url, opts = {}, ms = 30000) => fetch(url, { ...opts, signal: AbortSignal.timeout(ms) })
 
-app.get('/health', (_req, res) => res.json({ ok: true, pending, uptime: Math.round(process.uptime()) }))
+// MESURE DE LA MÉMOIRE — posée le 15/10/2026.
+//
+// Le studio est tué sous charge et on ne sait pas par quoi : dépassement
+// mémoire, ou contrôle de santé de Render qui n'obtient plus de réponse. Les
+// journaux Render trancheraient mais demandent une connexion. Faute de quoi,
+// le studio se mesure lui-même : `rss` à l'instant, et `pic` depuis le
+// démarrage. Si le pic frôle les 512 Mo de l'instance, c'est la mémoire ; s'il
+// reste bas alors que le processus meurt, c'est le contrôle de santé.
+//
+// L'échantillonnage périodique ne tourne pas pendant un dessin canvas, qui est
+// synchrone et bloque la boucle — d'où la mesure explicite autour de chaque
+// rendu dans `serialize`, qui attrape ce que l'intervalle manque.
+const MO = 1024 * 1024
+let picRss = 0
+const mesurerRss = () => { const r = process.memoryUsage().rss; if (r > picRss) picRss = r; return r }
+setInterval(mesurerRss, 2000).unref()
+
+app.get('/health', (_req, res) => res.json({
+  ok: true, pending, uptime: Math.round(process.uptime()),
+  rss: Math.round(mesurerRss() / MO), pic: Math.round(picRss / MO), limite: 512,
+}))
 
 // ESPN proxy — ESPN's site API 403s Cloudflare Workers egress IPs, so the
 // worker's automation reads today's scoreboards through this box
