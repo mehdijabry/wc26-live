@@ -18,7 +18,7 @@
 
 import { createCanvas, loadImage } from 'canvas'
 import path from 'node:path'
-import { registerBrandFonts } from './draw.js'
+import { registerBrandFonts, paintLogo } from './draw.js'
 import { dossierGabarits, CASES, UTILE, couvrir, ar, OR, CREME, MENTHE, tableauComparatif } from './gabarits.js'
 
 const ECH = 1080 / 768
@@ -204,6 +204,13 @@ export async function gabaritTableauSoiree(d) {
   const c = createCanvas(W, H); const ctx = ctx2d(c)
   ctx.drawImage(f, 0, 0)
   const b = (r, rr = 8) => couvrir(ctx, r, '#060B18', rr)
+
+  // LE LOGO EST DESSINE ICI, pas incruste dans le fond (Mehdi, 15/10). Il est
+  // vectoriel, donc net a toute taille, et il suit le theme : `paintLogo` sort
+  // la version Barca ou la version neutre selon le contexte. Un logo incruste
+  // ne peut pas — et `assets/logo-page.png` est l'ecusson du Barca, qui n'a
+  // rien a faire sur un tableau de Ligue Europa.
+  paintLogo(ctx, 48, 48, 104)
 
   ar(ctx, d.titre || 'نتائج الليلة الأوروبية', 600, 120, { size: 42 })
   // Le nombre se trace À PART du texte arabe : mélangés, l'ordre s'inverse.
