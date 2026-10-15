@@ -37,6 +37,11 @@ export const UTILE = {
   // Fond remplace le 15/10 par une plaque propre en 1080x1920 : plus de
   // fausse barre Facebook a couper, la hauteur utile est la hauteur entiere.
   'soiree-4-moments': 1920,
+  // Plaques livrees le 15/10 pour remplacer assets/ucl/ : vierges de toute
+  // competition, hauteur pleine.
+  'soiree-ouverture': 1920,
+  'soiree-recap': 1920,
+  'soiree-fin': 1920,
   'terrain-iso': 1184,
   'album-final': 1024,
   'stats-match': 1024,

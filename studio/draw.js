@@ -772,7 +772,11 @@ export async function drawUclMatchLayers(m, idx, total, heading, lang) {
     } }
 
   const head = createCanvas(900, 200); if (!fourni) { const ctx = ctx2d(head)
-    const txt = heading || (lang === 'ar' ? 'دوري الأبطال' : 'LIGUE DES CHAMPIONS')
+    // AUCUN DEFAUT DE COMPETITION. Ce `|| 'دوري الأبطال'` estampillait
+    // Ligue des champions toute carte dont le worker n'avait pas precise la
+    // competition — y compris un soir de Ligue Europa (15/10/2026). Sans
+    // titre, on n'ecrit rien : un silence vaut mieux qu'une fausse affirmation.
+    const txt = heading || ''
     const ar = /[؀-ۿ]/.test(txt)
     let sz = ar ? 104 : 74
     for (;;) { ctx.font = ar ? `bold ${sz}px Aref` : `900 ${sz}px Playfair`; if (ctx.measureText(txt).width <= 860 || sz <= 30) break; sz -= 4 }

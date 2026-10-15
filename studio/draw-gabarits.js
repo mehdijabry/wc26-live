@@ -545,3 +545,126 @@ function texteBut(g) {
   if (g.penalty) return `${qui} · من ركلة جزاء`
   return g.assist ? `${qui} · صناعة ${nomAr(g.assist)}` : qui
 }
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LA SOIRÉE EUROPÉENNE — plaque « reel-neutre », 1080×1920             ║
+// ║                                                                      ║
+// ║ POURQUOI CES DEUX FONCTIONS EXISTENT.                                ║
+// ║ Le reel de soirée était bâti sur assets/ucl/ : trois plaques qui     ║
+// ║ portent le logo UEFA Champions League, le ballon étoilé et le        ║
+// ║ trophée PEINTS DANS LE FOND. Un soir de Ligue Europa, chaque carte   ║
+// ║ sortait donc en habits de Ligue des champions — c'est l'incident du  ║
+// ║ 15/10/2026, trois reels supprimés.                                   ║
+// ║                                                                      ║
+// ║ La plaque est désormais VIERGE et l'écusson se pose AU RENDU, celui  ║
+// ║ de la vraie compétition du soir (ecussonLigue() côté worker). Une    ║
+// ║ seule plaque sert les trois coupes d'Europe, et rien n'est jamais    ║
+// ║ affirmé par le fond.                                                 ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+/**
+ * L'écusson d'une compétition, repeint en crème.
+ *
+ * Ceux d'ESPN sont dessinés en noir sur fond transparent : posés tels quels
+ * sur une plaque de nuit, ils disparaissent purement et simplement (constaté
+ * sur la Ligue Europa le 15/10). On garde leur SILHOUETTE et on la remplit —
+ * `source-in` ne peint que là où le dessin existe.
+ *
+ * Rend un canevas VIDE quand l'écusson manque, jamais un écusson par défaut :
+ * c'est précisément un blason Champions posé par défaut qui a causé l'incident.
+ */
+async function ecussonCreme(url, taille) {
+  const c = createCanvas(taille, taille)
+  const img = await crest(url)
+  if (!img) return c
+  const x = c.getContext('2d')
+  x.drawImage(img, 0, 0, taille, taille)
+  x.globalCompositeOperation = 'source-in'
+  x.fillStyle = CREME; x.fillRect(0, 0, taille, taille)
+  return c
+}
+
+/**
+ * L'OUVERTURE DU REEL DE SOIRÉE.
+ *
+ * `d` : { titre, phrase, leagueLogo, lang }. Même contrat de sortie que
+ * drawUclMatchLayers — { layers, anims } — pour que le montage n'ait rien à
+ * savoir du changement.
+ */
+export async function gabaritOuvertureSoiree(d = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    await poser(ctx, 'soiree-ouverture', W, H)
+    paintLogo(ctx, 44, 44, 150)
+    blocInscription(ctx, W / 2, 1180, 220, W)
+  }
+
+  const badge = await ecussonCreme(d.leagueLogo, 260)
+
+  const titre = createCanvas(W, 240); { const ctx = ctx2d(titre)
+    // Le nom de la compétition vient du worker, jamais d'une constante.
+    if (d.titre) ar(ctx, d.titre, W / 2, 56, { size: 62 })
+    if (d.phrase) ar(ctx, d.phrase, W / 2, 150, { size: 34, color: 'rgba(244,243,238,0.86)' })
+  }
+
+  return {
+    layers: { bg: png(bg), badge: png(badge), titre: png(titre) },
+    anims: [
+      { layer: 'badge', x: 410, y: 400, w: 260, h: 260, pop: { from: 1.4, st: 0, d: 0.35 }, fade: { st: 0, d: 0.25 } },
+      { layer: 'titre', x: 0, y: 720, fade: { st: 0.3, d: 0.35 } },
+    ],
+  }
+}
+
+/**
+ * LE RÉCAPITULATIF DES RENCONTRES, quatre par carte.
+ *
+ * Une couche par ligne : elles entrent en cascade, et une ligne manquante ne
+ * casse pas les autres. `d` : { titre, leagueLogo }.
+ */
+export async function gabaritRecapSoiree(matchs, page = 0, pages = 1, d = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const Y0 = 500, LIG = 152
+
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    // Les tribunes en bokeh pendant la soiree ; le stade vide quand tout est
+    // joue. `d.plaque` laisse le serveur choisir sans toucher au dessin.
+    await poser(ctx, d.plaque || 'soiree-recap', W, H)
+    paintLogo(ctx, 44, 44, 150)
+    if (d.titre) ar(ctx, d.titre, W / 2, 262, { size: 46 })
+    if (pages > 1) txt(ctx, `${page + 1}/${pages}`, W / 2, 322, { size: 24, color: OR })
+    blocInscription(ctx, W / 2, 1180, 220, W)
+  }
+
+  const badge = await ecussonCreme(d.leagueLogo, 100)
+
+  const layers = { bg: png(bg), badge: png(badge) }
+  const anims = [{ layer: 'badge', x: 490, y: 372, w: 100, h: 100, fade: { st: 0, d: 0.25 } }]
+
+  for (let i = 0; i < matchs.length; i++) {
+    const m = matchs[i]
+    const c = createCanvas(W, LIG); const ctx = ctx2d(c)
+    couvrir(ctx, [60, 6, 960, 134], '#070B16', 18)
+    const [dom, ext] = await Promise.all([crest(m.homeLogo), crest(m.awayLogo)])
+    if (dom) ctx.drawImage(dom, 104, 36, 72, 72)
+    if (ext) ctx.drawImage(ext, 904, 36, 72, 72)
+    ar(ctx, nomAr(m.home), 310, 60, { size: 28 })
+    ar(ctx, nomAr(m.away), 770, 60, { size: 28 })
+    if (m.score) txt(ctx, String(m.score).replace('–', ' – '), W / 2, 58, { size: 50, font: 'Anton', color: OR })
+    else ar(ctx, m.time || '', W / 2, 58, { size: 34, color: OR })
+    // L'état se LIT sur la carte : pastille rouge et minute pour un match en
+    // cours, « terminé » pour les autres. Sans lui, personne ne distingue un
+    // score en route d'un résultat définitif.
+    if (m.etat) {
+      if (m.live) { ctx.save(); ctx.fillStyle = '#FF4D5E'; ctx.beginPath(); ctx.arc(W / 2 - 54, 110, 8, 0, Math.PI * 2); ctx.fill(); ctx.restore() }
+      ar(ctx, m.etat, W / 2 + (m.live ? 10 : 0), 110, { size: 22, color: m.live ? '#FF4D5E' : 'rgba(244,243,238,0.7)' })
+    }
+    layers[`l${i}`] = png(c)
+    anims.push({ layer: `l${i}`, x: 0, y: Y0 + i * LIG, slide: { dx: 0, dy: 26, st: 0.15 + i * 0.12, d: 0.35 }, fade: { st: 0.15 + i * 0.12, d: 0.3 } })
+  }
+  return { layers, anims }
+}

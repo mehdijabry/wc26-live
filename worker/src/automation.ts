@@ -1284,11 +1284,11 @@ const SOIREE_ACTIVE = false
  * Ligue des champions par defaut, et une soiree de Ligue Europa sortait
  * estampillee Champions League. Verifies a l'oeil le 15/10/2026.
  */
-const SOIREES_EUROPE: Record<string, { fr: string; ar: string; logo: number }> = {
-  'uefa.champions': { fr: 'LIGUE DES CHAMPIONS', ar: 'دوري الأبطال', logo: 2 },
-  'uefa.europa': { fr: 'LIGUE EUROPA', ar: 'الدوري الأوروبي', logo: 2310 },
-  'uefa.europa.conf': { fr: 'LIGUE CONFÉRENCE', ar: 'دوري المؤتمر', logo: 20296 },
-  'uefa.super_cup': { fr: "SUPERCOUPE D'EUROPE", ar: 'كأس السوبر الأوروبي', logo: 2 },
+const SOIREES_EUROPE: Record<string, { fr: string; ar: string; logo: number; motAr: string; motFr: string }> = {
+  'uefa.champions': { fr: 'LIGUE DES CHAMPIONS', ar: 'دوري الأبطال', logo: 2, motAr: '#دوري_الأبطال', motFr: '#LigueDesChampions' },
+  'uefa.europa': { fr: 'LIGUE EUROPA', ar: 'الدوري الأوروبي', logo: 2310, motAr: '#الدوري_الأوروبي', motFr: '#LigueEuropa' },
+  'uefa.europa.conf': { fr: 'LIGUE CONFÉRENCE', ar: 'دوري المؤتمر', logo: 20296, motAr: '#دوري_المؤتمر', motFr: '#LigueConference' },
+  'uefa.super_cup': { fr: "SUPERCOUPE D'EUROPE", ar: 'كأس السوبر الأوروبي', logo: 2, motAr: '#كأس_السوبر_الأوروبي', motFr: '#SupercoupeEurope' },
 }
 const ecussonLigue = (slug: string): string | undefined => {
   const l = SOIREES_EUROPE[slug]?.logo
@@ -1356,39 +1356,52 @@ export async function queueMatchdayReel(env: Env, date: string, label: string, p
 
 type EtatSoiree = { minute: number | null; pause: number; finis: number; total: number }
 
+/**
+ * LES QUATRE MOMENTS D'UNE SOIRÉE EUROPÉENNE.
+ *
+ * Les textes ne sont plus des chaînes mais des FONCTIONS de la compétition.
+ * Ils écrivaient « دوري الأبطال » en dur, et le 15/10/2026 trois reels de
+ * Ligue Europa sont sortis annoncés comme de la Ligue des champions — il a
+ * fallu les supprimer. Une compétition ne se devine pas : elle se reçoit.
+ */
+type Compet = { fr: string; ar: string; motAr: string; motFr: string }
+
+/** « LIGUE EUROPA » est la graphie des cartes ; une phrase se lit en bas de casse. */
+const titreFr = (c: Compet) => c.fr.charAt(0) + c.fr.slice(1).toLowerCase()
+
 export const MOMENTS_SOIREE: Array<{
   cle: string
   quand: (e: EtatSoiree) => boolean
-  ar: string
-  fr: string
-  titreAr: string
-  titreFr: string
+  ar: (c: Compet) => string
+  fr: (c: Compet) => string
+  titreAr: (c: Compet) => string
+  titreFr: (c: Compet) => string
 }> = [
   {
     cle: 'mt1',
     quand: (e) => e.minute !== null && e.minute >= 20 && e.minute <= 32,
-    ar: 'نصف ساعة من اللعب: أين وصلت المباريات؟', fr: 'Une demi-heure de jeu : où en sont les matchs ?',
-    titreAr: 'دوري الأبطال — بعد نصف ساعة', titreFr: 'Ligue des champions — après une demi-heure',
+    ar: () => 'نصف ساعة من اللعب: أين وصلت المباريات؟', fr: () => 'Une demi-heure de jeu : où en sont les matchs ?',
+    titreAr: (c) => `${c.ar} — بعد نصف ساعة`, titreFr: (c) => `${titreFr(c)} — après une demi-heure`,
   },
   {
     cle: 'repos',
     // La mi-temps est DÉCLARÉE par le fournisseur : plus fiable qu'une
     // minute, qui reste à 45 pendant tout l'arrêt de jeu.
     quand: (e) => e.pause > 0 && e.pause >= Math.ceil(e.total / 2),
-    ar: 'نتائج الشوط الأول', fr: 'Les résultats à la mi-temps',
-    titreAr: 'دوري الأبطال — نهاية الشوط الأول', titreFr: 'Ligue des champions — mi-temps',
+    ar: () => 'نتائج الشوط الأول', fr: () => 'Les résultats à la mi-temps',
+    titreAr: (c) => `${c.ar} — نهاية الشوط الأول`, titreFr: (c) => `${titreFr(c)} — mi-temps`,
   },
   {
     cle: 'mt2',
     quand: (e) => e.minute !== null && e.minute >= 63 && e.minute <= 75,
-    ar: 'الشوط الثاني: من يقترب من الفوز؟', fr: 'Seconde période : qui tient sa victoire ?',
-    titreAr: 'دوري الأبطال — الشوط الثاني', titreFr: 'Ligue des champions — seconde période',
+    ar: () => 'الشوط الثاني: من يقترب من الفوز؟', fr: () => 'Seconde période : qui tient sa victoire ?',
+    titreAr: (c) => `${c.ar} — الشوط الثاني`, titreFr: (c) => `${titreFr(c)} — seconde période`,
   },
   {
     cle: 'fin',
     quand: (e) => e.total > 0 && e.finis === e.total,
-    ar: 'نتائج ليلة دوري الأبطال', fr: 'Les résultats de la soirée',
-    titreAr: 'دوري الأبطال — النتائج النهائية', titreFr: 'Ligue des champions — résultats',
+    ar: (c) => `نتائج ليلة ${c.ar}`, fr: () => 'Les résultats de la soirée',
+    titreAr: (c) => `${c.ar} — النتائج النهائية`, titreFr: (c) => `${titreFr(c)} — résultats`,
   },
 ]
 
@@ -1578,11 +1591,19 @@ async function queueSoireeReel(
   // aurait donné neuf cartes et une vidéo de trente secondes.
   const classees = [...journee].sort((a, b) => (a.kickoff || '').localeCompare(b.kickoff || ''))
   const lignes = classees.slice(0, 10).map(ligneSoiree).join(' · ')
+  // ── LES MOTS-DIÈSE SUIVENT LA SOIRÉE, EUX AUSSI ────────────────────────
+  // Ils annonçaient « #دوري_الأبطال #برشلونة » quoi qu'il arrive : un soir de
+  // Ligue Europa sans Barcelone, les deux étaient faux. Le premier vient
+  // désormais de la compétition, le second n'apparaît que si le club joue.
+  const barcaCeSoir = journee.some(estBarca)
+  const mots = ar
+    ? [titres.motAr, ...(barcaCeSoir ? ['#برشلونة'] : []), '#الكرة_الأوروبية', '#Pressing90']
+    : [titres.motFr, ...(barcaCeSoir ? ['#Barca'] : []), '#FootballEuropeen', '#Pressing90']
   const description = [
-    ar ? moment.ar : moment.fr,
+    ar ? moment.ar(titres) : moment.fr(titres),
     lignes,
     ar ? `النتائج المباشرة والتشكيلات على ${SITE}/today?lang=ar&ref=fb-reel` : `Scores en direct et compositions sur ${SITE}/today?ref=fb-reel`,
-    ar ? '#دوري_الأبطال #برشلونة #الكرة_الأوروبية #Pressing90' : '#LigueDesChampions #Barca #FootballEuropeen #Pressing90',
+    mots.join(' '),
   ].join('\n')
 
   const jobId = `soiree-${date}-${moment.cle}-${Math.random().toString(36).slice(2, 6)}`
@@ -1592,7 +1613,7 @@ async function queueSoireeReel(
     // reel du matin.
     kind: 'reel', label: 'soiree-reel', date,
     description,
-    title: ar ? moment.titreAr : moment.titreFr,
+    title: ar ? moment.titreAr(titres) : moment.titreFr(titres),
     comment: ar ? `⚽ كل نتائج الليلة لحظة بلحظة: ${SITE}/today?lang=ar&ref=fb-reel` : `⚽ Tous les scores de la soirée : ${SITE}/today?ref=fb-reel`,
   }), { expirationTtl: 6 * 3600 })
 
@@ -1620,7 +1641,13 @@ async function queueSoireeReel(
       // réservé le trophée au moment « fin » ; c'est la photo des joueurs qui
       // doit arrêter le pouce, quel que soit le moment de la soirée.
       affiche: 'joueurs',
-      cover: { text: ar ? moment.ar : moment.fr, tone: 'matchday' },
+      cover: { text: ar ? moment.ar(titres) : moment.fr(titres), tone: 'matchday' },
+      // ── CE QUI NOMME LA COMPÉTITION SUR LA CARTE ────────────────────────
+      // Sans ces deux lignes, la carte retombait sur son fond : une plaque
+      // Champions League, quelle que soit la coupe jouée. Le fond est
+      // désormais vierge et c'est le worker qui dit laquelle.
+      heading: ar ? titres.ar : titres.fr,
+      leagueLogo: ecussonLigue(slug),
       lang: ar ? 'ar' : 'fr',
     },
     jobId,
@@ -3073,7 +3100,11 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
             score: m.state === 'pre' ? undefined : `${m.homeScore}–${m.awayScore}`,
             time: m.state === 'pre' && m.kickoff ? localTime(m.kickoff) : undefined,
           })),
-          affiche: 'joueurs', cover: { text: 'ليلة دوري الأبطال: من يفوز؟', tone: 'matchday' }, lang: 'ar',
+          affiche: 'joueurs',
+          cover: { text: `ليلة ${SOIREES_EUROPE[euro[0].slug].ar}: من يفوز؟`, tone: 'matchday' },
+          heading: SOIREES_EUROPE[euro[0].slug].ar,
+          leagueLogo: ecussonLigue(euro[0].slug),
+          lang: 'ar',
         },
         jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
       })

@@ -8,11 +8,11 @@ import express from 'express'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawUclRecapLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
+import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -462,7 +462,6 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
       if (type === 'soiree') {
         const ms = (data.matches || []).slice(0, 12)
         if (!ms.length) throw new Error('no matches')
-        const fondUcl = (nom) => path.join(__dirname, 'assets', 'ucl', `fond-${nom}.jpg`)
         const slides = [], durees = []
         // CHAQUE CARTE EST ÉCRITE SUR DISQUE DÈS QU'ELLE EST DESSINÉE.
         //
@@ -484,9 +483,19 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         if (data.ouverture !== false) {
           // Gabarit « أربع لحظات » de Mehdi dès que le worker envoie les quatre
           // moments ; sinon l'ouverture d'origine, sur l'affiche joueurs.
+          // ── PLUS AUCUNE PLAQUE DE COMPETITION DANS LE FOND ────────────────
+          // L'ouverture tenait sur assets/ucl/fond-joueurs.jpg, qui porte le
+          // logo UEFA Champions League PEINT DEDANS : un soir de Ligue Europa,
+          // la carte sortait en habits de Ligue des champions (incident du
+          // 15/10/2026, trois reels supprimes). Les plaques sont desormais
+          // VIERGES et l'ecusson de la vraie competition se pose au rendu.
+          //
+          // Et il n'y a volontairement PLUS DE REPLI vers l'ancienne carte :
+          // un repli qui ramene le blason Champions est exactement le piege
+          // qu'on vient de refermer. assets/ucl/ a ete supprime.
           await poser(data.moments
             ? await gabaritQuatreMoments({ moments: data.moments, ligne: data.ligne })
-            : await drawUclMatchLayers({ ouverture: true, bgImage: fondUcl(data.affiche || 'joueurs'), cover: data.cover }, 0, 2, undefined, data.lang))
+            : await gabaritOuvertureSoiree({ titre: data.heading, phrase: data.cover?.text, leagueLogo: data.leagueLogo, lang: data.lang }))
           durees.push(1.5)
         }
         // RÉCAPITULATIF (Mehdi, 13/10/2026 : « pas juste Barça, récap de tous
@@ -499,7 +508,12 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         const parCarte = Math.ceil(ms.length / nbCartes)
         for (let i = 0; i < ms.length; i += parCarte) {
           const page = ms.slice(i, i + parCarte)
-          await poser(await drawUclRecapLayers(page, slides.length, nbCartes, { bgImage: fondUcl('stade'), lang: data.lang }))
+          // La plaque suit l'heure de la soiree : les tribunes en bokeh tant
+          // qu'on joue, le stade vide quand tout est termine.
+          await poser(await gabaritRecapSoiree(page, slides.length, nbCartes, {
+            titre: data.heading, leagueLogo: data.leagueLogo,
+            plaque: data.moments ? 'soiree-fin' : 'soiree-recap',
+          }))
           // 4 s : trois ou quatre rencontres à lire demandent plus de temps
           // qu'une seule affiche. Mehdi, 13/10 : « les tables de score passent
           // trop vite, pas le temps de les lire ».
