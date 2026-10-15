@@ -240,9 +240,18 @@ export async function gabaritStatsMatch(d) {
 export async function gabaritTableauSoiree(d) {
   registerBrandFonts()
   const f = await fond('tableau-soiree')
+  // RENDU EN 1920x1080 depuis le 15/10, quand Mehdi a livre la plaque en 2K.
+  // Les coordonnees ci-dessous restent exprimees dans l'ancien repere de
+  // 1376x768 — celui ou elles ont ete relevees au pixel — et le contexte est
+  // mis a l'echelle une fois pour toutes. Les reecrire une par une n'aurait
+  // apporte que des occasions de se tromper.
   const W = 1376, H = 768
-  const c = createCanvas(W, H); const ctx = ctx2d(c)
-  ctx.drawImage(f, 0, 0)
+  const ECH_T = 1080 / H
+  // 1376 x 1,40625 = 1935, soit 15 px de trop. On cadre a 1920 pile : le
+  // dessin le plus a droite (le panneau des chiffres) s'arrete a 1910.
+  const c = createCanvas(1920, 1080); const ctx = ctx2d(c)
+  ctx.drawImage(f, 0, 0, c.width, c.height)
+  ctx.scale(ECH_T, ECH_T)
   const b = (r, rr = 8) => couvrir(ctx, r, '#060B18', rr)
 
   // LE LOGO EST DESSINE ICI, pas incruste dans le fond (Mehdi, 15/10). Il est
