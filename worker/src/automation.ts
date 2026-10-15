@@ -1117,7 +1117,7 @@ export async function runMatchday(env: Env, s: AutomationSettings, date: string,
       for (let i = 0; i < Math.min(pool.length, 18); i += 6) pages.push(pool.slice(i, i + 6))
       for (let i = 0; i < pages.length; i++) {
         if ((await getCount(env, date, 'story')) + i >= s.storiesPerDay) break
-        const data = { matches: pages[i].map((m, k) => (i === 0 ? draw(m, k) : toDraw(m))), dateLabel: label, page: i + 1, pages: pages.length, featured: barcaDay && i === 0 }
+        const data = { matches: pages[i].map((m, k) => (i === 0 ? draw(m, k) : toDraw(m))), dateLabel: labelAr(date), page: i + 1, pages: pages.length, featured: barcaDay && i === 0 }
         await queueVideoStory(env, date, 'matchday-story', 'story-match', data, () => renderImage(env, 'matchday-story', data))
       }
     }
@@ -3483,7 +3483,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       let pool = prioritizeBarca(await bigMatchesToday(env), true).slice(0, 6)
       if (!(pool[0] && isBarca(pool[0]))) pool = [fakeBarcaMatch(date), ...pool].slice(0, 6)
       const matches = pool.map((m, i) => (i === 0 ? { ...toDraw(m), feature: true } : toDraw(m)))
-      const url = await renderImage(env, type === 'matchday-story' ? 'matchday-story' : 'matchday-post', { matches, dateLabel: label, page: 1, pages: 1, featured: true })
+      const url = await renderImage(env, type === 'matchday-story' ? 'matchday-story' : 'matchday-post', { matches, dateLabel: labelAr(date), page: 1, pages: 1, featured: true })
       return { ok: true, note: url }
     }
     if (job === 'preview' && String((extra as { type?: string }).type) === 'barca-goal') {
@@ -4045,7 +4045,7 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     }
     if (job === 'test-story') {
       const pool = await bigMatchesToday(env)
-      const data = { matches: pool.slice(0, 6).map(toDraw), dateLabel: label, page: 1, pages: 1 }
+      const data = { matches: pool.slice(0, 6).map(toDraw), dateLabel: labelAr(date), page: 1, pages: 1 }
       await queueVideoStory(env, date, 'test-story', 'story-match', data, () => renderImage(env, 'matchday-story', data))
       return { ok: true, note: 'story video queued — result appears in the log in ~1 min' }
     }
