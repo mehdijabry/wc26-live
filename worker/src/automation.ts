@@ -3481,6 +3481,21 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     if (job === 'preview-image') {
       // Synchronous image previews of a Barça day: { type: 'matchday-post' | 'matchday-story' | 'article-story' }
       const type = String((extra as { type?: string }).type ?? 'matchday-post')
+      if (type === 'tale-cover') {
+        // La couverture Football Stories, a blanc. Elle n'est rendue
+        // d'ordinaire qu'au moment ou l'article est publie : sans ce chemin,
+        // la seule facon de la voir etait d'en publier un.
+        const ex = extra as { hook?: string; year?: number; lang?: string }
+        const lang = ex.lang === 'ar' ? 'ar' : 'en'
+        return { ok: true, note: await renderImage(env, 'tale-cover', {
+          lang,
+          kicker: lang === 'ar' ? `حكايات كرة القدم · ${ex.year ?? 2017}` : `FOOTBALL STORIES · ${ex.year ?? 2017}`,
+          hook: ex.hook ?? (lang === 'ar'
+            ? 'الليلة التي أسكت فيها الوداد البيضاوي الأهلي وأعاد التاج الأفريقي إلى المغرب'
+            : 'The night Wydad Casablanca silenced Al Ahly and brought the African crown home'),
+          year: ex.year ?? 2017,
+        }) }
+      }
       if (type === 'article-story') {
         // La story d'article, a blanc. Elle part d'ordinaire dans un kit
         // envoye par courriel ; ici rien n'est publie ni envoye, l'URL

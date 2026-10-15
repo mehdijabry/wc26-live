@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -310,7 +310,7 @@ app.post('/render/image', async (req, res) => {
         case 'gabarit-tableau': canvas = await gabaritTableauSoiree(data); break
         case 'score': canvas = await drawScoreCard(data); break
         case 'matchday-post': canvas = await drawMatchdayPost(data.matches, data.dateLabel, { featured: !!data.featured }); break
-        case 'tale-cover': canvas = await drawTaleCover(data); break
+        case 'tale-cover': canvas = data.ancien ? await drawTaleCover(data) : await gabaritTaleCover(data); break
         case 'matchday-story': canvas = await (data.ancien ? drawMatchStory : gabaritMatchdayStory)(data.matches, data.dateLabel, data.page || 1, data.pages || 1, { featured: !!data.featured }); break
         case 'article-post': canvas = data.ancien ? await drawArticlePost(data) : await gabaritArticlePost(data); break
         case 'article-story': canvas = data.ancien ? await drawArticleStory(data) : await gabaritArticleStory(data); break

@@ -688,7 +688,7 @@ export async function gabaritRecapSoiree(matchs, page = 0, pages = 1, d = {}) {
  * Rend le nombre de lignes reellement ecrites, pour que l'appelant sache ou
  * reprendre.
  */
-function arLignes(ctx, texte, x, y, { size = 48, maxW = 940, max = 3, interligne = 1.35, color = CREME } = {}) {
+function arLignes(ctx, texte, x, y, { size = 48, maxW = 940, max = 3, interligne = 1.35, color = CREME, align = 'center' } = {}) {
   ctx.save()
   ctx.font = `bold ${size}px Tajawal`
   const mots = String(texte ?? '').trim().split(/\s+/)
@@ -702,7 +702,7 @@ function arLignes(ctx, texte, x, y, { size = 48, maxW = 940, max = 3, interligne
   if (lignes.length < max && cour) lignes.push(cour)
   ctx.restore()
   const h = Math.round(size * interligne)
-  for (let i = 0; i < lignes.length; i++) ar(ctx, lignes[i], x, y + i * h, { size, color })
+  for (let i = 0; i < lignes.length; i++) ar(ctx, lignes[i], x, y + i * h, { size, color, align })
   return lignes.length
 }
 
@@ -967,5 +967,77 @@ export async function gabaritLineupPost(d = {}) {
   })
 
   blocInscription(ctx, W / 2, 1090, 124, W, { compact: true })
+  return c
+}
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LA COUVERTURE FOOTBALL STORIES — plaque « tableau-soiree », 1200×675 ║
+// ║                                                                      ║
+// ║ 1200×675 est conserve : c'est la taille que reclame Facebook pour    ║
+// ║ une image de partage, et la fiche d'article s'en sert en bandeau.    ║
+// ║ La plaque de soiree est en 16:9 comme elle, donc elle lui va.        ║
+// ║                                                                      ║
+// ║ PAS DE CODE QR ICI, et c'est deliberе : cette image est la banniere  ║
+// ║ de l'article SUR le site et l'apercu du lien sur Facebook. Un code   ║
+// ║ qui renvoie au site, affiche sur le site, ne sert a personne — et    ║
+// ║ dans un fil il est trop petit pour etre lu.                          ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+/** Coupe un texte en lignes aux espaces, dans la police demandee. */
+function txtLignes(ctx, texte, x, y, { size = 48, font = 'Archivo', poids = '900', maxW = 900, max = 4, interligne = 1.3, color = CREME, align = 'left' } = {}) {
+  ctx.save()
+  ctx.font = `${poids} ${size}px ${font}`
+  const mots = String(texte ?? '').trim().split(/\s+/)
+  const lignes = []
+  let cour = ''
+  for (const m of mots) {
+    const essai = cour ? `${cour} ${m}` : m
+    if (ctx.measureText(essai).width <= maxW || !cour) cour = essai
+    else { lignes.push(cour); cour = m; if (lignes.length === max) break }
+  }
+  if (lignes.length < max && cour) lignes.push(cour)
+  ctx.fillStyle = color; ctx.textAlign = align; ctx.textBaseline = 'middle'
+  const h = Math.round(size * interligne)
+  lignes.forEach((l, i) => ctx.fillText(l, x, y + i * h))
+  ctx.restore()
+  return lignes.length
+}
+
+export async function gabaritTaleCover(d = {}) {
+  registerBrandFonts()
+  const W = 1200, H = 675
+  const arabe = (d.lang || 'en') === 'ar'
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poser(ctx, 'tableau-soiree', W, H)
+
+  // Un voile part du cote ou le texte est aligne : l'accroche descend jusque
+  // sur la pelouse eclairee de la plaque, ou elle devient illisible.
+  const voile = ctx.createLinearGradient(arabe ? W : 0, 0, arabe ? 0 : W, 0)
+  voile.addColorStop(0, 'rgba(5,8,15,0.92)')
+  voile.addColorStop(0.45, 'rgba(5,8,15,0.74)')
+  voile.addColorStop(0.78, 'rgba(5,8,15,0.22)')
+  voile.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, 0, W, H); ctx.restore()
+
+  paintLogo(ctx, arabe ? W - 36 - 92 : 36, 32, 92)
+
+  // L'ANNEE EN FILIGRANE, derriere le texte : elle date l'histoire d'un coup
+  // d'oeil sans prendre de place. Chiffres latins, comme partout.
+  if (d.year) {
+    ctx.save(); ctx.font = '900 210px Archivo'; ctx.fillStyle = 'rgba(204,172,97,0.14)'
+    ctx.textAlign = arabe ? 'left' : 'right'; ctx.textBaseline = 'alphabetic'
+    ctx.fillText(String(d.year), arabe ? 24 : W - 24, H - 18); ctx.restore()
+  }
+
+  const X = arabe ? W - 56 : 56
+  if (d.kicker) {
+    if (arabe) ar(ctx, d.kicker, X, 150, { size: 30, color: OR, align: 'right' })
+    else txtLignes(ctx, d.kicker, X, 150, { size: 26, font: 'Archivo', maxW: 900, max: 1, color: OR, align: 'left' })
+  }
+  if (arabe) arLignes(ctx, d.hook, X, 250, { size: 48, maxW: 920, max: 3, interligne: 1.32, align: 'right' })
+  else txtLignes(ctx, d.hook, X, 250, { size: 48, font: 'Playfair', maxW: 920, max: 3, interligne: 1.32 })
+
+  txt(ctx, 'PRESSING90.LIVE', arabe ? W - 56 : 56, H - 42, { size: 18, font: 'Archivo', align: arabe ? 'right' : 'left', color: 'rgba(244,243,238,0.8)' })
   return c
 }
