@@ -42,6 +42,8 @@ export const UTILE = {
   'soiree-ouverture': 1920,
   'soiree-recap': 1920,
   'soiree-fin': 1920,
+  // Terrain debout, livre le 15/10 pour le reel « كيف جاء الهدف ».
+  'terrain-vertical': 1920,
   'terrain-iso': 1184,
   'album-final': 1024,
   'stats-match': 1024,

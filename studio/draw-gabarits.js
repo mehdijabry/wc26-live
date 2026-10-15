@@ -48,6 +48,7 @@ async function crest(url) {
 }
 
 /** Pose un fond à l'échelle de la chaîne, et prolonge le bas si besoin. */
+export async function poserPlaque(ctx, nom, W, H) { return poser(ctx, nom, W, H) }
 async function poser(ctx, nom, W, H) {
   const f = await fond(nom)
   const hUtile = UTILE[nom] || f.height

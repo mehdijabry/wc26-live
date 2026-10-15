@@ -113,17 +113,28 @@ export function vtext(ctx, text, x, y, { size = 15, dir = -1, color = E.NAVY } =
 /** Garnet → blue → garnet text gradient across [x0, x0+w]. */
 export function inkGradient(ctx, x0, w) { const g = ctx.createLinearGradient(x0, 0, x0 + w, 0); g.addColorStop(0, E.GRANA); g.addColorStop(0.5, E.BLUE); g.addColorStop(1, E.GRANA); return g }
 /** Arabic display title: line 1 navy, line 2 in the ink gradient, optional spaced Latin sub-label. */
-export function titleAr(ctx, l1, l2, x, y, size = 150, { align = 'center', lat, latSize = 20 } = {}) {
-  ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.font = `bold ${size}px Aref`; ctx.fillStyle = E.NAVY
+/**
+ * `nuit` : la meme composition, mais ecrite POUR UN FOND SOMBRE.
+ *
+ * L'encre bleu nuit et le degrade grenat-bleu ont ete dessines pour le papier
+ * creme ; sur une plaque de nuit la premiere ligne disparait purement et
+ * simplement. Le drapeau est optionnel et ne change rien aux appelants
+ * existants.
+ */
+export function titleAr(ctx, l1, l2, x, y, size = 150, { align = 'center', lat, latSize = 20, nuit = false } = {}) {
+  ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.font = `bold ${size}px Aref`; ctx.fillStyle = nuit ? E.CREAM : E.NAVY
   if (l1) ctx.fillText(l1, x, y)
   const y2 = l1 ? y + size * 0.95 : y
   if (l2) {
     const w = ctx.measureText(l2).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x
-    ctx.fillStyle = inkGradient(ctx, x0, w); ctx.fillText(l2, x, y2)
+    ctx.fillStyle = nuit ? orGrad(ctx, x0, w) : inkGradient(ctx, x0, w); ctx.fillText(l2, x, y2)
   }
-  if (lat) { const w = ctx.measureText(l2 || l1).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x; spaced(ctx, lat, align === 'center' ? x : align === 'right' ? x : x0, y2 + size * 0.27, { size: latSize, align, tracking: 0.5 }) }
+  if (lat) { const w = ctx.measureText(l2 || l1).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x; spaced(ctx, lat, align === 'center' ? x : align === 'right' ? x : x0, y2 + size * 0.27, { size: latSize, align, tracking: 0.5, ...(nuit ? { color: E.CREAM } : {}) }) }
   return y2
 }
+
+/** Degrade or -> creme -> or, le pendant de inkGradient pour les fonds sombres. */
+export function orGrad(ctx, x0, w) { const g = ctx.createLinearGradient(x0, 0, x0 + w, 0); g.addColorStop(0, E.GOLD); g.addColorStop(0.5, E.CREAM); g.addColorStop(1, E.GOLD); return g }
 /** Latin display title (Playfair): line 1 navy, line 2 gradient. */
 export function titleLat(ctx, l1, l2, x, y, size = 150, { align = 'center' } = {}) {
   ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.font = `900 ${size}px Playfair`; ctx.fillStyle = E.NAVY
