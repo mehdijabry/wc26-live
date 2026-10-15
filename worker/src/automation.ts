@@ -2295,36 +2295,26 @@ export async function runBarcaDigest(env: Env, s: AutomationSettings, date: stri
   if (list.length < 2) { const older = await barcaArticles(env, 24 * 10); list = [...list, ...older.filter((o) => !list.some((x) => x.slug === o.slug))] }
   list = list.slice(0, 3)
   if (!list.length) { await log(env, date, 'barca-digest', false, 'no Barça article on the site — nothing to publish'); return 'no article' }
-  const items: Array<{ title: string; slug: string; image_url?: string | null; excerpt: string }> = []
-  const FALLBACK_IMG = 'https://pressing90.live/media/barca-news-fallback.jpg'   // served by the site, not Supabase: the nightly cleanup deleted it from the bucket (2026-10-09, see public/media/README.md)
-  // Checked THROUGH the proxy, delivered DIRECT (2026-10-09). The check has to go through the proxy: several
-  // CDNs, ESPN first among them, answer 403 to Cloudflare Worker IPs, so the worker cannot see the real
-  // content-type on its own. But the studio must receive the ORIGINAL url: its loader announces itself as
-  // Chrome, and a browser user-agent coming from Render's datacentre addresses does not get through to our
-  // own worker — every article photo came back empty while the club crests, fetched straight from ESPN,
-  // drew perfectly (the Barça digest of 8 October had three blank frames out of three). An image that does
-  // not come back as a decodable JPEG or PNG is replaced by the blaugrana fallback visual, because
-  // node-canvas cannot decode WebP or AVIF (blank digest frame, 2026-09-14).
-  // Kept character for character in step with loadImg() in studio/draw.js.
-  const UA_STUDIO = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36'
-  // The check asks the source exactly what the studio's loader asks it, so that what we verify is what the
-  // studio will actually be served: same browser user-agent, same accept header. Measured on 9 October 2026
-  // over the six most recent articles: with this accept header imgfoot and yimg answer WebP, which
-  // node-canvas cannot decode — those get the fallback rather than an empty frame. Once studio/draw.js
-  // ships its corrected accept ('image/png,image/jpeg,image/*;q=0.8,*/*;q=0.5', already written but waiting
-  // on a Render deploy), change the line below to match and those sources will serve JPEG again.
-  // THE TWO HEADERS MUST ALWAYS BE CHANGED TOGETHER.
-  const usable = async (u: string) => {
-    try {
-      const r = await fetch(u, { headers: { 'user-agent': UA_STUDIO, accept: 'image/avif,image/webp,image/png,image/jpeg,*/*' }, signal: AbortSignal.timeout(8000) })
-      const ct = r.headers.get('content-type') ?? ''
-      r.body?.cancel().catch(() => {})
-      return r.ok && /^image\/(jpeg|png)/.test(ct)
-    } catch { return false }
-  }
+  const items: Array<{ title: string; slug: string; image_url?: string | null; repli: string; excerpt: string }> = []
+  const REPLI = 'https://pressing90.live/media/barca-news-fallback.jpg'   // servi par le site, pas par Supabase : le menage de nuit l'a efface du seau (2026-10-09, voir public/media/README.md)
+  // ── PLUS DE CONTROLE PREALABLE DE L'IMAGE ──────────────────────────────
+  // Il y en avait un : le worker ouvrait l'image avec l'en-tete du studio et
+  // remplacait par le repli celles qu'il jugeait inutilisables. Le verdict
+  // etait pris du MAUVAIS ENDROIT — le worker interroge depuis les adresses
+  // de Cloudflare, le studio charge depuis celles de Render, et une source
+  // repond differemment aux deux. Resultat mesure le 15/10/2026 sur le resume
+  // du matin : deux photos sur trois remplacees par le bokeh generique alors
+  // qu'elles etaient parfaitement valides.
+  //
+  // On envoie donc l'URL D'ORIGINE et le repli A COTE. Le studio tente la
+  // premiere et ne se rabat sur le second que sur un echec qu'il a lui-meme
+  // constate (loadImgOuRepli, studio/draw.js).
   for (const a of list) {
-    const image_url = a.image_url && (await usable(a.image_url)) ? a.image_url : FALLBACK_IMG
-    items.push({ title: (a.title_ar || '').trim() || await arabicHeadline(env, a.title), slug: a.slug, image_url, excerpt: (a.excerpt_ar || a.excerpt || '').trim() })
+    items.push({
+      title: (a.title_ar || '').trim() || await arabicHeadline(env, a.title),
+      slug: a.slug, image_url: a.image_url, repli: REPLI,
+      excerpt: (a.excerpt_ar || a.excerpt || '').trim(),
+    })
   }
   const ord = ['أولاً', 'ثانياً', 'ثالثاً']
   if (items[0]) (items[0] as { cover?: unknown }).cover = { text: 'أخبار برشلونة: ماذا حدث اليوم؟', tone: 'barca' }   // thumbnail line

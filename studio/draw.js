@@ -115,6 +115,32 @@ export async function loadImg(src) {
   } catch (e) { console.warn('img', src.slice(0, 80), e.message); return null }
 }
 
+/** Le visuel de secours d'un article, servi par le site (pas par Supabase :
+ *  le menage de nuit l'a efface du seau le 09/10/2026). */
+export const REPLI_ARTICLE = 'https://pressing90.live/media/barca-news-fallback.jpg'
+
+/**
+ * L'IMAGE D'UN ARTICLE, AVEC SON REPLI — ET POURQUOI LE REPLI VIT ICI.
+ *
+ * Le worker verifiait l'image AVANT d'envoyer le travail, depuis les adresses
+ * de Cloudflare, et remplacait d'office par le repli celles qu'il jugeait
+ * inutilisables. Mais c'est le studio qui charge, depuis les adresses de
+ * Render : une source peut repondre 200 a l'un et refuser a l'autre. Le
+ * verdict etait donc pris du mauvais endroit, et son seul effet etait de
+ * remplacer de bonnes photos par le bokeh generique — deux cartes sur trois
+ * du resume Barca du 15/10/2026, une semaine durant.
+ *
+ * LE REPLI APPARTIENT A CELUI QUI CHARGE VRAIMENT. On tente l'original, et
+ * on ne se rabat que sur un echec constate.
+ */
+export async function loadImgOuRepli(src, repli = REPLI_ARTICLE) {
+  const img = await loadImg(src)
+  if (img) return img
+  if (!repli || repli === src) return null
+  console.warn('repli', String(src ?? '').slice(0, 80))
+  return await loadImg(repli)
+}
+
 /** Brand mark drawn natively (mirror of public/p90-logo.svg): navy tile,
  *  gold "90’", pitch line + centre circle. */
 /**
@@ -467,7 +493,7 @@ export async function drawArticlePost(a) {
   const W = 1080, H = 1350, PHOTO_H = 720
   const c = createCanvas(W, H); const ctx = ctx2d(c)
   ed.backdrop(ctx, W, H)
-  const img = await loadImg(a.image_url)
+  const img = await loadImgOuRepli(a.image_url, a.repli)
   if (img) {
     const s = Math.max(W / img.width, PHOTO_H / img.height), dw = img.width * s, dh = img.height * s
     ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, PHOTO_H); ctx.clip()
@@ -509,7 +535,7 @@ export async function drawArticleStory(a) {
   const kicker = a.kicker || (ar ? 'خبر جديد' : 'NEW ARTICLE')
   if (ar) { ctx.textAlign = 'right'; ctx.font = 'bold 60px Aref'; const kw = ctx.measureText(kicker).width; ctx.fillStyle = ed.inkGradient(ctx, W - 48 - kw, kw); ctx.fillText(kicker, W - 48, 300); ed.bar(ctx, W - 108, 318) }
   else { ed.titleLat(ctx, '', kicker, 48, 300, 60, { align: 'left' }); ed.bar(ctx, 48, 318) }
-  const img = await loadImg(a.image_url)
+  const img = await loadImgOuRepli(a.image_url, a.repli)
   const y = 370, h = 760
   roundedPath(ctx, 60, y, W - 120, h, 24); ctx.save(); ctx.clip()
   if (img) { const s = Math.max((W - 120) / img.width, h / img.height); const dw = img.width * s, dh = img.height * s; ctx.drawImage(img, 60 + ((W - 120) - dw) / 2, y + (h - dh) / 2, dw, dh) }
@@ -993,7 +1019,7 @@ export async function drawArticleLayers(a, heading, lang) {
     displayTitle(ctx, txt, ar ? 900 : 0, 68, { size: ar ? 56 : 40, maxW: 880, align: ar ? 'right' : 'left' }) }
   const pw = W - 120, ph = 760
   const photo = createCanvas(pw, ph); { const ctx = ctx2d(photo)
-    const img = await loadImg(a.image_url)
+    const img = await loadImgOuRepli(a.image_url, a.repli)
     roundedPath(ctx, 0, 0, pw, ph, 24); ctx.save(); ctx.clip()
     if (img) { const s = Math.max(pw / img.width, ph / img.height); const dw = img.width * s, dh = img.height * s; ctx.drawImage(img, (pw - dw) / 2, (ph - dh) / 2, dw, dh) }
     else { ctx.fillStyle = ed.E.PAPER_DARK; ctx.fillRect(0, 0, pw, ph) }
