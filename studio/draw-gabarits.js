@@ -1149,40 +1149,35 @@ export async function gabaritTaleCover(d = {}) {
 // ╚══════════════════════════════════════════════════════════════════════╝
 export async function gabaritStatsPeriode(d = {}) {
   registerBrandFonts()
-  const T = 1080
-  const c = createCanvas(T, T); const ctx = ctx2d(c)
-  await poser(ctx, 'stats-match', T, T)
-  paintLogo(ctx, 44, 44, 120)
+  const W = 1080, H = 1920
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  // LA MEME PLAQUE QUE LA CARTE QU'ELLE REMPLACE. C'est le format de Mehdi :
+  // on change ce qui est ecrit, pas la toile.
+  await poser(ctx, 'soiree-4-moments', W, H)
+  paintLogo(ctx, 56, 56, 134)
 
-  ar(ctx, d.titre || 'الشوط الأول في أرقام', T / 2, 228, { size: 52 })
-  // Le sous-titre ne porte QUE du texte, pour la meme raison.
-  if (d.sousTitre) ar(ctx, d.sousTitre, T / 2, 288, { size: 25, color: OR })
+  ar(ctx, d.titre || 'الشوط الأول في أرقام', W / 2, 330, { size: 62 })
+  // Le sous-titre ne porte QUE du texte : une chaine melant arabe et chiffres
+  // est reordonnee par le bidirectionnel, et le nombre part a l'autre bout.
+  if (d.sousTitre) ar(ctx, d.sousTitre, W / 2, 404, { size: 27, color: OR })
 
-  // ── LES CHIFFRES, SANS CASE ───────────────────────────────────────────
-  // Deux colonnes, chacune alignee sur son propre axe : le nombre cale a
-  // droite d'un axe, le libelle a gauche. C'est cet alignement qui tient la
-  // lecture, pas un cadre.
+  // ── LES CHIFFRES, SANS AUCUNE CASE ────────────────────────────────────
+  // Deux colonnes alignees chacune sur son axe : le nombre cale a droite, le
+  // libelle a gauche. C'est l'alignement qui tient la lecture, pas un cadre.
   const lignes = (d.lignes || []).slice(0, 16)
   const parCol = Math.ceil(lignes.length / 2)
-  const HAUT = 372, PAS = Math.max(42, Math.min(62, Math.floor(500 / Math.max(1, parCol))))
+  const HAUT = 512, PAS = Math.max(44, Math.min(66, Math.floor(540 / Math.max(1, parCol))))
   for (let i = 0; i < lignes.length; i++) {
     const [libelle, valeur] = lignes[i]
     const ci = i >= parCol ? 1 : 0
-    const axe = ci === 0 ? 300 : 820
+    const axe = ci === 0 ? 292 : 812
     const y = HAUT + (i - ci * parCol) * PAS
-    txt(ctx, String(valeur), axe, y, { size: 34, font: 'Anton', align: 'right', color: ci === 0 ? CREME : MENTHE })
-    ar(ctx, libelle, axe + 24, y, { size: 24, align: 'left', color: 'rgba(244,243,238,0.82)' })
-    // Un filet tres discret sous chaque ligne : il guide l'oeil sans
-    // enfermer le chiffre.
-    ctx.save(); ctx.strokeStyle = 'rgba(244,243,238,0.08)'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(axe - 190, y + PAS / 2 - 6); ctx.lineTo(axe + 190, y + PAS / 2 - 6); ctx.stroke(); ctx.restore()
+    txt(ctx, String(valeur), axe, y, { size: 36, font: 'Anton', align: 'right', color: ci === 0 ? CREME : MENTHE })
+    ar(ctx, libelle, axe + 26, y, { size: 25, align: 'left', color: 'rgba(244,243,238,0.84)' })
+    ctx.save(); ctx.strokeStyle = 'rgba(244,243,238,0.09)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(axe - 196, y + PAS / 2 - 7); ctx.lineTo(axe + 196, y + PAS / 2 - 7); ctx.stroke(); ctx.restore()
   }
 
-  // PAS DE PHRASE D'ACCROCHE AVEC DES CHIFFRES DEDANS. Une chaine qui mele
-  // de l'arabe et des nombres est reordonnee par l'algorithme bidirectionnel,
-  // et le nombre part a l'autre bout : « 46 هدفاً في 9 مباريات » s'est
-  // affiche « هدفاً في 9 مباريات 46 » (16/10/2026). Les deux chiffres sont
-  // deja dans le tableau, en tete : ils n'ont pas besoin d'etre repetes.
-  blocInscription(ctx, T / 2, 866, 118, T, { compact: true })   // 866 et non 892 : la ligne d'appel frolait le bord bas
+  blocInscription(ctx, W / 2, 1180, 200, W)
   return c
 }
