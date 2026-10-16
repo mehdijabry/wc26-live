@@ -374,10 +374,17 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     let ss = 34; for (;;) { ctx.font = `bold ${ss}px Tajawal`; if (ctx.measureText(small).width <= 880 || ss <= 22) break; ss -= 2 }
     ctx.font = `bold ${bs}px Aref`; const bw = ctx.measureText(big).width; ctx.font = `bold ${ss}px Tajawal`; const sw = ctx.measureText(small).width
     const w = Math.min(1000, Math.max(bw, sw) + 140)
-    ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.25)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12; ctx.fillStyle = 'rgba(7,11,22,0.88)'; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.fill(); ctx.restore()
-    ctx.strokeStyle = 'rgba(204,172,97,0.5)'; ctx.lineWidth = 2; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.stroke()
+    // ── LES SOUS-TITRES N'ONT PLUS DE CADRE ────────────────────────────
+    // Mehdi, 16/10/2026 : le texte qui change reste sur fond transparent.
+    // Un cartouche a chaque phrase decoupait l'image en deux et attirait
+    // l'oeil sur la boite plutot que sur le mot. Le texte est donc PORTE PAR
+    // SON OMBRE, comme les noms de joueurs sur la pelouse — sans elle il se
+    // perdrait dans les rayures de tonte.
+    ctx.save(); ctx.shadowColor = 'rgba(3,6,12,0.95)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3
+
     ctx.font = `bold ${ss}px Tajawal`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(244,239,230,0.72)'; ctx.fillText(small, 500, 66)
     ed.titleAr(ctx, '', big, 500, 178, bs, { nuit: true })
+    ctx.restore()
     return c })
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
   console.log('[goal-anim]', JSON.stringify({ S: BEATS.map((x) => +x.toFixed(2)), shot: +tShot.toFixed(2), goal: +tGoal.toFixed(2), end: +tEnd.toFixed(2) }))
