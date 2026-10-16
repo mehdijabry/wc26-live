@@ -12,6 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { spawn, execFileSync, spawnSync } from 'node:child_process'
 import { createCanvas, loadImage } from 'canvas'
 import * as d from './draw.js'
+import { poserPlaque, libererPlaque } from './draw-gabarits.js'
 import * as ed from './editorial.js'
 import { animSlide } from './video.js'
 
@@ -62,7 +63,11 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     return keys[keys.length - 1].slice(1)
   }
   // ── pitch ──
-  const x0 = 110, y0 = 560, pw = 860, ph = 940, topW = 0.88, yb = y0 + ph
+  // ── LA GEOMETRIE EST CELLE DE LA PLAQUE ──────────────────────────────
+  // Coins de la surface de jeu releves au pixel sur terrain-vertical.jpg en
+  // 1080x1920 : haut [166,288] [898,288], bas [105,1508] [961,1508].
+  // SI LA PLAQUE EST REGENEREE, IL FAUT REPRENDRE CE RELEVE.
+  const x0 = 110, y0 = 288, pw = 856, ph = 1220, topW = 0.855, yb = y0 + ph
   const X = (u, y) => { const t = (y - y0) / ph; const cw = pw * (topW + (1 - topW) * t); return x0 + pw / 2 + (u - 0.5) * cw }
   const P = (u, v) => { const y = y0 + v * ph; return [X(u, y), y] }
   // ── actors ──
@@ -230,7 +235,10 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     ctx.fillStyle = num; ctx.font = `900 ${40 * u}px Cairo`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.strokeStyle = 'rgba(17,28,79,0.55)'; ctx.lineWidth = 3 * u; ctx.lineJoin = 'round'; ctx.strokeText(String(number), 50 * u, 60 * u); ctx.fillText(String(number), 50 * u, 60 * u); ctx.textBaseline = 'alphabetic'
     ctx.restore()
-    if (name) ed.spaced(ctx, String(name).toUpperCase(), x, y + s + nameSize * 1.55, { size: nameSize, align: 'center', tracking: 0.12 })
+    // Sur l'herbe, un nom doit etre PORTE : creme, et une ombre dense
+    // dessous, sinon il se perd dans les rayures de tonte.
+    if (name) { ctx.save(); ctx.shadowColor = 'rgba(5,8,15,0.95)'; ctx.shadowBlur = 10; ctx.shadowOffsetY = 2
+      ed.spaced(ctx, String(name).toUpperCase(), x, y + s + nameSize * 1.55, { size: nameSize, align: 'center', tracking: 0.12, color: E.CREAM }); ctx.restore() }
   }
   const sprites = new Map()
   function sprite(kind, number, name, kit) { const key = `${kind}-${number}-${name}-${JSON.stringify(kit || null)}`; if (!sprites.has(key)) { const c = createCanvas(240, 150); const ctx = c.getContext('2d'); if (kit) jerseyCustom(ctx, 120, 8, 64, { ...kit, number, name, nameSize: 15 }); else ed.jersey(ctx, 120, 8, 64, { kind, number, name, nameSize: 15 }); sprites.set(key, c) } return sprites.get(key) }
@@ -294,14 +302,16 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   }
   let pitchLayer = null
   function drawWorld(ctx, t) {
-    if (!pitchLayer) { pitchLayer = createCanvas(W, H); const pc = pitchLayer.getContext('2d')
-      pc.save(); quad(pc, 0, 1, y0, yb); pc.fillStyle = 'rgba(46,139,87,0.11)'; pc.fill()
-      for (let i = 0; i < 10; i += 2) { quad(pc, 0, 1, y0 + ph * i / 10, y0 + ph * (i + 1) / 10); pc.fillStyle = 'rgba(46,139,87,0.055)'; pc.fill() }
-      pc.restore(); ed.pitch(pc, x0, y0, pw, ph, { topW, color: 'rgba(17,28,79,0.42)' }); goalFrame(pc, yb, 1, 0) }
-    ctx.drawImage(pitchLayer, 0, 0)
-    const shake = t > tGoal && t < tGoal + 0.55 ? Math.sin((t - tGoal) * 60) * 4 * (1 - (t - tGoal) / 0.55) : 0
-    goalFrame(ctx, y0, -1, shake)
-    if (runTrail) { const seen = runTrail.pts.filter(([tt]) => tt <= t).map(([, x, y]) => [x, y + 6]); if (seen.length > 3) glowPath(ctx, smooth(seen, 2), { c0: E.NAVY, c1: '#3FA9C9', width: 4, alpha: 0.85, arrow: false, flow: t }) }
+    // LA PLAQUE EST DANS LA COUCHE QUI SE DEPLACE, PAS AU FOND.
+    //
+    // La camera suit le ballon et zoome : un terrain dessine suivait, une
+    // photo posee en fond serait restee immobile pendant que les joueurs
+    // glissent dessus. La plaque est donc posee ICI, sous les marqueurs et
+    // dans la meme transformation — et ses lignes tombent sur la projection
+    // parce que les constantes ci-dessus sont ses propres coins.
+
+    ctx.drawImage(pitchLayer, 0, 0, W, H)   // demi-resolution, remise a l'echelle ici
+    if (runTrail) { const seen = runTrail.pts.filter(([tt]) => tt <= t).map(([, x, y]) => [x, y + 6]); if (seen.length > 3) glowPath(ctx, smooth(seen, 2), { c0: '#7FE7C4', c1: '#A6DCEA', width: 4, alpha: 0.9, arrow: false, flow: t }) }
     for (const ps of passSegs) if (t >= ps.start && ps.s.glow !== false) { const p = eo((t - ps.start) / (ps.end - ps.start)); const a = ballAt(ps.start), b = ballAt(ps.end - 1e-4); glowPath(ctx, bezPts([a[0], a[1] + 6], [b[0], b[1] + 6], ps.s.k ?? -0.12), { c0: E.BLUE, c1: E.AQUA, width: 5, p, flow: t, alpha: t < tShot ? 1 : 0.45 }) }
     if (shotSeg && t >= shotSeg.start) { const p = c01((t - shotSeg.start) / (shotSeg.end - shotSeg.start)); const a = ballAt(shotSeg.start), b = P(shotSeg.s.shot[0], shotSeg.s.shot[1]); glowPath(ctx, bezPts([a[0], a[1] + 6], [b[0], b[1] + 6], shotSeg.s.k ?? 0.06), { c0: E.GRANA, c1: E.GOLD, width: 6, p, flow: t * 1.6 }); if (p >= 1) ripples(ctx, b[0], b[1] + 4, tGoal, t, E.GOLD, { n: 3, period: 0.7, rmax: 90 }) }
     for (const o of spec.overlays || []) if (o.type === 'zone') overlay(ctx, o, t)
@@ -328,26 +338,46 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   if (global.gc) { global.gc() }
   console.log('[goal-anim] closing card ready, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
 
+  // La pelouse voyage avec la camera : elle est preparee ici, une fois, et
+  // `drawWorld` la repose a chaque image dans la transformation courante.
+  // ── LA PELOUSE EST PREPAREE EN DEMI-RESOLUTION ───────────────────────
+  // Elle est recomposee A CHAQUE IMAGE, dans une transformation qui zoome.
+  // En pleine resolution c'est une photo opaque de 1080x1920 redessinee
+  // vingt-cinq fois par seconde : sur 0,1 CPU l'enfant se fait tuer avant la
+  // fin (deux rendus perdus le 16/10/2026). En 540x960 le cout par image est
+  // divise par quatre, et la perte de nettete ne se voit pas sur un fond qui
+  // defile sous des joueurs.
+  const PLW = W >> 1, PLH = H >> 1
+  pitchLayer = createCanvas(PLW, PLH); { const pc = pitchLayer.getContext('2d')
+    await poserPlaque(pc, 'terrain-vertical', PLW, PLH)
+    libererPlaque('terrain-vertical')   // 8 Mo de pixels rendus : cet enfant est plafonne a 256 Mo
+  }
+
   const base = createCanvas(W, H); { const ctx = base.getContext('2d')
-    ed.backdrop(ctx, W, H, { tone: 'blue' })
-    await ed.stadium(ctx, W, H, { top: H - 420, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 })
-    ed.stack(ctx, spec.stack || ['BARÇA', 'FIRST'], 48, 92, { size: 15 })
+    // LE FOND EST UN SOL SOMBRE, PAS LA PLAQUE : celle-ci est dans la couche
+    // mobile. La poser aussi au fond ferait apparaitre deux terrains, l'un
+    // immobile sous l'autre.
+    ctx.fillStyle = '#070B16'; ctx.fillRect(0, 0, W, H)
+    const halo = ctx.createRadialGradient(W / 2, 760, 0, W / 2, 760, 1150)
+    halo.addColorStop(0, 'rgba(26,48,96,0.55)'); halo.addColorStop(1, 'rgba(7,11,22,0)')
+    ctx.fillStyle = halo; ctx.fillRect(0, 0, W, H)
+    ed.stack(ctx, spec.stack || ['BARÇA', 'FIRST'], 48, 92, { size: 15, color: E.CREAM })
     // La marque, posee par paintLogo. Avant : assets/logo-page.png, l'ecusson
     // du Barca, dans une pastille ronde — supprime le 15/10/2026.
     d.paintLogo(ctx, W - 48 - 104, 62, 104)
-    ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1830, { size: 16, align: 'center', tracking: 0.42 })
+    ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1830, { size: 16, align: 'center', tracking: 0.42, color: 'rgba(244,239,230,0.85)' })
     ed.grain(ctx, W, H)
   }
-  const titleC = createCanvas(W, 470); { const ctx = titleC.getContext('2d'); ed.titleAr(ctx, spec.title.l1, spec.title.l2, W / 2, 200, spec.title.size ?? 124, { lat: spec.title.lat }) }
+  const titleC = createCanvas(W, 470); { const ctx = titleC.getContext('2d'); ed.titleAr(ctx, spec.title.l1, spec.title.l2, W / 2, 200, spec.title.size ?? 124, { lat: spec.title.lat, nuit: true }) }
   const capC = CAPS.map(([, small, big]) => { const c = createCanvas(1000, 240); const ctx = c.getContext('2d')
     let bs = 92; for (;;) { ctx.font = `bold ${bs}px Aref`; if (ctx.measureText(big).width <= 860 || bs <= 50) break; bs -= 3 }
     let ss = 34; for (;;) { ctx.font = `bold ${ss}px Tajawal`; if (ctx.measureText(small).width <= 880 || ss <= 22) break; ss -= 2 }
     ctx.font = `bold ${bs}px Aref`; const bw = ctx.measureText(big).width; ctx.font = `bold ${ss}px Tajawal`; const sw = ctx.measureText(small).width
     const w = Math.min(1000, Math.max(bw, sw) + 140)
-    ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.25)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12; ctx.fillStyle = 'rgba(255,255,255,0.86)'; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.fill(); ctx.restore()
-    ctx.strokeStyle = E.LINE; ctx.lineWidth = 2; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.stroke()
-    ctx.font = `bold ${ss}px Tajawal`; ctx.textAlign = 'center'; ctx.fillStyle = E.MUTED; ctx.fillText(small, 500, 66)
-    ed.titleAr(ctx, '', big, 500, 178, bs)
+    ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.25)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12; ctx.fillStyle = 'rgba(7,11,22,0.88)'; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.fill(); ctx.restore()
+    ctx.strokeStyle = 'rgba(204,172,97,0.5)'; ctx.lineWidth = 2; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.stroke()
+    ctx.font = `bold ${ss}px Tajawal`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(244,239,230,0.72)'; ctx.fillText(small, 500, 66)
+    ed.titleAr(ctx, '', big, 500, 178, bs, { nuit: true })
     return c })
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
   console.log('[goal-anim]', JSON.stringify({ S: BEATS.map((x) => +x.toFixed(2)), shot: +tShot.toFixed(2), goal: +tGoal.toFixed(2), end: +tEnd.toFixed(2) }))
@@ -371,8 +401,10 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     { const p = eo(t / 0.4); const s = 1.18 - 0.18 * p; ctx.save(); ctx.globalAlpha = c01(t / 0.18); ctx.translate(W / 2, 250); ctx.scale(s, s); ctx.translate(-W / 2, -250); ctx.drawImage(titleC, 0, 0); ctx.restore() }
     { const p = eo((t - 0.12) / 0.5); const s = 0.96 + 0.04 * p
       ctx.save(); ctx.globalAlpha = c01((t - 0.12) / 0.3); ctx.translate(CX, CY); ctx.scale(s, s); ctx.translate(-CX, -CY)
-      ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.30)'; ctx.shadowBlur = 44; ctx.shadowOffsetY = 18; ctx.fillStyle = 'rgba(255,255,255,0.62)'; rr(ctx, PX, PY, PW, PH, 30); ctx.fill(); ctx.restore()
-      ctx.strokeStyle = E.LINE; ctx.lineWidth = 2; rr(ctx, PX, PY, PW, PH, 30); ctx.stroke()
+      // Plus de panneau peint : l'action se joue SUR LA PELOUSE (Mehdi,
+      // 16/10/2026). Le rectangle reste, mais seulement comme cadre de
+      // decoupe — la camera continue de travailler dedans.
+      ctx.save(); ctx.strokeStyle = 'rgba(204,172,97,0.45)'; ctx.lineWidth = 2; rr(ctx, PX, PY, PW, PH, 30); ctx.stroke(); ctx.restore()
       rr(ctx, PX + 14, PY + 14, PW - 28, PH - 28, 22); ctx.clip()
       layoutActors(t)
       let [fu, fv, sc] = kf3(CAM, t); let [fx, fy] = P(fu, fv)
@@ -398,7 +430,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     pill(ctx, 'رسم توضيحي', PX + 34, PY + 50, { font: 'bold 22px Tajawal', bg: 'rgba(244,239,230,0.92)', fg: E.MUTED, align: 'left', pad: 14 })
     if (t > 0.5 && t < 4.0) { const a = c01((t - 0.5) / 0.2) * (t < 3.6 ? 1 : 1 - (t - 3.6) / 0.4); const p = eo((t - 0.5) / 0.3); ctx.save(); ctx.translate(W - 250, PY + 46); ctx.rotate(-0.08); ctx.scale(1.2 - 0.2 * p, 1.2 - 0.2 * p); pill(ctx, spec.sticker || 'شاهد للنهاية', 0, 0, { font: 'bold 34px Tajawal', bg: E.GOLD, fg: E.NAVY, pad: 22, alpha: a }); ctx.restore() }
     if (spec.cta && t >= T(spec.cta.from)) { const st = T(spec.cta.from); const a = c01((t - st) / 0.25); const p = eo((t - st) / 0.3); ctx.save(); ctx.translate(W - 250, PY + 46); ctx.rotate(-0.08); ctx.scale(1.2 - 0.2 * p, 1.2 - 0.2 * p); pill(ctx, spec.cta.text, 0, 0, { font: 'bold 34px Tajawal', bg: E.GOLD, fg: E.NAVY, pad: 22, alpha: a }); ctx.restore() }
-    ctx.fillStyle = 'rgba(17,28,79,0.15)'; ctx.fillRect(PX, PY + PH + 16, PW, 6); ctx.fillStyle = E.GRANA; ctx.fillRect(PX, PY + PH + 16, PW * c01(t / TOTAL), 6)
+    ctx.fillStyle = 'rgba(244,239,230,0.18)'; ctx.fillRect(PX, PY + PH + 16, PW, 6); ctx.fillStyle = E.GRANA; ctx.fillRect(PX, PY + PH + 16, PW * c01(t / TOTAL), 6)
     if (t >= tGoal) { const p = eo((t - tGoal) / 0.35); const s = (1.4 - 0.4 * p) * (1 + 0.02 * Math.sin((t - tGoal) * 5)); ctx.save(); ctx.globalAlpha = c01((t - tGoal) / 0.12) * (spec.cta ? 1 - c01((t - T(spec.cta.from)) / 0.4) : 1); ctx.translate(W / 2, 1490); ctx.scale(s, s); ctx.rotate(-0.04)
       ctx.font = 'bold 220px Aref'; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic'; ctx.lineJoin = 'round'; ctx.lineWidth = 26; ctx.strokeStyle = E.CREAM; ctx.strokeText(GW, 0, 0); ctx.lineWidth = 12; ctx.strokeStyle = E.GOLD; ctx.strokeText(GW, 0, 0)
       const w = ctx.measureText(GW).width; ctx.fillStyle = ed.inkGradient(ctx, -w / 2, w); ctx.fillText(GW, 0, 0); ctx.restore() }
