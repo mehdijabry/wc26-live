@@ -238,30 +238,49 @@ export async function gabaritAlbumFinal(d) {
   const c = createCanvas(T, T); const ctx = ctx2d(c)
   const f = await fond('album-final')
   ctx.drawImage(f, 0, 0, T, T)
-  // Voile du bas : le texte doit tenir sur la photo du stade.
-  const g = ctx.createLinearGradient(0, T * 0.37, 0, T)
-  g.addColorStop(0, 'rgba(6,10,20,0)'); g.addColorStop(0.45, 'rgba(6,10,20,0.86)'); g.addColorStop(1, 'rgba(6,10,20,0.96)')
-  ctx.fillStyle = g; ctx.fillRect(0, T * 0.37, T, T * 0.63)
+  // ── LA COMPOSITION SE CALCULE, ELLE N'EST PAS POSEE EN DUR ────────────
+  // Les reperes etaient fixes : un 7-2 a neuf buts debordait du cadre et deux
+  // buts laissaient 230 px de vide (Mehdi, 16/10/2026). La hauteur du bloc
+  // se deduit maintenant du contenu, et le bloc est centre.
+  //
+  // Et LES BUTEURS SONT SOUS LEUR EQUIPE : ceux de gauche sous l'ecusson de
+  // gauche, ceux de droite sous celui de droite. Une liste melangee obligeait
+  // a lire la couleur pour savoir qui avait marque.
+  const tous = d.buts || d.goals || []
+  const butsDom = tous.filter((b) => b.side !== 'away').slice(0, 8)
+  const butsExt = tous.filter((b) => b.side === 'away').slice(0, 8)
+  const lignes = Math.max(butsDom.length, butsExt.length)
 
-  ar(ctx, 'نهاية المباراة', T / 2, 528, { size: 40, color: OR })
+  const PAS = 40, ECUS = 150
+  const total = 44 + 28 + ECUS + 58 + (lignes ? 28 + lignes * PAS : 0)
+  // Legerement sous le centre geometrique : l'oeil place le centre optique
+  // un peu plus haut que le milieu exact.
+  const y0 = Math.max(300, Math.round((T - total) / 2) + 26)
+
+  // Le voile commence AU-DESSUS du bloc, quelle que soit sa hauteur.
+  const hv = Math.max(0, y0 - 90)
+  const g = ctx.createLinearGradient(0, hv, 0, T)
+  g.addColorStop(0, 'rgba(6,10,20,0)'); g.addColorStop(0.3, 'rgba(6,10,20,0.9)'); g.addColorStop(1, 'rgba(6,10,20,0.97)')
+  ctx.fillStyle = g; ctx.fillRect(0, hv, T, T - hv)
+
+  ar(ctx, 'نهاية المباراة', T / 2, y0 + 22, { size: 40, color: OR })
+  const yE = y0 + 44 + 28
   const dom = await crest(d.homeLogo), ext = await crest(d.awayLogo)
-  if (dom) ctx.drawImage(dom, 158, 590, 158, 158)
-  if (ext) ctx.drawImage(ext, 764, 590, 158, 158)
-  txt(ctx, `${d.homeScore ?? ''} – ${d.awayScore ?? ''}`, T / 2, 676, { size: 116, font: 'Anton' })
-  ar(ctx, nomAr(d.home), 237, 790, { size: 25 })
-  ar(ctx, nomAr(d.away), 843, 790, { size: 25 })
+  if (dom) ctx.drawImage(dom, 160, yE, ECUS, ECUS)
+  if (ext) ctx.drawImage(ext, T - 160 - ECUS, yE, ECUS, ECUS)
+  txt(ctx, `${d.homeScore ?? ''} – ${d.awayScore ?? ''}`, T / 2, yE + ECUS / 2 + 6, { size: 112, font: 'Anton' })
+  const CD = 160 + ECUS / 2, CE = T - 160 - ECUS / 2
+  ar(ctx, nomAr(d.home), CD, yE + ECUS + 38, { size: 25 })
+  ar(ctx, nomAr(d.away), CE, yE + ECUS + 38, { size: 25 })
 
-  // Les buteurs : minute en chiffres latins à gauche, nom en arabe à droite,
-  // tracés SÉPARÉMENT (une chaîne mixte est réordonnée par le bidirectionnel).
-  let y = 866
-  // `goals` est la forme que le worker produit déjà (ftPosterData) ; `buts`
-  // reste accepté pour les appels directs.
-  for (const b of (d.buts || d.goals || []).slice(0, 8)) {
-    const col = b.side === 'away' ? CREME : OR
-    txt(ctx, String(b.minute || '').replace("'", '') + "'", 420, y, { size: 22, font: 'Anton', align: 'right', color: col })
-    ar(ctx, nomAr(b.scorer), 442, y, { size: 22, align: 'left', color: col })
-    y += 34
-  }
+  // La minute est un nombre et le nom de l'arabe : arNombre les trace
+  // SEPAREMENT et centre la paire, sinon le bidirectionnel renvoie la minute
+  // a l'autre bout de la ligne.
+  const yB = yE + ECUS + 58 + 28
+  const colonne = (liste, cx, couleur) => liste.forEach((b, i) =>
+    arNombre(ctx, nomAr(b.scorer), String(b.minute || '').replace("'", '') + "'", cx, yB + i * PAS, { size: 23, color: couleur }))
+  colonne(butsDom, CD, OR)
+  colonne(butsExt, CE, CREME)
   return c
 }
 
