@@ -113,7 +113,11 @@ export function monogramBadge(label: string): string {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
 }
 
-import ECUSSONS_CLUBS from './ecussons-clubs.json'
+import ecussonsBruts from './ecussons-clubs.json'
+
+/** Le JSON est type par TypeScript avec ses cles litterales ; on l'indexe par
+ *  une cle calculee, d'ou cette declaration explicite. */
+const ECUSSONS_CLUBS = ecussonsBruts as Record<string, string>
 
 export function teamBadgeFallback(primary: string | undefined, abbr: string | undefined, name?: string): string | undefined {
   // Filter out ESPN's "no logo" placeholder URLs — they encode a generic
