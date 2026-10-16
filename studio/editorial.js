@@ -121,7 +121,7 @@ export function inkGradient(ctx, x0, w) { const g = ctx.createLinearGradient(x0,
  * simplement. Le drapeau est optionnel et ne change rien aux appelants
  * existants.
  */
-export function titleAr(ctx, l1, l2, x, y, size = 150, { align = 'center', lat, latSize = 20, nuit = false } = {}) {
+export function titleAr(ctx, l1, l2, x, y, size = 150, { align = 'center', lat, latSize = 20, nuit = false, latEcart = 0.27 } = {}) {
   ctx.textAlign = align; ctx.textBaseline = 'alphabetic'; ctx.font = `bold ${size}px Aref`; ctx.fillStyle = nuit ? E.CREAM : E.NAVY
   if (l1) ctx.fillText(l1, x, y)
   const y2 = l1 ? y + size * 0.95 : y
@@ -129,7 +129,7 @@ export function titleAr(ctx, l1, l2, x, y, size = 150, { align = 'center', lat, 
     const w = ctx.measureText(l2).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x
     ctx.fillStyle = nuit ? orGrad(ctx, x0, w) : inkGradient(ctx, x0, w); ctx.fillText(l2, x, y2)
   }
-  if (lat) { const w = ctx.measureText(l2 || l1).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x; spaced(ctx, lat, align === 'center' ? x : align === 'right' ? x : x0, y2 + size * 0.27, { size: latSize, align, tracking: 0.5, ...(nuit ? { color: E.CREAM } : {}) }) }
+  if (lat) { const w = ctx.measureText(l2 || l1).width, x0 = align === 'center' ? x - w / 2 : align === 'right' ? x - w : x; spaced(ctx, lat, align === 'center' ? x : align === 'right' ? x : x0, y2 + size * latEcart, { size: latSize, align, tracking: 0.5, ...(nuit ? { color: E.CREAM } : {}) }) }
   return y2
 }
 

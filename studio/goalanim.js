@@ -368,7 +368,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1830, { size: 16, align: 'center', tracking: 0.42, color: 'rgba(244,239,230,0.85)' })
     ed.grain(ctx, W, H)
   }
-  const titleC = createCanvas(W, 470); { const ctx = titleC.getContext('2d'); ed.titleAr(ctx, spec.title.l1, spec.title.l2, W / 2, 200, spec.title.size ?? 124, { lat: spec.title.lat, nuit: true }) }
+  const titleC = createCanvas(W, 470); { const ctx = titleC.getContext('2d'); ed.titleAr(ctx, spec.title.l1, spec.title.l2, W / 2, 200, spec.title.size ?? 124, { lat: spec.title.lat, nuit: true, latEcart: 0.46 }) }
   const capC = CAPS.map(([, small, big]) => { const c = createCanvas(1000, 240); const ctx = c.getContext('2d')
     let bs = 92; for (;;) { ctx.font = `bold ${bs}px Aref`; if (ctx.measureText(big).width <= 860 || bs <= 50) break; bs -= 3 }
     let ss = 34; for (;;) { ctx.font = `bold ${ss}px Tajawal`; if (ctx.measureText(small).width <= 880 || ss <= 22) break; ss -= 2 }
@@ -427,7 +427,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
       ctx.restore()
       if (t >= tGoal && t < tGoal + 0.8) { const a = 1 - (t - tGoal) / 0.8; ctx.save(); rr(ctx, PX + 14, PY + 14, PW - 28, PH - 28, 22); ctx.clip(); const g = ctx.createRadialGradient(CX, CY - 200, 0, CX, CY - 200, 800); g.addColorStop(0, `rgba(255,255,255,${0.95 * a})`); g.addColorStop(0.4, `rgba(232,194,90,${0.35 * a})`); g.addColorStop(1, 'rgba(255,255,255,0)'); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore() }
     }
-    pill(ctx, 'رسم توضيحي', PX + 34, PY + 50, { font: 'bold 22px Tajawal', bg: 'rgba(244,239,230,0.92)', fg: E.MUTED, align: 'left', pad: 14 })
+    pill(ctx, 'رسم توضيحي', PX + 34, PY + 86, { font: 'bold 22px Tajawal', bg: 'rgba(244,239,230,0.92)', fg: E.MUTED, align: 'left', pad: 14 })   // +86 et non +50 : a 50 elle etait posee sur le bord du terrain
     if (t > 0.5 && t < 4.0) { const a = c01((t - 0.5) / 0.2) * (t < 3.6 ? 1 : 1 - (t - 3.6) / 0.4); const p = eo((t - 0.5) / 0.3); ctx.save(); ctx.translate(W - 250, PY + 46); ctx.rotate(-0.08); ctx.scale(1.2 - 0.2 * p, 1.2 - 0.2 * p); pill(ctx, spec.sticker || 'شاهد للنهاية', 0, 0, { font: 'bold 34px Tajawal', bg: E.GOLD, fg: E.NAVY, pad: 22, alpha: a }); ctx.restore() }
     if (spec.cta && t >= T(spec.cta.from)) { const st = T(spec.cta.from); const a = c01((t - st) / 0.25); const p = eo((t - st) / 0.3); ctx.save(); ctx.translate(W - 250, PY + 46); ctx.rotate(-0.08); ctx.scale(1.2 - 0.2 * p, 1.2 - 0.2 * p); pill(ctx, spec.cta.text, 0, 0, { font: 'bold 34px Tajawal', bg: E.GOLD, fg: E.NAVY, pad: 22, alpha: a }); ctx.restore() }
     ctx.fillStyle = 'rgba(244,239,230,0.18)'; ctx.fillRect(PX, PY + PH + 16, PW, 6); ctx.fillStyle = E.GRANA; ctx.fillRect(PX, PY + PH + 16, PW * c01(t / TOTAL), 6)
