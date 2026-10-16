@@ -382,8 +382,8 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     // perdrait dans les rayures de tonte.
     ctx.save(); ctx.shadowColor = 'rgba(3,6,12,0.95)'; ctx.shadowBlur = 16; ctx.shadowOffsetY = 3
 
-    ctx.font = `bold ${ss}px Tajawal`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(244,239,230,0.72)'; ctx.fillText(small, 500, 66)
-    ed.titleAr(ctx, '', big, 500, 178, bs, { nuit: true })
+    ctx.font = `bold ${ss}px Tajawal`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(244,239,230,0.72)'; ctx.fillText(small, 500, 52)
+    ed.titleAr(ctx, '', big, 500, 196, bs, { nuit: true })
     ctx.restore()
     return c })
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
