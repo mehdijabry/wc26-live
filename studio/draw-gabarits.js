@@ -59,8 +59,39 @@ async function crest(url) {
     if (!r.ok) throw new Error('http ' + r.status)
     const img = await loadImage(Buffer.from(await r.arrayBuffer()))
     if (crests.size > 24) crests.clear()
-    crests.set(url, img); return img
+    const sortie = lisibleSurFondSombre(img)
+    crests.set(url, sortie); return sortie
   } catch { return null }
+}
+
+/**
+ * UN ECUSSON NOIR SUR UNE PLAQUE DE NUIT NE SE VOIT PAS.
+ *
+ * Mesure le 16/10/2026 sur la luminance moyenne des pixels opaques :
+ * Juventus **0/255** — du noir pur — contre Milan 108, Barcelone 109, Real
+ * Madrid 151. Le seuil est donc franc, et il n'y a pas besoin d'une liste de
+ * clubs a maintenir : on mesure, et on ne repeint que ce qui est illisible.
+ *
+ * On garde la SILHOUETTE et on la remplit — `source-in` ne peint que la ou le
+ * dessin existe. C'est la meme technique que pour les ecussons de
+ * competition, dont celui de la Ligue Europa disparaissait de la meme façon.
+ */
+function lisibleSurFondSombre(img) {
+  const N = 160   // on mesure sur une reduction : le verdict est le meme, le cout est divise par dix
+  const p = createCanvas(N, N); const pc = p.getContext('2d')
+  pc.drawImage(img, 0, 0, N, N)
+  const d = pc.getImageData(0, 0, N, N).data
+  let opaques = 0, somme = 0
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] < 128) continue
+    opaques++; somme += (d[i] + d[i + 1] + d[i + 2]) / 3
+  }
+  if (!opaques || somme / opaques >= 42) return img
+  const c = createCanvas(img.width || 500, img.height || 500); const ctx = c.getContext('2d')
+  ctx.drawImage(img, 0, 0, c.width, c.height)
+  ctx.globalCompositeOperation = 'source-in'
+  ctx.fillStyle = CREME; ctx.fillRect(0, 0, c.width, c.height)
+  return c
 }
 
 /** Pose un fond à l'échelle de la chaîne, et prolonge le bas si besoin. */
