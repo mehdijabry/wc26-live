@@ -164,7 +164,13 @@ function txt(ctx, t, x, y, { size = 40, font = 'Archivo', color = CREME, align =
 export async function gabaritGoalLayers(g) {
   registerBrandFonts()
   const W = 1080, H = 1920
-  const barca = g.special === 'barca'
+  // ── LA PEAU BARCA EST RESERVEE A BARCELONE ───────────────────────────
+  // `special` suffisait a la declencher : une carte Lyon - Crystal Palace
+  // pouvait sortir sur le stade blaugrana (Mehdi, 16/10/2026). C'est la meme
+  // faute que l'ecusson Champions pose par defaut sur une soiree d'Europa —
+  // un habit de club sur un match qui ne le concerne pas. La demande ne
+  // suffit donc plus : il faut que Barcelone joue.
+  const barca = g.special === 'barca' && /barcelona|barça|barca/i.test(`${g.home} ${g.away}`)
   const nom = barca ? 'but-barca' : 'but-neutre'
   const C = CASES[nom]
   const teinte = barca ? OR : MENTHE
@@ -201,7 +207,8 @@ export async function gabaritGoalLayers(g) {
 
   const but = carte(e(580), e(130), (ctx) => ar(ctx, 'هدف', e(290), e(65), { size: e(92), color: teinte }))
   const dom = await crest(g.homeLogo), ext = await crest(g.awayLogo)
-  const ecusson = (im) => carte(e(150), e(150), (ctx) => { if (im) ctx.drawImage(im, 0, 0, e(150), e(150)) })
+  const ECU = e(150), DEMI = e(170)   // demi-distance entre les deux centres
+  const ecusson = (im) => carte(ECU, ECU, (ctx) => { if (im) ctx.drawImage(im, 0, 0, ECU, ECU) })
   const sc = carte(e(400), e(150), (ctx) => {
     txt(ctx, String(g.homeScore ?? ''), e(80), e(75), { size: e(118), font: 'Anton' })
     txt(ctx, String(g.awayScore ?? ''), e(320), e(75), { size: e(118), font: 'Anton', color: teinte })
@@ -220,8 +227,11 @@ export async function gabaritGoalLayers(g) {
     scorer: png(buteur), minute: png(min),
     rest: {
       goal: [cx + (cw - e(580)) / 2, cy + e(345)],
-      home: [cx + e(50), cy + e(73)],
-      away: [cx + e(390), cy + e(73)],
+      // Poses en dur, ils tombaient 77 px a GAUCHE du centre de la carte
+      // (mesure le 16/10/2026). Ils se deduisent desormais de ce centre :
+      // meme ecart entre eux, mais symetrique.
+      home: [cx + cw / 2 - DEMI - ECU / 2, cy + e(73)],
+      away: [cx + cw / 2 + DEMI - ECU / 2, cy + e(73)],
       score: [cx + (cw - e(400)) / 2, cy + e(220)],
       scorer: [cx + (cw - e(580)) / 2, cy + e(455)],
       minute: [cx + (cw - e(260)) / 2, cy + e(510)],
