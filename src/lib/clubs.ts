@@ -42,6 +42,8 @@
  * répond 200 partout, avec le CORS ouvert et un corps identique à l'octet.
  * C'est donc le navigateur que l'hôte traite différemment, pas la route.
  */
+import { teamBadgeFallback } from './utils'
+
 const ESPN_DETAIL = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer'
 /** Le listing des clubs d'un championnat, via son classement — CORS ouvert. */
 const ESPN_LISTE = 'https://site.web.api.espn.com/apis/v2/sports/soccer'
@@ -355,7 +357,11 @@ function versResume(t: EspnTeamRaw): ClubResume {
     nomCourt: t.shortDisplayName ?? nom,
     abbr: t.abbreviation ?? '',
     slug: slugDuClub(nom),
-    logo: t.logos?.[0]?.href ?? t.logo ?? null,
+    // ESPN n'a aucun ecusson pour 107 clubs africains des deux coupes de la
+    // CAF (releve du 16/10/2026). teamBadgeFallback va chercher le vrai, fige
+    // dans ecussons-clubs.json, et ne retombe sur un monogramme qu'en dernier
+    // recours — Mehdi ne veut pas d'ecusson improvise.
+    logo: teamBadgeFallback(t.logos?.[0]?.href ?? t.logo ?? undefined, t.abbreviation, nom) ?? null,
     couleur: t.color ? `#${t.color}` : null,
   }
 }

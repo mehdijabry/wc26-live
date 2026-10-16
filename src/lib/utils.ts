@@ -113,6 +113,8 @@ export function monogramBadge(label: string): string {
   return 'data:image/svg+xml;utf8,' + encodeURIComponent(svg)
 }
 
+import ECUSSONS_CLUBS from './ecussons-clubs.json'
+
 export function teamBadgeFallback(primary: string | undefined, abbr: string | undefined, name?: string): string | undefined {
   // Filter out ESPN's "no logo" placeholder URLs — they encode a generic
   // shield, not a flag. Detected by the magic substring 'soccer-ball-default'
@@ -124,7 +126,28 @@ export function teamBadgeFallback(primary: string | undefined, abbr: string | un
   // National teams → country flag.
   const iso = abbr ? ESPN_ABBR_TO_ISO2[abbr.toUpperCase()] : undefined
   if (iso) return `https://flagcdn.com/w80/${iso}.png`
-  // Clubs with no ESPN crest at all → generated monogram (never empty).
+  // ── LE VRAI ECUSSON AVANT LE MONOGRAMME ───────────────────────────────
+  // Releve le 16/10/2026 : sur les 22 championnats que le site affiche, 109
+  // equipes n'ont aucun ecusson chez ESPN — et 107 sont africaines. La CAF
+  // Ligue des champions en manque 56 sur 61, la Coupe de la confederation 51
+  // sur 56. Tout le reste est complet.
+  //
+  // Mehdi, 16/10 : « je ne veux pas d'un ecusson improvise ». Ces 91 ecussons
+  // ont donc ete retrouves un par un chez TheSportsDB, puis FIGES ICI — on ne
+  // les appelle pas au moment d'afficher : leur cle publique coupe au bout
+  // d'une centaine de requetes (429, Cloudflare 1015), ce qui laisserait la
+  // page sans ecusson des qu'elle a du trafic.
+  //
+  // Seule l'URL est stockee, pas l'image : referencer la source est plus
+  // leger que d'heberger nous-memes des marques deposees.
+  const connu = name ? ECUSSONS_CLUBS[cleEcusson(name)] : undefined
+  if (connu) return connu
+  // En dernier recours seulement, le monogramme — jamais de case vide.
   const label = name ?? abbr
   return label ? monogramBadge(label) : undefined
+}
+
+/** La cle d'un club : sans accents, sans ponctuation, sans casse. */
+function cleEcusson(nom: string): string {
+  return nom.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9]+/g, '').toLowerCase()
 }
