@@ -719,6 +719,9 @@ export function PredictWeek() {
   const [erreurPari, setErreurPari] = useState<string | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const user = useAuth((s) => s.user)
+  // `initialized` passe a vrai quand la session est tranchee, dans un sens ou
+  // dans l'autre : c'est lui qui distingue « pas connecte » de « je cherche ».
+  const authPret = useAuth((s) => s.initialized)
   const t = useT()
   const lang = useLang((s) => s.lang)
 
@@ -1255,6 +1258,17 @@ export function PredictWeek() {
               </span>
             </div>
           </div>
+        </div>
+      ) : !authPret ? (
+        // ── NE PAS DIRE « CONNECTE-TOI » A QUELQU'UN DE CONNECTE ──────────
+        // Tant que la session n'est pas tranchee, `user` vaut null et cette
+        // branche affichait l'invitation a se connecter. Sur telephone, ou la
+        // restauration de session prend plusieurs secondes, c'est ce que
+        // voyait Mehdi en ouvrant la page (16/10/2026). On attend le verdict :
+        // un squelette dit « je charge », l'invitation dit « tu n'es personne ».
+        <div className="mt-5 w-full glass rounded-2xl px-4 py-3.5 animate-pulse" aria-hidden>
+          <div className="h-3 w-24 rounded bg-slate-300/40" />
+          <div className="mt-2 h-6 w-16 rounded bg-slate-300/30" />
         </div>
       ) : (
         <button

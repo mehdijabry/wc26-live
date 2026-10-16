@@ -18,6 +18,8 @@ type AuthState = {
    * dire « je ne sais pas encore ».
    */
   profilEtat: 'inconnu' | 'chargement' | 'pret' | 'echec'
+  /** Rattrape une session perdue au démarrage — voir initialize(). */
+  reprendreSession: () => Promise<void>
   loading: boolean
   /**
    * True once init() has finished its first pass — we've checked
@@ -195,6 +197,9 @@ export const useAuth = create<AuthState>((set, get) => ({
           void supabase.auth.startAutoRefresh()
           void withTimeout(supabase.auth.getSession(), 6_000, null).then(() => {
             if (get().user) void get().refreshProfile()
+            // Revenir sur l'onglet est le moment le plus favorable pour
+            // rattraper un demarrage rate : le reseau est reveille.
+            else void get().reprendreSession()
           })
         } else {
           void supabase.auth.stopAutoRefresh()
@@ -283,6 +288,51 @@ export const useAuth = create<AuthState>((set, get) => ({
     if (callback && !session) {
       setTimeout(() => set({ completingSignIn: false }), 4000)
     }
+
+    // ── SI ON A CONCLU « PAS DE SESSION », ON RÉESSAIE ──────────────────
+    // Mehdi, 16/10/2026 : sur téléphone, le site s'ouvre déconnecté — tirets
+    // à la place du compte, et /predict redemande de se connecter — jusqu'à
+    // ce qu'on RECHARGE la page.
+    //
+    // La cause est juste au-dessus : getSession() a 5 s et le rafraîchissement
+    // 8 s, et au démarrage à froid d'un téléphone ces délais expirent pour de
+    // bon — le code le dit lui-même. Mais une fois expirés, PLUS RIEN NE
+    // RÉESSAYAIT : l'état « déconnecté » était définitif jusqu'au
+    // rechargement. D'où le geste que Mehdi a dû prendre l'habitude de faire.
+    //
+    // On ne touche pas aux délais — les rallonger ferait patienter devant un
+    // bouton gris. On rend simplement l'échec RATTRAPABLE.
+    if (!session && lireRefresh()) {
+      // Deux tentatives differees : la premiere attrape le reseau qui finit
+      // de se reveiller, la seconde couvre un telephone encore plus lent.
+      setTimeout(() => void get().reprendreSession(), 2_500)
+      setTimeout(() => void get().reprendreSession(), 9_000)
+      // Et des que la connexion revient, sans attendre un minuteur.
+      if (typeof window !== 'undefined') {
+        window.addEventListener('online', () => void get().reprendreSession(), { once: true })
+      }
+    }
+  },
+
+  /**
+   * Reprend la session après un démarrage qui a échoué sur le réseau.
+   *
+   * Ne fait rien si une session est déjà là : appelée depuis plusieurs
+   * déclencheurs (minuteurs, retour en ligne, retour sur l'onglet), elle doit
+   * pouvoir l'être sans précaution de l'appelant.
+   */
+  async reprendreSession() {
+    if (!supabase || get().session) return
+    const jeton = lireRefresh()
+    if (!jeton) return
+    const r = await withTimeout(
+      supabase.auth.refreshSession({ refresh_token: jeton }).then((x) => x.data.session),
+      10_000,
+      null,
+    )
+    if (!r || get().session) return
+    set({ session: r, user: r.user ?? null })
+    await get().refreshProfile()
   },
 
   async signUpWithPassword(email, password, alias) {
