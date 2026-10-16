@@ -354,7 +354,10 @@ export async function gabaritStatsMatch(d) {
   const b = (r, rr = 8) => couvrir(ctx, r.map((n) => Math.round(n * E)), '#080C12', rr)
 
   b(CASES['stats-match'].entete, 6)
-  ar(ctx, 'إحصائيات المباراة', 712, 106, { size: 31, color: MENTHE })
+  // Le titre dit DE QUELLE PERIODE il s'agit : la meme carte sort a la pause
+  // avec les chiffres de la premiere mi-temps, puis au coup de sifflet final
+  // avec ceux de la seconde (Mehdi, 16/10/2026).
+  ar(ctx, d.titre || 'إحصائيات المباراة', 712, 106, { size: 31, color: MENTHE })
   const dom = await crest(d.homeLogo), ext = await crest(d.awayLogo)
   if (dom) ctx.drawImage(dom, 443, 158, 101, 101)
   if (ext) ctx.drawImage(ext, 880, 158, 101, 101)
@@ -1165,50 +1168,3 @@ export async function gabaritTaleCover(d = {}) {
 }
 
 
-// ╔══════════════════════════════════════════════════════════════════════╗
-// ║ LA PÉRIODE EN CHIFFRES — plaque « stats-match », 1:1                 ║
-// ║                                                                      ║
-// ║ Remplace « أربع لحظات », que Mehdi a juge sans logique le 16/10 :    ║
-// ║ quatre moments sans rapport entre eux dans quatre cases.             ║
-// ║                                                                      ║
-// ║ Ici une seule idee : UNE PERIODE, TOUS LES MATCHS DU JOUR. La carte  ║
-// ║ de mi-temps part seule a la pause, celle de seconde periode part en  ║
-// ║ fin de match avec l'album — d'ou le 1:1, qui est le format de        ║
-// ║ l'album : un album Facebook melangeant les proportions se lit mal.   ║
-// ║                                                                      ║
-// ║ ET AUCUNE CASE : les chiffres se tiennent par leur alignement.       ║
-// ╚══════════════════════════════════════════════════════════════════════╝
-export async function gabaritStatsPeriode(d = {}) {
-  registerBrandFonts()
-  const W = 1080, H = 1920
-  const c = createCanvas(W, H); const ctx = ctx2d(c)
-  // LA MEME PLAQUE QUE LA CARTE QU'ELLE REMPLACE. C'est le format de Mehdi :
-  // on change ce qui est ecrit, pas la toile.
-  await poser(ctx, 'soiree-4-moments', W, H)
-  paintLogo(ctx, 56, 56, 134)
-
-  ar(ctx, d.titre || 'الشوط الأول في أرقام', W / 2, 330, { size: 62 })
-  // Le sous-titre ne porte QUE du texte : une chaine melant arabe et chiffres
-  // est reordonnee par le bidirectionnel, et le nombre part a l'autre bout.
-  if (d.sousTitre) ar(ctx, d.sousTitre, W / 2, 404, { size: 27, color: OR })
-
-  // ── LES CHIFFRES, SANS AUCUNE CASE ────────────────────────────────────
-  // Deux colonnes alignees chacune sur son axe : le nombre cale a droite, le
-  // libelle a gauche. C'est l'alignement qui tient la lecture, pas un cadre.
-  const lignes = (d.lignes || []).slice(0, 16)
-  const parCol = Math.ceil(lignes.length / 2)
-  const HAUT = 512, PAS = Math.max(44, Math.min(66, Math.floor(540 / Math.max(1, parCol))))
-  for (let i = 0; i < lignes.length; i++) {
-    const [libelle, valeur] = lignes[i]
-    const ci = i >= parCol ? 1 : 0
-    const axe = ci === 0 ? 292 : 812
-    const y = HAUT + (i - ci * parCol) * PAS
-    txt(ctx, String(valeur), axe, y, { size: 36, font: 'Anton', align: 'right', color: ci === 0 ? CREME : MENTHE })
-    ar(ctx, libelle, axe + 26, y, { size: 25, align: 'left', color: 'rgba(244,243,238,0.84)' })
-    ctx.save(); ctx.strokeStyle = 'rgba(244,243,238,0.09)'; ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(axe - 196, y + PAS / 2 - 7); ctx.lineTo(axe + 196, y + PAS / 2 - 7); ctx.stroke(); ctx.restore()
-  }
-
-  blocInscription(ctx, W / 2, 1180, 200, W)
-  return c
-}
