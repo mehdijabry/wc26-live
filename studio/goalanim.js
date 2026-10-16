@@ -12,7 +12,6 @@ import { fileURLToPath } from 'node:url'
 import { spawn, execFileSync, spawnSync } from 'node:child_process'
 import { createCanvas, loadImage } from 'canvas'
 import * as d from './draw.js'
-import { poserPlaque, libererPlaque } from './draw-gabarits.js'
 import * as ed from './editorial.js'
 import { animSlide } from './video.js'
 
@@ -63,16 +62,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     return keys[keys.length - 1].slice(1)
   }
   // ── pitch ──
-  // ── LE TERRAIN EST DESORMAIS UNE PHOTO, PAS UN DESSIN ────────────────
-  // Plaque « terrain-vertical » livree par Mehdi le 15/10/2026 : terrain
-  // debout dans le cadre 9:16, but attaque en haut. Les quatre coins de la
-  // surface de jeu ont ete releves au pixel sur la plaque en 1080x1920 —
-  // haut [166,288] [898,288], bas [105,1508] [961,1508] — et ces constantes
-  // les reproduisent. SI LA PLAQUE EST REGENEREE, IL FAUT LES REPRENDRE.
-  //
-  // L'ancien terrain dessine faisait 940 px de profondeur pour 1220 ici : la
-  // surface de jeu a gagne 30 %, et l'action cesse de s'y entasser.
-  const x0 = 110, y0 = 288, pw = 856, ph = 1220, topW = 0.855, yb = y0 + ph
+  const x0 = 110, y0 = 560, pw = 860, ph = 940, topW = 0.88, yb = y0 + ph
   const X = (u, y) => { const t = (y - y0) / ph; const cw = pw * (topW + (1 - topW) * t); return x0 + pw / 2 + (u - 0.5) * cw }
   const P = (u, v) => { const y = y0 + v * ph; return [X(u, y), y] }
   // ── actors ──
@@ -240,7 +230,7 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     ctx.fillStyle = num; ctx.font = `900 ${40 * u}px Cairo`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
     ctx.strokeStyle = 'rgba(17,28,79,0.55)'; ctx.lineWidth = 3 * u; ctx.lineJoin = 'round'; ctx.strokeText(String(number), 50 * u, 60 * u); ctx.fillText(String(number), 50 * u, 60 * u); ctx.textBaseline = 'alphabetic'
     ctx.restore()
-    if (name) ed.spaced(ctx, String(name).toUpperCase(), x, y + s + nameSize * 1.55, { size: nameSize, align: 'center', tracking: 0.12, color: E.CREAM })
+    if (name) ed.spaced(ctx, String(name).toUpperCase(), x, y + s + nameSize * 1.55, { size: nameSize, align: 'center', tracking: 0.12 })
   }
   const sprites = new Map()
   function sprite(kind, number, name, kit) { const key = `${kind}-${number}-${name}-${JSON.stringify(kit || null)}`; if (!sprites.has(key)) { const c = createCanvas(240, 150); const ctx = c.getContext('2d'); if (kit) jerseyCustom(ctx, 120, 8, 64, { ...kit, number, name, nameSize: 15 }); else ed.jersey(ctx, 120, 8, 64, { kind, number, name, nameSize: 15 }); sprites.set(key, c) } return sprites.get(key) }
@@ -304,10 +294,14 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   }
   let pitchLayer = null
   function drawWorld(ctx, t) {
-    // Plus rien a dessiner ici : la plaque porte la pelouse, les lignes et
-    // les deux cages. Les redessiner par-dessus les doublait.
-
-    if (runTrail) { const seen = runTrail.pts.filter(([tt]) => tt <= t).map(([, x, y]) => [x, y + 6]); if (seen.length > 3) glowPath(ctx, smooth(seen, 2), { c0: E.BLUE, c1: '#7FE7C4', width: 4, alpha: 0.85, arrow: false, flow: t }) }
+    if (!pitchLayer) { pitchLayer = createCanvas(W, H); const pc = pitchLayer.getContext('2d')
+      pc.save(); quad(pc, 0, 1, y0, yb); pc.fillStyle = 'rgba(46,139,87,0.11)'; pc.fill()
+      for (let i = 0; i < 10; i += 2) { quad(pc, 0, 1, y0 + ph * i / 10, y0 + ph * (i + 1) / 10); pc.fillStyle = 'rgba(46,139,87,0.055)'; pc.fill() }
+      pc.restore(); ed.pitch(pc, x0, y0, pw, ph, { topW, color: 'rgba(17,28,79,0.42)' }); goalFrame(pc, yb, 1, 0) }
+    ctx.drawImage(pitchLayer, 0, 0)
+    const shake = t > tGoal && t < tGoal + 0.55 ? Math.sin((t - tGoal) * 60) * 4 * (1 - (t - tGoal) / 0.55) : 0
+    goalFrame(ctx, y0, -1, shake)
+    if (runTrail) { const seen = runTrail.pts.filter(([tt]) => tt <= t).map(([, x, y]) => [x, y + 6]); if (seen.length > 3) glowPath(ctx, smooth(seen, 2), { c0: E.NAVY, c1: '#3FA9C9', width: 4, alpha: 0.85, arrow: false, flow: t }) }
     for (const ps of passSegs) if (t >= ps.start && ps.s.glow !== false) { const p = eo((t - ps.start) / (ps.end - ps.start)); const a = ballAt(ps.start), b = ballAt(ps.end - 1e-4); glowPath(ctx, bezPts([a[0], a[1] + 6], [b[0], b[1] + 6], ps.s.k ?? -0.12), { c0: E.BLUE, c1: E.AQUA, width: 5, p, flow: t, alpha: t < tShot ? 1 : 0.45 }) }
     if (shotSeg && t >= shotSeg.start) { const p = c01((t - shotSeg.start) / (shotSeg.end - shotSeg.start)); const a = ballAt(shotSeg.start), b = P(shotSeg.s.shot[0], shotSeg.s.shot[1]); glowPath(ctx, bezPts([a[0], a[1] + 6], [b[0], b[1] + 6], shotSeg.s.k ?? 0.06), { c0: E.GRANA, c1: E.GOLD, width: 6, p, flow: t * 1.6 }); if (p >= 1) ripples(ctx, b[0], b[1] + 4, tGoal, t, E.GOLD, { n: 3, period: 0.7, rmax: 90 }) }
     for (const o of spec.overlays || []) if (o.type === 'zone') overlay(ctx, o, t)
@@ -335,17 +329,16 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
   console.log('[goal-anim] closing card ready, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
 
   const base = createCanvas(W, H); { const ctx = base.getContext('2d')
-    await poserPlaque(ctx, 'terrain-vertical', W, H)
-    // La plaque n'est posee qu'ici : on rend ses pixels tout de suite. Cet
-    // enfant est plafonne a 256 Mo et le rendu y travaille deja au bord.
-    libererPlaque('terrain-vertical')
-    ed.stack(ctx, spec.stack || ['BARÇA', 'FIRST'], 48, 92, { size: 15, color: E.CREAM })
+    ed.backdrop(ctx, W, H, { tone: 'blue' })
+    await ed.stadium(ctx, W, H, { top: H - 420, dark: '#8A8FA6', light: '#F4EFE6', alpha: 0.7, fadeTo: 0.6 })
+    ed.stack(ctx, spec.stack || ['BARÇA', 'FIRST'], 48, 92, { size: 15 })
     // La marque, posee par paintLogo. Avant : assets/logo-page.png, l'ecusson
     // du Barca, dans une pastille ronde — supprime le 15/10/2026.
     d.paintLogo(ctx, W - 48 - 104, 62, 104)
-    ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1830, { size: 16, align: 'center', tracking: 0.42, color: 'rgba(244,239,230,0.85)' })
+    ed.spaced(ctx, 'PRESSING90.LIVE', W / 2, 1830, { size: 16, align: 'center', tracking: 0.42 })
+    ed.grain(ctx, W, H)
   }
-  const titleC = createCanvas(W, 470); { const ctx = titleC.getContext('2d'); ed.titleAr(ctx, spec.title.l1, spec.title.l2, W / 2, 200, spec.title.size ?? 124, { lat: spec.title.lat, nuit: true }) }
+  const titleC = createCanvas(W, 470); { const ctx = titleC.getContext('2d'); ed.titleAr(ctx, spec.title.l1, spec.title.l2, W / 2, 200, spec.title.size ?? 124, { lat: spec.title.lat }) }
   const capC = CAPS.map(([, small, big]) => { const c = createCanvas(1000, 240); const ctx = c.getContext('2d')
     let bs = 92; for (;;) { ctx.font = `bold ${bs}px Aref`; if (ctx.measureText(big).width <= 860 || bs <= 50) break; bs -= 3 }
     let ss = 34; for (;;) { ctx.font = `bold ${ss}px Tajawal`; if (ctx.measureText(small).width <= 880 || ss <= 22) break; ss -= 2 }
@@ -353,8 +346,8 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     const w = Math.min(1000, Math.max(bw, sw) + 140)
     ctx.save(); ctx.shadowColor = 'rgba(17,28,79,0.25)'; ctx.shadowBlur = 30; ctx.shadowOffsetY = 12; ctx.fillStyle = 'rgba(255,255,255,0.86)'; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.fill(); ctx.restore()
     ctx.strokeStyle = E.LINE; ctx.lineWidth = 2; rr(ctx, 500 - w / 2, 10, w, 210, 30); ctx.stroke()
-    ctx.font = `bold ${ss}px Tajawal`; ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(244,239,230,0.72)'; ctx.fillText(small, 500, 66)
-    ed.titleAr(ctx, '', big, 500, 178, bs, { nuit: true })
+    ctx.font = `bold ${ss}px Tajawal`; ctx.textAlign = 'center'; ctx.fillStyle = E.MUTED; ctx.fillText(small, 500, 66)
+    ed.titleAr(ctx, '', big, 500, 178, bs)
     return c })
   const timeline = { S: BEATS, VD, shot: tShot, goal: tGoal, end: tEnd, anchors: Object.fromEntries(Object.keys(spec.anchors || {}).map((k) => [k, T(k)])), sheet: (spec.sheet || []).map(T) }
   console.log('[goal-anim]', JSON.stringify({ S: BEATS.map((x) => +x.toFixed(2)), shot: +tShot.toFixed(2), goal: +tGoal.toFixed(2), end: +tEnd.toFixed(2) }))
