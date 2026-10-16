@@ -119,6 +119,24 @@ import ecussonsBruts from './ecussons-clubs.json'
  *  une cle calculee, d'ou cette declaration explicite. */
 const ECUSSONS_CLUBS = ecussonsBruts as Record<string, string>
 
+/**
+ * Cette equipe a-t-elle un VRAI ecusson — pas un monogramme dessine ?
+ *
+ * Le bandeau du haut est une vitrine : une affiche ou l'un des deux clubs se
+ * presente avec ses initiales dans un rond fait moins bien que pas d'affiche
+ * du tout (Mehdi, 16/10/2026). La section « Matchs », elle, montre TOUT : on
+ * n'y cache aucune rencontre.
+ *
+ * Meme ordre de verites que teamBadgeFallback, pour qu'un « oui » ici garantisse
+ * une image la-bas.
+ */
+export function aUnVraiEcusson(primary?: string, abbr?: string, name?: string): boolean {
+  const propre = primary && !/default-team-logo|soccer-ball-default|\/500-dark\/soccer\.png$/.test(primary)
+  if (propre) return true
+  if (abbr && ESPN_ABBR_TO_ISO2[abbr.toUpperCase()]) return true
+  return !!(name && ecussonConnu(name))
+}
+
 export function teamBadgeFallback(primary: string | undefined, abbr: string | undefined, name?: string): string | undefined {
   // Filter out ESPN's "no logo" placeholder URLs — they encode a generic
   // shield, not a flag. Detected by the magic substring 'soccer-ball-default'

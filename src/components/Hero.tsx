@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { api, eventTeams, liveClock, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { Cotes1X2 } from './Cotes1X2'
 import { useMatchOdds } from '../lib/useMatchOdds'
-import { monogramBadge, teamBadgeFallback } from '../lib/utils'
+import { aUnVraiEcusson, monogramBadge, teamBadgeFallback } from '../lib/utils'
 import { useSiteSettings } from '../store/siteSettings'
 import { localeOf, trLeague, useLang, useT } from '../lib/i18n'
 import { MatchSheet } from './MatchSheet'
@@ -30,11 +30,27 @@ type Feat = { ev: EspnEvent; slug: string; label: string; tier: number }
 const MAJOR_TIER_MAX = 13
 const EXCLUDED_SLUGS = new Set(['fifa.friendly', 'nonfifa', 'club.friendly'])
 
+/** Les deux equipes d'une rencontre ont-elles un vrai ecusson ? */
+function deuxEcussons(ev: DailyResponse['competitions'][number]['events'][number]): boolean {
+  const { home, away } = eventTeams(ev)
+  const ok = (c: typeof home) =>
+    aUnVraiEcusson(c?.team?.logo, c?.team?.abbreviation, c?.team?.shortDisplayName ?? c?.team?.displayName)
+  return ok(home) && ok(away)
+}
+
 function pickFeatured(d: DailyResponse): Feat[] {
   const flat: Feat[] = []
   for (const c of d.competitions) {
     if (c.tier > MAJOR_TIER_MAX || EXCLUDED_SLUGS.has(c.slug)) continue
-    for (const ev of c.events) flat.push({ ev, slug: c.slug, label: c.label, tier: c.tier })
+    for (const ev of c.events) {
+      // ── PAS D'AFFICHE SANS LES DEUX ECUSSONS ────────────────────────────
+      // Le bandeau est une vitrine : une affiche ou l'un des deux clubs se
+      // presente avec ses initiales dans un rond fait moins bien que pas
+      // d'affiche du tout. La section « Matchs » continue de tout montrer —
+      // on n'y cache aucune rencontre (Mehdi, 16/10/2026).
+      if (!deuxEcussons(ev)) continue
+      flat.push({ ev, slug: c.slug, label: c.label, tier: c.tier })
+    }
   }
   const state = (f: Feat) => f.ev.status?.type?.state ?? 'pre'
   const w = (f: Feat) => (state(f) === 'in' ? 0 : state(f) === 'pre' ? 1 : 2)
