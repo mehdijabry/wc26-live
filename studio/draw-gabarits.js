@@ -181,6 +181,15 @@ export async function gabaritGoalLayers(g) {
     const [px, py, pw] = C.pied.map(e)
     ar(ctx, texteBut(g), px + pw / 2, py + e(46), { size: e(26) })
     ar(ctx, 'كل الأهداف والإحصائيات على الموقع', px + pw / 2, py + e(94), { size: e(21), color: 'rgba(244,243,238,0.7)' })
+
+    // ── LA MARQUE ET LE CODE SONT DESSINES, PAS INCRUSTES ──────────────
+    // Cette carte n'en dessinait aucun des deux : ceux qu'on voyait etaient
+    // PEINTS DANS LA MAQUETTE d'origine — c'est-a-dire l'ANCIEN logo, celui
+    // que Mehdi a fait retirer partout le 15/10, et un faux code QR. La
+    // plaque est nue depuis le 16/10, donc les voici, comme sur les autres
+    // formats.
+    paintLogo(ctx, 44, 44, 150)
+    blocInscription(ctx, W / 2, 1664, 120, W, { compact: true })
   }
 
   // ── flash : le voile blanc du moment du but

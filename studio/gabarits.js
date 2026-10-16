@@ -32,8 +32,12 @@ export const MENTHE = '#7FE7C4'
 
 /** Hauteur réellement utilisable : sous ça commence la fausse barre Facebook. */
 export const UTILE = {
-  'but-neutre': 1190,
-  'but-barca': 1190,
+  // Plaques de but refaites le 16/10/2026 en 1080x1920 : les anciennes
+  // faisaient 768x1376 et portaient encore du decor de maquette, d'ou une
+  // hauteur utile de 1190 qui laissait 247 px de vide en bas d'un reel.
+  // Elles sont desormais nues : la hauteur entiere sert.
+  'but-neutre': 1920,
+  'but-barca': 1920,
   // Fond remplace le 15/10 par une plaque propre en 1080x1920 : plus de
   // fausse barre Facebook a couper, la hauteur utile est la hauteur entiere.
   'soiree-4-moments': 1920,
@@ -57,8 +61,18 @@ export const UTILE = {
  * cases, mêmes coordonnées. Une seule fonction de dessin suffit pour les deux.
  */
 export const CASES = {
-  'but-neutre': { entete: [40, 262, 580, 160], centre: [40, 447, 580, 545], pied: [40, 1012, 580, 148] },
-  'but-barca': { entete: [35, 262, 585, 165], centre: [35, 447, 585, 545], joueur: [648, 682, 110, 458], pied: [35, 1012, 585, 148] },
+  // ── LES CARTES DE BUT SONT CENTREES, ET C'EST UN CORRECTIF ──────────────
+  // Les reperes d'origine etaient releves sur la maquette 768x1376, qui etait
+  // elle-meme decentree : une fois a l'echelle, les cadres tombaient a 56 px
+  // du bord gauche et 208 du bord droit (vu par Mehdi le 16/10/2026). Les
+  // plaques neuves ne portent plus aucun cadre — c'est le code qui les
+  // dessine, donc ils n'ont plus de raison d'etre decales.
+  //
+  // Largeur 700 sur 768 : 34 px de marge de chaque cote, soit 48 px une fois
+  // a l'echelle de 1080. La case « joueur » de la peau Barca disparait : elle
+  // n'existait que pour un decoupage de la maquette.
+  'but-neutre': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
+  'but-barca': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'soiree-4-moments': {
     titre: [24, 300, 720, 60],
     moments: [[24, 384, 345, 205], [400, 384, 345, 205], [24, 616, 345, 210], [400, 616, 345, 210]],
