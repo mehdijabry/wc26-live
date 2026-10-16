@@ -1132,3 +1132,57 @@ export async function gabaritTaleCover(d = {}) {
   txt(ctx, 'PRESSING90.LIVE', arabe ? W - 56 : 56, H - 42, { size: 18, font: 'Archivo', align: arabe ? 'right' : 'left', color: 'rgba(244,243,238,0.8)' })
   return c
 }
+
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LA PÉRIODE EN CHIFFRES — plaque « stats-match », 1:1                 ║
+// ║                                                                      ║
+// ║ Remplace « أربع لحظات », que Mehdi a juge sans logique le 16/10 :    ║
+// ║ quatre moments sans rapport entre eux dans quatre cases.             ║
+// ║                                                                      ║
+// ║ Ici une seule idee : UNE PERIODE, TOUS LES MATCHS DU JOUR. La carte  ║
+// ║ de mi-temps part seule a la pause, celle de seconde periode part en  ║
+// ║ fin de match avec l'album — d'ou le 1:1, qui est le format de        ║
+// ║ l'album : un album Facebook melangeant les proportions se lit mal.   ║
+// ║                                                                      ║
+// ║ ET AUCUNE CASE : les chiffres se tiennent par leur alignement.       ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+export async function gabaritStatsPeriode(d = {}) {
+  registerBrandFonts()
+  const T = 1080
+  const c = createCanvas(T, T); const ctx = ctx2d(c)
+  await poser(ctx, 'stats-match', T, T)
+  paintLogo(ctx, 44, 44, 120)
+
+  ar(ctx, d.titre || 'الشوط الأول في أرقام', T / 2, 228, { size: 52 })
+  // Le sous-titre ne porte QUE du texte, pour la meme raison.
+  if (d.sousTitre) ar(ctx, d.sousTitre, T / 2, 288, { size: 25, color: OR })
+
+  // ── LES CHIFFRES, SANS CASE ───────────────────────────────────────────
+  // Deux colonnes, chacune alignee sur son propre axe : le nombre cale a
+  // droite d'un axe, le libelle a gauche. C'est cet alignement qui tient la
+  // lecture, pas un cadre.
+  const lignes = (d.lignes || []).slice(0, 16)
+  const parCol = Math.ceil(lignes.length / 2)
+  const HAUT = 372, PAS = Math.max(42, Math.min(62, Math.floor(500 / Math.max(1, parCol))))
+  for (let i = 0; i < lignes.length; i++) {
+    const [libelle, valeur] = lignes[i]
+    const ci = i >= parCol ? 1 : 0
+    const axe = ci === 0 ? 300 : 820
+    const y = HAUT + (i - ci * parCol) * PAS
+    txt(ctx, String(valeur), axe, y, { size: 34, font: 'Anton', align: 'right', color: ci === 0 ? CREME : MENTHE })
+    ar(ctx, libelle, axe + 24, y, { size: 24, align: 'left', color: 'rgba(244,243,238,0.82)' })
+    // Un filet tres discret sous chaque ligne : il guide l'oeil sans
+    // enfermer le chiffre.
+    ctx.save(); ctx.strokeStyle = 'rgba(244,243,238,0.08)'; ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(axe - 190, y + PAS / 2 - 6); ctx.lineTo(axe + 190, y + PAS / 2 - 6); ctx.stroke(); ctx.restore()
+  }
+
+  // PAS DE PHRASE D'ACCROCHE AVEC DES CHIFFRES DEDANS. Une chaine qui mele
+  // de l'arabe et des nombres est reordonnee par l'algorithme bidirectionnel,
+  // et le nombre part a l'autre bout : « 46 هدفاً في 9 مباريات » s'est
+  // affiche « هدفاً في 9 مباريات 46 » (16/10/2026). Les deux chiffres sont
+  // deja dans le tableau, en tete : ils n'ont pas besoin d'etre repetes.
+  blocInscription(ctx, T / 2, 866, 118, T, { compact: true })   // 866 et non 892 : la ligne d'appel frolait le bord bas
+  return c
+}
