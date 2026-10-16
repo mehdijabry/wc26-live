@@ -330,10 +330,6 @@ export function Navigation() {
                 {/* Les langues ne sont plus ici : elles ont repris leur place
                     dans l'en-tete, au format court EN / FR / AR. */}
               </nav>
-
-              <div className="mt-10 pt-6 border-t border-slate-200/70 text-[10px] uppercase tracking-widest text-slate-600 font-mono">
-                June 11 → July 19, 2026
-              </div>
             </motion.aside>
           </>
         )}
