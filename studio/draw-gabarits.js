@@ -49,6 +49,18 @@ async function crest(url) {
 
 /** Pose un fond à l'échelle de la chaîne, et prolonge le bas si besoin. */
 export async function poserPlaque(ctx, nom, W, H) { return poser(ctx, nom, W, H) }
+
+/**
+ * Oublie une plaque decodee.
+ *
+ * Le cache `fonds` garde l'image decodee pour toute la vie du processus, ce
+ * qui est le bon choix dans le serveur : il repose la meme plaque a chaque
+ * rendu. Mais l'animation de but tourne dans un ENFANT plafonne a 256 Mo
+ * (goalanim-cli.js) qui ne la pose QU'UNE FOIS, au moment du fond : 8 Mo de
+ * pixels y restent ensuite immobilises pour rien, et ce rendu travaille deja
+ * au bord de son plafond.
+ */
+export function libererPlaque(nom) { fonds.delete(nom) }
 async function poser(ctx, nom, W, H) {
   const f = await fond(nom)
   const hUtile = UTILE[nom] || f.height

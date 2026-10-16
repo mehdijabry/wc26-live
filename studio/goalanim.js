@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url'
 import { spawn, execFileSync, spawnSync } from 'node:child_process'
 import { createCanvas, loadImage } from 'canvas'
 import * as d from './draw.js'
-import { poserPlaque } from './draw-gabarits.js'
+import { poserPlaque, libererPlaque } from './draw-gabarits.js'
 import * as ed from './editorial.js'
 import { animSlide } from './video.js'
 
@@ -336,6 +336,9 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
 
   const base = createCanvas(W, H); { const ctx = base.getContext('2d')
     await poserPlaque(ctx, 'terrain-vertical', W, H)
+    // La plaque n'est posee qu'ici : on rend ses pixels tout de suite. Cet
+    // enfant est plafonne a 256 Mo et le rendu y travaille deja au bord.
+    libererPlaque('terrain-vertical')
     ed.stack(ctx, spec.stack || ['BARÇA', 'FIRST'], 48, 92, { size: 15, color: E.CREAM })
     // La marque, posee par paintLogo. Avant : assets/logo-page.png, l'ecusson
     // du Barca, dans une pastille ronde — supprime le 15/10/2026.
