@@ -144,11 +144,33 @@ export function teamBadgeFallback(primary: string | undefined, abbr: string | un
   //
   // Seule l'URL est stockee, pas l'image : referencer la source est plus
   // leger que d'heberger nous-memes des marques deposees.
-  const connu = name ? ECUSSONS_CLUBS[cleEcusson(name)] : undefined
+  const connu = name ? ecussonConnu(name) : undefined
   if (connu) return connu
   // En dernier recours seulement, le monogramme — jamais de case vide.
   const label = name ?? abbr
   return label ? monogramBadge(label) : undefined
+}
+
+/**
+ * Cherche l'ecusson d'un club, en tolerant les noms raccourcis.
+ *
+ * ESPN donne deux noms par equipe et les composants n'emploient pas toujours
+ * le meme : la fiche de match affiche « Welwalo » la ou l'effectif dit
+ * « Welwalo Adigrat ». Une egalite stricte ratait donc l'ecusson sur la moitie
+ * des ecrans (vu a l'image le 16/10/2026).
+ *
+ * On accepte donc qu'une cle connue COMMENCE par celle qu'on cherche — jamais
+ * l'inverse, et jamais en dessous de cinq caracteres, sinon « Al » attraperait
+ * n'importe quel club arabe.
+ */
+function ecussonConnu(nom: string): string | undefined {
+  const c = cleEcusson(nom)
+  if (!c) return undefined
+  const exact = ECUSSONS_CLUBS[c]
+  if (exact) return exact
+  if (c.length < 5) return undefined
+  const prefixe = Object.keys(ECUSSONS_CLUBS).find((k) => k.startsWith(c))
+  return prefixe ? ECUSSONS_CLUBS[prefixe] : undefined
 }
 
 /** La cle d'un club : sans accents, sans ponctuation, sans casse. */

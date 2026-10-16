@@ -20,7 +20,7 @@ const TIER_COLORS: Record<string, string> = {
   Legend: 'text-yellow-300',
 }
 
-export function UserMenu() {
+export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
   const { user, profile, profilEtat, signOut, initialized, updateAlias } = useAuth()
   // Le solde suit la langue affichée, il était figé en « fr-FR ».
   const lang = useLang((s) => s.lang)
@@ -143,38 +143,12 @@ export function UserMenu() {
 
   const tier = profile?.tier ?? 'Rookie'
 
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setMenuOpen((v) => !v)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-full glass glass-hover text-sm"
-      >
-        <Avatar alias={alias} url={profile?.avatar_url} graine={profile?.id} taille={24} />
-        <span className="hidden sm:block max-w-[100px] truncate">{alias}</span>
-        <Distinctions compte={distinctions} taille={14} max={2} />
-        {/* Le solde se lit sans ouvrir quoi que ce soit. Un score qu'il faut
-            aller chercher dans un menu déroulant n'existe pas pour le joueur
-            — c'est le reproche qui a motivé cette refonte. */}
-        <span className="flex items-center gap-1.5 ps-2 ms-0.5 border-s border-slate-300/40 font-mono tabular-nums text-xs">
-          <span className="flex items-center gap-1" title={JETON.plusieurs}>
-            <Jeton type="crampon" />
-            {court(profile?.crampons)}
-          </span>
-          <span className="flex items-center gap-1 text-accent-violet" title={POINT.plusieurs}>
-            <Jeton type="pressing" />
-            {court(profile?.pressings)}
-          </span>
-        </span>
-      </button>
-      {menuOpen && (
-        <>
-          <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
-          {/* `end-0` et non `right-0` : en arabe la pastille passe à gauche de
-              l'en-tête, et un ancrage physique à droite poussait le panneau
-              hors de l'écran — la boîte de déconnexion arrivait coupée sur
-              mobile (Mehdi, 2026-10-10). La largeur est en plus bornée au
-              viewport, pour qu'aucune mise en page ne puisse le faire déborder. */}
-          <div className="absolute end-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] glass rounded-2xl p-4 z-40 ring-glow">
+  // ── LE CORPS DU PANNEAU, DETACHE DE SON DECLENCHEUR ──────────────────
+  // Sur mobile il ne vit plus dans un menu deroulant mais dans le tiroir,
+  // sous le solde et au-dessus de la navigation (Mehdi, 16/10/2026). Il est
+  // extrait ici pour servir aux deux, sans etre ecrit deux fois.
+  const corps = (
+    <>
             <div className="text-xs uppercase tracking-widest text-slate-500 font-mono mb-1">
               {t('Signed in as')}
             </div>
@@ -312,6 +286,46 @@ export function UserMenu() {
             >
               {t('Sign out')}
             </button>
+    </>
+  )
+
+  // Mode « panneau » : ni declencheur ni positionnement absolu — le tiroir
+  // fournit les deux.
+  if (panneau) return corps
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setMenuOpen((v) => !v)}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-full glass glass-hover text-sm"
+      >
+        <Avatar alias={alias} url={profile?.avatar_url} graine={profile?.id} taille={24} />
+        <span className="hidden sm:block max-w-[100px] truncate">{alias}</span>
+        <Distinctions compte={distinctions} taille={14} max={2} />
+        {/* Le solde se lit sans ouvrir quoi que ce soit. Un score qu'il faut
+            aller chercher dans un menu déroulant n'existe pas pour le joueur
+            — c'est le reproche qui a motivé cette refonte. */}
+        <span className="flex items-center gap-1.5 ps-2 ms-0.5 border-s border-slate-300/40 font-mono tabular-nums text-xs">
+          <span className="flex items-center gap-1" title={JETON.plusieurs}>
+            <Jeton type="crampon" />
+            {court(profile?.crampons)}
+          </span>
+          <span className="flex items-center gap-1 text-accent-violet" title={POINT.plusieurs}>
+            <Jeton type="pressing" />
+            {court(profile?.pressings)}
+          </span>
+        </span>
+      </button>
+      {menuOpen && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setMenuOpen(false)} />
+          {/* `end-0` et non `right-0` : en arabe la pastille passe à gauche de
+              l'en-tête, et un ancrage physique à droite poussait le panneau
+              hors de l'écran — la boîte de déconnexion arrivait coupée sur
+              mobile (Mehdi, 2026-10-10). La largeur est en plus bornée au
+              viewport, pour qu'aucune mise en page ne puisse le faire déborder. */}
+          <div className="absolute end-0 top-full mt-2 w-64 max-w-[calc(100vw-1.5rem)] glass rounded-2xl p-4 z-40 ring-glow">
+          {corps}
           </div>
         </>
       )}

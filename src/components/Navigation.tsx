@@ -2,6 +2,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { UserMenu } from './UserMenu'
+import Avatar from './Avatar'
+import { Jeton } from './Jeton'
+import { useAuth } from '../store/auth'
+import { soldeCourt } from '../lib/jeu'
 import { useSiteSettings } from '../store/siteSettings'
 import { useLang, useT } from '../lib/i18n'
 
@@ -44,6 +48,10 @@ export function Navigation() {
   const links = wc26Visible ? [...BASE_LINKS, WC26_LINK] : BASE_LINKS
   const t = useT()
   const lang = useLang((s) => s.lang)
+  // L'avatar du bouton mobile, et le solde qui n'apparait qu'une fois ouvert.
+  const user = useAuth((s) => s.user)
+  const profile = useAuth((s) => s.profile)
+  const profilEtat = useAuth((s) => s.profilEtat)
   const setLang = useLang((s) => s.setLang)
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -187,16 +195,31 @@ export function Navigation() {
           </nav>
 
           <div className="flex items-center gap-2">
-            <UserMenu />
-            {/* Hamburger — mobile only */}
+            {/* La pastille complete — solde compris — reste a l'ordinateur. */}
+            <div className="hidden md:block">
+              <UserMenu />
+            </div>
+            {/* ── SUR MOBILE, UN SEUL BOUTON : L'AVATAR ────────────────────
+                Mehdi, 16/10/2026 : le hamburger disparait, l'avatar le
+                remplace, et RIEN ne s'affiche avant le clic — ni le solde de
+                crampons ni celui de pressings. Deux boutons cote a cote
+                partageaient la meme barre pour deux choses que le visiteur
+                percoit comme une seule : « mon compte ». */}
             <button
               onClick={() => setMenuOpen((v) => !v)}
-              aria-label="Open menu"
-              className="md:hidden w-10 h-10 rounded-full glass glass-hover flex items-center justify-center"
+              aria-label={t('Open menu')}
+              className="md:hidden w-10 h-10 rounded-full glass glass-hover flex items-center justify-center overflow-hidden"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-                <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-              </svg>
+              {user ? (
+                <Avatar alias={profile?.alias ?? 'fan'} url={profile?.avatar_url} graine={profile?.id} taille={30} />
+              ) : (
+                // Personne de connecte : meme bouton, meme place. Sans lui la
+                // navigation deviendrait inaccessible aux visiteurs.
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden>
+                  <circle cx="12" cy="8" r="3.4" stroke="currentColor" strokeWidth="1.8" />
+                  <path d="M4.5 20c.9-3.6 3.9-5.5 7.5-5.5s6.6 1.9 7.5 5.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
+              )}
             </button>
           </div>
         </div>
@@ -247,6 +270,39 @@ export function Navigation() {
                 >
                   ×
                 </button>
+              </div>
+
+              {/* ── LE SOLDE, PUIS LE PROFIL, PUIS LA NAVIGATION ───────────
+                  Mehdi, 16/10/2026 : rien de tout cela ne s'affiche avant
+                  qu'on ait touche l'avatar. Le solde d'abord, parce que c'est
+                  ce qu'on vient voir ; la gestion du compte ensuite ; les
+                  liens du site en dessous, inchanges. */}
+              {user && (
+                <div className="mb-5 rounded-2xl glass px-4 py-3 flex items-center gap-6">
+                  <div>
+                    <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Jeton type="crampon" taille={11} />
+                    </div>
+                    <div className="font-display text-xl leading-none tabular-nums mt-1">
+                      {/* « — » et non 0 tant que le solde n'est pas revenu :
+                          afficher zero ferait croire au joueur qu'il a tout
+                          perdu (regle posee le 10/10). */}
+                      {profilEtat === 'pret' || profile ? soldeCourt(profile?.crampons, lang === 'ar' ? 'ar-u-nu-latn' : lang) : '—'}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                      <Jeton type="pressing" taille={11} />
+                    </div>
+                    <div className="font-display text-xl leading-none tabular-nums mt-1 text-accent-violet">
+                      {profilEtat === 'pret' || profile ? soldeCourt(profile?.pressings, lang === 'ar' ? 'ar-u-nu-latn' : lang) : '—'}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-6 pb-6 border-b border-slate-200">
+                <UserMenu panneau />
               </div>
 
               <nav className="space-y-1">
