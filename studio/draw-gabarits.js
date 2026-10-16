@@ -315,6 +315,28 @@ export async function gabaritStatsMatch(d) {
     txt(ctx, d.ecart.valeur, 888, 548, { size: 66, font: 'Anton' })
     ar(ctx, d.ecart.libelle, 888, 606, { size: 21 })
   }
+
+  // ── LA MARQUE ET LE CODE, DESSINES ────────────────────────────────────
+  // Ils etaient PEINTS DANS LA MAQUETTE, avec les cadres et les mots
+  // « HOME TEAM » / « AWAY TEAM » qui transparaissaient sous la carte. La
+  // plaque est nue depuis le 16/10/2026 : ils occupent les deux zones
+  // qu'ils occupaient deja, mais a la taille des autres formats et, pour le
+  // code, modifiable.
+  // 190 et non 150 : ici la marque occupe un bloc a elle, laisse libre par
+  // l'entete decale a droite. A la taille des autres formats elle s'y perdait.
+  paintLogo(ctx, 102, 108, 190)
+
+  // Le bloc d'inscription complet tire un voile SUR TOUTE LA LARGEUR, qui
+  // traverserait le tableau. Ici le code est pose seul et sa ligne d'appel
+  // est ecrite sous lui, dans son propre coin.
+  const CXQ = 912, YQ = 788, TQ = 148
+  blocInscription(ctx, CXQ, YQ, TQ, T, { sansTexte: true })
+  const yA = YQ + largeurQr(TQ) + 34
+  const voile = ctx.createLinearGradient(749, 0, 1080, 0)
+  voile.addColorStop(0, 'rgba(5,8,15,0)'); voile.addColorStop(0.25, 'rgba(5,8,15,0.9)')
+  voile.addColorStop(0.85, 'rgba(5,8,15,0.9)'); voile.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.save(); ctx.fillStyle = voile; ctx.fillRect(749, yA - 28, 331, 58); ctx.restore()
+  ar(ctx, 'امسح واحصل على 100 كرامبون', CXQ, yA, { size: 21, color: OR })
   return c
 }
 
