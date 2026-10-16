@@ -165,36 +165,41 @@ export function Navigation() {
                 bon endroit sur chaque système, s'ouvre au clavier, et sur
                 téléphone il appelle le sélecteur de l'appareil. Un menu
                 maison coûterait cent lignes pour faire moins bien. */}
-            <div className="ms-3 relative">
-              <select
-                value={lang}
-                onChange={(e) => setLang(e.target.value as 'en' | 'fr' | 'ar')}
-                aria-label="Language"
-                className="appearance-none bg-transparent border-0 ps-1 pe-4 py-1 text-[11px] font-mono uppercase tracking-wider text-slate-500 hover:text-slate-900 focus:outline-none focus:text-slate-900 cursor-pointer transition-colors"
-              >
-                {([['en', 'EN'], ['fr', 'FR'], ['ar', 'AR']] as const).map(([code, label]) => (
-                  // Les options sont dessinées par le système : il faut leur
-                  // poser des couleurs en dur, elles n'héritent ni du thème
-                  // ni des classes Tailwind.
-                  <option key={code} value={code} style={{ background: '#121916', color: '#ECEFE8' }}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-              {/* Le chevron, puisque `appearance-none` retire celui du
-                  système. `pointer-events-none` pour que le clic traverse
-                  jusqu'au select. */}
-              <svg
-                aria-hidden="true"
-                width="8" height="8" viewBox="0 0 10 6"
-                className="pointer-events-none absolute end-0 top-1/2 -translate-y-1/2 text-slate-500"
-              >
-                <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </div>
           </nav>
 
           <div className="flex items-center gap-2">
+            {/* ── LA LANGUE REMONTE DANS L'EN-TETE ──────────────────────────
+                Elle vivait tout en bas du tiroir mobile, en trois gros
+                boutons. Le hamburger ayant libere la place (Mehdi,
+                16/10/2026), elle reprend ici la forme qu'elle a deja a
+                l'ordinateur : EN / FR / AR ecrit court, et le choix au clic. */}
+              <div className="ms-3 relative">
+                <select
+                  value={lang}
+                  onChange={(e) => setLang(e.target.value as 'en' | 'fr' | 'ar')}
+                  aria-label="Language"
+                  className="appearance-none bg-transparent border-0 ps-1 pe-4 py-1 text-[11px] font-mono uppercase tracking-wider text-slate-500 hover:text-slate-900 focus:outline-none focus:text-slate-900 cursor-pointer transition-colors"
+                >
+                  {([['en', 'EN'], ['fr', 'FR'], ['ar', 'AR']] as const).map(([code, label]) => (
+                    // Les options sont dessinées par le système : il faut leur
+                    // poser des couleurs en dur, elles n'héritent ni du thème
+                    // ni des classes Tailwind.
+                    <option key={code} value={code} style={{ background: '#121916', color: '#ECEFE8' }}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                {/* Le chevron, puisque `appearance-none` retire celui du
+                    système. `pointer-events-none` pour que le clic traverse
+                    jusqu'au select. */}
+                <svg
+                  aria-hidden="true"
+                  width="8" height="8" viewBox="0 0 10 6"
+                  className="pointer-events-none absolute end-0 top-1/2 -translate-y-1/2 text-slate-500"
+                >
+                  <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </div>
             {/* La pastille complete — solde compris — reste a l'ordinateur. */}
             <div className="hidden md:block">
               <UserMenu />
@@ -322,17 +327,8 @@ export function Navigation() {
                     {t(l.label)}
                   </NavLink>
                 ))}
-                <div className="pt-3 flex gap-2">
-                  {([['en', 'English'], ['fr', 'Français'], ['ar', 'عربي']] as const).map(([code, label]) => (
-                    <button
-                      key={code}
-                      onClick={() => setLang(code)}
-                      className={'flex-1 px-2 py-2 rounded-xl text-sm font-mono transition-colors ' + (lang === code ? 'bg-accent-gold text-ink-900 font-semibold' : 'bg-slate-100 text-slate-600')}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
+                {/* Les langues ne sont plus ici : elles ont repris leur place
+                    dans l'en-tete, au format court EN / FR / AR. */}
               </nav>
 
               <div className="mt-10 pt-6 border-t border-slate-200/70 text-[10px] uppercase tracking-widest text-slate-600 font-mono">

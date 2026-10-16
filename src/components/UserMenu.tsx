@@ -65,11 +65,11 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
   // l'en-tête de chaque page, pour un menu que la plupart n'ouvriront
   // jamais, ce serait du poids payé pour rien.
   useEffect(() => {
-    if (!menuOpen || avatars.length > 0) return
+    if ((!menuOpen && !panneau) || avatars.length > 0) return
     let vivant = true
     void listeAvatars().then((l) => { if (vivant) setAvatars(l) })
     return () => { vivant = false }
-  }, [menuOpen, avatars.length])
+  }, [menuOpen, panneau, avatars.length])
 
   const cleChoisie = cleDeLUrl(profile?.avatar_url)
 
