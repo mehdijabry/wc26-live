@@ -34,6 +34,22 @@ async function fond(nom) {
   return fonds.get(nom)
 }
 
+/**
+ * LA PEAU BLAUGRANA NE SE DONNE PAS SUR DEMANDE.
+ *
+ * Elle se declenchait sur un simple drapeau de l'appelant, et une carte
+ * Lyon - Crystal Palace pouvait sortir sur le stade du Barca (Mehdi,
+ * 16/10/2026). C'est la meme faute que l'ecusson Champions pose par defaut un
+ * soir de Ligue Europa — un habit de club sur un match qui ne le concerne
+ * pas — et celle-la avait coute trois publications supprimees.
+ *
+ * On exige donc les DEUX : que l'appelant la demande, et que Barcelone soit
+ * nommee quelque part. L'ecriture arabe est incluse : les titres de la page
+ * sont en arabe.
+ */
+const BARCA = /barcelona|barça|barca|برشلونة/i
+const peauBarca = (demande, ...textes) => !!demande && BARCA.test(textes.filter(Boolean).join(' '))
+
 const crests = new Map()
 async function crest(url) {
   if (!url) return null
@@ -170,7 +186,7 @@ export async function gabaritGoalLayers(g) {
   // faute que l'ecusson Champions pose par defaut sur une soiree d'Europa —
   // un habit de club sur un match qui ne le concerne pas. La demande ne
   // suffit donc plus : il faut que Barcelone joue.
-  const barca = g.special === 'barca' && /barcelona|barça|barca/i.test(`${g.home} ${g.away}`)
+  const barca = peauBarca(g.special === 'barca', g.home, g.away)
   const nom = barca ? 'but-barca' : 'but-neutre'
   const C = CASES[nom]
   const teinte = barca ? OR : MENTHE
@@ -536,7 +552,7 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
 
   // ── Le fond : plaque, marque, QR, et le titre de la competition
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
-    await poser(ctx, m.barca ? 'reel-barca' : 'reel-neutre', W, H)
+    await poser(ctx, peauBarca(m.barca, m.home, m.away) ? 'reel-barca' : 'reel-neutre', W, H)
     // La marque plus grande : a 96 px elle se perdait sur une plaque de nuit,
     // alors que le coin avait de la place (Mehdi, 15/10).
     paintLogo(ctx, 44, 44, 150)
@@ -850,7 +866,9 @@ export async function gabaritArticleSlide(a = {}, heading, lang = 'ar') {
     // La plaque blaugrana des que la carte parle de Barcelone ; la neutre
     // sinon. Le reel des infos Barca porte donc ses couleurs sans qu'aucun
     // ecusson n'ait a etre dessine.
-    await poser(ctx, a.barca === false ? 'reel-neutre' : 'reel-barca', W, H)
+    // Cette carte prenait la peau blaugrana PAR DEFAUT : tout article sans
+    // drapeau explicite en heritait. Elle se merite desormais, comme ailleurs.
+    await poser(ctx, peauBarca(a.barca !== false, a.title) ? 'reel-barca' : 'reel-neutre', W, H)
     paintLogo(ctx, 44, 44, 150)
     blocInscription(ctx, W / 2, 1240, 200, W)
   }
@@ -927,7 +945,7 @@ export async function gabaritMatchdayStory(matches = [], dateLabel, page = 1, pa
   registerBrandFonts()
   const W = 1080, H = 1920
   const c = createCanvas(W, H); const ctx = ctx2d(c)
-  const vedette = opts.featured && page === 1 && matches[0]
+  const vedette = peauBarca(opts.featured && page === 1, matches[0]?.home, matches[0]?.away)
   await poser(ctx, vedette ? 'reel-barca' : 'reel-neutre', W, H)
   paintLogo(ctx, 44, 44, 150)
 
@@ -965,7 +983,7 @@ export async function gabaritArticleStory(a = {}) {
   const W = 1080, H = 1920
   const PX = 60, PY = 330, PW = W - 120, PH = 620
   const c = createCanvas(W, H); const ctx = ctx2d(c)
-  await poser(ctx, a.barca ? 'reel-barca' : 'reel-neutre', W, H)
+  await poser(ctx, peauBarca(a.barca, a.title, a.kicker) ? 'reel-barca' : 'reel-neutre', W, H)
   paintLogo(ctx, 44, 44, 150)
 
   ar(ctx, a.kicker || (a.lang === 'ar' ? 'خبر جديد' : 'NEW ARTICLE'), W / 2, 256, { size: 46, color: OR })
