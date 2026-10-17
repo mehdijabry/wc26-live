@@ -67,6 +67,15 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  'Search a player': 'ابحث عن لاعب',
+  'Copied by': 'نسخه',
+  'Open bets': 'رهانات جارية',
+  'History': 'السجل',
+  'No bets': 'لا رهانات',
+  'leg': 'اختيار',
+  'legs': 'اختيارات',
+  'Copy': 'نسخ',
+  'Bet copied': 'تم نسخ الرهان',
   // ── Le profil public (17/10/2026) ──────────────────────────────────
   'Rank': 'الترتيب',
   'Bets': 'الرهانات',
@@ -729,6 +738,15 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  'Search a player': 'Chercher un joueur',
+  'Copied by': 'Copié par',
+  'Open bets': 'Paris en cours',
+  'History': 'Historique',
+  'No bets': 'Aucun pari',
+  'leg': 'sélection',
+  'legs': 'sélections',
+  'Copy': 'Copier',
+  'Bet copied': 'Pari copié',
   // ── Le profil public (17/10/2026) ──────────────────────────────────
   'Rank': 'Rang',
   'Bets': 'Paris',

@@ -11,6 +11,7 @@ import { localeOf, useLang, useT } from '../lib/i18n'
 import Avatar from './Avatar'
 import { cn } from '../lib/utils'
 import { choisirAvatar, cleDeLUrl, listeAvatars, urlAvatar } from '../lib/avatars'
+import { RechercheJoueurs } from './RechercheJoueurs'
 
 const TIER_COLORS: Record<string, string> = {
   Rookie: 'text-slate-600',
@@ -276,6 +277,15 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
                   🌍 {t('View my public profile')} <span className="text-slate-500 font-mono">/u/{alias}</span>
                 </Link>
               )}
+
+              {/* ── CHERCHER UN JOUEUR, POUR L'AJOUTER EN AMI ──────────────
+                  Ici et pas dans le classement : c'est le menu ou l'on gere
+                  son compte et ses relations (Mehdi, 17/10/2026). Le clic sur
+                  un resultat referme le menu, sinon il resterait ouvert
+                  par-dessus la page du joueur. */}
+              <div className="mt-2">
+                <RechercheJoueurs onNaviguer={() => setMenuOpen(false)} />
+              </div>
             </div>
 
             <button

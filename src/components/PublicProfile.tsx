@@ -19,6 +19,7 @@ import { useT, useLang, localeOf } from '../lib/i18n'
 import Avatar from './Avatar'
 import { Jeton } from './Jeton'
 import { Ad } from './AdSlot'
+import { ficheDuMatch, type Fiche } from '../lib/ficheMatch'
 
 type Profil = {
   id: string
@@ -34,6 +35,13 @@ type Profil = {
   meilleure_serie: number
   groupe: string | null
   membre_depuis: string
+  copieurs: number
+}
+
+type Jambe = { match_id: string; market: string; pick: string; odds: number; status: string }
+type Bulletin = {
+  id: number; stake: number; odds: number; status: string
+  payout: number | null; created_at: string; legs: Jambe[]
 }
 
 type Ami = { id: string; alias: string; avatar_url: string | null; tier: string; points: number; etat: string; sens: string }
@@ -53,6 +61,10 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
   const [occupe, setOccupe] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [montant, setMontant] = useState(50)
+  const [onglet, setOnglet] = useState<'open' | 'tout'>('open')
+  const [paris, setParis] = useState<Bulletin[] | null>(null)
+  const [fiches, setFiches] = useState<Map<string, Fiche>>(new Map())
+  const [mise, setMise] = useState(100)
 
   const estMoi = !!moi && !!p && moi.id === p.id
 
@@ -92,6 +104,35 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
     setAmis((data ?? []) as Ami[])
   }
   useEffect(() => { void chargerAmis() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [moi?.id])
+
+  // Les paris du joueur, et les fiches de match qui les rendent lisibles :
+  // `bet_legs` ne garde qu'un identifiant, pas « Lyon — Crystal Palace ».
+  useEffect(() => {
+    if (!supabase || !p) return
+    let vivant = true
+    ;(async () => {
+      setParis(null)
+      const { data } = await supabase!.rpc('paris_publics', {
+        p_alias: p.alias, p_statut: onglet === 'open' ? 'open' : null,
+      })
+      if (!vivant) return
+      const b = (data ?? []) as Bulletin[]
+      setParis(b)
+      const ids = [...new Set(b.flatMap((x) => (x.legs ?? []).map((j) => j.match_id)))]
+      const r = await Promise.all(ids.map(async (id) => [id, await ficheDuMatch(id)] as const))
+      if (!vivant) return
+      const m = new Map<string, Fiche>()
+      for (const [id, f] of r) if (f) m.set(id, f)
+      setFiches(m)
+    })()
+    return () => { vivant = false }
+  }, [p?.alias, onglet])
+
+  const copier = (b: Bulletin) => agir(async () => {
+    const r = await supabase!.rpc('copier_pari', { p_slip_id: b.id, p_stake: mise })
+    if (!r.error) await rafraichirProfil()
+    return r
+  }, t('Bet copied'))
 
   const lien = p ? amis.find((a) => a.id === p.id) : undefined
 
@@ -171,7 +212,15 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
         {/* ── LE GROUPE ───────────────────────────────────────────────────
             Un joueur n'en a qu'un : la regle a ete posee le 10/10 pour qu'il
             ne soit pas compte dans le taux de participation de quinze. */}
-        <div className="glass rounded-2xl px-4 py-3 sm:col-span-2">
+        {/* ── L'INDICE DE POPULARITE ───────────────────────────────────
+            Le nombre de joueurs DISTINCTS qui ont copie au moins un de ses
+            paris. Il ne se gonfle pas : seule la fonction serveur l'ecrit,
+            et seulement quand des crampons ont reellement ete engages. */}
+        <div className="glass rounded-2xl px-4 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{t('Copied by')}</div>
+          <div className="font-display text-xl leading-none tabular-nums mt-1.5">{nb(p.copieurs)}</div>
+        </div>
+        <div className="glass rounded-2xl px-4 py-3">
           <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{t('Group')}</div>
           <div className="font-display text-xl leading-none mt-1.5 truncate">
             {p.groupe ?? <span className="text-slate-500 text-base">{t('No group yet')}</span>}
@@ -227,6 +276,86 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
           {message && <div className="mt-3 text-sm text-accent-gold">{message}</div>}
         </div>
       )}
+
+      {/* ── SES PARIS ──────────────────────────────────────────────────── */}
+      <div className="mt-8">
+        <div className="flex items-center gap-2 mb-3">
+          {([['open', t('Open bets')], ['tout', t('History')]] as const).map(([cle, nom]) => (
+            <button key={cle} onClick={() => setOnglet(cle)}
+              className={'px-3 py-1.5 rounded-full text-xs font-mono uppercase tracking-wider transition-colors '
+                + (onglet === cle ? 'bg-accent-gold text-ink-900' : 'glass glass-hover text-slate-500')}>
+              {nom}
+            </button>
+          ))}
+        </div>
+
+        {paris === null ? (
+          <div className="h-24 rounded-2xl glass animate-pulse" />
+        ) : paris.length === 0 ? (
+          <div className="glass rounded-2xl px-4 py-5 text-sm text-slate-500">{t('No bets')}</div>
+        ) : (
+          <div className="space-y-2">
+            {paris.map((b) => (
+              <div key={b.id} className="glass rounded-2xl p-4">
+                <div className="flex items-center justify-between gap-3 text-xs font-mono">
+                  <span className="text-slate-500">
+                    {new Date(b.created_at).toLocaleDateString(localeOf(lang), { day: 'numeric', month: 'short' })}
+                    {' · '}{b.legs.length} {b.legs.length > 1 ? t('legs') : t('leg')}
+                  </span>
+                  <span className={b.status === 'won' ? 'text-accent-green'
+                    : b.status === 'lost' ? 'text-slate-500' : 'text-accent-gold'}>
+                    {t(b.status === 'won' ? 'Won' : b.status === 'lost' ? 'Lost'
+                      : b.status === 'void' ? 'Void' : 'Open')}
+                  </span>
+                </div>
+
+                <ul className="mt-2.5 space-y-1.5">
+                  {b.legs.map((j, i) => {
+                    const f = fiches.get(j.match_id)
+                    // Le choix se lit en clair : « home » ne veut rien dire
+                    // pour un lecteur, le nom de l'equipe si.
+                    const choix = j.market === 'exact' ? j.pick
+                      : j.pick === 'draw' ? t('Draw')
+                      : j.pick === 'home' ? (f?.dom || t('Home'))
+                      : (f?.ext || t('Away'))
+                    return (
+                      <li key={`${j.match_id}-${i}`} className="flex items-baseline justify-between gap-3 text-sm">
+                        <span className="min-w-0 truncate">
+                          <span className="text-slate-500">{f?.titre ?? '…'}</span>
+                          <span className="mx-1.5 text-slate-400">·</span>
+                          <span className="font-semibold">{choix}</span>
+                        </span>
+                        <span className="font-mono tabular-nums text-xs text-slate-500 shrink-0">{Number(j.odds).toFixed(2)}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+
+                <div className="mt-3 pt-3 border-t border-slate-300/20 flex items-center justify-between gap-3">
+                  <span className="font-mono text-xs tabular-nums text-slate-500">
+                    {t('Stake')} {nb(b.stake)} · {t('Odds')} {Number(b.odds).toFixed(2)}
+                  </span>
+                  {/* ── COPIER ────────────────────────────────────────────
+                      Seulement un pari EN COURS, et jamais le sien. Le
+                      copieur mise ce qu'il veut : les soldes ne se
+                      ressemblent pas. C'est place_slip() qui debite. */}
+                  {moi && !estMoi && b.status === 'open' && (
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={1} value={mise}
+                        onChange={(e) => setMise(Math.max(1, Number(e.target.value) || 1))}
+                        className="w-20 px-2 py-1.5 rounded-lg border border-slate-300/50 bg-transparent tabular-nums text-sm" />
+                      <button onClick={() => copier(b)} disabled={occupe}
+                        className="px-3 py-1.5 rounded-lg bg-accent-gold text-ink-900 text-xs font-semibold disabled:opacity-40">
+                        {t('Copy')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* ── MES AMIS, sur ma propre page ───────────────────────────────── */}
       {estMoi && (

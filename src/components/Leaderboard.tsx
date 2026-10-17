@@ -178,7 +178,10 @@ export function Leaderboard({
                   <Avatar alias={row.alias} url={row.avatar_url} graine={row.id} taille={32} />
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold truncate flex items-center gap-2">
-                      {row.alias}
+                      <Link to={`/u/${row.alias}`} onClick={(e) => e.stopPropagation()}
+                        className="hover:text-accent-gold transition-colors truncate">
+                        {row.alias}
+                      </Link>
                       {isMe && <span className="text-[10px] font-mono text-accent-gold">you</span>}
                     </div>
                     <div className={`text-[10px] font-mono mt-0.5 ${TIER_COLORS[row.tier]}`}>
