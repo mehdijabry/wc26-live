@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import Avatar from './Avatar'
 import { Jeton } from './Jeton'
@@ -6,7 +6,7 @@ import { aimerPost, supprimerPost, type Post } from '../lib/posts'
 import { localeOf, useLang, useT } from '../lib/i18n'
 import { useAuth } from '../store/auth'
 import { API_BASE } from '../lib/api'
-import { ouvrirFacebook, partagerImage, peutPartagerFichier } from '../lib/partageSocial'
+import { ouvrirFacebook, partagerImage, peutPartagerFichier, telechargerImage } from '../lib/partageSocial'
 
 /**
  * LE TICKET GAGNANT — un pari gagné, publié sur le profil.
@@ -37,11 +37,32 @@ export function PostPari({ post, onSupprime }: { post: Post; onSupprime?: (id: n
   const [occupe, setOccupe] = useState(false)
   const [partage, setPartage] = useState<'repos' | 'rendu' | 'pret'>('repos')
   const [note, setNote] = useState<string | null>(null)
+  /**
+   * L'IMAGE DU TICKET, celle-la meme qui part en story.
+   *
+   * `null` tant qu'on ne sait pas, `false` quand le rendu a echoue : on
+   * garde alors la version HTML, qui dit exactement la meme chose. Une
+   * carte vide parce que le studio dort serait pire que pas d'image du
+   * tout — et le studio sur 0,1 CPU dort souvent.
+   */
+  const [image, setImage] = useState<string | null | false>(null)
+  const [menu, setMenu] = useState(false)
 
   const d = post.donnees
   const jambes = d?.jambes ?? []
   const nb = (v: number) => Number(v ?? 0).toLocaleString(localeOf(lang))
   const estMoi = !!moi && moi.id === post.auteur
+
+  // Le rendu est mis en cache par le worker sur (post, langue) : une visite
+  // de profil ne relance pas un dessin, elle resservit une URL.
+  useEffect(() => {
+    let vivant = true
+    void fetch(`${API_BASE}/ticket?post=${post.id}&lang=${lang}`)
+      .then((r) => r.json())
+      .then((j: { url?: string }) => { if (vivant) setImage(j.url || false) })
+      .catch(() => { if (vivant) setImage(false) })
+    return () => { vivant = false }
+  }, [post.id, lang])
 
   const basculer = async () => {
     if (!moi || occupe) return
@@ -63,21 +84,52 @@ export function PostPari({ post, onSupprime }: { post: Post; onSupprime?: (id: n
    * que de promettre une story en un clic là où le navigateur n'en est pas
    * capable.
    */
-  const partagerTicket = async () => {
-    setPartage('rendu'); setNote(null)
+  /**
+   * PARTAGER LE TICKET.
+   *
+   * Trois chemins, parce que le navigateur n'en offre pas trois partout :
+   *
+   *   · 'appareil' — `navigator.share({files})`. SEUL vrai chemin vers une
+   *     story : la feuille de partage du systeme, d'ou Facebook et Instagram
+   *     proposent « Story ». N'existe que sur telephone.
+   *   · 'facebook' — le partage de LIEN. Facebook ne prend pas d'image par
+   *     URL : il lit les balises Open Graph de la page pointee, d'ou
+   *     /p/<id>, qui porte le ticket en `og:image`.
+   *   · 'fichier'  — l'image dans les telechargements, a publier a la main.
+   *
+   * On ne promet jamais une story en un clic la ou le navigateur ne sait pas
+   * la faire : la note dit ce qui a reellement eu lieu.
+   */
+  const lienPost = `https://pressing90.live/p/${post.id}`
+
+  const urlTicket = async (): Promise<string | null> => {
+    if (image) return image
     try {
       const r = await fetch(`${API_BASE}/ticket?post=${post.id}&lang=${lang}`)
-      const j = await r.json() as { url?: string; error?: string }
-      if (!j.url) { setPartage('repos'); setNote(t('Could not build the image.')); return }
-      setPartage('pret')
-      const res = await partagerImage(j.url, `pressing90-${post.id}.jpg`,
-        `×${Number(d?.cote ?? 0).toFixed(2)} — pressing90.live/u/${post.alias}`)
-      setNote(res === 'partage' ? null
-        : res === 'telecharge' ? t('Image saved — post it as a story from your phone or Facebook.')
-        : res === 'echec' ? t('Could not build the image.') : null)
-    } catch {
-      setPartage('repos'); setNote(t('Could not build the image.'))
+      const j = await r.json() as { url?: string }
+      if (j.url) { setImage(j.url); return j.url }
+    } catch { /* on le dira plus bas */ }
+    return null
+  }
+
+  const partagerTicket = async (ou: 'appareil' | 'facebook' | 'fichier') => {
+    setMenu(false); setNote(null)
+    if (ou === 'facebook') { ouvrirFacebook(lienPost); return }
+
+    setPartage('rendu')
+    const u = await urlTicket()
+    setPartage('repos')
+    if (!u) { setNote(t('Could not build the image.')); return }
+
+    if (ou === 'fichier') {
+      const ok = await telechargerImage(u, `pressing90-${post.id}.jpg`)
+      setNote(ok ? t('Image saved — post it as a story from your phone or Facebook.')
+                 : t('Could not build the image.'))
+      return
     }
+    const res = await partagerImage(u, `pressing90-${post.id}.jpg`, `×${Number(d?.cote ?? 0).toFixed(2)} — ${lienPost}`)
+    setNote(res === 'telecharge' ? t('Image saved — post it as a story from your phone or Facebook.')
+      : res === 'echec' ? t('Could not build the image.') : null)
   }
 
   const supprimer = async () => {
@@ -106,6 +158,24 @@ export function PostPari({ post, onSupprime }: { post: Post; onSupprime?: (id: n
         )}
       </div>
 
+      {/* ── LE TICKET ─────────────────────────────────────────────────
+          L'image dessinee par le studio quand elle est prete — c'est la meme
+          qui part en story, donc ce que le joueur voit ici est exactement ce
+          qu'il partagera. Tant qu'elle n'est pas revenue, et pour toujours si
+          le rendu echoue, la carte HTML ci-dessous dit la meme chose. */}
+      {image ? (
+        <a href={image} target="_blank" rel="noopener noreferrer" className="block mt-3">
+          <img
+            src={image}
+            alt={`×${Number(d?.cote ?? 0).toFixed(2)}`}
+            loading="lazy"
+            className="w-full max-h-[560px] object-contain bg-ink-900"
+          />
+        </a>
+      ) : image === null ? (
+        <div className="mt-3 h-[320px] glass animate-pulse" />
+      ) : (
+        <>
       {/* ── LE VERDICT ET L'AUDACE ─────────────────────────────────────── */}
       <div className="px-4 pt-3 pb-1 flex items-end gap-4">
         <div>
@@ -146,6 +216,8 @@ export function PostPari({ post, onSupprime }: { post: Post; onSupprime?: (id: n
           </li>
         ))}
       </ul>
+        </>
+      )}
 
       {post.legende && <p className="px-4 pt-3 text-sm">{post.legende}</p>}
 
@@ -160,12 +232,12 @@ export function PostPari({ post, onSupprime }: { post: Post; onSupprime?: (id: n
         </span>
 
         {estMoi && (
-          <>
+          <div className="relative ms-auto">
             <button
-              onClick={() => void partagerTicket()}
+              onClick={() => setMenu((v) => !v)}
               disabled={partage === 'rendu'}
-              className="ms-auto inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass glass-hover text-slate-600 hover:text-slate-900 disabled:opacity-40"
-              title={peutPartagerFichier() ? t('Share') : t('Download the image')}
+              aria-expanded={menu}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl glass glass-hover text-slate-600 hover:text-slate-900 disabled:opacity-40"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
                 <path d="M12 3v12m0-12 4 4m-4-4-4 4" strokeLinecap="round" strokeLinejoin="round" />
@@ -175,17 +247,63 @@ export function PostPari({ post, onSupprime }: { post: Post; onSupprime?: (id: n
                 {partage === 'rendu' ? t('Building…') : t('Share')}
               </span>
             </button>
-            <button
-              onClick={() => ouvrirFacebook(`https://pressing90.live/u/${post.alias}`)}
-              aria-label="Facebook"
-              title="Facebook"
-              className="inline-flex items-center justify-center w-8 h-8 rounded-xl glass glass-hover text-slate-600 hover:text-accent-blue"
-            >
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-                <path d="M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.4-4 4.1v2.1H7.5v3h2.7V21h3.3Z" />
-              </svg>
-            </button>
-          </>
+
+            {menu && (
+              <>
+                <div className="fixed inset-0 z-[58]" onClick={() => setMenu(false)} />
+                {/* Le menu dit QUOI chaque choix fait. « Partager » tout court
+                    ne promet rien de verifiable : sur ordinateur il n'y a pas
+                    de feuille de partage, et Facebook n'accepte pas d'image
+                    par URL. */}
+                <div className="absolute end-0 bottom-full mb-2 z-[59] w-60 glass rounded-2xl p-1.5 ring-glow">
+                  <button
+                    onClick={() => void partagerTicket('facebook')}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl glass-hover text-start text-sm"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="text-accent-blue shrink-0" aria-hidden>
+                      <path d="M13.5 21v-7.5h2.6l.4-3h-3V8.6c0-.9.3-1.5 1.5-1.5h1.6V4.4c-.3 0-1.3-.1-2.4-.1-2.4 0-4 1.4-4 4.1v2.1H7.5v3h2.7V21h3.3Z" />
+                    </svg>
+                    Facebook
+                  </button>
+                  {peutPartagerFichier() && (
+                    <button
+                      onClick={() => void partagerTicket('appareil')}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl glass-hover text-start text-sm"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="shrink-0" aria-hidden>
+                        <rect x="6" y="2.5" width="12" height="19" rx="2.5" />
+                        <path d="M11 18.5h2" strokeLinecap="round" />
+                      </svg>
+                      {t('Story — share from my phone')}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => void partagerTicket('fichier')}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl glass-hover text-start text-sm"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="shrink-0" aria-hidden>
+                      <path d="M12 3v11m0 0 4-4m-4 4-4-4" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M4 16v2.5A1.5 1.5 0 0 0 5.5 20h13a1.5 1.5 0 0 0 1.5-1.5V16" strokeLinecap="round" />
+                    </svg>
+                    {t('Download the image')}
+                  </button>
+                  <button
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(lienPost)
+                      setMenu(false); setNote(t('Link copied'))
+                    }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl glass-hover text-start text-sm"
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" className="shrink-0" aria-hidden>
+                      <path d="M10 14a4 4 0 0 0 5.7 0l2.8-2.8a4 4 0 0 0-5.7-5.7L11.4 7" strokeLinecap="round" />
+                      <path d="M14 10a4 4 0 0 0-5.7 0L5.5 12.8a4 4 0 0 0 5.7 5.7l1.4-1.4" strokeLinecap="round" />
+                    </svg>
+                    {t('Copy link')}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         <button

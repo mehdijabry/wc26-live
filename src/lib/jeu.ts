@@ -178,6 +178,22 @@ export function palierDe(pressings: number): Palier {
   return [...PALIERS].reverse().find((p) => pressings >= p.de) ?? PALIERS[0]
 }
 
+/**
+ * LE PLAFOND DE MISE DU PALIER.
+ *
+ * MIROIR EXACT de `mise_max_du_palier()` (migration 033). La base tranche ;
+ * ceci n'existe que pour que le bouton n'offre pas ce qu'elle refuserait —
+ * « all » proposait de miser tout le solde, soit 993 439 crampons sur le
+ * compte de Mehdi, alors que la fonction s'arrêtait à 1 000 (17/10/2026).
+ *
+ * Les paliers 1 et 2 sont ceux où un bulletin perdu ne coûte aucun pressing :
+ * on y apprend le jeu, et le droit de miser gros s'achète en montant.
+ */
+export function miseMaxDuPalier(pressings: number | null | undefined): number {
+  const n = palierDe(Number(pressings ?? 0)).n
+  return n >= 5 ? 5_000 : n === 4 ? 4_000 : n === 3 ? 3_000 : 1_000
+}
+
 /** Ce qu'un bulletin perdu coûterait maintenant. */
 export const perteActuelle = (pressings: number) => palierDe(pressings).perte
 
@@ -555,13 +571,29 @@ export async function poserBulletin(
 
   if (!error) return { ok: true, id: Number(data) }
 
-  // Les messages viennent des `raise exception` de place_slip().
+  // ── CHAQUE REFUS DIT SA RAISON ────────────────────────────────────────
+  // Les messages viennent des `raise exception` de place_slip(). Ceux qui
+  // n'etaient pas listes tombaient tous dans « Bulletin refuse » — Mehdi a
+  // mise 3 000 et n'a eu que ca, alors que la base disait precisement « Mise
+  // hors limites » (17/10/2026). C'est la meme faute que sur le bonus de
+  // groupe : un refus explicable presente comme une panne.
+  //
+  // La raison est rendue en ANGLAIS, qui est la cle du dictionnaire : c'est
+  // l'ecran qui la traduit. Avant, elles etaient en francais en dur et un
+  // lecteur arabe lisait du francais.
   const m = error.message || ''
-  if (m.includes('Crampons insuffisants')) return { ok: false, raison: 'Pas assez de crampons' }
-  if (m.includes('Le match a commencé')) return { ok: false, raison: 'Un match a déjà commencé' }
-  if (m.includes('Aucune cote')) return { ok: false, raison: 'Un match n’est plus pariable' }
-  if (m.includes('Un seul pari par match')) return { ok: false, raison: 'Un seul pari par match dans un bulletin' }
-  if (m.includes('Connexion requise')) return { ok: false, raison: 'Connexion requise' }
-  if (m.includes('sélections par bulletin')) return { ok: false, raison: `De 1 à ${JAMBES_MAX} sélections` }
-  return { ok: false, raison: 'Bulletin refusé' }
+  if (m.includes('Crampons insuffisants')) return { ok: false, raison: 'Not enough crampons' }
+  if (m.includes('Mise hors limites')) return { ok: false, raison: 'Stake out of range' }
+  if (m.includes('Mise plafonnée')) return { ok: false, raison: 'In-play stake is capped' }
+  if (m.includes('Le match a commencé') || m.includes('paris sont fermés')) {
+    return { ok: false, raison: 'Betting has closed on one of these matches' }
+  }
+  if (m.includes('Cotes en cours')) return { ok: false, raison: 'Odds are being updated — try again in a moment' }
+  if (m.includes('marché buteur')) return { ok: false, raison: 'The goalscorer market closes at kick-off' }
+  if (m.includes('Aucune cote')) return { ok: false, raison: 'One match is no longer playable' }
+  if (m.includes('Choix invalide')) return { ok: false, raison: 'Invalid selection' }
+  if (m.includes('Un seul pari par match')) return { ok: false, raison: 'One bet per match in a slip' }
+  if (m.includes('Connexion requise')) return { ok: false, raison: 'Sign in to bet' }
+  if (m.includes('sélections par bulletin')) return { ok: false, raison: `From 1 to ${JAMBES_MAX} selections` }
+  return { ok: false, raison: 'Slip refused' }
 }

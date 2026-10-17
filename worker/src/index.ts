@@ -290,6 +290,78 @@ export default {
         return handleAiChat(env, req)
       }
 
+      // ── LA PAGE D'UN PARI PUBLIE — pour que Facebook voie le ticket ──
+      //
+      // `sharer.php` de Facebook ne partage qu'un LIEN : l'image qu'il
+      // affiche vient des balises Open Graph de la page pointee. Partager
+      // /u/<alias> montrait donc l'image par defaut du site, jamais le
+      // ticket. Cette page-ci porte le ticket en `og:image`, et renvoie le
+      // visiteur humain sur le profil du joueur.
+      //
+      // Elle est servie sous pressing90.live/p/<id> par une fonction Pages
+      // qui proxyfie ici : un lien vers *.workers.dev se fait rogner par
+      // les apercus et les filtres de courrier.
+      if (url.pathname === '/post-card') {
+        const id = Number(url.searchParams.get('id') || 0)
+        if (!Number.isFinite(id) || id <= 0) return new Response('post requis', { status: 400 })
+        if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return new Response('indisponible', { status: 503 })
+        const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/post_public`, {
+          method: 'POST',
+          headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ p_id: id }),
+        })
+        const lignes = await r.json().catch(() => []) as Array<Record<string, unknown>>
+        const po = Array.isArray(lignes) ? lignes[0] : null
+        if (!po) return new Response('introuvable', { status: 404 })
+        const d = (po.donnees ?? {}) as Record<string, unknown>
+        const lang = ['fr', 'en', 'ar'].includes(url.searchParams.get('lang') || '')
+          ? url.searchParams.get('lang')! : 'en'
+        // L'image vient de la meme route que le partage : rendue une fois,
+        // puis resservie depuis le cache.
+        let image = await env.CACHE.get(`ticket:${id}:${lang}`)
+        if (!image) {
+          try {
+            const rr = await fetch(`${url.origin}/ticket?post=${id}&lang=${lang}`, {
+              headers: { 'user-agent': 'Mozilla/5.0 (p90-card)' },
+            })
+            image = ((await rr.json().catch(() => ({}))) as { url?: string }).url ?? null
+          } catch { image = null }
+        }
+        const alias = String(po.alias ?? '')
+        const cote = Number((d.cote ?? 0) as number).toFixed(2)
+        const esc = (x: string) => x.replace(/[&<>"]/g, (ch) => (
+          { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
+        const titre = `${alias} — ×${cote}`
+        const desc = String(po.legende ?? '') ||
+          `Pari gagné sur Pressing 90’ · ×${cote}`
+        const profil = `https://pressing90.live/u/${encodeURIComponent(alias)}`
+        const html = `<!doctype html><html lang="${lang}"><head><meta charset="utf-8">
+<title>${esc(titre)}</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta property="og:type" content="article">
+<meta property="og:title" content="${esc(titre)}">
+<meta property="og:description" content="${esc(desc)}">
+<meta property="og:url" content="https://pressing90.live/p/${id}">
+<meta property="og:site_name" content="Pressing 90’">
+${image ? `<meta property="og:image" content="${esc(image)}"><meta property="og:image:width" content="1080"><meta property="og:image:height" content="1920">` : ''}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="robots" content="noindex">
+<style>body{margin:0;background:#0B0F0D;color:#ECEFE8;font:16px/1.5 system-ui,sans-serif;
+display:flex;flex-direction:column;align-items:center;gap:18px;padding:24px}
+img{max-width:min(92vw,420px);height:auto;border-radius:6px}
+a{color:#D9B54A;text-decoration:none;font-weight:600}</style></head><body>
+${image ? `<img src="${esc(image)}" alt="${esc(titre)}">` : ''}
+<a href="${esc(profil)}">${esc(alias)} · Pressing 90’</a>
+</body></html>`
+        return new Response(html, {
+          headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' },
+        })
+      }
+
       // ── LE TICKET GAGNANT D'UN JOUEUR, EN IMAGE ────────────────────
       // Le seul rendu du studio demande par un UTILISATEUR. Trois gardes :
       //

@@ -1961,6 +1961,20 @@ export async function maybeAutoPublishArticle(env: Env, articleId: string): Prom
   await bump(env, date, 'article')
   await env.CACHE.put('auto:lastarticle', nowIso, { expirationTtl: 86400 })
   await log(env, date, 'article', true, `published${arCols.title_ar ? ' (EN+AR)' : ' (EN only)'}: ${row.title}`)
+  // ── UN ARTICLE BARÇA NE SORT QU'AVEC UNE VRAIE PHOTO ──────────────────
+  // Mehdi, 17/10/2026 : « toujours utiliser de vraies images pour ce format
+  // et pour l'article barça ». La série « Football stories » porte une
+  // couverture que NOUS dessinons — légitime sur l'article lui-même, où
+  // c'est son illustration, mais pas sur une publication qui la présente
+  // comme la photo d'une actualité du Barça. L'article reste sur le site ;
+  // seule la publication est retenue, et le journal dit pourquoi.
+  if (/barcelon|barça|barca|blaugrana|camp nou/i.test(`${row.title} ${row.excerpt ?? ''}`)
+      && !estPhotoDePresse(row.image_url)) {
+    await log(env, date, 'article-post', false,
+      `${row.slug} — article Barça sans vraie photo de presse (image = notre propre rendu) : publié sur le site, pas sur la page`)
+    return
+  }
+
   // Facebook post — branded split card, raw photo as fallback.
   const ar = !!arCols.title_ar
   const link = `${SITE}/news/${row.slug}?${ar ? 'lang=ar&' : ''}ref=fb`
@@ -2283,12 +2297,36 @@ export async function runBarcaArticle(env: Env, s: AutomationSettings, date: str
   return `drafted ${r.draft.slug}`
 }
 type DigestArticle = { title: string; title_ar?: string | null; slug: string; image_url?: string | null; excerpt?: string | null; excerpt_ar?: string | null; published_at?: string }
+/**
+ * UNE VRAIE PHOTO DE PRESSE, ET RIEN D'AUTRE.
+ *
+ * Mehdi, 17/10/2026 : « je ne veux pas d'article sans photo ou avec image
+ * improvisée ». Le reel du matin ouvrait sur une couverture que NOUS avions
+ * dessinée — « FOOTBALL STORIES · 2019 », notre logo compris — reprise comme
+ * si c'était la photo de l'article. Un montage de nous-mêmes posé dans un
+ * cadre photo : ça se voit, et ça décrédibilise tout le reste.
+ *
+ * Le test porte sur l'ADRESSE, jamais sur le contenu : tout ce qui sort de
+ * notre dépôt ou de notre propre site est un rendu à nous. On ne tente
+ * SURTOUT pas d'ouvrir l'image pour la juger — le worker interroge depuis
+ * Cloudflare et le studio charge depuis Render, et c'est précisément cette
+ * confusion qui a privé les reels de photo pendant une semaine (15/10).
+ */
+function estPhotoDePresse(url: string | null | undefined): boolean {
+  const u = String(url ?? '').trim()
+  if (!u || !/^https?:\/\//i.test(u)) return false
+  if (u.includes('/storage/v1/object/public/media/')) return false   // notre depot : un rendu du studio
+  if (u.startsWith(`${SITE}/media/`)) return false                   // le repli bokeh, servi par le site
+  if (u.includes('/icon-512') || u.includes('p90-logo')) return false
+  return true
+}
+
 async function barcaArticles(env: Env, hours: number): Promise<DigestArticle[]> {
   const since = new Date(Date.now() - hours * 3600_000).toISOString()
   const kw = ['barcelona', 'barça', 'barca', 'yamal', 'blaugrana', 'camp nou']
   const or = `or=(${kw.flatMap((k) => [`title.ilike.*${k}*`, `excerpt.ilike.*${k}*`]).join(',')})`
   const r = await fetch(`${env.SUPABASE_URL}/rest/v1/articles?select=title,title_ar,slug,image_url,excerpt,excerpt_ar,published_at&status=eq.published&published_at=gte.${encodeURIComponent(since)}&${or}&order=published_at.desc&limit=6`, { headers: sbHeaders(env) })
-  return ((await r.json().catch(() => [])) as DigestArticle[]).filter((a) => a.image_url)
+  return ((await r.json().catch(() => [])) as DigestArticle[]).filter((a) => estPhotoDePresse(a.image_url))
 }
 /** Arabic headline for an article that has no title_ar (the site translation failed) — small LLM call, cached 30 days. */
 async function arabicHeadline(env: Env, title: string): Promise<string> {
@@ -2310,9 +2348,14 @@ export async function runBarcaDigest(env: Env, s: AutomationSettings, date: stri
   if (!force && (await env.CACHE.get(claim))) return 'done'
   if (!preview) await env.CACHE.put(claim, '1', { expirationTtl: 36 * 3600 })
   let list = await barcaArticles(env, 26)
-  if (list.length < 2) { const older = await barcaArticles(env, 24 * 10); list = [...list, ...older.filter((o) => !list.some((x) => x.slug === o.slug))] }
+  // ── « AUJOURD'HUI » VEUT DIRE AUJOURD'HUI ──────────────────────────────
+  // Le rattrapage remontait à DIX JOURS, et c'est comme ça qu'un récit de
+  // Liverpool-Barcelone de 2019 s'est retrouvé en tête d'un reel titré
+  // « برشلونة اليوم — السبت 17 أكتوبر ». Trois jours au maximum : au-delà,
+  // mieux vaut un reel à deux titres, ou pas de reel du tout.
+  if (list.length < 2) { const older = await barcaArticles(env, 72); list = [...list, ...older.filter((o) => !list.some((x) => x.slug === o.slug))] }
   list = list.slice(0, 3)
-  if (!list.length) { await log(env, date, 'barca-digest', false, 'no Barça article on the site — nothing to publish'); return 'no article' }
+  if (!list.length) { await log(env, date, 'barca-digest', false, 'aucun article Barça avec une vraie photo de presse — rien à publier'); return 'no article' }
   const items: Array<{ title: string; slug: string; image_url?: string | null; repli: string; excerpt: string }> = []
   const REPLI = REPLI_ARTICLE   // servi par le site, pas par Supabase : le menage de nuit l'a efface du seau (2026-10-09, voir public/media/README.md)
   // ── PLUS DE CONTROLE PREALABLE DE L'IMAGE ──────────────────────────────

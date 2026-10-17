@@ -21,6 +21,7 @@ import {
   POINT,
   MISE_MINIMUM,
   MISE_MAX_LIVE,
+  miseMaxDuPalier,
   PALIER,
   PALIERS,
   palierDe,
@@ -484,6 +485,7 @@ function CarteMatch({
 function Bulletin({
   selections,
   solde,
+  pressings,
   enDirect,
   occupe,
   erreur,
@@ -495,6 +497,8 @@ function Bulletin({
 }: {
   selections: Selection[]
   solde: number
+  /** Le solde de PRESSINGS : c'est lui qui fixe le plafond de mise. */
+  pressings: number
   /** Le bulletin contient au moins un match en cours : la mise est plafonnée. */
   enDirect: boolean
   occupe: boolean
@@ -512,7 +516,11 @@ function Bulletin({
   // Le plafond en direct s'applique au BULLETIN entier : un combiné qui
   // contient un seul match en cours est plafonné, sinon il suffirait d'y
   // ajouter un match à venir pour contourner. La base dit la même chose.
-  const max = Math.max(MISE_MINIMUM, enDirect ? Math.min(solde, MISE_MAX_LIVE) : solde)
+  // Le plafond n'est plus le solde mais celui du PALIER : la base refuse
+  // au-dela (migration 033), et un bouton ne propose jamais ce qu'elle
+  // refuserait. En direct, le plafond le plus bas des deux gagne.
+  const plafond = miseMaxDuPalier(pressings)
+  const max = Math.max(MISE_MINIMUM, Math.min(solde, enDirect ? Math.min(MISE_MAX_LIVE, plafond) : plafond))
 
   /** Pose une mise depuis un bouton : le champ suit. */
   function poser(n: number) {
@@ -660,7 +668,7 @@ function Bulletin({
               solde < MISE_MINIMUM && 'opacity-30',
             )}
           >
-            {t('all')}
+            {avec(t('MAX ({n})'), { n: max.toLocaleString(localeOf(lang)) })}
           </button>
         </div>
 
@@ -683,7 +691,9 @@ function Bulletin({
           </p>
         )}
 
-        {erreur && <p className="mt-2 text-center text-xs text-accent-red">{erreur}</p>}
+        {/* La raison vient de la base en anglais, qui est la cle du
+            dictionnaire : elle se traduit ici comme tout le reste. */}
+        {erreur && <p className="mt-2 text-center text-xs text-accent-red">{t(erreur)}</p>}
       </div>
     </div>
   )
@@ -1171,7 +1181,17 @@ export function PredictWeek() {
                 {chiffre(pf?.pressings, true)}
               </div>
             </div>
-            <div className="ms-auto">
+            <div className="ms-auto flex items-center gap-2">
+              {/* ── MES PARIS, DEPUIS LA PAGE OU L'ON PARIE ──────────────
+                  La page existait, mais on n'y arrivait que par le menu du
+                  compte : on pariait ici et on devait chercher ailleurs ce
+                  qu'on avait joue (Mehdi, 17/10/2026). */}
+              <Link
+                to="/my-bets"
+                className="px-3 py-2 rounded-xl glass glass-hover font-mono text-[10px] uppercase tracking-wider text-slate-600 hover:text-slate-900 transition-colors"
+              >
+                {t('My bets')}
+              </Link>
               {aReclamer ? (
                 <button
                   type="button"
@@ -1418,6 +1438,7 @@ export function PredictWeek() {
         <Bulletin
           selections={selections}
           solde={solde}
+          pressings={pressings}
           enDirect={selections.some((x) => cotes.get(x.matchId)?.live)}
           occupe={occupe}
           erreur={erreurPari}
