@@ -432,6 +432,9 @@ export async function handleAdmin(
   if (pathname === '/admin/but/publier' && req.method === 'POST') {
     return handleButPublier(env, req)
   }
+  if (pathname === '/admin/but/carte' && req.method === 'POST') {
+    return handleButCarte(env, req)
+  }
   if (pathname === '/admin/but/accroche' && req.method === 'POST') {
     return handleButAccroche(env, req)
   }
@@ -2132,18 +2135,24 @@ async function handleButApercu(env: AdminEnv, req: Request): Promise<Response> {
   if (!ref) return jsonResp({ error: 'adresse non reconnue (YouTube ou X)' }, 400)
 
   if (ref.source === 'x') {
-    // L'embed oEmbed de X est gratuit et sans authentification : on n'a
-    // besoin de rien d'autre pour afficher le post chez nous.
+    // L'embed oEmbed de X est gratuit et sans authentification — et il
+    // porte LE TEXTE DU POST dans son HTML, ce que je n'exploitais pas :
+    // « 📽️ A cámara lenta… Lamine Yamal 🔵🔴 Fermín ». C'est de là que
+    // sortent le buteur et le passeur (Mehdi, 17/10/2026).
     const r = await fetch(`https://publish.x.com/oembed?url=${encodeURIComponent(`https://x.com/i/status/${ref.id}`)}&omit_script=1`, {
       headers: { 'user-agent': 'Mozilla/5.0 (compatible; p90)' },
       signal: AbortSignal.timeout(15_000),
     })
     if (!r.ok) return jsonResp({ error: `X a répondu ${r.status}` }, 502)
     const j = await r.json().catch(() => ({})) as { author_name?: string; html?: string }
+    const texte = texteDuPost(j.html ?? '')
+    const d = devinerChamps(texte, j.author_name ?? '')
     return jsonResp({
       ok: true, source: 'x', videoId: ref.id,
-      titre: `Post de ${j.author_name ?? '—'}`, description: '', chaine: j.author_name ?? '',
+      titre: texte.slice(0, 200) || `Post de ${j.author_name ?? '—'}`,
+      description: texte, chaine: j.author_name ?? '',
       vignette: null, lien: `https://x.com/i/status/${ref.id}`, embed: j.html ?? null,
+      ...d,
     })
   }
 
@@ -2170,21 +2179,77 @@ async function handleButApercu(env: AdminEnv, req: Request): Promise<Response> {
     // YouTube ; dès que Mehdi renseigne le buteur, le bouton ↻ la refait
     // avec le bon nom. Le modèle n'intervient plus : cinq variantes écrites
     // d'avance ne peuvent pas inventer un buteur (17/10/2026).
-    accroche: await composerAccrocheBut(env, {
-      buteur: devinerButeur(titre), adversaire: '', minute: '', equipes: '', competitionAr: '',
-    }),
+    ...devinerChamps(`${titre}\n${desc}`, String(sn.channelTitle ?? '')),
   })
 }
 
+/** Le texte d'un post X, extrait du HTML que rend l'oEmbed. */
+function texteDuPost(html5: string): string {
+  const sansBalises = String(html5 || '').replace(/<[^>]+>/g, ' ')
+  const decode = sansBalises
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ')
+    // `&mdash;` D'ABORD : c'est lui qui ouvre la signature, et sans le
+    // décoder la règle qui la retire ne trouvait rien (17/10/2026).
+    .replace(/&mdash;/g, '—').replace(/&hellip;/g, '…')
+  return decode
+    // Les adresses, y compris celles que X écrit sans protocole
+    // (`pic.twitter.com/…`, `t.co/…`).
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/\b(?:pic\.twitter\.com|pic\.x\.com|t\.co)\/\S+/g, ' ')
+    // La signature que X ajoute en fin d'embed : « — Auteur (@compte) date ».
+    .replace(/—\s*[^—]*\(@[^)]*\)[^—]*$/, '')
+    .replace(/\s+/g, ' ').trim()
+}
+
 /**
- * Le nom du buteur deviné sur le titre de la vidéo, pour remplir le champ
- * d'entrée — jamais pour publier. beIN titre « PSG Comeback Goal! Ousmane
- * Dembélé Strikes in the 85th Minute » : le nom y est, mais noyé. On rend
- * la plus longue suite de mots capitalisés, et Mehdi corrige.
+ * LES COMPTES ET CE QU'ILS COUVRENT.
+ *
+ * « C'est clair, la page c'est Champions League » (Mehdi, 17/10/2026) : le
+ * compte dit la compétition, on n'a pas à la deviner sur le texte. Ce qui
+ * n'est pas dans cette table reste vide — mieux qu'une compétition fausse.
  */
-function devinerButeur(titre: string): string {
-  const m = String(titre || '').match(/\b([A-ZÀ-Þ][\p{L}'’-]+(?:\s+[A-ZÀ-Þ][\p{L}'’-]+){1,2})\b/u)
-  return m ? m[1] : ''
+const COMPTES: Array<[RegExp, string]> = [
+  [/liga de campeones|champions league|uefa/i, 'UEFA Champions League'],
+  [/europa league/i, 'UEFA Europa League'],
+  [/laliga|la liga/i, 'LaLiga'],
+  [/premier league|fubo/i, 'Premier League'],
+  [/serie a|lega/i, 'Serie A'],
+  [/bundesliga/i, 'Bundesliga'],
+  [/ligue 1|bein/i, 'Ligue 1'],
+]
+
+/**
+ * Ce qu'on peut lire SANS DEVINER dans le texte d'un post.
+ *
+ * Les buts ne sont pas forcément du jour (Mehdi) : on ne les rapproche donc
+ * d'aucune liste de matchs. Tout vient du texte, et ce qui n'y est pas
+ * reste vide — Mehdi complète. Un champ pré-rempli faux coûte plus cher
+ * qu'un champ vide.
+ */
+function devinerChamps(texte: string, compte: string): {
+  noms: string[]; minute: string; equipes: string; competition: string
+} {
+  const t = String(texte || '')
+  // Les noms propres : au moins deux mots capitalisés à la suite, ou un
+  // prénom seul connu du texte (« Fermín »). On prend les deux premiers.
+  const noms = [...t.matchAll(/\b([A-ZÀ-Þ][\p{Ll}'’-]{2,}(?:\s+[A-ZÀ-Þ][\p{Ll}'’-]{2,}){0,2})\b/gu)]
+    .map((m) => m[1])
+    .filter((n) => !/^(Liga|Champions|League|Barcelona|Madrid|Betis|Video|Goal|Gol)$/i.test(n))
+  const paire = t.match(/\b([\p{L}'’. -]{3,24})\s*(?:vs\.?|[-–])\s*([\p{L}'’. -]{3,24})\b/u)
+  const min = t.match(/\b(\d{1,3})\s*['’]/)
+  const comp = COMPTES.find(([re]) => re.test(compte))?.[1] ?? ''
+  return {
+    // ── ON NE DÉCIDE PAS QUI A MARQUÉ ───────────────────────────────────
+    // « 📽️ A cámara lenta… Lamine Yamal 🔵🔴 Fermín » : c'est Fermín qui
+    // marque et Yamal qui délivre — l'inverse de l'ordre d'apparition
+    // (Mehdi, 17/10/2026). Aucun post ne garantit cet ordre. On rend donc
+    // les noms TELS QUELS et l'écran laisse Mehdi assigner d'un clic.
+    noms: noms.slice(0, 4),
+    minute: min ? `${min[1]}'` : '',
+    equipes: paire ? `${paire[1].trim()} - ${paire[2].trim()}` : '',
+    competition: comp,
+  }
 }
 
 /**
@@ -2202,7 +2267,7 @@ async function composerAccrocheBut(env: AdminEnv, o: {
 
 async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response> {
   const b = await readBoundedJson(req, 4_000) as {
-    buteur?: string; adversaire?: string; minute?: string; equipes?: string
+    buteur?: string; passeur?: string; adversaire?: string; minute?: string; equipes?: string
     competition?: string; penalty?: boolean; csc?: boolean; suivante?: boolean
   } | null
   // `suivante` fait tourner la rotation : Mehdi appuie sur ↻ jusqu'à ce
@@ -2215,6 +2280,7 @@ async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response>
     ok: true,
     accroche: captionBut({
       buteur: (safeString(b?.buteur ?? '', 120) ?? ''),
+      passeur: (safeString(b?.passeur ?? '', 120) ?? ''),
       adversaire: (safeString(b?.adversaire ?? '', 120) ?? ''),
       minute: (safeString(b?.minute ?? '', 12) ?? ''),
       equipes: (safeString(b?.equipes ?? '', 160) ?? ''),
@@ -2324,4 +2390,34 @@ async function handleButListe(env: AdminEnv): Promise<Response> {
   )
   const rows = await r.json().catch(() => [])
   return jsonResp({ rows })
+}
+
+
+/**
+ * L'APERÇU DE LA CARTE — ce qui partira vraiment sur Facebook.
+ *
+ * Mehdi, 17/10/2026 : « pas d'aperçu du poste ». On rend donc la carte avec
+ * les champs du moment, sans rien publier : il voit l'image exacte avant de
+ * décider. Le studio est sur 0,1 CPU, d'où un seul rendu par clic.
+ */
+async function handleButCarte(env: AdminEnv, req: Request): Promise<Response> {
+  const b = await readBoundedJson(req, 4_000) as {
+    equipes?: string; competition?: string; buteur?: string; minute?: string; vignette?: string
+  } | null
+  const eq = ((safeString(b?.equipes ?? '', 160) ?? '')).split(/\s*[–-]\s*|\s+vs\.?\s+/i)
+  try {
+    const auto = await import('./automation')
+    const url = await auto.renderImage(env as unknown as Parameters<typeof auto.renderImage>[0], 'but-clip', {
+      lang: 'ar',
+      competition: auto.leagueAr((safeString(b?.competition ?? '', 80) ?? '')),
+      home: eq[0] ?? '', away: eq[1] ?? '',
+      scorer: (safeString(b?.buteur ?? '', 120) ?? ''),
+      minute: (safeString(b?.minute ?? '', 12) ?? ''),
+      vignette: b?.vignette ?? null,
+      barca: true,
+    })
+    return jsonResp({ ok: true, url })
+  } catch (e) {
+    return jsonResp({ error: String(e).slice(0, 200) }, 502)
+  }
 }

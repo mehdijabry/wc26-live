@@ -77,7 +77,7 @@ export function captionResume(o: {
  * soit : sans la preuve, elle sort de la rotation.
  */
 export function titreDeBut(o: {
-  buteur: string; adversaire?: string; minute?: string
+  buteur: string; passeur?: string; adversaire?: string; minute?: string
   penalty?: boolean; csc?: boolean; changeLeVainqueur?: boolean
 }, index = 0): string {
   const qui = String(o.buteur || '').trim()
@@ -96,6 +96,9 @@ export function titreDeBut(o: {
     `${qui}... هدف من العيار الثقيل`,
     `${qui} يعيدها من جديد`,
   ]
+  // Quand on connaît le PASSEUR, une variante le met en scène : le but se
+  // raconte à deux, et c'est souvent la passe qui fait l'action.
+  if (o.passeur) variantes.push(`${o.passeur} يصنع... و${qui} ينهي`)
   // La cinquième n'entre en jeu que si elle est vraie.
   if (o.changeLeVainqueur) variantes.push(`هدف ${qui} الذي غيّر وجه المباراة`)
   return variantes[((index % variantes.length) + variantes.length) % variantes.length]
@@ -103,11 +106,12 @@ export function titreDeBut(o: {
 
 /** Le post complet d'un but. */
 export function captionBut(o: {
-  buteur: string; adversaire?: string; minute?: string; penalty?: boolean; csc?: boolean
+  buteur: string; passeur?: string; adversaire?: string; minute?: string; penalty?: boolean; csc?: boolean
   changeLeVainqueur?: boolean; equipes?: string; competitionAr?: string; lien: string
 }, index = 0): string {
   const lignes = [`⚽ ${titreDeBut(o, index)}`, '']
   if (o.equipes) lignes.push(`🆚 ${o.equipes}${o.minute ? ` · ${o.minute}` : ''}`)
+  if (o.passeur) lignes.push(`🅰️ صناعة ${o.passeur}`)
   if (o.competitionAr) lignes.push(`🏆 ${o.competitionAr}`)
   lignes.push('', 'هدف اليوم؟ قل رأيك 👇', `👉 شاهده على ${o.lien}`, '')
   lignes.push([o.competitionAr ? tag(o.competitionAr) : '#هدف', '#هدف', '#كرة_القدم', '#Pressing90']

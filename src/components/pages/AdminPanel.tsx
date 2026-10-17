@@ -3918,6 +3918,9 @@ function lienDeCode(code: string): string {
 type ButApercu = {
   videoId: string; source: string; titre: string; description: string
   chaine?: string; vignette?: string | null; lien?: string; accroche?: string
+  // Les noms LUS dans le texte, dans l'ordre d'apparition — et rien de
+  // plus : « Yamal × Fermín » ne dit pas lequel a marqué.
+  noms?: string[]; minute?: string; equipes?: string; competition?: string
 }
 type ButLigne = {
   video_id: string; source: string; titre: string; buteur?: string | null
@@ -3933,8 +3936,11 @@ function Buts() {
   const [competition, setCompetition] = useState('')
   const [equipes, setEquipes] = useState('')
   const [buteur, setButeur] = useState('')
+  const [passeur, setPasseur] = useState('')
   const [minute, setMinute] = useState('')
   const [surFb, setSurFb] = useState(true)
+  const [vignette, setVignette] = useState('')
+  const [carte, setCarte] = useState<string | null>(null)
   const [occupe, setOccupe] = useState<string | null>(null)
   const [msg, setMsg] = useState<string | null>(null)
   const [rows, setRows] = useState<ButLigne[]>([])
@@ -3948,11 +3954,24 @@ function Buts() {
     try {
       const d = await adminPost('/admin/but/apercu', { url: url.trim() }) as ButApercu & { error?: string }
       if (d.error) { setMsg(d.error); return }
-      setAp(d)
-      setCaption(d.accroche || d.titre || '')
-      // Le titre porte souvent la paire : on la propose, Mehdi corrige.
-      const m = (d.titre || '').match(/(.{3,40}?)\s+(?:vs\.?|[-–])\s+(.{3,40}?)(?:\s*\||$)/i)
-      if (m) setEquipes(`${m[1].trim()} - ${m[2].trim()}`)
+      setAp(d); setCarte(null)
+      setVignette(d.vignette || '')
+      // Ce que le moteur a lu dans le texte. Rien n'est deviné : un champ
+      // vide se remplit à la main, un champ faux coûte plus cher.
+      setButeur(''); setPasseur('')
+      if (d.minute) setMinute(d.minute)
+      if (d.competition) setCompetition(d.competition)
+      if (d.equipes) setEquipes(d.equipes)
+      else {
+        const m = (d.titre || '').match(/(.{3,40}?)\s+(?:vs\.?|[-–])\s+(.{3,40}?)(?:\s*\||$)/i)
+        if (m) setEquipes(`${m[1].trim()} - ${m[2].trim()}`)
+      }
+      // L'accroche se compose avec ce qu'on vient de lire.
+      const a = await adminPost('/admin/but/accroche', {
+        buteur: '', minute: d.minute ?? '', equipes: d.equipes ?? '',
+        competition: d.competition ?? '', adversaire: (d.equipes ?? '').split(/\s*[–-]\s*/)[1] ?? '',
+      }) as { accroche?: string }
+      setCaption(a.accroche || d.titre || '')
     } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
   }
 
@@ -3960,12 +3979,22 @@ function Buts() {
     setOccupe('accroche')
     try {
       const d = await adminPost('/admin/but/accroche', {
-        buteur, minute, equipes, competition,
+        buteur, passeur, minute, equipes, competition,
         adversaire: equipes.split(/\s*[–-]\s*/)[1] ?? '',
         suivante: true,
       }) as { accroche?: string }
       if (d.accroche) setCaption(d.accroche)
     } catch { /* on garde ce qui est écrit */ } finally { setOccupe(null) }
+  }
+
+  async function apercuCarte() {
+    setOccupe('carte')
+    try {
+      const d = await adminPost('/admin/but/carte', {
+        equipes, competition, buteur, minute, vignette: vignette || ap?.vignette || null,
+      }) as { url?: string; error?: string }
+      if (d.url) setCarte(d.url); else setMsg(d.error ?? 'rendu impossible')
+    } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
   }
 
   async function publier() {
@@ -3974,7 +4003,7 @@ function Buts() {
     try {
       const d = await adminPost('/admin/but/publier', {
         videoId: ap.videoId, source: ap.source, titre: ap.titre, description: ap.description,
-        vignette: ap.vignette, caption, competition, equipes, buteur, minute, fb: surFb,
+        vignette: vignette || ap.vignette, caption, competition, equipes, buteur, minute, fb: surFb,
       }) as { ok?: boolean; error?: string; fb?: { ok: boolean; note?: string } }
       if (d.error) { setMsg(d.error); return }
       setMsg(surFb
@@ -4011,10 +4040,29 @@ function Buts() {
         {ap && (
           <div className="mt-4 grid sm:grid-cols-[220px_1fr] gap-4">
             <div>
-              {ap.vignette
-                ? <img src={ap.vignette} alt="" className="w-full rounded-lg border border-slate-200" />
-                : <div className="w-full aspect-video rounded-lg bg-slate-100" />}
+              {/* L'aperçu montre LA CARTE qui partira, pas la vignette brute :
+                  c'est elle que les gens verront dans le fil. */}
+              {carte
+                ? <img src={carte} alt="" className="w-full rounded-lg border border-slate-200" />
+                : vignette || ap.vignette
+                  ? <img src={vignette || ap.vignette || ''} alt="" className="w-full rounded-lg border border-slate-200" />
+                  : <div className="w-full aspect-video rounded-lg bg-slate-100 flex items-center justify-center text-[11px] text-slate-400">
+                      aucune image
+                    </div>}
               <div className="mt-1.5 text-[11px] text-slate-500 truncate">{ap.chaine}</div>
+              {/* X ne donne pas d'image : on peut en coller une à la main
+                  plutôt que de laisser la fenêtre de la carte noire. */}
+              <input
+                value={vignette} onChange={(e) => setVignette(e.target.value)}
+                placeholder="URL d’image (facultatif)"
+                className="mt-2 w-full px-2 py-1.5 rounded-lg border border-slate-200 text-[11px]"
+              />
+              <button
+                type="button" onClick={() => void apercuCarte()} disabled={occupe === 'carte'}
+                className="mt-2 w-full px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-[12px] font-semibold disabled:opacity-40"
+              >
+                {occupe === 'carte' ? 'Rendu…' : 'Aperçu de la carte'}
+              </button>
             </div>
             <div className="space-y-2">
               <div className="text-sm font-semibold">{ap.titre}</div>
@@ -4022,8 +4070,31 @@ function Buts() {
                 <input value={equipes} onChange={(e) => setEquipes(e.target.value)} placeholder="Betis - Barcelona" className={champ} />
                 <input value={competition} onChange={(e) => setCompetition(e.target.value)} placeholder="LaLiga" className={champ} />
                 <input value={buteur} onChange={(e) => setButeur(e.target.value)} placeholder="Buteur" className={champ} />
+                <input value={passeur} onChange={(e) => setPasseur(e.target.value)} placeholder="Passeur (facultatif)" className={champ} />
                 <input value={minute} onChange={(e) => setMinute(e.target.value)} placeholder="41'" className={champ} />
               </div>
+
+              {/* ── LES NOMS LUS DANS LE POST ─────────────────────────────
+                  « 📽️ A cámara lenta… Lamine Yamal 🔵🔴 Fermín » ne dit
+                  PAS lequel a marqué — ici c'est Fermín, l'inverse de
+                  l'ordre d'apparition. Le moteur ne tranche donc pas : il
+                  pose les noms, et un clic les assigne. */}
+              {!!ap.noms?.length && (
+                <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
+                  <span className="text-slate-500">Noms lus :</span>
+                  {ap.noms.map((n) => (
+                    <span key={n} className="inline-flex items-center gap-1 rounded-full bg-slate-100 ps-2.5 pe-1 py-1">
+                      <span className="font-medium">{n}</span>
+                      <button type="button" onClick={() => setButeur(n)}
+                        title="Buteur"
+                        className="px-1.5 rounded-full bg-accent-gold/90 text-ink-900 text-[10px] font-bold">⚽</button>
+                      <button type="button" onClick={() => setPasseur(n)}
+                        title="Passeur"
+                        className="px-1.5 rounded-full bg-slate-300 text-ink-900 text-[10px] font-bold">🅰️</button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="relative">
                 <textarea
                   value={caption} onChange={(e) => setCaption(e.target.value)} rows={6}
