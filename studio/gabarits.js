@@ -34,6 +34,7 @@ export const MENTHE = '#7FE7C4'
 export const UTILE = {
   // Les deux plaques du ticket arrivent en 1152x2048, soit du 9:16 exact :
   // rien a rogner, la hauteur utile est la hauteur du fichier.
+  'but-clip': 2080,
   'ticket-gagnant': 2048,
   'ticket-gagnant-barca': 2048,
   // Plaques de but refaites le 16/10/2026 en 1080x1920 : les anciennes
@@ -75,6 +76,10 @@ export const CASES = {
   // Largeur 700 sur 768 : 34 px de marge de chaque cote, soit 48 px une fois
   // a l'echelle de 1080. La case « joueur » de la peau Barca disparait : elle
   // n'existait que pour un decoupage de la maquette.
+  // Relevé au pixel sur la plaque 1664x2080 (17/10/2026), exprimé en
+  // fractions parce que le rendu se fait en 1080x1350 : x 5,1 % → 94,9 %,
+  // fenêtre 21 % → 58,6 %, bandeau 61,8 % → 77,2 %.
+  'but-clip': { fenetre: [55, 283, 970, 508], bandeau: [55, 834, 970, 208] },
   'but-neutre': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'but-barca': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'soiree-4-moments': {

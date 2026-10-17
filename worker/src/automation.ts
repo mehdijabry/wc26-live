@@ -3743,6 +3743,16 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       await log(env, date, 'yt-releve', true, note.slice(0, 900))
       return { ok: true, note }
     }
+    if (job === 'yt-clips') {
+      // Les titres BRUTS d'une chaîne : sert à découvrir comment elle nomme
+      // un but isolé, avant d'écrire la moindre règle de classement.
+      const yt = await import('./youtube')
+      const x = extra as { cle?: string; n?: number }
+      const ch = yt.CHAINES.find((c) => c.cle === x.cle)
+      if (!ch) return { ok: false, note: `cle inconnue (${yt.CHAINES.map((c) => c.cle).join(', ')})` }
+      const clips = await yt.derniersClips(env as unknown as { YOUTUBE_API_KEY?: string }, ch.id, Number(x.n ?? 40))
+      return { ok: true, note: clips.map((c) => `${c.publie.slice(5, 16)} ${c.titre.replace(/\s*\|\s*/g, ' ~ ').slice(0, 110)}`).join(' @@ ') }
+    }
     if (job === 'yt-poignee') {
       const yt = await import('./youtube')
       const h = String((extra as { handle?: string }).handle ?? '')

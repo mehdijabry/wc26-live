@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritGoalAnimSpec, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritGoalAnimSpec, gabaritButClip, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -310,6 +310,10 @@ app.post('/render/image', async (req, res) => {
         // SA langue, et la peau blaugrana ne lui est donnee que si le Barca
         // est dans son pari.
         case 'ticket-gagnant': canvas = await gabaritTicketGagnant(data); break
+        // LE BUT EN CLIP, 4:5 : la carte qui accompagne un but publie a la
+        // main depuis l'admin. La vignette vient de la video, le reste est
+        // dessine.
+        case 'but-clip': canvas = await gabaritButClip(data); break
         case 'gabarit-album': canvas = await gabaritAlbumFinal(data); break
         case 'gabarit-stats': canvas = await gabaritStatsMatch(data); break
         case 'gabarit-tableau': canvas = await gabaritTableauSoiree(data); break

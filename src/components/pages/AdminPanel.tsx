@@ -26,7 +26,7 @@ import { uploadPostCards } from '../../lib/newsCards'
  */
 
 type Tab =
-  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news' | 'social' | 'insights' | 'jeu'
+  | 'overview' | 'analytics' | 'push' | 'email' | 'database' | 'health' | 'actions' | 'news' | 'social' | 'insights' | 'jeu' | 'buts'
 
 // Token storage key in sessionStorage. We use sessionStorage (not local)
 // so the token clears when the tab closes — saves us from a stale
@@ -189,7 +189,7 @@ export function AdminPanel() {
           className="max-w-6xl mx-auto px-4 sm:px-5 pb-2 flex gap-1.5 overflow-x-auto scroll-smooth"
           style={{ scrollPaddingInline: '1rem', WebkitOverflowScrolling: 'touch' }}
         >
-          {(['overview', 'analytics', 'insights', 'jeu', 'news', 'social', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
+          {(['overview', 'analytics', 'insights', 'jeu', 'buts', 'news', 'social', 'push', 'email', 'database', 'health', 'actions'] as Tab[]).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -228,6 +228,7 @@ export function AdminPanel() {
         {tab === 'social' && <Social />}
         {tab === 'insights' && <Insights />}
         {tab === 'jeu' && <Jeu />}
+        {tab === 'buts' && <Buts />}
       </main>
     </div>
   )
@@ -3898,4 +3899,163 @@ function CodesDInscription() {
 
 function lienDeCode(code: string): string {
   return `https://pressing90.live/bienvenue/${code}`
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LES BUTS — on colle l'adresse, on publie
+//
+// Mehdi, 17/10/2026. L'automatisation savait reconnaître un RÉSUMÉ de match
+// (titre « ÉQUIPE vs ÉQUIPE | HIGHLIGHTS ») mais pas un but isolé : LaLiga
+// les titre « 💥 Marcos Llorente 💥 » et traite un ARRÊT exactement pareil.
+// Plutôt que de deviner et de se tromper en public, on colle l'adresse.
+//
+// Le parcours tient en deux gestes : Aperçu, puis Publier. L'aperçu va
+// chercher la vignette, le titre et la description chez YouTube, et propose
+// une accroche en arabe tirée de cette description. Tout reste modifiable —
+// c'est une proposition, pas une décision.
+// ─────────────────────────────────────────────────────────────────────
+type ButApercu = {
+  videoId: string; source: string; titre: string; description: string
+  chaine?: string; vignette?: string | null; lien?: string; accroche?: string
+}
+type ButLigne = {
+  video_id: string; source: string; titre: string; buteur?: string | null
+  minute?: string | null; competition?: string | null
+  equipe_dom?: string | null; equipe_ext?: string | null
+  publie_at: string; publie_fb: boolean
+}
+
+function Buts() {
+  const [url, setUrl] = useState('')
+  const [ap, setAp] = useState<ButApercu | null>(null)
+  const [caption, setCaption] = useState('')
+  const [competition, setCompetition] = useState('')
+  const [equipes, setEquipes] = useState('')
+  const [buteur, setButeur] = useState('')
+  const [minute, setMinute] = useState('')
+  const [surFb, setSurFb] = useState(true)
+  const [occupe, setOccupe] = useState<string | null>(null)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [rows, setRows] = useState<ButLigne[]>([])
+
+  const charger = () => { void adminGet('/admin/but/liste').then((d) => setRows(((d as { rows?: ButLigne[] }).rows) ?? [])).catch(() => {}) }
+  useEffect(charger, [])
+
+  async function apercu() {
+    if (!url.trim()) return
+    setOccupe('apercu'); setMsg(null); setAp(null)
+    try {
+      const d = await adminPost('/admin/but/apercu', { url: url.trim() }) as ButApercu & { error?: string }
+      if (d.error) { setMsg(d.error); return }
+      setAp(d)
+      setCaption(d.accroche || d.titre || '')
+      // Le titre porte souvent la paire : on la propose, Mehdi corrige.
+      const m = (d.titre || '').match(/(.{3,40}?)\s+(?:vs\.?|[-–])\s+(.{3,40}?)(?:\s*\||$)/i)
+      if (m) setEquipes(`${m[1].trim()} - ${m[2].trim()}`)
+    } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
+  }
+
+  async function publier() {
+    if (!ap) return
+    setOccupe('publier'); setMsg(null)
+    try {
+      const d = await adminPost('/admin/but/publier', {
+        videoId: ap.videoId, source: ap.source, titre: ap.titre, description: ap.description,
+        vignette: ap.vignette, caption, competition, equipes, buteur, minute, fb: surFb,
+      }) as { ok?: boolean; error?: string; fb?: { ok: boolean; note?: string } }
+      if (d.error) { setMsg(d.error); return }
+      setMsg(surFb
+        ? (d.fb?.ok ? 'Publié sur le site et sur Facebook.' : `Publié sur le site. Facebook : ${d.fb?.note ?? 'échec'}`)
+        : 'Publié sur le site.')
+      setAp(null); setUrl(''); setCaption(''); setButeur(''); setMinute('')
+      charger()
+    } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
+  }
+
+  const champ = 'w-full px-3 py-2 rounded-lg border border-slate-200 text-sm'
+
+  return (
+    <div className="space-y-5">
+      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+        <h2 className="font-semibold mb-1">Publier un but</h2>
+        <p className="text-[13px] text-slate-500 mb-3">
+          Colle l’adresse YouTube ou X du but. La vidéo reste chez l’ayant droit —
+          on ne republie jamais le fichier, seulement le lecteur.
+        </p>
+        <div className="flex gap-2">
+          <input
+            value={url} onChange={(e) => setUrl(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') void apercu() }}
+            placeholder="https://www.youtube.com/watch?v=…"
+            className={champ}
+          />
+          <button onClick={() => void apercu()} disabled={occupe === 'apercu' || !url.trim()}
+            className="shrink-0 px-4 py-2 rounded-lg bg-ink-900 text-white text-sm font-semibold disabled:opacity-40">
+            {occupe === 'apercu' ? '…' : 'Aperçu'}
+          </button>
+        </div>
+
+        {ap && (
+          <div className="mt-4 grid sm:grid-cols-[220px_1fr] gap-4">
+            <div>
+              {ap.vignette
+                ? <img src={ap.vignette} alt="" className="w-full rounded-lg border border-slate-200" />
+                : <div className="w-full aspect-video rounded-lg bg-slate-100" />}
+              <div className="mt-1.5 text-[11px] text-slate-500 truncate">{ap.chaine}</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm font-semibold">{ap.titre}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <input value={equipes} onChange={(e) => setEquipes(e.target.value)} placeholder="Betis - Barcelona" className={champ} />
+                <input value={competition} onChange={(e) => setCompetition(e.target.value)} placeholder="LaLiga" className={champ} />
+                <input value={buteur} onChange={(e) => setButeur(e.target.value)} placeholder="Buteur" className={champ} />
+                <input value={minute} onChange={(e) => setMinute(e.target.value)} placeholder="41'" className={champ} />
+              </div>
+              <textarea
+                value={caption} onChange={(e) => setCaption(e.target.value)} rows={4}
+                dir="auto" placeholder="Accroche Facebook"
+                className={champ + ' resize-y leading-relaxed'}
+              />
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" checked={surFb} onChange={(e) => setSurFb(e.target.checked)} />
+                  Publier aussi sur Facebook
+                </label>
+                <button onClick={() => void publier()} disabled={occupe === 'publier'}
+                  className="ms-auto px-4 py-2 rounded-lg bg-accent-gold text-ink-900 text-sm font-semibold disabled:opacity-40">
+                  {occupe === 'publier' ? '…' : 'Publier'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {msg && <p className="mt-3 text-[13px] text-slate-700">{msg}</p>}
+      </section>
+
+      <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+        <h2 className="font-semibold mb-3">Derniers buts publiés</h2>
+        {rows.length === 0 ? (
+          <p className="text-sm text-slate-500">Aucun pour l’instant.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {rows.map((r) => (
+              <li key={r.video_id} className="py-2.5 flex items-baseline gap-3 text-sm">
+                <span className="font-mono text-[11px] text-slate-400 shrink-0">{r.publie_at.slice(5, 16)}</span>
+                <span className="min-w-0 flex-1 truncate">
+                  {r.buteur ? <b>{r.buteur}</b> : null}{r.minute ? ` ${r.minute}` : ''}
+                  {r.buteur ? ' — ' : ''}{r.equipe_dom}{r.equipe_ext ? ` – ${r.equipe_ext}` : ''}
+                  <span className="text-slate-400"> · {r.titre}</span>
+                </span>
+                <span className={'shrink-0 font-mono text-[10px] uppercase ' + (r.publie_fb ? 'text-accent-green' : 'text-slate-400')}>
+                  {r.publie_fb ? 'fb ✓' : 'site'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  )
 }

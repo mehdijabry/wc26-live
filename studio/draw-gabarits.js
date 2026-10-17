@@ -1424,3 +1424,105 @@ export async function gabaritTicketGagnant(d = {}) {
   blocInscription(ctx, W / 2, G.qr, 130, W, { compact: true, lang })
   return c
 }
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LE BUT EN CLIP — gabarit « but-clip », 1080×1350 (4:5, post FB)      ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+/**
+ * La carte qui accompagne un but publié à la main.
+ *
+ * ── CE QU'ELLE EST ────────────────────────────────────────────────────────
+ * Une INVITATION, pas un résumé. Elle montre la vignette de la vidéo dans
+ * une fenêtre, un bouton de lecture, et juste assez de contexte pour qu'on
+ * sache de quel but il s'agit : les deux écussons, le score, le buteur et
+ * sa minute. Tout ce qui raconterait le but lui enlèverait sa raison d'être.
+ *
+ * ── LA VIGNETTE EST LA LEUR, ET ELLE LE RESTE ─────────────────────────────
+ * On la pose dans une fenêtre, comme n'importe quel aperçu de lien, et le
+ * post renvoie chez l'ayant droit. On ne reverse jamais la VIDÉO sur la
+ * page : le Rights Manager de Meta attrape les buts en minutes, et c'est la
+ * page qui prend l'avertissement.
+ *
+ * Sans vignette (un post X, par exemple), la fenêtre reste noire et le
+ * bouton de lecture suffit : mieux vaut une fenêtre vide qu'une image
+ * improvisée — c'est la règle posée le 17/10 sur les articles.
+ */
+export async function gabaritButClip(d = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1350
+  const lang = ['fr', 'en', 'ar'].includes(d.lang) ? d.lang : 'ar'
+  const rtl = lang === 'ar'
+  const n = (v) => Number(v ?? 0).toLocaleString(lang === 'ar' ? 'ar-u-nu-latn' : lang)
+  const ligne = (t, x, y, o = {}) => (rtl ? ar(ctx, t, x, y, o) : txt(ctx, t, x, y, o))
+
+  const barca = peauBarca(d.barca, d.home, d.away)
+  const teinte = barca ? OR : MENTHE
+
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poserPlaque(ctx, 'but-clip', W, H)
+
+  const [fx, fy, fw, fh] = CASES['but-clip'].fenetre
+  const [bx, by, bw, bh] = CASES['but-clip'].bandeau
+
+  // ── LA FENÊTRE : la vignette, recadrée pour remplir sans se déformer ──
+  const vign = d.vignette ? await loadImgOuRepli(d.vignette, null) : null
+  if (vign) {
+    ctx.save()
+    ctx.beginPath(); ctx.rect(fx, fy, fw, fh); ctx.clip()
+    couvrir(ctx, [fx, fy, fw, fh], '#05080F', 0)
+    const r = Math.max(fw / vign.width, fh / vign.height)
+    const lw = vign.width * r, lh = vign.height * r
+    ctx.drawImage(vign, fx + (fw - lw) / 2, fy + (fh - lh) / 2, lw, lh)
+    // Un voile en bas de la fenêtre : la minute s'y pose sans jamais tomber
+    // sur un fond clair.
+    const voile = ctx.createLinearGradient(0, fy + fh - 150, 0, fy + fh)
+    voile.addColorStop(0, 'rgba(5,8,15,0)'); voile.addColorStop(1, 'rgba(5,8,15,0.85)')
+    ctx.fillStyle = voile; ctx.fillRect(fx, fy + fh - 150, fw, 150)
+    ctx.restore()
+  }
+
+  // ── LE BOUTON DE LECTURE, dessiné et non incrusté ────────────────────
+  // Centré sur la FENÊTRE, pas sur l'image : la vignette change de
+  // proportions d'une source à l'autre.
+  const px = fx + fw / 2, py = fy + fh / 2, R = 66
+  ctx.save()
+  // Un halo sous le disque : sur une vignette claire et chargée, un disque
+  // semi-transparent ne suffit pas et le triangle se perd dans l'image.
+  const halo = ctx.createRadialGradient(px, py, R * 0.6, px, py, R * 2.1)
+  halo.addColorStop(0, 'rgba(5,8,15,0.55)'); halo.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(px, py, R * 2.1, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(px, py, R, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(5,8,15,0.88)'; ctx.fill()
+  ctx.lineWidth = 4; ctx.strokeStyle = teinte; ctx.stroke()
+  ctx.beginPath()
+  ctx.moveTo(px - 18, py - 26); ctx.lineTo(px + 30, py); ctx.lineTo(px - 18, py + 26)
+  ctx.closePath(); ctx.fillStyle = teinte; ctx.fill()
+  ctx.restore()
+
+  // La minute, en bas de la fenêtre.
+  if (d.minute) {
+    txt(ctx, String(d.minute).replace("'", "'"), fx + fw - 28, fy + fh - 44,
+        { size: 46, font: 'Anton', color: CREME, align: 'right' })
+  }
+
+  // ── LE HAUT : la marque et la compétition ────────────────────────────
+  paintLogo(ctx, 44, 44, 140)
+  if (d.competition) ligne(d.competition, W / 2, 200, { size: 34, color: teinte })
+
+  // ── LE BANDEAU : qui, contre qui, et le score ────────────────────────
+  const dom = await crest(d.homeLogo), ext = await crest(d.awayLogo)
+  const ECU = 104, cy = by + 74
+  if (dom) ctx.drawImage(dom, bx + 46, cy - ECU / 2, ECU, ECU)
+  if (ext) ctx.drawImage(ext, bx + bw - 46 - ECU, cy - ECU / 2, ECU, ECU)
+  if (d.homeScore !== undefined && d.awayScore !== undefined) {
+    txt(ctx, `${d.homeScore ?? ''} – ${d.awayScore ?? ''}`, bx + bw / 2, cy,
+        { size: 76, font: 'Anton', color: CREME })
+  }
+  if (d.scorer) {
+    ligne(nomAr(d.scorer), bx + bw / 2, by + bh - 42, { size: 36, color: teinte })
+  }
+
+  // ── LE BAS : le code d'inscription ────────────────────────────────────
+  blocInscription(ctx, W / 2, 1096, 112, W, { compact: true, lang })
+  return c
+}

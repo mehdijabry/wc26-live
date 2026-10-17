@@ -421,6 +421,21 @@ export async function handleAdmin(
   // Social posts — AI generator + scheduler for the Facebook page.
   // Separate from the news pipeline: free-form posts that promote the
   // site, optionally scheduled for a future time (fired by the cron).
+  // ── LES BUTS, À LA MAIN ───────────────────────────────────────────────
+  // Mehdi, 17/10/2026 : plutôt que de deviner lequel des clips publiés
+  // pendant un match est un but — LaLiga les titre « 💥 Marcos Llorente 💥 »
+  // et traite un ARRÊT de la même façon — il colle l'adresse du but et on
+  // publie. Aucune heuristique, aucun faux positif, et c'est immédiat.
+  if (pathname === '/admin/but/apercu' && req.method === 'POST') {
+    return handleButApercu(env, req)
+  }
+  if (pathname === '/admin/but/publier' && req.method === 'POST') {
+    return handleButPublier(env, req)
+  }
+  if (pathname === '/admin/but/liste' && req.method === 'GET') {
+    return handleButListe(env)
+  }
+
   if (pathname === '/admin/social/generate' && req.method === 'POST') {
     return handleSocialGenerate(env, req)
   }
@@ -2080,4 +2095,209 @@ async function fetchArticleRow(env: AdminEnv, id: string): Promise<ArticleRow | 
 
 function nowIso(): string {
   return new Date().toISOString()
+}
+
+
+// ─────────────────────────────────────────────────────────────────────
+// LES BUTS PUBLIÉS À LA MAIN
+//
+// Trois routes, et une règle : on n'héberge rien. La vidéo reste chez
+// l'ayant droit — YouTube ou X — et c'est son lecteur qui la joue. C'est ce
+// qui rend l'opération légitime, et c'est aussi pourquoi on ne reverse
+// jamais le clip sur la page Facebook : le Rights Manager de Meta attrape
+// les buts en quelques minutes, et c'est la PAGE qui prend l'avertissement.
+// ─────────────────────────────────────────────────────────────────────
+
+/** L'identifiant d'une vidéo, quelle que soit la forme de l'adresse collée. */
+export function idDeVideo(url: string): { source: 'youtube' | 'x'; id: string } | null {
+  const u = String(url || '').trim()
+  if (!u) return null
+  const yt = u.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/|embed\/|live\/)|youtu\.be\/)([A-Za-z0-9_-]{11})/)
+  if (yt) return { source: 'youtube', id: yt[1] }
+  // Une adresse collée depuis l'application mobile porte parfois des
+  // paramètres de suivi avant l'identifiant : on retente sur le seul motif.
+  const nu = u.match(/[?&]v=([A-Za-z0-9_-]{11})/)
+  if (nu) return { source: 'youtube', id: nu[1] }
+  const x = u.match(/(?:twitter|x)\.com\/[^/]+\/status\/(\d{10,25})/)
+  if (x) return { source: 'x', id: x[1] }
+  return null
+}
+
+async function handleButApercu(env: AdminEnv, req: Request): Promise<Response> {
+  const body = await readBoundedJson(req, 2_000) as { url?: string } | null
+  const ref = idDeVideo((safeString(body?.url ?? '', 400) ?? ''))
+  if (!ref) return jsonResp({ error: 'adresse non reconnue (YouTube ou X)' }, 400)
+
+  if (ref.source === 'x') {
+    // L'embed oEmbed de X est gratuit et sans authentification : on n'a
+    // besoin de rien d'autre pour afficher le post chez nous.
+    const r = await fetch(`https://publish.x.com/oembed?url=${encodeURIComponent(`https://x.com/i/status/${ref.id}`)}&omit_script=1`, {
+      headers: { 'user-agent': 'Mozilla/5.0 (compatible; p90)' },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!r.ok) return jsonResp({ error: `X a répondu ${r.status}` }, 502)
+    const j = await r.json().catch(() => ({})) as { author_name?: string; html?: string }
+    return jsonResp({
+      ok: true, source: 'x', videoId: ref.id,
+      titre: `Post de ${j.author_name ?? '—'}`, description: '', chaine: j.author_name ?? '',
+      vignette: null, lien: `https://x.com/i/status/${ref.id}`, embed: j.html ?? null,
+    })
+  }
+
+  const cle = (env as unknown as { YOUTUBE_API_KEY?: string }).YOUTUBE_API_KEY
+  if (!cle) return jsonResp({ error: 'YOUTUBE_API_KEY absente' }, 503)
+  const r = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet&id=${ref.id}&key=${cle}`, {
+    signal: AbortSignal.timeout(15_000),
+  })
+  const j = await r.json().catch(() => ({})) as { items?: Array<{ snippet?: Record<string, unknown> }> }
+  const sn = j.items?.[0]?.snippet
+  if (!sn) return jsonResp({ error: 'vidéo introuvable' }, 404)
+  const vign = (sn.thumbnails ?? {}) as Record<string, { url?: string }>
+  const titre = String(sn.title ?? '')
+  const desc = String(sn.description ?? '').slice(0, 1200)
+  return jsonResp({
+    ok: true, source: 'youtube', videoId: ref.id,
+    titre,
+    description: desc,
+    chaine: String(sn.channelTitle ?? ''),
+    publie: String(sn.publishedAt ?? ''),
+    vignette: vign.maxres?.url ?? vign.high?.url ?? vign.medium?.url ?? null,
+    lien: `https://www.youtube.com/watch?v=${ref.id}`,
+    accroche: await accrocheDeBut(env, titre, desc),
+  })
+}
+
+/**
+ * L'ACCROCHE FACEBOOK — « on prend juste la description, on enjolive un
+ * peu » (Mehdi, 17/10/2026).
+ *
+ * Elle est en ARABE, comme toute la page. Deux garde-fous dans la consigne :
+ * ne rien inventer qui ne soit pas dans la description — un but raconté de
+ * travers se voit immédiatement — et ne pas RACONTER le but, sinon il n'y a
+ * plus de raison de cliquer. On promet, on ne résume pas.
+ *
+ * Si le modèle ne répond pas, on rend une chaîne vide : l'écran garde alors
+ * le titre d'origine, et Mehdi écrit lui-même. Jamais de phrase inventée
+ * pour boucher le trou.
+ */
+async function accrocheDeBut(env: AdminEnv, titre: string, description: string): Promise<string> {
+  try {
+    const auto = await import('./automation')
+    const j = await auto.gptJson(
+      env as unknown as Parameters<typeof auto.gptJson>[0],
+      'Tu écris la légende Facebook d\'un but de football, en ARABE, pour une page de football. '
+      + 'Deux à trois lignes, ton vivant mais jamais racoleur. RÈGLES : '
+      + '(1) n\'affirme AUCUN fait qui ne soit pas dans le titre ou la description fournis ; '
+      + '(2) ne raconte pas le but — donne envie de le voir, ne le résume pas ; '
+      + '(3) les chiffres en chiffres latins ; '
+      + '(4) finis par une question courte au lecteur. '
+      + 'Réponds UNIQUEMENT {"caption":"..."}',
+      `TITRE: ${titre}\n\nDESCRIPTION: ${description.slice(0, 700)}`,
+      500,
+    ) as { caption?: string }
+    return String(j?.caption ?? '').trim().slice(0, 600)
+  } catch {
+    return ''
+  }
+}
+
+async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> {
+  const b = await readBoundedJson(req, 8_000) as {
+    videoId?: string; source?: string; titre?: string; description?: string
+    caption?: string; competition?: string; equipes?: string; buteur?: string; minute?: string
+    vignette?: string; fb?: boolean
+  } | null
+  const videoId = (safeString(b?.videoId ?? '', 40) ?? '')
+  if (!videoId) return jsonResp({ error: 'videoId requis' }, 400)
+  const source = b?.source === 'x' ? 'x' : 'youtube'
+
+  const e = env as unknown as { SUPABASE_URL?: string; SUPABASE_SERVICE_KEY?: string }
+  if (!e.SUPABASE_URL || !e.SUPABASE_SERVICE_KEY) return jsonResp({ error: 'base indisponible' }, 503)
+  const entetes = {
+    apikey: e.SUPABASE_SERVICE_KEY,
+    authorization: `Bearer ${e.SUPABASE_SERVICE_KEY}`,
+    'content-type': 'application/json',
+    prefer: 'resolution=merge-duplicates,return=representation',
+  }
+
+  // « Betis – Barcelona », « Betis vs Barcelona » : on scinde sans rien
+  // inventer, et si ça ne se scinde pas, tout reste à gauche.
+  const deuxEquipes = ((safeString(b?.equipes ?? '', 160) ?? '')).split(/\s*[–-]\s*|\s+vs\.?\s+/i)
+
+  const ligne = {
+    video_id: videoId,
+    source: source === 'x' ? 'x-manuel' : 'yt-manuel',
+    kind: 'but',
+    titre: (safeString(b?.titre ?? '', 300) ?? ''),
+    description: (safeString(b?.description ?? '', 2000) ?? ''),
+    publie_at: new Date().toISOString(),
+    competition: (safeString(b?.competition ?? '', 80) ?? '') || null,
+    buteur: (safeString(b?.buteur ?? '', 120) ?? '') || null,
+    minute: (safeString(b?.minute ?? '', 12) ?? '') || null,
+    // `equipes` est saisi libre (« Betis – Barcelona ») : on le scinde sans
+    // rien inventer, et si ça ne se scinde pas on garde tout à gauche.
+    equipe_dom: deuxEquipes[0] || null,
+    equipe_ext: deuxEquipes[1] || null,
+    publie_site: true,
+  }
+
+  const ins = await fetch(`${e.SUPABASE_URL}/rest/v1/videos_matchs?on_conflict=video_id`, {
+    method: 'POST', headers: entetes, body: JSON.stringify(ligne),
+  })
+  if (!ins.ok) return jsonResp({ error: `base ${ins.status}: ${(await ins.text()).slice(0, 200)}` }, 502)
+
+  let fb: { ok: boolean; note?: string } = { ok: false, note: 'non demandé' }
+  if (b?.fb) {
+    const auto = await import('./automation')
+    const lien = `${SITE_URL}/buts?v=${encodeURIComponent(videoId)}`
+    // ── L'IMAGE EST LA NÔTRE ───────────────────────────────────────────
+    // Le studio dessine la carte « but-clip » : la vignette de la vidéo
+    // posée dans une fenêtre, un bouton de lecture, les deux écussons, le
+    // score, le buteur et sa minute. Poster la vignette NUE reviendrait à
+    // publier l'image d'un ayant droit comme si c'était la nôtre ; posée
+    // dans notre carte, c'est un aperçu de lien, et le clic repart chez lui.
+    //
+    // Si le studio dort, on retombe sur la vignette proxyfiée : mieux vaut
+    // un post sans notre habillage qu'un post sans image.
+    let image = b?.vignette
+      ? `https://wc26-api.nameless-violet-5dc1.workers.dev/fb-img?u=${encodeURIComponent(String(b.vignette))}`
+      : `${SITE_URL}/icon-512.png`
+    try {
+      image = await auto.renderImage(env as unknown as Parameters<typeof auto.renderImage>[0], 'but-clip', {
+        lang: 'ar',
+        competition: (safeString(b?.competition ?? '', 80) ?? ''),
+        home: deuxEquipes[0] ?? '', away: deuxEquipes[1] ?? '',
+        scorer: (safeString(b?.buteur ?? '', 120) ?? ''),
+        minute: (safeString(b?.minute ?? '', 12) ?? ''),
+        vignette: b?.vignette ?? null,
+        barca: true,
+      })
+    } catch { /* la vignette proxyfiée fait l'affaire */ }
+    fb = await auto.fbPost(env as unknown as Parameters<typeof auto.fbPost>[0], {
+      message: (safeString(b?.caption ?? '', 1800) ?? '') || (safeString(b?.titre ?? '', 300) ?? ''),
+      link: lien,
+      image_url: image,
+      title: (safeString(b?.titre ?? '', 300) ?? ''),
+      comment: `▶️ ${source === 'x' ? `https://x.com/i/status/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`}`,
+    })
+    if (fb.ok) {
+      await fetch(`${e.SUPABASE_URL}/rest/v1/videos_matchs?video_id=eq.${encodeURIComponent(videoId)}`, {
+        method: 'PATCH',
+        headers: { ...entetes, prefer: 'return=minimal' },
+        body: JSON.stringify({ publie_fb: true }),
+      })
+    }
+  }
+  return jsonResp({ ok: true, videoId, fb })
+}
+
+async function handleButListe(env: AdminEnv): Promise<Response> {
+  const e = env as unknown as { SUPABASE_URL?: string; SUPABASE_SERVICE_KEY?: string }
+  if (!e.SUPABASE_URL || !e.SUPABASE_SERVICE_KEY) return jsonResp({ rows: [] })
+  const r = await fetch(
+    `${e.SUPABASE_URL}/rest/v1/videos_matchs?kind=eq.but&select=video_id,source,titre,buteur,minute,competition,equipe_dom,equipe_ext,publie_at,publie_fb&order=publie_at.desc&limit=30`,
+    { headers: { apikey: e.SUPABASE_SERVICE_KEY, authorization: `Bearer ${e.SUPABASE_SERVICE_KEY}` } },
+  )
+  const rows = await r.json().catch(() => [])
+  return jsonResp({ rows })
 }
