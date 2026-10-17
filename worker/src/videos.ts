@@ -23,8 +23,9 @@
  */
 import type { Env } from './index'
 import type { AutoMatch } from './automation'
-import { bigMatchesToday, fbPost, fbComment, log, renderImage, sbHeaders } from './automation'
+import { bigMatchesToday, fbPost, fbComment, leagueAr, log, renderImage, sbHeaders } from './automation'
 import { clesDAppariement, clipsDePlaylist, derniersClips, type Clip } from './youtube'
+import { captionResume } from './accroches'
 
 const SITE = 'https://pressing90.live'
 
@@ -62,7 +63,8 @@ export const SOURCES: Source[] = [
     type: 'playlist', id: 'PLTh8XJqdpxU4' },
   { cle: 'epl', nom: 'Fubo', competition: 'Premier League', slug: 'eng.1',
     type: 'chaine', id: 'UCD2lJITnvzflNhOqQckMpQg', motCle: /premier league/i },
-  { cle: 'ucl', nom: 'DAZN', competition: 'Champions League', slug: 'uefa.champions',
+  // Le libellé est celui de LEAGUE_AR : c'est lui qui donne le nom arabe.
+  { cle: 'ucl', nom: 'DAZN', competition: 'UEFA Champions League', slug: 'uefa.champions',
     type: 'playlist', id: 'PLRnudrgaT-tc', motCle: /champions league/i, extendedPourTous: true },
   { cle: 'seriea', nom: 'Serie A', competition: 'Serie A', slug: 'ita.1',
     type: 'chaine', id: 'UCBJeMCIeLQos7wacox4hmLQ', motCle: /serie a/i },
@@ -322,7 +324,10 @@ async function publierUnCourt(env: Env, pool: AutoMatch[]): Promise<string | nul
     const sd = x.score_dom ?? (m ? Number(m.homeScore) : null)
     const se = x.score_ext ?? (m ? Number(m.awayScore) : null)
     const p = await fbPost(env, {
-      message: `⚽ ${dom} ${sd ?? ''}-${se ?? ''} ${ext}\n🏆 ${s.competition}\n\n👉 ${SITE}/resumes`,
+      message: captionResume({
+        dom, ext, scoreDom: sd, scoreExt: se,
+        competitionAr: leagueAr(m?.league ?? s.competition), lien: `${SITE}/resumes`,
+      }),
       link: `${SITE}/resumes`, image_url: img, title: x.titre.slice(0, 100),
       comment: `▶️ ${lienYt(x.video_id)}`,
     })
@@ -395,7 +400,11 @@ export async function extendedDuJour(env: Env, date: string): Promise<string> {
     for (const x of aPublier) {
       const img = await carte(env, null, s, x.video_id)
       const p = await fbPost(env, {
-        message: `🎬 ${x.equipe_dom} ${x.score_dom ?? ''}-${x.score_ext ?? ''} ${x.equipe_ext}\n🏆 ${s.competition}\n\n👉 ${SITE}/resumes`,
+        message: captionResume({
+          dom: x.equipe_dom ?? '', ext: x.equipe_ext ?? '',
+          scoreDom: x.score_dom, scoreExt: x.score_ext,
+          competitionAr: leagueAr(s.competition), lien: `${SITE}/resumes`,
+        }),
         link: `${SITE}/resumes`, image_url: img, title: x.titre.slice(0, 100),
         comment: `▶️ ${lienYt(x.video_id)}`,
       })

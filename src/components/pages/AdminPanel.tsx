@@ -3956,6 +3956,18 @@ function Buts() {
     } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
   }
 
+  async function refaireAccroche() {
+    setOccupe('accroche')
+    try {
+      const d = await adminPost('/admin/but/accroche', {
+        buteur, minute, equipes, competition,
+        adversaire: equipes.split(/\s*[–-]\s*/)[1] ?? '',
+        suivante: true,
+      }) as { accroche?: string }
+      if (d.accroche) setCaption(d.accroche)
+    } catch { /* on garde ce qui est écrit */ } finally { setOccupe(null) }
+  }
+
   async function publier() {
     if (!ap) return
     setOccupe('publier'); setMsg(null)
@@ -4012,11 +4024,21 @@ function Buts() {
                 <input value={buteur} onChange={(e) => setButeur(e.target.value)} placeholder="Buteur" className={champ} />
                 <input value={minute} onChange={(e) => setMinute(e.target.value)} placeholder="41'" className={champ} />
               </div>
-              <textarea
-                value={caption} onChange={(e) => setCaption(e.target.value)} rows={4}
-                dir="auto" placeholder="Accroche Facebook"
-                className={champ + ' resize-y leading-relaxed'}
-              />
+              <div className="relative">
+                <textarea
+                  value={caption} onChange={(e) => setCaption(e.target.value)} rows={6}
+                  dir="auto" placeholder="Accroche Facebook"
+                  className={champ + ' resize-y leading-relaxed pe-12'}
+                />
+                {/* ↻ refait l'accroche avec les champs ACTUELS et passe à la
+                    variante suivante : cinq formulations tournent pour que la
+                    page ne sorte pas trois fois la même dans une soirée. */}
+                <button
+                  type="button" onClick={() => void refaireAccroche()} disabled={occupe === 'accroche'}
+                  title="Autre formulation"
+                  className="absolute top-2 end-2 w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm disabled:opacity-40"
+                >↻</button>
+              </div>
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-1.5 text-sm">
                   <input type="checkbox" checked={surFb} onChange={(e) => setSurFb(e.target.checked)} />

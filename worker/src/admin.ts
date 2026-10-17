@@ -432,6 +432,9 @@ export async function handleAdmin(
   if (pathname === '/admin/but/publier' && req.method === 'POST') {
     return handleButPublier(env, req)
   }
+  if (pathname === '/admin/but/accroche' && req.method === 'POST') {
+    return handleButAccroche(env, req)
+  }
   if (pathname === '/admin/but/liste' && req.method === 'GET') {
     return handleButListe(env)
   }
@@ -2163,42 +2166,63 @@ async function handleButApercu(env: AdminEnv, req: Request): Promise<Response> {
     publie: String(sn.publishedAt ?? ''),
     vignette: vign.maxres?.url ?? vign.high?.url ?? vign.medium?.url ?? null,
     lien: `https://www.youtube.com/watch?v=${ref.id}`,
-    accroche: await accrocheDeBut(env, titre, desc),
+    // L'accroche se compose à l'ouverture avec ce qu'on sait déjà du titre
+    // YouTube ; dès que Mehdi renseigne le buteur, le bouton ↻ la refait
+    // avec le bon nom. Le modèle n'intervient plus : cinq variantes écrites
+    // d'avance ne peuvent pas inventer un buteur (17/10/2026).
+    accroche: await composerAccrocheBut(env, {
+      buteur: devinerButeur(titre), adversaire: '', minute: '', equipes: '', competitionAr: '',
+    }),
   })
 }
 
 /**
- * L'ACCROCHE FACEBOOK — « on prend juste la description, on enjolive un
- * peu » (Mehdi, 17/10/2026).
- *
- * Elle est en ARABE, comme toute la page. Deux garde-fous dans la consigne :
- * ne rien inventer qui ne soit pas dans la description — un but raconté de
- * travers se voit immédiatement — et ne pas RACONTER le but, sinon il n'y a
- * plus de raison de cliquer. On promet, on ne résume pas.
- *
- * Si le modèle ne répond pas, on rend une chaîne vide : l'écran garde alors
- * le titre d'origine, et Mehdi écrit lui-même. Jamais de phrase inventée
- * pour boucher le trou.
+ * Le nom du buteur deviné sur le titre de la vidéo, pour remplir le champ
+ * d'entrée — jamais pour publier. beIN titre « PSG Comeback Goal! Ousmane
+ * Dembélé Strikes in the 85th Minute » : le nom y est, mais noyé. On rend
+ * la plus longue suite de mots capitalisés, et Mehdi corrige.
  */
-async function accrocheDeBut(env: AdminEnv, titre: string, description: string): Promise<string> {
-  try {
-    const auto = await import('./automation')
-    const j = await auto.gptJson(
-      env as unknown as Parameters<typeof auto.gptJson>[0],
-      'Tu écris la légende Facebook d\'un but de football, en ARABE, pour une page de football. '
-      + 'Deux à trois lignes, ton vivant mais jamais racoleur. RÈGLES : '
-      + '(1) n\'affirme AUCUN fait qui ne soit pas dans le titre ou la description fournis ; '
-      + '(2) ne raconte pas le but — donne envie de le voir, ne le résume pas ; '
-      + '(3) les chiffres en chiffres latins ; '
-      + '(4) finis par une question courte au lecteur. '
-      + 'Réponds UNIQUEMENT {"caption":"..."}',
-      `TITRE: ${titre}\n\nDESCRIPTION: ${description.slice(0, 700)}`,
-      500,
-    ) as { caption?: string }
-    return String(j?.caption ?? '').trim().slice(0, 600)
-  } catch {
-    return ''
-  }
+function devinerButeur(titre: string): string {
+  const m = String(titre || '').match(/\b([A-ZÀ-Þ][\p{L}'’-]+(?:\s+[A-ZÀ-Þ][\p{L}'’-]+){1,2})\b/u)
+  return m ? m[1] : ''
+}
+
+/**
+ * Compose l'accroche d'un but. La ROTATION vit dans le KV : sans elle, la
+ * page sortirait trois fois « هل رأيت هدف… » dans la même soirée.
+ */
+async function composerAccrocheBut(env: AdminEnv, o: {
+  buteur: string; adversaire?: string; minute?: string; equipes?: string
+  competitionAr?: string; penalty?: boolean; csc?: boolean
+}): Promise<string> {
+  const { captionBut } = await import('./accroches')
+  const n = Number((await env.CACHE.get('but:rotation')) ?? '0')
+  return captionBut({ ...o, lien: 'pressing90.live/buts' }, n)
+}
+
+async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response> {
+  const b = await readBoundedJson(req, 4_000) as {
+    buteur?: string; adversaire?: string; minute?: string; equipes?: string
+    competition?: string; penalty?: boolean; csc?: boolean; suivante?: boolean
+  } | null
+  // `suivante` fait tourner la rotation : Mehdi appuie sur ↻ jusqu'à ce
+  // qu'une formulation lui plaise.
+  let n = Number((await env.CACHE.get('but:rotation')) ?? '0')
+  if (b?.suivante) { n = (n + 1) % 5; await env.CACHE.put('but:rotation', String(n), { expirationTtl: 7 * 86400 }) }
+  const { captionBut } = await import('./accroches')
+  const auto = await import('./automation')
+  return jsonResp({
+    ok: true,
+    accroche: captionBut({
+      buteur: (safeString(b?.buteur ?? '', 120) ?? ''),
+      adversaire: (safeString(b?.adversaire ?? '', 120) ?? ''),
+      minute: (safeString(b?.minute ?? '', 12) ?? ''),
+      equipes: (safeString(b?.equipes ?? '', 160) ?? ''),
+      competitionAr: auto.leagueAr((safeString(b?.competition ?? '', 80) ?? '')),
+      penalty: !!b?.penalty, csc: !!b?.csc,
+      lien: 'pressing90.live/buts',
+    }, n),
+  })
 }
 
 async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> {
