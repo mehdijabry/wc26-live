@@ -27,8 +27,6 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
   // Le menu du compte n'était jamais traduit : il restait en anglais quelle
   // que soit la langue choisie (Mehdi, 2026-10-10).
   const t = useT()
-  const isPublished = useBracket((s) => s.isPublished)
-  const shareSlug = useBracket((s) => s.shareSlug)
   const loadBracket = useBracket((s) => s.load)
   const location = useLocation()
   const [modalOpen, setModalOpen] = useState(false)
@@ -269,13 +267,13 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
                   vivant, ce sont les paris (Mehdi, 2026-10-09). La PAGE reste en
                   ligne et la route /bracket est intacte — seul le raccourci
                   disparaît. Les liens déjà partagés continuent de fonctionner. */}
-              {isPublished && shareSlug && (
+              {alias && (
                 <Link
-                  to={`/u/${shareSlug}`}
+                  to={`/u/${alias}`}
                   onClick={() => setMenuOpen(false)}
                   className="block w-full px-3 py-2 rounded-lg bg-accent-green/10 hover:bg-accent-green/20 text-xs text-slate-800 transition-colors"
                 >
-                  🌍 {t('View my public profile')} <span className="text-slate-500 font-mono">/u/{shareSlug}</span>
+                  🌍 {t('View my public profile')} <span className="text-slate-500 font-mono">/u/{alias}</span>
                 </Link>
               )}
             </div>

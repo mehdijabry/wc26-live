@@ -67,6 +67,28 @@ export function localeOf(l: Lang): string {
 
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
+  // ── Le profil public (17/10/2026) ──────────────────────────────────
+  'Rank': 'الترتيب',
+  'Bets': 'الرهانات',
+  'Group': 'المجموعة',
+  'No group yet': 'لا مجموعة بعد',
+  'member since': 'عضو منذ',
+  'Add friend': 'إضافة صديق',
+  'Friend request pending': 'طلب الصداقة قيد الانتظار',
+  'Accept': 'قبول',
+  'Decline': 'رفض',
+  'Send crampons': 'إرسال كرامبون',
+  'Send': 'إرسال',
+  'Friends': 'الأصدقاء',
+  'No friends yet': 'لا أصدقاء بعد',
+  'to accept': 'للقبول',
+  'pending': 'قيد الانتظار',
+  'Player not found': 'لاعب غير موجود',
+  'Request sent': 'تم إرسال الطلب',
+  'Friend added': 'تمت إضافة الصديق',
+  'Request declined': 'تم رفض الطلب',
+  'Crampons sent': 'تم إرسال الكرامبون',
+  '10 to 500 per transfer, 1000 per day.': 'من 10 إلى 500 لكل تحويل، و1000 في اليوم.',
   // ── La section Ligues : elle etait entierement en anglais (10/10/2026)
   'Europe': 'أوروبا',
   'Americas': 'الأمريكتان',
@@ -707,6 +729,28 @@ const AR_LEAGUES: Record<string, string> = {
 
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
+  // ── Le profil public (17/10/2026) ──────────────────────────────────
+  'Rank': 'Rang',
+  'Bets': 'Paris',
+  'Group': 'Groupe',
+  'No group yet': 'Pas encore de groupe',
+  'member since': 'membre depuis',
+  'Add friend': 'Ajouter en ami',
+  'Friend request pending': 'Demande en attente',
+  'Accept': 'Accepter',
+  'Decline': 'Refuser',
+  'Send crampons': 'Envoyer des crampons',
+  'Send': 'Envoyer',
+  'Friends': 'Amis',
+  'No friends yet': 'Pas encore d’amis',
+  'to accept': 'à accepter',
+  'pending': 'en attente',
+  'Player not found': 'Joueur introuvable',
+  'Request sent': 'Demande envoyée',
+  'Friend added': 'Ami ajouté',
+  'Request declined': 'Demande refusée',
+  'Crampons sent': 'Crampons envoyés',
+  '10 to 500 per transfer, 1000 per day.': 'De 10 à 500 par envoi, 1000 par jour.',
   // ── La section Ligues : elle etait entierement en anglais (10/10/2026)
   'Europe': 'Europe',
   'Americas': 'Amériques',
