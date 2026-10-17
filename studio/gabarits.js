@@ -32,6 +32,10 @@ export const MENTHE = '#7FE7C4'
 
 /** Hauteur réellement utilisable : sous ça commence la fausse barre Facebook. */
 export const UTILE = {
+  // Les deux plaques du ticket arrivent en 1152x2048, soit du 9:16 exact :
+  // rien a rogner, la hauteur utile est la hauteur du fichier.
+  'ticket-gagnant': 2048,
+  'ticket-gagnant-barca': 2048,
   // Plaques de but refaites le 16/10/2026 en 1080x1920 : les anciennes
   // faisaient 768x1376 et portaient encore du decor de maquette, d'ou une
   // hauteur utile de 1190 qui laissait 247 px de vide en bas d'un reel.

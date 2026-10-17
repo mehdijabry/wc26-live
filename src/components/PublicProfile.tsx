@@ -20,6 +20,8 @@ import Avatar from './Avatar'
 import { Jeton } from './Jeton'
 import { Ad } from './AdSlot'
 import { ficheDuMatch, type Fiche } from '../lib/ficheMatch'
+import PostPari from './PostPari'
+import { postsDe, type Post } from '../lib/posts'
 
 type Profil = {
   id: string
@@ -36,6 +38,9 @@ type Profil = {
   groupe: string | null
   membre_depuis: string
   copieurs: number
+  abonnes: number
+  abonnements: number
+  je_suis_abonne: boolean
 }
 
 type Jambe = { match_id: string; market: string; pick: string; odds: number; status: string }
@@ -65,6 +70,21 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
   const [paris, setParis] = useState<Bulletin[] | null>(null)
   const [fiches, setFiches] = useState<Map<string, Fiche>>(new Map())
   const [mise, setMise] = useState(100)
+  /**
+   * SUIVRE N'EST PAS AJOUTER (Mehdi, 17/10/2026).
+   *
+   * « Ajouter » ouvre un droit — l'envoi de crampons — donc l'autre doit
+   * accepter. « Suivre » n'ouvre rien : c'est immediat, a sens unique, et la
+   * seule chose que l'autre en voit est une notification et son compteur
+   * d'abonnes. Les deux boutons cohabitent, jamais l'un a la place de
+   * l'autre.
+   *
+   * L'etat vit a part du profil charge : le bouton doit basculer des le clic
+   * sans attendre un rechargement complet de la fiche.
+   */
+  const [posts, setPosts] = useState<Post[] | null>(null)
+  const [abonne, setAbonne] = useState<boolean | null>(null)
+  const [abonnes, setAbonnes] = useState<number | null>(null)
 
   const estMoi = !!moi && !!p && moi.id === p.id
 
@@ -89,11 +109,23 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
         if (ancien) { navigate(`/u/${ancien}`, { replace: true }); return }
         setEtat('introuvable'); return
       }
-      setP(ligne as Profil)
+      const fiche = ligne as Profil
+      setP(fiche)
+      setAbonne(!!fiche.je_suis_abonne)
+      setAbonnes(Number(fiche.abonnes ?? 0))
       setEtat('pret')
     })()
     return () => { vivant = false }
   }, [slug])
+
+  // Les paris publies. Separes du chargement du profil : une erreur sur les
+  // posts ne doit pas empecher la fiche de s'afficher.
+  useEffect(() => {
+    if (!p?.alias) return
+    let vivant = true
+    void postsDe(p.alias, 20).then((l) => { if (vivant) setPosts(l) })
+    return () => { vivant = false }
+  }, [p?.alias])
 
   // La liste d'amis n'est lisible que par soi : elle ne sert donc qu'au
   // proprietaire de la page, et sur le profil d'autrui a savoir ou on en est
@@ -127,6 +159,36 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
     })()
     return () => { vivant = false }
   }, [p?.alias, onglet])
+
+  /**
+   * UN PARI NE SE COPIE QUE SI SES MATCHS SONT TOUS A VENIR.
+   *
+   * `status === 'open'` ne suffit pas : un bulletin reste « open » tant que
+   * le reglement n'est pas passe, donc des matchs d'hier portaient encore un
+   * bouton Copier (Mehdi, 17/10/2026). La base refuserait de toute facon —
+   * `place_slip` ferme a l'heure du coup d'envoi — mais proposer un bouton
+   * qui ne peut qu'echouer n'a aucun sens. Tant que la fiche du match n'est
+   * pas chargee, on ne propose rien : l'inconnu n'est pas une autorisation.
+   */
+  const copiable = (b: Bulletin) =>
+    b.status === 'open' && (b.legs ?? []).length > 0 && (b.legs ?? []).every((j) => {
+      const f = fiches.get(j.match_id)
+      if (!f || f.fini || !f.date) return false
+      const debut = new Date(f.date).getTime()
+      return Number.isFinite(debut) && debut > Date.now()
+    })
+
+  /** Suivre / ne plus suivre. La base rend le compteur a jour. */
+  const basculerSuivi = async () => {
+    if (!supabase || !p || abonne === null) return
+    setOccupe(true); setMessage(null)
+    const vise = !abonne
+    const { data, error } = await supabase.rpc('suivre', { p_cible: p.id, p_suivre: vise })
+    setOccupe(false)
+    if (error) { setMessage(error.message); return }
+    setAbonne(vise)
+    setAbonnes(Number(data ?? 0))
+  }
 
   const copier = (b: Bulletin) => agir(async () => {
     const r = await supabase!.rpc('copier_pari', { p_slip_id: b.id, p_stake: mise })
@@ -220,6 +282,12 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
           <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{t('Copied by')}</div>
           <div className="font-display text-xl leading-none tabular-nums mt-1.5">{nb(p.copieurs)}</div>
         </div>
+        {/* Les abonnes : la seconde mesure de popularite, et la seule qui ne
+            coute rien a celui qui la donne. */}
+        <div className="glass rounded-2xl px-4 py-3">
+          <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{t('Followers')}</div>
+          <div className="font-display text-xl leading-none tabular-nums mt-1.5">{nb(abonnes ?? p.abonnes)}</div>
+        </div>
         <div className="glass rounded-2xl px-4 py-3">
           <div className="font-mono text-[10px] uppercase tracking-wider text-slate-500">{t('Group')}</div>
           <div className="font-display text-xl leading-none mt-1.5 truncate">
@@ -231,6 +299,24 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
       {/* ── CE QU'ON PEUT FAIRE AVEC CE JOUEUR ─────────────────────────── */}
       {moi && !estMoi && (
         <div className="mt-7 glass rounded-2xl p-4">
+          {/* SUIVRE, EN HAUT ET TOUJOURS DISPONIBLE. Sans accord a attendre,
+              ce bouton ne depend d'aucun etat d'amitie : il reste la que la
+              demande d'ami soit en attente, acceptee ou absente. */}
+          <button
+            onClick={() => void basculerSuivi()}
+            disabled={occupe || abonne === null}
+            className={
+              'w-full px-4 py-2.5 rounded-xl font-semibold disabled:opacity-40 transition-colors ' +
+              (abonne ? 'glass glass-hover text-slate-700' : 'bg-accent-green text-ink-900')
+            }
+          >
+            {abonne ? t('Following') : t('Follow')}
+          </button>
+          <p className="mt-1.5 mb-3 text-[11px] text-slate-500">
+            {abonne
+              ? t('You follow this player — they were told.')
+              : t('Following needs no approval. Adding as a friend does.')}
+          </p>
           {!lien && (
             <button onClick={demander} disabled={occupe}
               className="w-full px-4 py-2.5 rounded-xl bg-accent-gold text-ink-900 font-semibold disabled:opacity-40">
@@ -274,6 +360,19 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
             </>
           )}
           {message && <div className="mt-3 text-sm text-accent-gold">{message}</div>}
+        </div>
+      )}
+
+      {/* ── LES PARIS PUBLIES ───────────────────────────────────────────
+          Rien n'arrive ici tout seul : un pari gagne ne devient public que si
+          le joueur appuie sur « Partager sur mon profil ». */}
+      {posts !== null && posts.length > 0 && (
+        <div className="mt-8 space-y-3">
+          <h2 className="font-mono text-[10px] uppercase tracking-widest text-slate-500">{t('Shared wins')}</h2>
+          {posts.map((po) => (
+            <PostPari key={po.id} post={po}
+              onSupprime={(id) => setPosts((l) => (l ?? []).filter((x) => x.id !== id))} />
+          ))}
         </div>
       )}
 
@@ -339,7 +438,7 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
                       Seulement un pari EN COURS, et jamais le sien. Le
                       copieur mise ce qu'il veut : les soldes ne se
                       ressemblent pas. C'est place_slip() qui debite. */}
-                  {moi && !estMoi && b.status === 'open' && (
+                  {moi && !estMoi && copiable(b) && (
                     <div className="flex items-center gap-2">
                       <input type="number" min={1} value={mise}
                         onChange={(e) => setMise(Math.max(1, Number(e.target.value) || 1))}

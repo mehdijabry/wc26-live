@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
 import { Link, NavLink } from 'react-router-dom'
 import { UserMenu } from './UserMenu'
+import { Notifications } from './Notifications'
 import Avatar from './Avatar'
 import { Jeton } from './Jeton'
 import { useAuth } from '../store/auth'
@@ -200,6 +201,13 @@ export function Navigation() {
                   <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </div>
+            {/* ── LA CLOCHE, SUR TOUT LE SITE ──────────────────────────────
+                Mehdi, 17/10/2026 : « le bouton ne doit pas etre juste dans
+                profil, il doit etre general au site comme le bouton avatar ».
+                Elle se place a GAUCHE de l'avatar, ordinateur et telephone
+                confondus, et ne s'affiche que pour un joueur connecte — sans
+                compte, il n'y a rien a notifier. */}
+            <Notifications />
             {/* La pastille complete — solde compris — reste a l'ordinateur. */}
             <div className="hidden md:block">
               <UserMenu />

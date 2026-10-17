@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { jourDuJeu } from './jour'
 
 /**
  * Le jeu : deux monnaies, des cotes réelles, une récompense au bout.
@@ -365,19 +366,14 @@ export function prochainJourDeSemaine(p: Portefeuille | null): number {
   if (!p) return 1
   const serie = Number(p.claim_streak ?? 0)
   if (!p.last_claim || serie < 1 || serie > 6) return 1
-  const hier = new Date()
-  hier.setDate(hier.getDate() - 1)
-  const j = `${hier.getFullYear()}-${String(hier.getMonth() + 1).padStart(2, '0')}-${String(hier.getDate()).padStart(2, '0')}`
-  return p.last_claim === j ? serie + 1 : 1
+  return p.last_claim === jourDuJeu(-1) ? serie + 1 : 1
 }
 
 /** Vrai quand les jetons du jour n'ont pas encore été pris. */
 export function reclamableAujourdhui(p: Portefeuille | null): boolean {
   if (!p) return false
   if (!p.last_claim) return true
-  const aujourdhui = new Date()
-  const j = `${aujourdhui.getFullYear()}-${String(aujourdhui.getMonth() + 1).padStart(2, '0')}-${String(aujourdhui.getDate()).padStart(2, '0')}`
-  return p.last_claim < j
+  return p.last_claim < jourDuJeu()
 }
 
 /** Les cotes publiées par le worker pour les matchs à venir. */

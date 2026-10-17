@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -305,6 +305,11 @@ app.post('/render/image', async (req, res) => {
           }
           return { url: urls[0], urls }
         }
+        // LE TICKET GAGNANT d'un joueur, 1080x1920. Seul format demande par
+        // un UTILISATEUR et non par la chaine de publication : il sort dans
+        // SA langue, et la peau blaugrana ne lui est donnee que si le Barca
+        // est dans son pari.
+        case 'ticket-gagnant': canvas = await gabaritTicketGagnant(data); break
         case 'gabarit-album': canvas = await gabaritAlbumFinal(data); break
         case 'gabarit-stats': canvas = await gabaritStatsMatch(data); break
         case 'gabarit-tableau': canvas = await gabaritTableauSoiree(data); break

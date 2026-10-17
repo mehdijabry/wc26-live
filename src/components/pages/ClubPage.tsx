@@ -9,6 +9,7 @@ import {
 } from '../../lib/clubs'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { useT } from '../../lib/i18n'
+import SuivreClub from '../SuivreClub'
 
 /**
  * /club/:league/:club — un club et son effectif complet.
@@ -170,11 +171,19 @@ export function ClubPage() {
 
       <header className="mt-3 flex items-center gap-4">
         {detail?.logo && <img src={detail.logo} alt="" width={56} height={56} />}
-        <div>
+        <div className="min-w-0">
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight">
             {detail?.nom ?? 'Loading…'}
           </h1>
           {detail?.stade && <p className="text-muted-foreground">{detail.stade}</p>}
+          {/* SUIVRE LE CLUB. C'est d'ici que part tout ce que la cloche
+              annoncera de lui : coup d'envoi et score final (Mehdi,
+              17/10/2026). */}
+          {detail?.nom && (
+            <div className="mt-2">
+              <SuivreClub nom={detail.nom} />
+            </div>
+          )}
         </div>
       </header>
 

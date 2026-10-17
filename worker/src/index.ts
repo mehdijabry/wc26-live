@@ -290,6 +290,64 @@ export default {
         return handleAiChat(env, req)
       }
 
+      // ── LE TICKET GAGNANT D'UN JOUEUR, EN IMAGE ────────────────────
+      // Le seul rendu du studio demande par un UTILISATEUR. Trois gardes :
+      //
+      //   · le post doit EXISTER et etre public — on ne dessine que ce que
+      //     `post_public` rend, donc rien qui ne soit deja affiche ;
+      //   · le resultat est MIS EN CACHE par (post, langue). Un post est
+      //     immuable : il se dessine une fois et l'URL resservie ensuite.
+      //     Sans ca, un rechargement de page relancerait un rendu sur une
+      //     machine a 0,1 CPU, et la file du studio est deja le point
+      //     fragile de la chaine (panne du 13/10) ;
+      //   · aucune donnee ne vient de l'appelant hors l'identifiant et la
+      //     langue : la cote et le gain sont relus en base.
+      if (url.pathname === '/ticket') {
+        const id = Number(url.searchParams.get('post') || 0)
+        const lang = ['fr', 'en', 'ar'].includes(url.searchParams.get('lang') || '')
+          ? url.searchParams.get('lang')! : 'en'
+        if (!Number.isFinite(id) || id <= 0) return cors(json({ error: 'post requis' }, 400), req)
+        const cle = `ticket:${id}:${lang}`
+        const vu = await env.CACHE.get(cle)
+        if (vu) return cors(json({ url: vu, cache: true }), req)
+        if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return cors(json({ error: 'indisponible' }, 503), req)
+        const r = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/post_public`, {
+          method: 'POST',
+          headers: {
+            apikey: env.SUPABASE_SERVICE_KEY,
+            authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify({ p_id: id }),
+        })
+        const lignes = await r.json().catch(() => []) as Array<Record<string, unknown>>
+        const po = Array.isArray(lignes) ? lignes[0] : null
+        if (!po) return cors(json({ error: 'post introuvable' }, 404), req)
+        const d = (po.donnees ?? {}) as Record<string, unknown>
+        const jambes = Array.isArray(d.jambes) ? d.jambes as Array<Record<string, unknown>> : []
+        try {
+          const { renderImage } = await import('./automation')
+          const image = await renderImage(env as unknown as Parameters<typeof renderImage>[0], 'ticket-gagnant', {
+            lang,
+            alias: po.alias,
+            avatar: po.avatar_url,
+            cote: d.cote,
+            chance: d.chance,
+            mise: d.mise,
+            gain: d.gain,
+            legende: po.legende,
+            jambes,
+            // La peau blaugrana se DEMANDE ici, et le gabarit ne la donne
+            // que si Barcelone est vraiment nommee dans le pari.
+            barca: true,
+          })
+          await env.CACHE.put(cle, image, { expirationTtl: 60 * 60 * 24 * 60 })
+          return cors(json({ url: image }), req)
+        } catch (e) {
+          return cors(json({ error: String(e).slice(0, 120) }, 502), req)
+        }
+      }
+
       // Live scoreboard (all matches happening / upcoming today)
       if (url.pathname === '/scoreboard') {
         return cors(await cachedFetch(env, 'scoreboard', `${ESPN_BASE}/scoreboard`, 30), req)
@@ -871,6 +929,13 @@ document.getElementById('share').onclick=async()=>{msg.textContent='Préparation
         await scheduleKickoffsForLeagues(env)
       } catch (e) {
         console.log('[push] multi-league kickoff pass failed:', e)
+      }
+
+      // --- Pass 1b-bis: la cloche des clubs suivis -------------------
+      try {
+        await notifierClubsSuivis(env)
+      } catch (e) {
+        console.log('[notif] clubs pass failed:', e)
       }
 
       // --- Pass 1c: fire any scheduled Facebook posts that are due ----
@@ -1485,6 +1550,111 @@ async function scheduleKickoffsForLeagues(env: Env): Promise<void> {
       }
     }
   }
+}
+
+/**
+ * LES CLUBS SUIVIS — du coup d'envoi au score final.
+ *
+ * Mehdi, 17/10/2026 : « il faut un bouton notifications où les utilisateurs
+ * reçoivent les notifs concernant leurs clubs favoris ». Les favoris
+ * vivaient dans le `localStorage` du navigateur : invisibles d'ici, donc
+ * incapables de déclencher quoi que ce soit. Ils sont maintenant dans
+ * `profiles.clubs_suivis` (migration 030).
+ *
+ * On ne balaie QUE les clubs réellement suivis : `clubs_a_surveiller()` les
+ * rend avec leur nombre de suiveurs, et sans suiveur on ne lit même pas un
+ * scoreboard. Double garde contre le doublon — un témoin KV ici, et la clé
+ * `cle` vérifiée par `notifier_club` en base — parce que le cron repasse
+ * toutes les cinq minutes sur le même match.
+ */
+function cleClub(nom: string): string {
+  return nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '')
+}
+
+async function notifierClubsSuivis(env: Env): Promise<void> {
+  if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return
+  const entetes = {
+    apikey: env.SUPABASE_SERVICE_KEY,
+    authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`,
+    'content-type': 'application/json',
+  }
+
+  const rl = await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/clubs_a_surveiller`, {
+    method: 'POST', headers: entetes, body: '{}',
+  })
+  if (!rl.ok) return
+  const clubs = (await rl.json().catch(() => [])) as Array<{ club: string; suiveurs: number }>
+  if (!clubs.length) return
+  // Le nom suivi tel que le joueur l'a enregistré, retrouvé depuis la forme
+  // normalisée : ESPN écrit « Barcelona » ici et « FC Barcelona » là.
+  const suivis = new Map<string, string>()
+  for (const c of clubs) if (c.club) suivis.set(cleClub(c.club), c.club)
+
+  const envoyer = async (club: string, donnees: Record<string, unknown>, lien: string) => {
+    await fetch(`${env.SUPABASE_URL}/rest/v1/rpc/notifier_club`, {
+      method: 'POST', headers: entetes,
+      body: JSON.stringify({ p_club: club, p_donnees: donnees, p_lien: lien }),
+    })
+  }
+
+  await Promise.allSettled(
+    ALERT_LEAGUE_SLUGS.map(async (slug) => {
+      try {
+        const r = await fetch(`${ESPN_SOCCER}/${slug}/scoreboard?limit=100`, {
+          cf: { cacheTtl: 300, cacheEverything: true },
+        })
+        if (!r.ok) return
+        const data = await r.json<EspnScoreboard>()
+        for (const ev of data.events ?? []) {
+          const comp = ev.competitions?.[0]
+          if (!comp) continue
+          const dom = comp.competitors?.find((c) => c.homeAway === 'home')
+          const ext = comp.competitors?.find((c) => c.homeAway === 'away')
+          if (!dom || !ext) continue
+
+          const etat = ev.status?.type?.state
+          const debut = ev.date ? Date.parse(ev.date) : NaN
+          const dansUneHeure =
+            etat === 'pre' && Number.isFinite(debut) &&
+            debut - Date.now() > 0 && debut - Date.now() < 75 * 60_000
+
+          if (!dansUneHeure && etat !== 'post') continue
+
+          // `EspnScoreboard` ne déclare que `abbreviation` sur l'équipe ;
+          // le scoreboard renvoie bien les deux graphies longues, et c'est
+          // d'elles qu'on a besoin pour reconnaître un club suivi.
+          type Equipe = { score?: string; team?: { displayName?: string; shortDisplayName?: string } }
+          const nomDe = (c?: Equipe) => c?.team?.displayName || c?.team?.shortDisplayName || ''
+          const paires: Array<[Equipe, Equipe]> = [[dom as Equipe, ext as Equipe], [ext as Equipe, dom as Equipe]]
+
+          for (const [moi, autre] of paires) {
+            // Les deux graphies d'ESPN donnent deux chances de reconnaître
+            // le club que le joueur a enregistré.
+            const noms = [moi?.team?.displayName, moi?.team?.shortDisplayName].filter(Boolean) as string[]
+            const trouve = noms.map((n) => suivis.get(cleClub(n))).find(Boolean)
+            if (!trouve) continue
+
+            const phase = etat === 'post' ? 'ft' : 'ko'
+            const temoin = `notifclub:${cleClub(trouve)}:${phase}:${ev.id}`
+            if (await env.CACHE.get(temoin)) continue
+
+            const donnees: Record<string, unknown> = {
+              cle: `${phase}-${ev.id}`,
+              etat: phase,
+              adv: nomDe(autre),
+            }
+            if (phase === 'ft') {
+              donnees.score = `${moi?.score ?? ''} – ${autre?.score ?? ''}`
+            }
+            await envoyer(trouve, donnees, '/today')
+            await env.CACHE.put(temoin, '1', { expirationTtl: 36 * 3600 })
+          }
+        }
+      } catch (e) {
+        console.log('[notif] club pass failed', slug, e)
+      }
+    })
+  )
 }
 
 /**

@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { jourDuJeu } from './jour'
 
 /**
  * Ligues privées — la couche d'accès.
@@ -111,10 +112,13 @@ export type Reclamation = { crampons: number; taux: number; groupe: string; deja
  * groupe déjà pris : l'interface peut donc dire « tu as déjà réclamé chez
  * les Collègues » au lieu d'un refus muet.
  */
-export async function reclamerBonus(slug: string): Promise<Reclamation | { erreur: string }> {
+export async function reclamerBonus(slug: string): Promise<Reclamation | { erreur: string; code?: string }> {
   if (!supabase) return { erreur: 'hors ligne' }
   const { data, error } = await supabase.rpc('reclamer_bonus_de_groupe', { p_slug: slug })
-  if (error) return { erreur: error.message }
+  // Le CODE compte autant que le message : la base refuse pour des raisons
+  // precises (pas encore parie, groupe trop petit) et le joueur a droit a
+  // la vraie raison, pas a « impossible pour le moment » (Mehdi, 17/10/2026).
+  if (error) return { erreur: error.message, code: (error as { code?: string }).code }
   const r = Array.isArray(data) ? data[0] : data
   if (!r) return { erreur: 'inconnu' }
   return {
@@ -134,8 +138,7 @@ export async function reclamerBonus(slug: string): Promise<Reclamation | { erreu
  */
 export async function bonusDuJour(): Promise<{ groupe: string; crampons: number } | null> {
   if (!supabase) return null
-  const aujourdhui = new Date()
-  const j = `${aujourdhui.getFullYear()}-${String(aujourdhui.getMonth() + 1).padStart(2, '0')}-${String(aujourdhui.getDate()).padStart(2, '0')}`
+  const j = jourDuJeu()
   const { data } = await supabase
     .from('group_bonus_paid')
     .select('crampons, leagues(name)')

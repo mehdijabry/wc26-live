@@ -147,7 +147,7 @@ let qrImg = null
  * (https://pressing90.live/bienvenue/APMVZ2CJ) : 100 crampons et 3 analyses.
  * Les mots arabes viennent de cette meme page en ?lang=ar.
  */
-function blocInscription(ctx, cx, y, taille, W, { compact = false, sansTexte = false } = {}) {
+function blocInscription(ctx, cx, y, taille, W, { compact = false, sansTexte = false, lang = 'ar' } = {}) {
   const T = largeurQr(taille)
   blocQr(ctx, cx - T / 2, y, taille)
   // Regle de Mehdi, 15/10 : la ou la phrase ne tient pas dans la zone, on ne
@@ -163,9 +163,16 @@ function blocInscription(ctx, cx, y, taille, W, { compact = false, sansTexte = f
   voile.addColorStop(1, 'rgba(5,8,15,0)')
   ctx.save(); ctx.fillStyle = voile; ctx.fillRect(0, yA - (compact ? 32 : 54), W, h); ctx.restore()
   if (compact) {
+    // LA LANGUE SUIT LE FORMAT. Les publications de la page sont en arabe et
+    // le restent par defaut ; le ticket d'un joueur, lui, sort dans SA langue
+    // — une story francaise qui se termine par une ligne arabe ne ressemble a
+    // rien (Mehdi, 17/10/2026).
+    //
     // Le nombre est ENTOURE de mots arabes : en tete de ligne, l'algorithme
     // bidirectionnel l'expedie a l'autre bout et il se lit en dernier.
-    ar(ctx, 'امسح واحصل على 100 كرامبون', cx, yA, { size: 24, color: OR })
+    if (lang === 'fr') txt(ctx, 'Scanne et reçois 100 crampons', cx, yA, { size: 24, color: OR })
+    else if (lang === 'en') txt(ctx, 'Scan and get 100 crampons', cx, yA, { size: 24, color: OR })
+    else ar(ctx, 'امسح واحصل على 100 كرامبون', cx, yA, { size: 24, color: OR })
   } else {
     ar(ctx, 'امسح الرمز واحصل على هديتك الترحيبية', cx, yA, { size: 31 })
     ar(ctx, 'احصل على 100 كرامبون و3 تحليلات ذكاء اصطناعي', cx, yA + 48, { size: 24, color: OR })
@@ -1168,3 +1175,171 @@ export async function gabaritTaleCover(d = {}) {
 }
 
 
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LE TICKET GAGNANT — gabarit « ticket-gagnant », 1080x1920 (story)    ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+/**
+ * Le pari gagné d'un joueur, prêt à partir en story.
+ *
+ * ── CE QU'ON MONTRE, ET POURQUOI ──────────────────────────────────────────
+ * Un ticket de bookmaker affiche une cote et un gain, et ça ne raconte rien :
+ * le lecteur ne sait pas si le pari était osé ou évident. Deux chiffres de
+ * plus le disent, et nous sommes les seuls à les avoir :
+ *
+ *   · LA CHANCE IMPLICITE (100 / cote) — « 19 % de chances ». C'est l'audace
+ *     du pari, dans la seule unité que tout le monde comprend.
+ *   · LA PART DES PARIEURS qui avaient fait le même choix — « 12 % l'avaient
+ *     vu ». Un bookmaker ne peut pas l'écrire : il ne connaît pas les autres
+ *     joueurs. Nous, si. C'est ce chiffre qui transforme un ticket en fierté.
+ *
+ * ── DEUX PLAQUES, DEUX GÉOMÉTRIES ─────────────────────────────────────────
+ * La ligne de perforation ne tombe pas au même endroit sur les deux fonds :
+ * à 51,5 % sur le neutre, à 63 % sur le blaugrana. Les zones sont donc
+ * relevées par plaque, et c'est la plaque qui décide où vont les jambes du
+ * pari — dans le talon quand il est grand (neutre), au-dessus de la ligne
+ * quand il est petit (Barça). Déduire l'une de l'autre donnerait du texte
+ * posé sur la perforation.
+ *
+ * ── LA PEAU BLAUGRANA NE SE DONNE PAS SUR DEMANDE ─────────────────────────
+ * Même règle que partout : il faut que l'appelant la demande ET que Barcelone
+ * soit nommée dans le pari. Un combiné sans le Barça ne peut pas la prendre.
+ */
+const TICKET = {
+  'ticket-gagnant':       { haut: [235, 300, 600, 655], bas: [235, 1025, 600, 450], jambes: 'bas',  qr: 1672 },
+  'ticket-gagnant-barca': { haut: [225, 355, 635, 825], bas: [225, 1240, 635, 300], jambes: 'haut', qr: 1672 },
+}
+
+const MOTS = {
+  fr: { gagne: 'PARI GAGNÉ', chance: '{n} % de chances', vu: '{n} % l’avaient vu',
+        mise: 'MISE', gain: 'GAIN', autres: '+{n} autres', nul: 'Nul' },
+  en: { gagne: 'BET WON', chance: '{n}% chance', vu: '{n}% called it',
+        mise: 'STAKE', gain: 'PAYOUT', autres: '+{n} more', nul: 'Draw' },
+  // Le nombre doit etre ENTOURE de mots arabes : un signe en bout de chaine
+  // est expedie a l'autre extremite par l'algorithme bidirectionnel — « ٪ »
+  // s'est retrouve tout a gauche de « حظوظه 18 ».
+  ar: { gagne: 'رهان رابح', chance: 'حظوظه {n} بالمئة', vu: 'توقّعه {n} ٪ فقط',
+        mise: 'الرهان', gain: 'المكسب', autres: 'و{n} أخرى', nul: 'تعادل' },
+}
+
+export async function gabaritTicketGagnant(d = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const lang = ['fr', 'en', 'ar'].includes(d.lang) ? d.lang : 'en'
+  const m = MOTS[lang]
+  const rtl = lang === 'ar'
+  // Les chiffres restent LATINS en arabe, comme partout sur le site.
+  const n = (v) => Number(v ?? 0).toLocaleString(lang === 'ar' ? 'ar-u-nu-latn' : lang)
+  // Une ligne de texte, dans la bonne écriture. L'arabe passe par Tajawal
+  // gras ; tout le reste par Archivo. Jamais d'interlettrage sur l'arabe, il
+  // détacherait les liaisons.
+  const ligne = (t, x, y, o = {}) => (rtl ? ar(ctx, t, x, y, o) : txt(ctx, t, x, y, o))
+
+  const jambes = Array.isArray(d.jambes) ? d.jambes : []
+  const nomsDuPari = jambes.map((j) => `${j.titre || ''} ${j.pick || ''}`).join(' ')
+  const plaque = peauBarca(d.barca, nomsDuPari) ? 'ticket-gagnant-barca' : 'ticket-gagnant'
+  const G = TICKET[plaque]
+
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poserPlaque(ctx, plaque, W, H)
+
+  const [hx, hy, hw, hh] = G.haut
+  const cx = Math.round(hx + hw / 2)
+
+  // ── LE BLOC DU HAUT SE CENTRE DANS SA MOITIE ──────────────────────────
+  // Sa hauteur depend de ce qu'il porte : un avatar, une legende, les deux
+  // ou aucun. Ancre en haut, il laissait un trou sous lui ; on le mesure
+  // donc avant de le poser.
+  const aAvatar = !!d.avatar
+  const aLegende = !!d.legende
+  const hautEnBas = G.jambes === 'haut'
+  const hBloc = (aAvatar ? 150 : 0) + 56 + 92 + 128 + (d.chance != null ? 56 : 0) + (aLegende ? 80 : 0)
+  // Quand les jambes partagent la moitie haute, le bloc reste colle en haut :
+  // c'est a elles de prendre la place qui reste.
+  let y = (hautEnBas ? hy + 40 : hy + Math.max(0, Math.round((hh - hBloc) / 2))) + 58
+  const av = d.avatar ? await loadImgOuRepli(d.avatar, null) : null
+  if (av) {
+    const R = 54
+    ctx.save(); ctx.beginPath(); ctx.arc(cx, y, R, 0, Math.PI * 2); ctx.closePath()
+    ctx.strokeStyle = OR; ctx.lineWidth = 3; ctx.stroke(); ctx.clip()
+    ctx.drawImage(av, cx - R, y - R, R * 2, R * 2); ctx.restore()
+    y += R + 42
+  }
+  ligne(d.alias || '', cx, y, { size: 44, font: 'Archivo', color: CREME })
+  y += 56
+
+  // ── LE VERDICT ────────────────────────────────────────────────────────
+  ligne(m.gagne, cx, y, { size: 30, color: MENTHE })
+  y += 92
+
+  // ── LA COTE, LE CHIFFRE QU'ON VIENT VOIR ──────────────────────────────
+  const cote = Number(d.cote ?? 0)
+  txt(ctx, `×${cote.toFixed(2)}`, cx, y + 40, { size: 150, font: 'Anton', color: OR })
+  y += 128
+
+  // ── L'AUDACE ──────────────────────────────────────────────────────────
+  if (d.chance != null) {
+    ligne(m.chance.replace('{n}', n(d.chance)), cx, y, { size: 30, color: CREME })
+    y += 56
+  }
+
+  // ── LE MOT DU JOUEUR ──────────────────────────────────────────────────
+  if (d.legende) {
+    const op = { size: 30, maxW: hw - 40, max: 2, color: '#AEBAB3', align: 'center' }
+    if (rtl) arLignes(ctx, d.legende, cx, y + 16, op)
+    else txtLignes(ctx, d.legende, cx, y + 16, { ...op, font: 'Archivo', poids: '400' })
+    y += 80
+  }
+
+  // ── LES JAMBES ────────────────────────────────────────────────────────
+  const [bx, by, bw, bh] = G.bas
+  // Les jambes prennent TOUT ce qui reste sous le bloc du haut : le forcer a
+  // une hauteur fixe laissait un combine a trois selections afficher
+  // « +1 autre » alors que la place existait.
+  const zone = G.jambes === 'haut'
+    ? { x: hx, y: y + 12, w: hw, h: Math.max(0, hy + hh - (y + 12)) }
+    : { x: bx, y: by + 14, w: bw, h: bh - 120 }
+
+  const PAS = 104
+  const combien = Math.max(1, Math.min(jambes.length, Math.floor(zone.h / PAS)))
+  for (let i = 0; i < combien; i++) {
+    const j = jambes[i]
+    const yl = zone.y + i * PAS + 34
+    // Le filet vert qui tient la jambe : une couleur = un sens, et ici le
+    // vert dit « cette sélection est passée ».
+    ctx.save(); ctx.fillStyle = MENTHE
+    ctx.fillRect(rtl ? zone.x + zone.w - 4 : zone.x, yl - 26, 4, 64); ctx.restore()
+    const xTexte = rtl ? zone.x + zone.w - 20 : zone.x + 20
+    const align = rtl ? 'right' : 'left'
+    const titre = `${j.titre || ''}${j.score ? `  ${j.score}` : ''}`
+    ligne(titre, xTexte, yl - 8, { size: 28, color: '#AEBAB3', align })
+    const choix = j.pick === 'draw' ? m.nul : (j.choix || j.pick || '')
+    ligne(choix, xTexte, yl + 28, { size: 32, color: CREME, align })
+    // La cote de la jambe, à l'autre bout.
+    txt(ctx, Number(j.cote ?? 0).toFixed(2), rtl ? zone.x + 20 : zone.x + zone.w - 20, yl + 28,
+        { size: 28, font: 'Archivo', color: OR, align: rtl ? 'left' : 'right' })
+    if (j.part != null) {
+      ligne(m.vu.replace('{n}', n(j.part)), rtl ? zone.x + 20 : zone.x + zone.w - 20, yl - 8,
+            { size: 22, color: OR, align: rtl ? 'left' : 'right' })
+    }
+  }
+  if (jambes.length > combien) {
+    const reste = jambes.length - combien
+    ligne((reste > 1 && m.autresP ? m.autresP : m.autres).replace('{n}', n(reste)),
+          zone.x + zone.w / 2, zone.y + combien * PAS + 24, { size: 24, color: '#7C8A83' })
+  }
+
+  // ── LE TALON : CE QUI A ÉTÉ ENGAGÉ, CE QUE ÇA A RAPPORTÉ ───────────────
+  const yPied = by + bh - 54
+  const gx = rtl ? bx + bw - 24 : bx + 24
+  const dx = rtl ? bx + 24 : bx + bw - 24
+  ligne(m.mise, gx, yPied - 36, { size: 22, color: '#7C8A83', align: rtl ? 'right' : 'left' })
+  txt(ctx, n(d.mise), gx, yPied + 6, { size: 46, font: 'Anton', color: CREME, align: rtl ? 'right' : 'left' })
+  ligne(m.gain, dx, yPied - 36, { size: 22, color: '#7C8A83', align: rtl ? 'left' : 'right' })
+  txt(ctx, n(d.gain), dx, yPied + 6, { size: 58, font: 'Anton', color: '#8B6CF5', align: rtl ? 'left' : 'right' })
+
+  // ── LA MARQUE ET LE CODE, SUR LA PELOUSE ──────────────────────────────
+  paintLogo(ctx, 44, 44, 150)
+  blocInscription(ctx, W / 2, G.qr, 130, W, { compact: true, lang })
+  return c
+}

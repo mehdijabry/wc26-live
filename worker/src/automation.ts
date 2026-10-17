@@ -32,7 +32,7 @@ import { cartePronostic } from './pronostics'
 import type { Env } from './index'
 import { withPlaybook, checkCaption, playbookSummary, pinnedComment } from './playbook'
 import { playbookReview } from './review'
-import { enqueueGoalAnim, processGoalAnim, goalAnimCallback, goalAnimJob, goalAnimQueue, resetGoalAnim, pickBestGoal, buildScene, type GoalAnimItem } from './goalanim'
+import { enqueueGoalAnim, processGoalAnim, goalAnimCallback, goalAnimJob, goalAnimQueue, resetGoalAnim, clearGoalAnimQueue, pickBestGoal, buildScene, type GoalAnimItem } from './goalanim'
 
 /** Le seul hôte ESPN fiable depuis un Worker — même que `syncCotes`. */
 const ESPN_SOCCER_OPS = 'https://site.api.espn.com/apis/site/v2/sports/soccer'
@@ -3744,7 +3744,13 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     }
     if (job === 'goal-anim-tick') { return { ok: true, note: await processGoalAnim(env, s, date, true) } }
     if (job === 'goal-anim-status') { const j = await goalAnimJob(env); const q = await goalAnimQueue(env, date); return { ok: true, note: `job: ${j ? `${j.stage} ${j.item.home} v ${j.item.away} (${Math.round((Date.now() - j.startedAt) / 60000)} min)` : 'none'} · queue: ${q.map((i) => `${i.home} v ${i.away}${i.preview ? ' (preview)' : ''}`).join(', ') || 'empty'} · today ${await getCount(env, date, 'goalanim')} published` } }
-    if (job === 'goal-anim-reset') { await resetGoalAnim(env); return { ok: true, note: 'goal-anim job cleared' } }
+    if (job === 'goal-anim-reset') {
+      // { queue: true } vide AUSSI la file du jour. Sans cela, on libere le
+      // travail en cours et les matchs deja empiles repartent au tick suivant.
+      await resetGoalAnim(env)
+      if ((extra as { queue?: boolean }).queue) { const n = (await goalAnimQueue(env, date)).length; await clearGoalAnimQueue(env, date); return { ok: true, note: `travail en cours libere et file videe (${n} matchs retires)` } }
+      return { ok: true, note: 'goal-anim job cleared (la file reste — ajouter { queue: true } pour la vider)' }
+    }
     if (job === 'goal-anim-scene') {
       // Debug: the scene spec + storyboard the choreographer would build (no render): { event, slug, goal? }
       const x = extra as { event?: string; slug?: string; goal?: string }

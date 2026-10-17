@@ -15,6 +15,8 @@ import {
   type Jambe,
 } from '../../lib/jeu'
 import { ficheDuMatch, type Fiche } from '../../lib/ficheMatch'
+import PartagerPari from '../PartagerPari'
+import { parisPubliables } from '../../lib/posts'
 
 /** Les buteurs d'un match : propre a cette page, contrairement aux fiches. */
 const cacheButeurs = new Map<string, Map<string, string>>()
@@ -61,6 +63,13 @@ export default function MesParis() {
   const [fiches, setFiches] = useState<Map<string, Fiche>>(new Map())
   const [buteurs, setButeurs] = useState<Map<string, Map<string, string>>>(new Map())
   const [authOuvert, setAuthOuvert] = useState(false)
+  /**
+   * Les bulletins gagnes PAS ENCORE publies, tels que le serveur les voit.
+   * `null` tant qu'on ne sait pas : on n'affiche alors ni « Partager » ni
+   * « Partage ✓ », parce qu'un echec de lecture ne veut pas dire « deja
+   * publie » (regle des trois etats d'affichage).
+   */
+  const [publiables, setPubliables] = useState<Set<number> | null>(null)
 
   usePageHead({
     titre: 'My bets — Pressing 90′',
@@ -95,6 +104,7 @@ export default function MesParis() {
       return
     }
     setBulletins(b)
+    void parisPubliables().then((l) => setPubliables(new Set(l.map((x) => Number(x.slip_id)))))
     if (!b.length) return
 
     const ids = [...new Set(b.flatMap((x) => (x.legs ?? []).map((j) => j.match_id)))]
@@ -277,6 +287,25 @@ export default function MesParis() {
                         <span className="font-mono tabular-nums text-accent-red">−{b.penalty}</span>
                       )}
                     </div>
+                    {/* ── PARTAGER UN PARI GAGNE ───────────────────────
+                        Le bouton n'existe que sur un bulletin gagne et pas
+                        encore publie : la base refuse les deux autres cas, et
+                        une action qui ne peut qu'echouer se lit comme une
+                        panne. `publiables` vient du serveur, pas d'un calcul
+                        local. */}
+                    {b.status === 'won' && publiables !== null && (
+                      <div className="w-full flex flex-wrap items-center gap-2">
+                        <PartagerPari
+                          slipId={b.id}
+                          matchIds={(b.legs ?? []).map((j) => j.match_id)}
+                          dejaPublie={publiables !== null && !publiables.has(b.id)}
+                          onPublie={() => setPubliables((v) => {
+                            if (!v) return v
+                            const n = new Set(v); n.delete(b.id); return n
+                          })}
+                        />
+                      </div>
+                    )}
                   </footer>
                 </article>
               )

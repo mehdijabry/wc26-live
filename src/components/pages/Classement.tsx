@@ -59,9 +59,21 @@ import {
 export function Classement() {
   const user = useAuth((s) => s.user)
   const initialized = useAuth((s) => s.initialized)
+  const alias = useAuth((s) => s.profile?.alias ?? '')
   const navigate = useNavigate()
   const t = useT()
   const lang = useLang((s) => s.lang)
+
+  /**
+   * Ai-je parie aujourd'hui dans ce groupe ?
+   *
+   * `manquants_jour` liste les membres ACTIFS qui n'ont pas encore joue de
+   * la journee. M'y trouver veut dire que `reclamer_bonus_de_groupe` levera
+   * P0014 : autant ne pas allumer le bouton. Comparaison insensible a la
+   * casse, l'alias affiche n'est pas garanti normalise.
+   */
+  const jaiParie = (e: EtatDuGroupe | null) =>
+    !!e && !e.manquantsJour.some((a) => a.toLowerCase() === alias.toLowerCase())
 
   const [saison, setSaison] = useState<Saison | null>(null)
   const [compte, setCompte] = useState<Compte | null>(null)
@@ -153,7 +165,17 @@ export function Classement() {
     void reclamerBonus(slug).then(async (r) => {
       setOccupe(false)
       if ('erreur' in r) {
-        setMessage(t('Could not claim the bonus right now.'))
+        // La base refuse pour des raisons precises et chiffrees. Les ecraser
+        // toutes sous « impossible pour le moment » faisait croire a une
+        // panne : Mehdi a lu ce message alors qu'il n'avait simplement pas
+        // encore parie de la journee (17/10/2026).
+        setMessage(
+          r.code === 'P0014' ? t('Place a bet today first — the group bonus rewards taking part.')
+          : r.code === 'P0015' ? t('A group starts paying rewards at three members. Share the invite link.')
+          : r.code === 'P0013' ? t('You are not in this group.')
+          : r.code === 'P0004' ? t('Sign in to claim.')
+          : t('Could not claim the bonus right now.'),
+        )
         return
       }
       setMessage(
@@ -327,6 +349,7 @@ export function Classement() {
                   etat={etats[l.slug] ?? null}
                   place={rangs[l.slug] ?? null}
                   bonus={bonus}
+                  jaiParie={jaiParie(etats[l.slug] ?? null)}
                   occupe={occupe}
                   onReclamer={() => onReclamer(l.slug)}
                 />
@@ -386,6 +409,7 @@ function CarteGroupe({
   etat,
   place,
   bonus,
+  jaiParie,
   occupe,
   onReclamer,
 }: {
@@ -393,6 +417,8 @@ function CarteGroupe({
   etat: EtatDuGroupe | null
   place: { rang: number; sur: number; points: number } | null
   bonus: { groupe: string; crampons: number } | null
+  /** Faux tant que je n'ai pas parie aujourd'hui : la base refuserait. */
+  jaiParie: boolean
   occupe: boolean
   onReclamer: () => void
 }) {
@@ -457,12 +483,17 @@ function CarteGroupe({
           ) : (
             <button
               type="button"
-              disabled={occupe || etat.bonusJour === 0}
+              /* Le bouton ne propose que ce que la base accepterait : sans
+                 pari du jour elle leve P0014, et un bouton vif qui echoue
+                 se lit comme une panne (Mehdi, 17/10/2026). */
+              disabled={occupe || etat.bonusJour === 0 || !jaiParie}
               onClick={onReclamer}
               className="px-3.5 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98] transition-transform"
             >
               <Jeton type="crampon" taille={13} />
-              {etat.bonusJour === 0 ? t('Nobody has bet today') : avecN(t('Claim {n}'), etat.bonusJour)}
+              {etat.bonusJour === 0 ? t('Nobody has bet today')
+                : !jaiParie ? t('Bet today to claim')
+                : avecN(t('Claim {n}'), etat.bonusJour)}
             </button>
           )}
         </div>

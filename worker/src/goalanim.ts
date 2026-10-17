@@ -36,6 +36,9 @@ export async function enqueueGoalAnim(env: Env, date: string, item: GoalAnimItem
 export async function goalAnimJob(env: Env): Promise<Job | null> { try { const raw = await env.CACHE.get(JKEY); return raw ? (JSON.parse(raw) as Job) : null } catch { return null } }
 const saveJob = (env: Env, job: Job) => env.CACHE.put(JKEY, JSON.stringify(job), { expirationTtl: 6 * 3600 })
 export const resetGoalAnim = (env: Env) => env.CACHE.delete(JKEY)
+/** Vide la file d'attente du jour. `resetGoalAnim` ne libere que le travail en
+ *  cours : sans ceci, les matchs deja empiles repartent au tick suivant. */
+export const clearGoalAnimQueue = (env: Env, date: string) => env.CACHE.delete(QKEY(date))
 
 /** One tick of the staged pipeline: advances the running job by one stage, or starts the next queued match. */
 export async function processGoalAnim(env: Env, s: AutomationSettings, date: string, force = false): Promise<string> {
