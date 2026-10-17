@@ -92,16 +92,11 @@ const tabs: Tab[] = [
       // variante épaissie ici.
       icon: () => <IconeMasque nom="growth-analysis" taille={22} />,
     },
-  {
-    // Post-tournament: 'Predict' tab replaced by News — the daily read
-    // is now the site's second pillar after live scores.
-    to: '/news', label: 'News',
-    icon: (a) => (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-        <path d="M4 5h12v14H6a2 2 0 01-2-2V5zM16 8h4v9a2 2 0 01-2 2M7 9h6M7 13h6M7 16h4" stroke="currentColor" strokeWidth={a ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    ),
-  },
+  // ── « NEWS » QUITTE LA BARRE DU BAS (Mehdi, 17/10/2026) ───────────────
+  // Elle reste atteignable par deux chemins qui ne bougent pas : la section
+  // en bas de l'accueil, et le menu de l'avatar. La barre, elle, n'a que
+  // sept places et les buts du jour comptent davantage — ils sont désormais
+  // en tête de l'accueil, dans leur propre bloc.
   {
     // WC26 archive — trophy stays, the tournament is history now.
     to: '/wc26', label: 'WC26',

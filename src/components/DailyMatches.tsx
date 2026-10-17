@@ -7,7 +7,6 @@ import { useMatchOdds } from '../lib/useMatchOdds'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
 import { localeOf, trLeague, useLang, useT } from '../lib/i18n'
 import { Link } from 'react-router-dom'
-import { SectionHeader } from './Groups'
 import { MatchSheet } from './MatchSheet'
 import { etat } from '../lib/matchEspn'
 
@@ -258,13 +257,49 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
   return (
     <section id="today" className="py-20 sm:py-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
-        {/* Le titre était passé en sr-only quand la section répétait la
-            page Matchs ; il redevient visible maintenant qu'elle a un rôle
-            à elle — la vitrine des grandes compétitions. */}
-        <SectionHeader
-          eyebrow={t('football today')}
-          title={t('Every match, everywhere')}
-        />
+        {/* ── LES DEUX PORTES DU JOUR ──────────────────────────────────
+            Mehdi, 17/10/2026 : le titre « Every match, everywhere » laisse
+            la place aux buts et aux résumés. C'est l'endroit le plus vu de
+            l'accueil — juste sous le match à l'affiche — et c'est ce qu'on
+            vient chercher en premier un soir de match.
+
+            Deux boutons DISTINCTS, pas un sélecteur : ce sont deux envies
+            différentes. Le but se regarde en dix secondes, le résumé se
+            regarde assis. L'or va aux buts, qui sont la raison d'être du
+            bloc ; le résumé prend le verre, en retrait d'un cran. */}
+        <div className="text-center">
+          <p className="font-mono text-[11px] uppercase tracking-widest text-slate-500">
+            {t('football today')}
+          </p>
+          <h2 className="mt-2 font-display text-2xl sm:text-3xl leading-tight">
+            {t('Missed it? Watch it in ten seconds.')}
+          </h2>
+
+          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              to="/buts"
+              className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-accent-gold text-ink-900
+                         font-semibold active:scale-[0.98] transition-transform"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+                <circle cx="12" cy="12" r="9" />
+                <path d="m12 7.5 2.6 1.9-1 3.1h-3.2l-1-3.1L12 7.5Z" fill="currentColor" stroke="none" />
+              </svg>
+              {t('Today’s goals')}
+            </Link>
+            <Link
+              to="/resumes"
+              className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl glass glass-hover
+                         font-semibold text-slate-800 active:scale-[0.98] transition-transform"
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
+                <rect x="3" y="5" width="18" height="14" rx="2.5" />
+                <path d="M10 9.5v5l4-2.5-4-2.5Z" fill="currentColor" stroke="none" />
+              </svg>
+              {t('Today’s highlights')}
+            </Link>
+          </div>
+        </div>
 
         {/* Day navigator — minimal: ‹ chevron · date (tappable date picker) · chevron ›.
             No glass box, no extra padding. Tap the date to jump to ANY day.

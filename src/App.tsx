@@ -32,6 +32,10 @@ import { sendHit } from './lib/beacon'
 const Stadiums = lazy(() => import('./components/Stadiums').then((m) => ({ default: m.Stadiums })))
 const Predictions = lazy(() => import('./components/Predictions').then((m) => ({ default: m.Predictions })))
 const Clubs = lazy(() => import('./components/pages/Clubs').then((m) => ({ default: m.Clubs })))
+// Les buts et les résumés du jour : une seule page, deux filtres. Mehdi,
+// 17/10/2026 — deux boutons en tête de l'accueil y mènent, et « News » a
+// quitté la barre du bas pour leur laisser la place.
+const Videos = lazy(() => import('./components/pages/Videos'))
 const ClubsLeague = lazy(() => import('./components/pages/ClubsLeague').then((m) => ({ default: m.ClubsLeague })))
 const ClubPage = lazy(() => import('./components/pages/ClubPage').then((m) => ({ default: m.ClubPage })))
 const Classement = lazy(() => import('./components/pages/Classement').then((m) => ({ default: m.Classement })))
@@ -330,6 +334,22 @@ function App() {
             element={
               <Suspense fallback={<PageSkeleton caption="Loading the league…" />}>
                 <LeaguePage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/buts"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading the goals…" />}>
+                <Videos kind="but" />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/resumes"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading the highlights…" />}>
+                <Videos kind="resume" />
               </Suspense>
             }
           />
