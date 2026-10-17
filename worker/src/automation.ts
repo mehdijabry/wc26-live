@@ -3711,6 +3711,31 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       if (!buf) return { ok: false, note: 'Workers AI returned no image (AI binding?)' }
       return { ok: true, note: await putMedia(env, `flux-test-${Date.now()}.png`, buf, 'image/png') }
     }
+    if (job === 'goal-repost') {
+      // REPUBLIER UN BUT, par la chaine d'un vrai but et pas autrement.
+      // Mehdi a supprime le post sorti sur l'ancienne carte (17/10/2026) et
+      // demande le meme, au bon gabarit. Passer par `queueGoalReel` garantit
+      // que tout suit : la peau blaugrana si le Barca marque, le texte de
+      // couverture, la description, et le commentaire avec le lien.
+      // { home, away, homeLogo, awayLogo, homeScore, awayScore, league,
+      //   scorer, minute, assist, side: 'home'|'away', prev: [h, a] }
+      const x = extra as Record<string, unknown>
+      if (!x.home || !x.away || !x.scorer) return { ok: false, note: 'home, away et scorer requis' }
+      const m = {
+        id: `repost-${Date.now()}`, rank: 1, league: String(x.league ?? 'LaLiga'), slug: String(x.slug ?? 'esp.1'),
+        kickoff: '', state: 'in', completed: false, statusName: '',
+        home: String(x.home), away: String(x.away),
+        homeLogo: String(x.homeLogo ?? ''), awayLogo: String(x.awayLogo ?? ''),
+        homeScore: String(x.homeScore ?? ''), awayScore: String(x.awayScore ?? ''),
+      } as unknown as AutoMatch
+      const g: GoalInfo = {
+        scorer: String(x.scorer), minute: String(x.minute ?? ''),
+        side: x.side === 'away' ? 'away' : 'home', assist: String(x.assist ?? ''),
+      }
+      const p = Array.isArray(x.prev) ? (x.prev as unknown[]).map(Number) : [0, 0]
+      await queueGoalReel(env, date, m, g, [p[0] || 0, p[1] || 0])
+      return { ok: true, note: `but republie : ${g.scorer} ${g.minute} — ${m.home} ${m.homeScore}-${m.awayScore} ${m.away} (voir le journal)` }
+    }
     if (job === 'reel-publish') {
       // Publish an already rendered video as a Facebook reel: { url, description?, title? } — goal analyses rendered off-line (Mehdi, 2026-09-18)
       const x = extra as { url?: string; description?: string; title?: string }
