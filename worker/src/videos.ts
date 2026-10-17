@@ -23,11 +23,11 @@
  */
 import type { Env } from './index'
 import type { AutoMatch } from './automation'
-import { bigMatchesToday, fbPost, fbComment, leagueAr, log, renderImage, sbHeaders } from './automation'
+import { bigMatchesToday, fbComment, fbLinkPost, leagueAr, log, sbHeaders } from './automation'
+import { lienPartage, ogDeVideo } from './videopage'
 import { clesDAppariement, clipsDePlaylist, derniersClips, type Clip } from './youtube'
 import { captionResume } from './accroches'
 
-const SITE = 'https://pressing90.live'
 
 export type Source = {
   cle: string
@@ -184,21 +184,6 @@ async function dejaLa(env: Env, matchId: string): Promise<Array<{ kind: string; 
   return (await r.json().catch(() => [])) as Array<{ kind: string; fb_post_id: string | null; publie_fb: boolean }>
 }
 
-/** La carte Facebook d'un résumé, dessinée par le studio. */
-async function carte(env: Env, m: AutoMatch | null, s: Source, videoId: string): Promise<string> {
-  const repli = `${SITE}/icon-512.png`
-  try {
-    return await renderImage(env, 'but-clip', {
-      lang: 'ar', competition: s.competition,
-      home: m?.home ?? '', away: m?.away ?? '',
-      homeLogo: m?.homeLogo ?? '', awayLogo: m?.awayLogo ?? '',
-      homeScore: m?.homeScore ?? '', awayScore: m?.awayScore ?? '',
-      vignette: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
-      barca: true,
-    })
-  } catch { return repli }
-}
-
 const lienYt = (id: string) => `https://www.youtube.com/watch?v=${id}`
 
 /**
@@ -318,17 +303,24 @@ async function publierUnCourt(env: Env, pool: AutoMatch[]): Promise<string | nul
     const s = SOURCES.find((o) => o.cle === x.source)
     if (!s) { await marquer(env, x.video_id, { publie_fb: true }); continue }
     const m = pool.find((o) => o.id === x.match_id) ?? null
-    const img = await carte(env, m, s, x.video_id)
     const dom = x.equipe_dom ?? m?.home ?? ''
     const ext = x.equipe_ext ?? m?.away ?? ''
     const sd = x.score_dom ?? (m ? Number(m.homeScore) : null)
     const se = x.score_ext ?? (m ? Number(m.awayScore) : null)
-    const p = await fbPost(env, {
+    // ── UN POST DE LIEN, PAS UNE PHOTO (17/10/2026) ──────────────────
+    // L'image est rendue AVANT de publier, pour deux raisons : elle entre
+    // dans le cache KV, et c'est elle que Facebook trouvera quand il ira
+    // lire la page une seconde plus tard. Rendue après, l'aperçu serait
+    // capturé sans image et le post resterait nu — le cache de Facebook
+    // est tenace.
+    const lien = lienPartage(x.video_id)
+    const og = await ogDeVideo(env, x, m)
+    const p = await fbLinkPost(env, {
       message: captionResume({
         dom, ext, scoreDom: sd, scoreExt: se,
-        competitionAr: leagueAr(m?.league ?? s.competition), lien: `${SITE}/resumes`,
+        competitionAr: leagueAr(m?.league ?? s.competition), lien,
       }),
-      link: `${SITE}/resumes`, image_url: img, title: x.titre.slice(0, 100),
+      link: lien, image_url: og ?? undefined, title: x.titre.slice(0, 100),
       comment: `▶️ ${lienYt(x.video_id)}`,
     })
     await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })
@@ -398,14 +390,15 @@ export async function extendedDuJour(env: Env, date: string): Promise<string> {
     }
 
     for (const x of aPublier) {
-      const img = await carte(env, null, s, x.video_id)
-      const p = await fbPost(env, {
+      const lien = lienPartage(x.video_id)
+      const og = await ogDeVideo(env, x)
+      const p = await fbLinkPost(env, {
         message: captionResume({
           dom: x.equipe_dom ?? '', ext: x.equipe_ext ?? '',
           scoreDom: x.score_dom, scoreExt: x.score_ext,
-          competitionAr: leagueAr(s.competition), lien: `${SITE}/resumes`,
+          competitionAr: leagueAr(s.competition), lien,
         }),
-        link: `${SITE}/resumes`, image_url: img, title: x.titre.slice(0, 100),
+        link: lien, image_url: og ?? undefined, title: x.titre.slice(0, 100),
         comment: `▶️ ${lienYt(x.video_id)}`,
       })
       await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })

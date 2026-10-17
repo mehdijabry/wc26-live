@@ -2339,31 +2339,28 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
   let fb: { ok: boolean; note?: string } = { ok: false, note: 'non demandé' }
   if (b?.fb) {
     const auto = await import('./automation')
-    const lien = `${SITE_URL}/buts?v=${encodeURIComponent(videoId)}`
-    // ── L'IMAGE EST LA NÔTRE ───────────────────────────────────────────
-    // Le studio dessine la carte « but-clip » : la vignette de la vidéo
-    // posée dans une fenêtre, un bouton de lecture, les deux écussons, le
-    // score, le buteur et sa minute. Poster la vignette NUE reviendrait à
-    // publier l'image d'un ayant droit comme si c'était la nôtre ; posée
-    // dans notre carte, c'est un aperçu de lien, et le clic repart chez lui.
+    const { lienPartage, ogDeVideo } = await import('./videopage')
+    // ── UN POST DE LIEN, PAS UNE PHOTO (17/10/2026) ────────────────────
+    // Le but partait en post photo avec notre carte « but-clip » : joli,
+    // mais sans destination — Facebook ouvre l'image en grand et le lecteur
+    // reste chez lui. Depuis, on publie le lien de /v/<id>, dont l'aperçu
+    // Open Graph montre la vignette de la vidéo sous un bouton de lecture.
+    // Le visuel promet une vidéo, et le clic l'ouvre vraiment, sur le site.
     //
-    // Si le studio dort, on retombe sur la vignette proxyfiée : mieux vaut
-    // un post sans notre habillage qu'un post sans image.
-    let image = b?.vignette
-      ? `https://wc26-api.nameless-violet-5dc1.workers.dev/fb-img?u=${encodeURIComponent(String(b.vignette))}`
-      : `${SITE_URL}/icon-512.png`
-    try {
-      image = await auto.renderImage(env as unknown as Parameters<typeof auto.renderImage>[0], 'but-clip', {
-        lang: 'ar',
-        competition: (safeString(b?.competition ?? '', 80) ?? ''),
-        home: deuxEquipes[0] ?? '', away: deuxEquipes[1] ?? '',
-        scorer: (safeString(b?.buteur ?? '', 120) ?? ''),
-        minute: (safeString(b?.minute ?? '', 12) ?? ''),
-        vignette: b?.vignette ?? null,
-        barca: true,
-      })
-    } catch { /* la vignette proxyfiée fait l'affaire */ }
-    fb = await auto.fbPost(env as unknown as Parameters<typeof auto.fbPost>[0], {
+    // L'image est rendue AVANT la publication : elle entre dans le cache et
+    // c'est elle que Facebook trouvera en lisant la page, une seconde plus
+    // tard. Rendue après, l'aperçu serait capturé sans image.
+    const lien = lienPartage(videoId)
+    const og = await ogDeVideo(env as unknown as Parameters<typeof ogDeVideo>[0], {
+      video_id: videoId, source: ligne.source, kind: 'but', titre: ligne.titre,
+      competition: ligne.competition, equipe_dom: ligne.equipe_dom, equipe_ext: ligne.equipe_ext,
+      buteur: ligne.buteur, minute: ligne.minute, score_dom: null, score_ext: null,
+    })
+    const image = og
+      ?? (b?.vignette
+        ? `https://wc26-api.nameless-violet-5dc1.workers.dev/fb-img?u=${encodeURIComponent(String(b.vignette))}`
+        : `${SITE_URL}/icon-512.png`)
+    fb = await auto.fbLinkPost(env as unknown as Parameters<typeof auto.fbLinkPost>[0], {
       message: (safeString(b?.caption ?? '', 1800) ?? '') || (safeString(b?.titre ?? '', 300) ?? ''),
       link: lien,
       image_url: image,

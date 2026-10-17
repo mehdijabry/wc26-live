@@ -1526,3 +1526,257 @@ export async function gabaritButClip(d = {}) {
   blocInscription(ctx, W / 2, 1096, 112, W, { compact: true, lang })
   return c
 }
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ L'IMAGE DE PARTAGE DES PAGES VIDÉO — gabarit « og-video », 1200×630  ║
+// ║                                                                      ║
+// ║ Ce format ne se publie PAS comme une photo : c'est l'`og:image` de   ║
+// ║ /v/<id>. Facebook l'affiche sous un post de LIEN, et le clic part    ║
+// ║ sur le site au lieu d'ouvrir une image en grand (Mehdi, 17/10/2026 : ║
+// ║ « vu que c'est juste une image ça ne sert à rien, nous on veut       ║
+// ║ convertir en trafic »).                                              ║
+// ║                                                                      ║
+// ║ D'où 1200×630 et non 1080×1350 : c'est le format que Facebook        ║
+// ║ réclame pour un aperçu de lien. Rendu à cette taille exacte, rien    ║
+// ║ n'est rogné à l'affichage — ce qu'on compose est ce qui est montré.  ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+/**
+ * ROGNE LES BANDES NOIRES D'UNE VIGNETTE.
+ *
+ * Le piège des vignettes YouTube : `hqdefault.jpg` sort en 480×360, c'est-à-
+ * dire du 4:3 avec deux bandes noires CUITES autour d'une image 16:9 ; et la
+ * vignette d'un Short arrive en 16:9 avec deux bandes verticales autour d'une
+ * image 9:16. Se fier aux dimensions du fichier donnerait donc la mauvaise
+ * fenêtre dans les deux cas — celle du conteneur, pas celle de la vidéo.
+ *
+ * On mesure l'encre plutôt que de lire l'en-tête : les lignes et colonnes
+ * franchement noires des bords sont retirées, et c'est le rectangle restant
+ * qui donne le format réel.
+ *
+ * Trois garde-fous, parce qu'une photo de match de nuit est elle-même sombre :
+ *   · on ne rogne que sur UN axe — un letterbox est horizontal ou vertical,
+ *     jamais les deux ;
+ *   · chaque bande doit faire entre 3 % et 32 % du côté ;
+ *   · les deux bandes doivent être de taille comparable (un letterbox est
+ *     centré). Une image simplement sombre en haut ne passe aucun des trois.
+ *
+ * Rend un rectangle source `[sx, sy, sw, sh]`, en pixels de l'image d'origine.
+ */
+function sansBandes(img) {
+  const N = 120
+  const W = img.width || 0, H = img.height || 0
+  if (!W || !H) return [0, 0, W, H]
+  const p = createCanvas(N, N); const pc = p.getContext('2d')
+  pc.drawImage(img, 0, 0, N, N)
+  const d = pc.getImageData(0, 0, N, N).data
+  const lum = (i) => (d[i] + d[i + 1] + d[i + 2]) / 3
+  const moyLigne = (y) => { let s = 0; for (let x = 0; x < N; x++) s += lum((y * N + x) * 4); return s / N }
+  const moyCol = (x) => { let s = 0; for (let y = 0; y < N; y++) s += lum((y * N + x) * 4); return s / N }
+  const NOIR = 10   // une bande cuite est à 0 ; 10/255 laisse passer le bruit de compression
+
+  let h0 = 0, h1 = N - 1, v0 = 0, v1 = N - 1
+  while (h0 < h1 && moyLigne(h0) < NOIR) h0++
+  while (h1 > h0 && moyLigne(h1) < NOIR) h1--
+  while (v0 < v1 && moyCol(v0) < NOIR) v0++
+  while (v1 > v0 && moyCol(v1) < NOIR) v1--
+
+  const haut = h0, bas = N - 1 - h1, gauche = v0, droite = N - 1 - v1
+  const plausible = (a, b) => {
+    // 38 % : une vidéo 9:16 dans un cadre 16:9 — la vignette d'un Short —
+    // laisse 34,1 % de noir de chaque côté. Un plafond à 32 % les rejetait
+    // tous (mesuré le 17/10 sur un cas de test : rapport rendu 1,77 au lieu
+    // de 0,56). C'est le pire cas réel, d'où la marge juste au-dessus.
+    const min = N * 0.03, max = N * 0.38
+    return a >= min && b >= min && a <= max && b <= max && Math.abs(a - b) <= N * 0.05
+  }
+  if (plausible(haut, bas) && gauche + droite < N * 0.03) {
+    return [0, Math.round(H * (haut / N)), W, Math.round(H * ((h1 - h0 + 1) / N))]
+  }
+  if (plausible(gauche, droite) && haut + bas < N * 0.03) {
+    return [Math.round(W * (gauche / N)), 0, Math.round(W * ((v1 - v0 + 1) / N)), H]
+  }
+  return [0, 0, W, H]
+}
+
+/** Un rectangle à coins arrondis, posé sur le chemin courant. */
+function cheminArrondi(ctx, x, y, w, h, r) {
+  ctx.beginPath(); ctx.moveTo(x + r, y)
+  ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r)
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath()
+}
+
+/**
+ * Écrit une ligne en la faisant TENIR dans une largeur donnée : on réduit le
+ * corps jusqu'à `min`, et seulement après on coupe. Une ligne coupée se lit ;
+ * une ligne qui déborde sur l'écusson voisin, non.
+ */
+function ligneTenue(ctx, t, x, y, maxW, { size = 40, min = 24, font = 'Archivo', color = CREME, rtl = false } = {}) {
+  let s = size, texte = String(t ?? '')
+  if (!texte) return
+  const police = (n) => (rtl ? `bold ${n}px Tajawal` : `${n}px ${font}`)
+  ctx.save()
+  ctx.font = police(s)
+  while (ctx.measureText(texte).width > maxW && s > min) { s -= 2; ctx.font = police(s) }
+  while (texte.length > 4 && ctx.measureText(texte).width > maxW) {
+    texte = texte.slice(0, -2) + '…'
+    ctx.font = police(s)
+  }
+  ctx.restore()
+  if (rtl) ar(ctx, texte, x, y, { size: s, color })
+  else txt(ctx, texte, x, y, { size: s, font, color })
+}
+
+/**
+ * LA FENÊTRE SE CALCULE, ELLE N'EST PAS DESSINÉE SUR LA PLAQUE.
+ *
+ * Première tentative le 17/10 : trois plaques, une par format, avec la
+ * fenêtre et son cadre doré cuits dedans. Mesuré sur les images rendues, la
+ * « 9:16 » faisait 0,42 et le « carré » 1,11 — ces générateurs ne comptent
+ * pas, et relancer n'y change rien. La plaque est donc nue, et le cadre,
+ * son ombre interne et le bouton sont tracés ici, aux dimensions exactes du
+ * rapport réel de la vignette. N'importe quel format tombe juste, au pixel,
+ * sans seuil ni liste de cas.
+ */
+export async function gabaritOgVideo(d = {}) {
+  registerBrandFonts()
+  const W = 1200, H = 630
+  const lang = ['fr', 'en', 'ar'].includes(d.lang) ? d.lang : 'ar'
+  const rtl = lang === 'ar'
+  const barca = peauBarca(d.barca, d.home, d.away, d.competition)
+  const teinte = barca ? OR : MENTHE
+
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+
+  // ── LE FOND, RECADRÉ ET NON ÉTIRÉ ───────────────────────────────────
+  // `poser()` cale sur la largeur : la plaque 2048×1152 descendrait à 675 de
+  // haut dans un cadre de 630, et la bande d'herbe sortirait par le bas. Ici
+  // on couvre et on centre — on perd 3 % de ciel et 3 % d'herbe, rien d'utile.
+  ctx.fillStyle = '#05080F'; ctx.fillRect(0, 0, W, H)
+  const f = await fond('og-video')
+  const ech = Math.max(W / f.width, H / f.height)
+  ctx.drawImage(f, (W - f.width * ech) / 2, (H - f.height * ech) / 2, f.width * ech, f.height * ech)
+
+  // ── LA FENÊTRE, AU FORMAT RÉEL DE LA VIGNETTE ───────────────────────
+  const vign = d.vignette ? await loadImgOuRepli(d.vignette, d.vignetteRepli || null) : null
+  const [sx, sy, sw, sh] = vign ? sansBandes(vign) : [0, 0, 16, 9]
+  const MARGE = 44, MAXW = 700, MAXH = H - MARGE * 2
+  const rapport = sh ? sw / sh : 16 / 9
+  let fw = MAXH * rapport, fh = MAXH
+  if (fw > MAXW) { fw = MAXW; fh = MAXW / rapport }
+  fw = Math.round(fw); fh = Math.round(fh)
+  const fx = MARGE, fy = Math.round((H - fh) / 2)
+  const R = 16
+
+  ctx.save()
+  cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.clip()
+  ctx.fillStyle = '#05080F'; ctx.fillRect(fx, fy, fw, fh)
+  if (vign) {
+    // La fenêtre a EXACTEMENT le rapport du rectangle utile : le `cover`
+    // ci-dessous ne rogne donc rien, il ne fait qu'absorber l'arrondi.
+    const r = Math.max(fw / sw, fh / sh)
+    const lw = sw * r, lh = sh * r
+    ctx.drawImage(vign, sx, sy, sw, sh, fx + (fw - lw) / 2, fy + (fh - lh) / 2, lw, lh)
+  }
+  // L'ombre interne : la fenêtre doit sembler encastrée dans la plaque, pas
+  // collée dessus. Un trait épais tracé SOUS le masque ne mord que vers
+  // l'intérieur.
+  ctx.strokeStyle = 'rgba(5,8,15,0.55)'; ctx.lineWidth = 26
+  cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.stroke()
+  ctx.restore()
+
+  ctx.save()
+  cheminArrondi(ctx, fx, fy, fw, fh, R)
+  ctx.strokeStyle = OR; ctx.lineWidth = 3; ctx.stroke()
+  ctx.restore()
+
+  // ── LE BOUTON DE LECTURE ─────────────────────────────────────────────
+  // Centré sur la FENÊTRE et dimensionné par elle : sur une vidéo verticale
+  // la fenêtre est trois fois plus étroite, un disque de taille fixe la
+  // boucherait.
+  const px = fx + fw / 2, py = fy + fh / 2
+  const RB = Math.max(42, Math.min(80, Math.round(Math.min(fw, fh) * 0.17)))
+  ctx.save()
+  const halo = ctx.createRadialGradient(px, py, RB * 0.6, px, py, RB * 2.1)
+  halo.addColorStop(0, 'rgba(5,8,15,0.55)'); halo.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(px, py, RB * 2.1, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(px, py, RB, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(5,8,15,0.88)'; ctx.fill()
+  ctx.lineWidth = 4; ctx.strokeStyle = teinte; ctx.stroke()
+  const t = RB * 0.42
+  ctx.beginPath()
+  ctx.moveTo(px - t * 0.68, py - t); ctx.lineTo(px + t * 1.12, py); ctx.lineTo(px - t * 0.68, py + t)
+  ctx.closePath(); ctx.fillStyle = teinte; ctx.fill()
+  ctx.restore()
+
+  if (d.minute) {
+    txt(ctx, String(d.minute), fx + fw - 20, fy + fh - 26,
+        { size: Math.round(Math.min(fw, fh) * 0.11), font: 'Anton', color: CREME, align: 'right' })
+  }
+
+  // ── LA COLONNE : tout ce qui reste à droite de la fenêtre ────────────
+  // Sa largeur dépend du format de la vidéo — 376 px face à une fenêtre
+  // 16:9, 771 face à une verticale — donc rien n'y est posé en dur.
+  const x0 = fx + fw + 36
+  const LC = W - MARGE - x0
+  const cx = x0 + LC / 2
+
+  // UN VOILE, PAS UN PANNEAU. La plaque porte une rangée de lumières ambrées
+  // à mi-hauteur et une bande d'herbe éclairée en bas — exactement là où
+  // tombent la compétition et la signature. Le voile s'ouvre en dégradé
+  // depuis la fenêtre et file jusqu'aux trois bords : aucune arête visible,
+  // donc l'œil y lit une pénombre et non un cadre collé par-dessus.
+  const voile = ctx.createLinearGradient(x0 - 20, 0, x0 + 120, 0)
+  voile.addColorStop(0, 'rgba(5,8,15,0)'); voile.addColorStop(1, 'rgba(5,8,15,0.46)')
+  ctx.save()
+  ctx.fillStyle = voile; ctx.fillRect(x0 - 20, 0, 140, H)
+  ctx.fillStyle = 'rgba(5,8,15,0.46)'; ctx.fillRect(x0 + 120, 0, W - (x0 + 120), H)
+  ctx.restore()
+
+  paintLogo(ctx, cx - 44, 46, 88)
+
+  let y = 190
+  if (d.etiquette) {
+    const et = String(d.etiquette)
+    ctx.save(); ctx.font = rtl ? 'bold 26px Tajawal' : '24px Archivo'
+    const lw = Math.min(LC, ctx.measureText(et).width + 44); ctx.restore()
+    ctx.save()
+    cheminArrondi(ctx, cx - lw / 2, y - 23, lw, 46, 23)
+    ctx.fillStyle = 'rgba(5,8,15,0.72)'; ctx.fill()
+    ctx.strokeStyle = teinte; ctx.lineWidth = 2; ctx.stroke(); ctx.restore()
+    ligneTenue(ctx, et, cx, y, lw - 28, { size: rtl ? 26 : 24, min: 18, color: teinte, rtl })
+    y += 74
+  }
+
+  if (d.competition) {
+    ligneTenue(ctx, d.competition, cx, y, LC, { size: 30, min: 20, color: teinte, rtl })
+    y += 62
+  }
+
+  // Les écussons et le score : une seule rangée, mesurée sur la colonne.
+  const dom = await crest(d.homeLogo), ext = await crest(d.awayLogo)
+  const aScore = d.homeScore !== undefined && d.homeScore !== null
+    && d.awayScore !== undefined && d.awayScore !== null
+  if (dom || ext || aScore) {
+    const ECU = Math.min(84, Math.round(LC * 0.22))
+    const score = aScore ? `${d.homeScore} – ${d.awayScore}` : ''
+    ctx.save(); ctx.font = '62px Anton'; const ls = score ? ctx.measureText(score).width : 0; ctx.restore()
+    const total = ECU * 2 + 2 * 26 + ls
+    let gx = cx - total / 2
+    if (dom) ctx.drawImage(dom, gx, y - ECU / 2, ECU, ECU)
+    gx += ECU + 26
+    if (score) txt(ctx, score, gx + ls / 2, y, { size: 62, font: 'Anton', color: CREME })
+    gx += ls + 26
+    if (ext) ctx.drawImage(ext, gx, y - ECU / 2, ECU, ECU)
+    y += Math.max(ECU, 70) / 2 + 48
+  }
+
+  // Le titre : le buteur quand on le connaît, sinon l'affiche du match.
+  const titre = d.titre || [d.home, d.away].filter(Boolean).join(' — ')
+  if (titre) { ligneTenue(ctx, titre, cx, y, LC, { size: 36, min: 22, color: CREME, rtl }); y += 54 }
+  if (d.sousTitre) ligneTenue(ctx, d.sousTitre, cx, y, LC, { size: 26, min: 18, color: 'rgba(244,243,238,0.72)', rtl })
+
+  // La signature, en bas de colonne : l'aperçu doit dire d'où vient le lien.
+  txt(ctx, 'pressing90.live', cx, H - 48, { size: 24, font: 'Archivo', color: 'rgba(244,243,238,0.55)' })
+  return c
+}

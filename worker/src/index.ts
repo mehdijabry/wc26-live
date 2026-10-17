@@ -301,6 +301,17 @@ export default {
       // Elle est servie sous pressing90.live/p/<id> par une fonction Pages
       // qui proxyfie ici : un lien vers *.workers.dev se fait rogner par
       // les apercus et les filtres de courrier.
+      // LA PAGE D'UNE VIDÉO, servie sous pressing90.live/v/<id> par la
+      // fonction Pages qui proxyfie ici. Elle porte les balises Open Graph
+      // que Facebook lit sous un post de LIEN — voir videopage.ts.
+      if (url.pathname === '/video-card') {
+        const id = (url.searchParams.get('v') || '').trim()
+        if (!id || !/^[A-Za-z0-9_-]{5,40}$/.test(id)) return new Response('vidéo requise', { status: 400 })
+        if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return new Response('indisponible', { status: 503 })
+        const { pageVideo } = await import('./videopage')
+        return pageVideo(env, id, url.searchParams.get('lang'))
+      }
+
       if (url.pathname === '/post-card') {
         const id = Number(url.searchParams.get('id') || 0)
         if (!Number.isFinite(id) || id <= 0) return new Response('post requis', { status: 400 })

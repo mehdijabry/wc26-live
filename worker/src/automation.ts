@@ -356,6 +356,49 @@ export async function fbPost(env: Env, p: { message: string; link: string; image
   return { ok: false, note: 'no publishing channel (MAKE_FB_WEBHOOK_URL / FB_PAGE_TOKEN missing)' }
 }
 
+/**
+ * POST DE LIEN — celui qui ramène du trafic.
+ *
+ * Un post PHOTO ouvre l'image en grand et s'arrête là ; un post de LIEN
+ * affiche l'aperçu Open Graph de la page visée et le clic y atterrit. C'est
+ * toute la différence que Mehdi a pointée le 17/10/2026 : « vu que c'est
+ * juste une image ça ne sert à rien, nous on veut convertir en trafic ».
+ *
+ * POURQUOI PAS MAKE ICI. Le scénario Make est un « Create a Post with
+ * Photos » : lui envoyer un lien produirait encore un post photo, donc
+ * exactement ce qu'on cherche à quitter. Le lien passe donc par le Graph,
+ * qui est la seule voie dont on contrôle la forme — et à défaut de jeton on
+ * retombe sur l'ancien post photo plutôt que de ne rien publier.
+ *
+ * L'APERÇU SE DEMANDE EXPLICITEMENT. Facebook garde en cache ce qu'il a lu
+ * d'une adresse ; une page jamais vue est lue au moment du post, mais une
+ * page déjà vue (un rendu raté, une balise corrigée) ressortirait avec
+ * l'ancien aperçu. D'où le `scrape` avant publication.
+ */
+export async function fbLinkPost(env: Env, p: { message: string; link: string; title: string; comment?: string; image_url?: string }): Promise<{ ok: boolean; id?: string; note?: string }> {
+  if (!env.FB_PAGE_TOKEN) {
+    // `fbPost` passe lui-même la légende au playbook : on lui donne donc le
+    // texte brut, sinon il serait filtré deux fois et journalisé deux fois.
+    const r = await fbPost(env, { message: p.message, link: p.link, image_url: p.image_url ?? `${SITE}/icon-512.png`, title: p.title, comment: p.comment })
+    return { ok: r.ok, id: r.id, note: `pas de jeton de page → repli post photo (${r.note ?? ''})` }
+  }
+  const message = await playbookGate(env, 'post', p.title, p.message)
+  try {
+    await rafraichirOpenGraph(env, [p.link]).catch(() => undefined)
+    const { id: pid, token } = await pageAuth(env)
+    const j = await graph(env, token, 'POST', `/${pid}/feed`, { message, link: p.link })
+    const postId = String(j.id ?? '')
+    let note = `link post ${postId}`
+    if (postId && p.comment) {
+      const c = await fbComment(env, postId, p.comment)
+      note += c.ok ? ' · commenté' : ` · commentaire échoué: ${c.note ?? ''}`
+    }
+    return { ok: true, id: postId, note }
+  } catch (e) {
+    return { ok: false, note: `link post échoué: ${String(e).slice(0, 160)}` }
+  }
+}
+
 /** Multi-photo post through the Graph API (Mehdi, 2026-09-14: full-time scores = one photo per match, one grouped post). */
 export async function fbAlbumPost(env: Env, p: { message: string; photos: string[]; comment?: string }): Promise<{ ok: boolean; id?: string; note?: string }> {
   if (!env.FB_PAGE_TOKEN) return { ok: false, note: 'FB_PAGE_TOKEN missing' }
