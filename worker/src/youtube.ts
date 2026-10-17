@@ -51,6 +51,15 @@ export const CHAINES: Array<{ cle: string; nom: string; id: string; slug?: strin
   { cle: 'epl',     nom: 'Premier League', id: 'UCG5qGWdu8nIRZqJ_GgDwQ-w', slug: 'eng.1', fiable: 'faible' },
   { cle: 'facup',   nom: 'The FA',         id: 'UCKvm1WdGoJF3gohzzdJdabw', slug: 'eng.fa', fiable: 'faible' },
   { cle: 'coppa',   nom: 'Coppa Italia',   id: 'UChtcq-XNGluTgtW3o6N2FbA', slug: 'ita.coppa_italia', fiable: 'faible' },
+
+  // ── LES DIFFUSEURS ────────────────────────────────────────────────────
+  // Là où le championnat ne publie que des compilations de journée, c'est
+  // le DÉTENTEUR DES DROITS qui met les buts en ligne, match par match
+  // (Mehdi, 17/10/2026). L'embed reste propre : la vidéo joue sur leur
+  // lecteur, et ce sont eux qui gardent les vues.
+  { cle: 'bein',    nom: 'beIN SPORTS USA',  id: 'UC0YatYmg5JRYzXJPxIdRd8g', slug: 'fra.1', fiable: 'clip' },
+  { cle: 'fubo',    nom: 'Fubo',             id: 'UCD2lJITnvzflNhOqQckMpQg', slug: 'eng.1', fiable: 'clip' },
+  { cle: 'dazn',    nom: 'DAZN Football',    id: 'UCSZ21xyG8w_33KriMM69IxQ', slug: 'uefa.champions', fiable: 'clip' },
 ]
 
 /** La playlist des mises en ligne : l'identifiant de chaîne, `UC` → `UU`. */
@@ -118,12 +127,25 @@ export function clesDAppariement(c: Clip): {
   hashtags: string[]; paire: [string, string] | null; score: [number, number] | null
 } {
   const hashtags = [...`${c.titre} ${c.description}`.matchAll(/#([\p{L}\p{N}_]{4,40})/gu)].map((m) => m[1])
+  const t = c.titre
 
-  // 1. LaLiga écrit le SCORE entre les deux noms :
-  //    « VILLARREAL CF 0 - 0 ELCHE CF | RESUMEN LALIGA EA SPORTS ».
-  //    C'est la meilleure clé des trois — elle donne l'appariement ET le
-  //    résultat, donc de quoi vérifier qu'on a bien le bon match.
-  const avecScore = c.titre.match(/^\s*([\p{L}'’ .&-]{3,34}?)\s+(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([\p{L}'’ .&-]{3,34}?)\s*(?:\||$)/u)
+  // ── TROIS MOTIFS, DANS CET ORDRE ──────────────────────────────────────
+  // L'ordre n'est pas cosmétique : les noms de clubs CONTIENNENT des
+  // tirets (Paris Saint-Germain, Saint-Étienne) et des chiffres (1. FC
+  // Köln). Chercher le tiret en premier coupait « Paris Saint-Germain » en
+  // deux et rendait « Strasbourg vs Paris Saint » contre « Germain »
+  // (relevé du 17/10). Le tiret passe donc EN DERNIER, quand aucun
+  // séparateur plus explicite n'a été trouvé.
+  //
+  // Chaque motif démarre au début du titre OU juste après un « | » : les
+  // diffuseurs font précéder la paire d'une accroche (« Seven-Goal
+  // THRILLER! | … »), et sans cette ancre le motif mordait au milieu d'un
+  // mot.
+  const NOM = "[\\p{L}\\d'’.\\-& ]{3,40}?"
+
+  // 1. Le score entre les deux noms — LaLiga. Le meilleur des trois : il
+  //    apparie ET donne le résultat, donc de quoi vérifier le match.
+  const avecScore = t.match(new RegExp(`(?:^|\\|)\\s*(${NOM})\\s+(\\d{1,2})\\s*[-–]\\s*(\\d{1,2})\\s+(${NOM})\\s*(?:\\||$)`, 'u'))
   if (avecScore) {
     return {
       hashtags,
@@ -132,12 +154,15 @@ export function clesDAppariement(c: Clip): {
     }
   }
 
-  // 2. La Serie A sépare par un tiret, sans score :
-  //    « VENEZIA-NAPOLI | HIGHLIGHTS | SERIE A ENILIVE 2026/27 ».
-  // Les chiffres font partie des noms : « 1. FC KÖLN », « 1899 Hoffenheim ».
-  // Sans eux, un Francfort - Cologne passait au travers (relevé du 17/10).
-  const m = c.titre.match(/([\p{L}\d'’ .&]{3,26})\s*[-–]\s*([\p{L}\d'’ .&]{3,26})\s*\|/u)
-  return { hashtags, paire: m ? [m[1].trim(), m[2].trim()] : null, score: null }
+  // 2. « vs » / « vs. » — beIN, Fubo, DAZN. Sans ambiguïté possible.
+  const avecVs = t.match(new RegExp(`(?:^|\\|)\\s*(${NOM})\\s+vs\\.?\\s+(${NOM})\\s*(?:\\||$)`, 'iu'))
+  if (avecVs) return { hashtags, paire: [avecVs[1].trim(), avecVs[2].trim()], score: null }
+
+  // 3. Le tiret — Serie A, Bundesliga. En dernier, voir plus haut.
+  const avecTiret = t.match(new RegExp(`(?:^|\\|)\\s*([\\p{L}\\d'’.& ]{3,40}?)\\s*[-–]\\s*([\\p{L}\\d'’.& ]{3,40}?)\\s*(?:\\||$)`, 'u'))
+  if (avecTiret) return { hashtags, paire: [avecTiret[1].trim(), avecTiret[2].trim()], score: null }
+
+  return { hashtags, paire: null, score: null }
 }
 
 /** Normalisation commune aux deux côtés de l'appariement. */
