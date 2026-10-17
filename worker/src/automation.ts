@@ -3777,6 +3777,10 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       const clips = await yt.derniersClips(env as unknown as { YOUTUBE_API_KEY?: string }, ch.id, Number(x.n ?? 40))
       return { ok: true, note: clips.map((c) => `${c.publie.slice(5, 16)} ${c.titre.replace(/\s*\|\s*/g, ' ~ ').slice(0, 110)}`).join(' @@ ') }
     }
+    if (job === 'yt-publier') {
+      const v = await import('./videos')
+      return { ok: true, note: await v.publierEnAttente(env, date, Number((extra as { n?: number }).n ?? 3)) }
+    }
     if (job === 'yt-rattacher') {
       // RATTRAPAGE : réessaie l'appariement des clips restés orphelins.
       // Un résumé peut sortir avant que la liste des matchs du jour ne soit

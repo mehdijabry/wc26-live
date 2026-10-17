@@ -35,8 +35,18 @@ export type Source = {
   competition: string
   /** Le slug ESPN, pour ne rattacher qu'aux matchs de cette compétition. */
   slug: string
-  type: 'chaine' | 'playlist'
+  type: 'chaine' | 'playlist' | 'playlist-journee'
   id: string
+  /**
+   * Pour `playlist-journee` : la chaîne où chercher, et le motif du titre
+   * de la playlist de la journée en cours. LaLiga range ses résumés par
+   * journée — « RESÚMENES J9 » — et la playlist change chaque semaine
+   * (Mehdi, 17/10/2026). On prend celle dont le numéro est le plus haut,
+   * une fois par demi-journée : une unité de quota, et plus rien à
+   * maintenir à la main.
+   */
+  channelId?: string
+  motifPlaylist?: RegExp
   /**
    * Le mot qui prouve que le clip appartient bien à cette compétition.
    * Inutile sur une playlist dédiée — elle est déjà filtrée — indispensable
@@ -57,7 +67,8 @@ export const SOURCES: Source[] = [
   { cle: 'seriea', nom: 'Serie A', competition: 'Serie A', slug: 'ita.1',
     type: 'chaine', id: 'UCBJeMCIeLQos7wacox4hmLQ', motCle: /serie a/i },
   { cle: 'laliga', nom: 'LaLiga', competition: 'LaLiga', slug: 'esp.1',
-    type: 'chaine', id: 'UCTv-XvfzLX3i4IGWAm4sbmA', motCle: /resumen|laliga/i },
+    type: 'playlist-journee', id: '', channelId: 'UCTv-XvfzLX3i4IGWAm4sbmA',
+    motifPlaylist: /res[úu]menes\s*j\s*(\d+)/i, motCle: /resumen|laliga/i },
   { cle: 'bundesliga', nom: 'Bundesliga', competition: 'Bundesliga', slug: 'ger.1',
     type: 'chaine', id: 'UC6UL29enLNe4mqwTfAyeNuw', motCle: /bundesliga/i },
 ]
@@ -200,9 +211,15 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
   for (const s of SOURCES) {
     let clips: Clip[] = []
     try {
-      clips = s.type === 'playlist'
-        ? await clipsDePlaylist(env as unknown as { YOUTUBE_API_KEY?: string }, s.id, 20)
-        : await derniersClips(env as unknown as { YOUTUBE_API_KEY?: string }, s.id, 20)
+      const ytEnv = env as unknown as { YOUTUBE_API_KEY?: string }
+      if (s.type === 'playlist-journee') {
+        const pl = await playlistDeLaJournee(env, s)
+        clips = pl ? await clipsDePlaylist(ytEnv, pl, 20) : []
+      } else if (s.type === 'playlist') {
+        clips = await clipsDePlaylist(ytEnv, s.id, 20)
+      } else {
+        clips = await derniersClips(ytEnv, s.id, 20)
+      }
     } catch (e) {
       notes.push(`${s.cle}: ÉCHEC ${String(e).slice(0, 80)}`); continue
     }
@@ -434,5 +451,58 @@ export async function rattacherOrphelins(env: Env, date: string): Promise<string
   }
   const note = n ? `${n} rattachés : ${noms.join(', ')}` : `aucun rattachement (${rows.length} orphelins examinés)`
   await log(env, date, 'yt-rattacher', true, note.slice(0, 400))
+  return note
+}
+
+/**
+ * La playlist de la JOURNÉE en cours d'un championnat qui range ses
+ * résumés ainsi. On garde le numéro le plus haut — la journée 10 remplace
+ * la 9 dès qu'elle apparaît — et on met en cache douze heures : la liste
+ * ne change qu'une fois par semaine, inutile d'y revenir toutes les cinq
+ * minutes.
+ */
+async function playlistDeLaJournee(env: Env, s: Source): Promise<string | null> {
+  if (!s.channelId || !s.motifPlaylist) return null
+  const cle = `yt:journee:${s.cle}`
+  const connu = await env.CACHE.get(cle)
+  if (connu) return connu
+  const k = (env as unknown as { YOUTUBE_API_KEY?: string }).YOUTUBE_API_KEY
+  if (!k) return null
+  const r = await fetch(
+    `https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${s.channelId}&maxResults=50&key=${k}`,
+    { signal: AbortSignal.timeout(20_000) },
+  )
+  const j = await r.json().catch(() => ({})) as { items?: Array<{ id?: string; snippet?: { title?: string } }> }
+  let meilleur: { id: string; n: number } | null = null
+  for (const it of j.items ?? []) {
+    const m = String(it.snippet?.title ?? '').match(s.motifPlaylist)
+    if (!m || !it.id) continue
+    const n = Number(m[1] ?? 0)
+    if (!meilleur || n > meilleur.n) meilleur = { id: it.id, n }
+  }
+  if (!meilleur) return null
+  await env.CACHE.put(cle, meilleur.id, { expirationTtl: 12 * 3600 })
+  return meilleur.id
+}
+
+/**
+ * Publie D'UN COUP les résumés en attente — ce que la passe automatique
+ * fait un par un. Sert quand une soirée entière est déjà jouée et que
+ * Mehdi veut tout sortir sans attendre une heure de passes.
+ */
+export async function publierEnAttente(env: Env, date: string, combien: number): Promise<string> {
+  const pool = await bigMatchesToday(env).catch(() => [] as AutoMatch[])
+  const faits: string[] = []
+  for (let i = 0; i < Math.min(12, Math.max(1, combien)); i++) {
+    const r = await publierUnCourt(env, pool)
+    if (!r) break
+    faits.push(r)
+    // PAS DE PAUSE ENTRE DEUX POSTS. J'en avais mis de vingt secondes pour
+    // éviter la rafale : le worker a dépassé son temps alloué et la réponse
+    // est revenue vide (17/10/2026). Un worker n'attend pas — la cadence se
+    // tient par la passe de cinq minutes, pas par un sommeil.
+  }
+  const note = faits.length ? faits.join(' | ') : 'rien en attente'
+  await log(env, date, 'yt-publier', true, note.slice(0, 600))
   return note
 }
