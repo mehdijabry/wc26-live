@@ -3711,6 +3711,45 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       if (!buf) return { ok: false, note: 'Workers AI returned no image (AI binding?)' }
       return { ok: true, note: await putMedia(env, `flux-test-${Date.now()}.png`, buf, 'image/png') }
     }
+    if (job === 'yt-releve') {
+      // LE RELEVÉ : ce que les comptes officiels publient vraiment, et ce
+      // qu'on peut en rattacher à un match. Rien n'est publié — on mesure
+      // avant de construire, parce que tout le format repose sur une
+      // hypothèse de couverture qu'on n'a jamais vérifiée.
+      const yt = await import('./youtube')
+      const x = extra as { cle?: string; n?: number }
+      const cibles = x.cle ? yt.CHAINES.filter((c) => c.cle === x.cle) : yt.CHAINES
+      const lignes: string[] = []
+      let unites = 0
+      for (const ch of cibles) {
+        try {
+          const clips = await yt.derniersClips(env as unknown as { YOUTUBE_API_KEY?: string }, ch.id, Number(x.n ?? 25))
+          unites++
+          const resumes = clips.filter(yt.estResume)
+          const avecCle = clips.filter((c) => {
+            const k = yt.clesDAppariement(c)
+            return k.paire !== null || k.hashtags.some((h) => h.length >= 8 && !/^(highlights?|shorts?|football|soccer|sports?)$/i.test(h))
+          })
+          lignes.push(`${ch.nom}: ${clips.length} clips · ${resumes.length} résumés · ${avecCle.length} rattachables`)
+          for (const c of resumes.slice(0, 3)) {
+            const k = yt.clesDAppariement(c)
+            lignes.push(`   ↳ ${c.publie.slice(5, 16)} « ${c.titre.split('\n')[0].slice(0, 58)} » paire=${k.paire ? k.paire.join(' v ') : '—'}${k.score ? ` ${k.score[0]}-${k.score[1]}` : ''}`)
+          }
+        } catch (e) {
+          lignes.push(`${ch.nom}: ÉCHEC ${String(e).slice(0, 120)}`)
+        }
+      }
+      const note = `${lignes.join(' | ')} || ${unites} unités de quota consommées`
+      await log(env, date, 'yt-releve', true, note.slice(0, 900))
+      return { ok: true, note }
+    }
+    if (job === 'yt-poignee') {
+      const yt = await import('./youtube')
+      const h = String((extra as { handle?: string }).handle ?? '')
+      if (!h) return { ok: false, note: 'handle requis' }
+      const c = await yt.chaineParPoignee(env as unknown as { YOUTUBE_API_KEY?: string }, h)
+      return { ok: !!c, note: c ? `${c.titre} → ${c.id}` : 'introuvable' }
+    }
     if (job === 'goal-repost') {
       // REPUBLIER UN BUT, par la chaine d'un vrai but et pas autrement.
       // Mehdi a supprime le post sorti sur l'ancienne carte (17/10/2026) et
