@@ -53,6 +53,9 @@ export interface AutomationSettings {
   reels: boolean
   goalAlerts: boolean; goalReelsPerDay: number   // reel per goal in the big competitions (Mehdi, 2026-09-08)
   maxPostsPerDay: number                          // global Facebook feed budget (posts + reels), anti-spam (Mehdi, 2026-09-13)
+  /** Les résumés vidéo (YouTube) : détection toutes les 5 min + extendeds
+   *  en fin de journée. Posé le 17/10/2026, coupable d'un interrupteur. */
+  resumesVideo?: boolean
   barcaDaily: boolean                             // Barça first: goals always posted, Barça match first, FT reel, 09:00 « برشلونة اليوم » digest (Mehdi, 2026-09-13)
   resultsReel: boolean                            // evening "full-time results" reel, all finished big matches
   tales: boolean; taleDay: number; taleHour: number   // Football Stories: weekly story day (0=Sun … 6=Sat) + hour (Morocco)
@@ -90,6 +93,7 @@ export const DEFAULT_AUTOMATION: AutomationSettings = {
   reels: true,
   goalAlerts: true, goalReelsPerDay: 20,
   maxPostsPerDay: 18,
+  resumesVideo: true,
   barcaDaily: true,
   resultsReel: true,
   tales: true, taleDay: 5, taleHour: 17,
@@ -197,7 +201,7 @@ async function recentlyPosted(env: Env): Promise<boolean> {
 }
 
 // ─── Supabase Storage (bucket `media`, public) ─────────────────────
-function sbHeaders(env: Env, extra: Record<string, string> = {}): Record<string, string> {
+export function sbHeaders(env: Env, extra: Record<string, string> = {}): Record<string, string> {
   return { apikey: env.SUPABASE_SERVICE_KEY, authorization: `Bearer ${env.SUPABASE_SERVICE_KEY}`, ...extra }
 }
 export function mediaUrl(env: Env, key: string): string {
@@ -3098,6 +3102,26 @@ export async function runAutomationTick(env: Env): Promise<void> {
   try { await runBarcaLineups(env, s, date) } catch (e) { await log(env, date, 'barca-lineup', false, String(e)) }
   if (hour === 8 && minute >= 20 && minute <= 34) { try { await runBarcaArticle(env, s, date, hour, minute) } catch (e) { await log(env, date, 'barca-article', false, String(e)) } }
   if (hour === 9 && minute <= 9) { try { await runBarcaDigest(env, s, date, hour, minute) } catch (e) { await log(env, date, 'barca-digest', false, String(e)) } }
+
+  // ── LES RÉSUMÉS ────────────────────────────────────────────────────────
+  // Une passe toutes les cinq minutes : six sources à une unité de quota
+  // chacune, soit 1 728 par jour sur les 10 000 offerts. Le résumé court
+  // part dès qu'il est vu ; l'extended attend la passe de fin de journée.
+  if (s.resumesVideo !== false && minute % 5 === 0) {
+    try { const v = await import('./videos'); await v.scanResumes(env, date) }
+    catch (e) { await log(env, date, 'yt-scan', false, String(e).slice(0, 200)) }
+  }
+  // Fin de journée : 23 h 50 locales, quand la dernière rencontre
+  // européenne est finie depuis longtemps et que les vues ont eu le temps
+  // de se faire.
+  if (s.resumesVideo !== false && hour === 23 && minute >= 50) {
+    const verrou = `auto:extended:${date}`
+    if (!(await env.CACHE.get(verrou))) {
+      await env.CACHE.put(verrou, '1', { expirationTtl: 36 * 3600 })
+      try { const v = await import('./videos'); await v.extendedDuJour(env, date) }
+      catch (e) { await log(env, date, 'yt-extended', false, String(e).slice(0, 200)) }
+    }
+  }
   if (hour === 7 && minute >= 30 && minute <= 44) {
     const y = yesterdayParts()
     try { await runResultsReel(env, s, date, y.label, hour, minute, false, y.date) } catch (e) { await log(env, date, 'results-reel', false, String(e)) }
@@ -3752,6 +3776,36 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       if (!ch) return { ok: false, note: `cle inconnue (${yt.CHAINES.map((c) => c.cle).join(', ')})` }
       const clips = await yt.derniersClips(env as unknown as { YOUTUBE_API_KEY?: string }, ch.id, Number(x.n ?? 40))
       return { ok: true, note: clips.map((c) => `${c.publie.slice(5, 16)} ${c.titre.replace(/\s*\|\s*/g, ' ~ ').slice(0, 110)}`).join(' @@ ') }
+    }
+    if (job === 'yt-rattacher') {
+      // RATTRAPAGE : réessaie l'appariement des clips restés orphelins.
+      // Un résumé peut sortir avant que la liste des matchs du jour ne soit
+      // à jour, et une correction de normalisation (« PSG » contre « Paris
+      // Saint-Germain ») doit pouvoir s'appliquer à ce qui est déjà en base.
+      const v = await import('./videos')
+      return { ok: true, note: await v.rattacherOrphelins(env, date) }
+    }
+    if (job === 'yt-scan') {
+      const v = await import('./videos')
+      return { ok: true, note: await v.scanResumes(env, date) }
+    }
+    if (job === 'yt-extended') {
+      const v = await import('./videos')
+      return { ok: true, note: await v.extendedDuJour(env, date) }
+    }
+    if (job === 'yt-playlist') {
+      // Lire une PLAYLIST plutôt qu'une chaîne : beIN range la Ligue 1 dans
+      // la sienne, ce qui filtre la compétition à la source — bien mieux
+      // qu'un tri sur le titre au milieu du padel et du futsal.
+      const yt = await import('./youtube')
+      const id = String((extra as { id?: string }).id ?? '')
+      if (!id) return { ok: false, note: 'id de playlist requis' }
+      try {
+        const clips = await yt.clipsDePlaylist(env as unknown as { YOUTUBE_API_KEY?: string }, id, Number((extra as { n?: number }).n ?? 20))
+        return { ok: true, note: `${clips.length} vidéos :: ` + clips.map((c) => `${c.publie.slice(5, 16)} ${c.titre.replace(/\s*\|\s*/g, ' ~ ').slice(0, 95)}`).join(' @@ ') }
+      } catch (e) {
+        return { ok: false, note: String(e).slice(0, 200) }
+      }
     }
     if (job === 'yt-poignee') {
       const yt = await import('./youtube')

@@ -80,6 +80,32 @@ async function ytGet(env: EnvYt, chemin: string, params: Record<string, string>)
   return j
 }
 
+/**
+ * Les N dernières vidéos d'une PLAYLIST. Même coût qu'une chaîne — 1 unité
+ * pour 50 — mais déjà filtrées par celui qui l'a constituée : beIN range sa
+ * Ligue 1 dans la sienne, ce qui nous évite de trier le football au milieu
+ * du padel, du futsal et du MMA.
+ */
+export async function clipsDePlaylist(env: EnvYt, playlistId: string, n = 20): Promise<Clip[]> {
+  const j = await ytGet(env, 'playlistItems', {
+    part: 'snippet',
+    playlistId,
+    maxResults: String(Math.min(50, Math.max(1, n))),
+  })
+  const items = (j.items ?? []) as Array<{ snippet?: Record<string, unknown> }>
+  return items.map((it) => {
+    const s = (it.snippet ?? {}) as Record<string, unknown>
+    const res = (s.resourceId ?? {}) as { videoId?: string }
+    return {
+      videoId: String(res.videoId ?? ''),
+      titre: String(s.title ?? ''),
+      description: String(s.description ?? ''),
+      publie: String(s.publishedAt ?? ''),
+      chaine: String(s.channelTitle ?? ''),
+    }
+  }).filter((c) => c.videoId)
+}
+
 /** Les N dernières mises en ligne d'une chaîne. 1 unité de quota, 50 max. */
 export async function derniersClips(env: EnvYt, channelId: string, n = 20): Promise<Clip[]> {
   const j = await ytGet(env, 'playlistItems', {
