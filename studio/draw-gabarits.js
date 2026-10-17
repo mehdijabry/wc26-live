@@ -270,9 +270,16 @@ export async function gabaritGoalLayers(g) {
   const dom = await crest(g.homeLogo), ext = await crest(g.awayLogo)
   const ECU = e(150), DEMI = e(170)   // demi-distance entre les deux centres
   const ecusson = (im) => carte(ECU, ECU, (ctx) => { if (im) ctx.drawImage(im, 0, 0, ECU, ECU) })
-  const sc = carte(e(400), e(150), (ctx) => {
-    txt(ctx, String(g.homeScore ?? ''), e(80), e(75), { size: e(118), font: 'Anton' })
-    txt(ctx, String(g.awayScore ?? ''), e(320), e(75), { size: e(118), font: 'Anton', color: teinte })
+  // ── LE SCORE TOMBE SOUS SON ECUSSON ────────────────────────────────
+  // Il etait dessine a des positions fixes dans une toile de 563 px, alors
+  // que les ecussons se deduisent, eux, du centre de la carte : les chiffres
+  // tombaient 70 px EN DEDANS de leur ecusson (Mehdi, 17/10/2026). La toile
+  // fait desormais la largeur de la case et les deux chiffres reprennent
+  // exactement le demi-ecart des ecussons.
+  const LARG = CASES[nom].centre[2]
+  const sc = carte(e(LARG), e(150), (ctx) => {
+    txt(ctx, String(g.homeScore ?? ''), e(LARG) / 2 - DEMI, e(75), { size: e(118), font: 'Anton' })
+    txt(ctx, String(g.awayScore ?? ''), e(LARG) / 2 + DEMI, e(75), { size: e(118), font: 'Anton', color: teinte })
   })
   const buteur = carte(e(580), e(70), (ctx) => ar(ctx, nomAr(g.scorer), e(290), e(35), { size: e(36) }))
   const min = carte(e(260), e(60), (ctx) => {
@@ -286,6 +293,17 @@ export async function gabaritGoalLayers(g) {
     bg: png(bg), flash: png(flash), goal: png(but),
     home: png(ecusson(dom)), away: png(ecusson(ext)), score: png(sc),
     scorer: png(buteur), minute: png(min),
+    // Les TAILLES REELLES des calques, a cote de leurs positions. Sans
+    // elles, l'animation devinait — et `pop` exige w/h : 580x130 passes a la
+    // main sur un calque qui fait 816x183 l'ont reduit ET decale de 118 px a
+    // gauche, en public, sur le but de Rodri (17/10/2026).
+    tailles: {
+      goal: [e(580), e(130)],
+      home: [ECU, ECU], away: [ECU, ECU],
+      score: [e(LARG), e(150)],
+      scorer: [e(580), e(70)],
+      minute: [e(260), e(60)],
+    },
     rest: {
       goal: [cx + (cw - e(580)) / 2, cy + e(345)],
       // Poses en dur, ils tombaient 77 px a GAUCHE du centre de la carte
@@ -293,7 +311,7 @@ export async function gabaritGoalLayers(g) {
       // meme ecart entre eux, mais symetrique.
       home: [cx + cw / 2 - DEMI - ECU / 2, cy + e(73)],
       away: [cx + cw / 2 + DEMI - ECU / 2, cy + e(73)],
-      score: [cx + (cw - e(400)) / 2, cy + e(220)],
+      score: [cx, cy + e(220)],
       scorer: [cx + (cw - e(580)) / 2, cy + e(455)],
       minute: [cx + (cw - e(260)) / 2, cy + e(510)],
     },
@@ -321,6 +339,9 @@ export async function gabaritGoalLayers(g) {
 export async function gabaritGoalAnimSpec(g) {
   const L = await gabaritGoalLayers(g)
   const r = L.rest
+  // Les tailles viennent du gabarit : `pop` les exige, et les ecrire a la
+  // main reduit et decale le calque (voir `tailles` dans gabaritGoalLayers).
+  const T = L.tailles
   return {
     // PAS de vidéo de confettis sous la carte : elle servait à l'ancienne
     // carte, qui était transparente. La plaque est opaque — la vidéo serait
@@ -335,7 +356,7 @@ export async function gabaritGoalAnimSpec(g) {
     // 13/09 : 80 à 85 % des spectateurs partent avant 3 s).
     anims: [
       { layer: 'flash', x: 0, y: 0, fade: { st: 0, d: 0.06 }, out: { st: 0.12, d: 0.6 } },
-      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 580, h: 130, pop: { from: 1.22, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
+      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: T.goal[0], h: T.goal[1], pop: { from: 1.22, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
       { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -50, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
       { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 50, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
       { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 18, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
