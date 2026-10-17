@@ -95,6 +95,8 @@ grant execute on function public.copier_pari(bigint, integer) to authenticated;
 -- Le nombre de joueurs DISTINCTS qui ont copié au moins un de ses paris.
 -- Distincts, parce que copier dix bulletins du même auteur ne fait pas dix
 -- admirateurs — ça fait un lecteur assidu.
+drop function if exists public.profil_public(text);
+
 create or replace function public.profil_public(p_alias text)
 returns table (
   id            uuid,
