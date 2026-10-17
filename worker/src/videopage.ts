@@ -98,8 +98,16 @@ export async function ogDeVideo(
   lang = 'ar',
 ): Promise<string | null> {
   const cle = `og:vid:${v.video_id}:${lang}`
-  const cache = await env.CACHE.get(cle)
-  if (cache) return cache
+  // ── LE CACHE SE LIT, SAUF AU MOMENT DE PUBLIER ──────────────────────
+  // `m` n'est fourni que par la chaîne de publication, et c'est la seule
+  // fois où les écussons sont disponibles. Sans cette exception, une page
+  // ouverte AVANT la publication — un robot, un lien deviné — y déposait
+  // une image sans écussons pour trente jours, et le post la reprenait
+  // telle quelle. La version riche écrase donc la pauvre, jamais l'inverse.
+  if (!m) {
+    const cache = await env.CACHE.get(cle)
+    if (cache) return cache
+  }
 
   const { principale, repli } = vignettes(v)
   const dom = v.equipe_dom ?? m?.home ?? ''
