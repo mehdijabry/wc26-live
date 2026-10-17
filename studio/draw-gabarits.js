@@ -19,7 +19,7 @@
 import { createCanvas, loadImage, Image } from 'canvas'
 import fsSync from 'node:fs'
 import path from 'node:path'
-import { registerBrandFonts, paintLogo, loadImgOuRepli } from './draw.js'
+import { registerBrandFonts, paintLogo, loadImgOuRepli, coverBand } from './draw.js'
 import { dossierGabarits, CASES, UTILE, couvrir, ar, arNombre, OR, CREME, MENTHE, tableauComparatif } from './gabarits.js'
 import { jersey, pitch, lineupRows, surname, spaced } from './editorial.js'
 
@@ -239,8 +239,15 @@ export async function gabaritGoalLayers(g) {
     couvrir(ctx, C.centre.map(e), '#05080F', 18)
     couvrir(ctx, C.pied.map(e), '#070B16', 14)
     const [px, py, pw] = C.pied.map(e)
-    ar(ctx, texteBut(g), px + pw / 2, py + e(46), { size: e(26) })
-    ar(ctx, 'كل الأهداف والإحصائيات على الموقع', px + pw / 2, py + e(94), { size: e(21), color: 'rgba(244,243,238,0.7)' })
+    // Sans precision a donner, la ligne d'appel remonte au centre du pied
+    // plutot que de laisser un blanc au-dessus d'elle.
+    const precision = texteBut(g)
+    if (precision) {
+      ar(ctx, precision, px + pw / 2, py + e(46), { size: e(26) })
+      ar(ctx, 'كل الأهداف والإحصائيات على الموقع', px + pw / 2, py + e(94), { size: e(21), color: 'rgba(244,243,238,0.7)' })
+    } else {
+      ar(ctx, 'كل الأهداف والإحصائيات على الموقع', px + pw / 2, py + e(70), { size: e(23), color: 'rgba(244,243,238,0.8)' })
+    }
 
     // ── LA MARQUE ET LE CODE SONT DESSINES, PAS INCRUSTES ──────────────
     // Cette carte n'en dessinait aucun des deux : ceux qu'on voyait etaient
@@ -290,6 +297,52 @@ export async function gabaritGoalLayers(g) {
       scorer: [cx + (cw - e(580)) / 2, cy + e(455)],
       minute: [cx + (cw - e(260)) / 2, cy + e(510)],
     },
+  }
+}
+
+/**
+ * LE REEL DE BUT, SUR LE GABARIT — même spécification d'animation que
+ * `drawGoalAnimSpec`, mais avec les calques du gabarit.
+ *
+ * ── POURQUOI IL A FALLU CELLE-CI ──────────────────────────────────────────
+ * `gabaritGoalLayers` existait depuis le 16/10 et la branche IMAGE du studio
+ * l'utilisait déjà. Mais le reel — le seul chemin que l'automatisation
+ * emprunte quand un but tombe — passait par `drawGoalAnimSpec`, qui tire ses
+ * calques de `drawGoalLayers`, c'est-à-dire l'ANCIENNE carte crème à
+ * confettis. Le but de Lamine Yamal du 17/10 est sorti comme ça, en public.
+ * Le gabarit était fait ; il n'était simplement jamais atteint.
+ *
+ * Les positions de repos viennent de `rest`, donc du gabarit lui-même : rien
+ * n'est écrit en dur ici, et une retouche de plaque se propage toute seule.
+ * Seule la bande d'accroche a sa place propre — en HAUT, dans la seule zone
+ * libre de la plaque : l'en-tête, la case centrale, le pied et le bloc
+ * d'inscription occupent tout le reste.
+ */
+export async function gabaritGoalAnimSpec(g) {
+  const L = await gabaritGoalLayers(g)
+  const r = L.rest
+  return {
+    // PAS de vidéo de confettis sous la carte : elle servait à l'ancienne
+    // carte, qui était transparente. La plaque est opaque — la vidéo serait
+    // téléchargée, montée, et jamais vue.
+    layers: {
+      bg: L.bg, flash: L.flash, goal: L.goal, home: L.home, away: L.away,
+      score: L.score, scorer: L.scorer, minute: L.minute,
+      cover: coverBand(g.cover).toBuffer('image/png'),
+    },
+    // Timings identiques à ceux qui ont été validés : tout est à l'écran
+    // avant la demi-seconde, le mouvement n'est qu'un accent (audit du
+    // 13/09 : 80 à 85 % des spectateurs partent avant 3 s).
+    anims: [
+      { layer: 'flash', x: 0, y: 0, fade: { st: 0, d: 0.06 }, out: { st: 0.12, d: 0.6 } },
+      { layer: 'goal', x: r.goal[0], y: r.goal[1], w: 580, h: 130, pop: { from: 1.22, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
+      { layer: 'home', x: r.home[0], y: r.home[1], slide: { dx: -50, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'away', x: r.away[0], y: r.away[1], slide: { dx: 50, dy: 0, st: 0, d: 0.4 }, fade: { st: 0, d: 0 } },
+      { layer: 'score', x: r.score[0], y: r.score[1], slide: { dx: 0, dy: 18, st: 0, d: 0.35 }, fade: { st: 0, d: 0 } },
+      { layer: 'scorer', x: r.scorer[0], y: r.scorer[1], fade: { st: 0, d: 0 } },
+      { layer: 'minute', x: r.minute[0], y: r.minute[1], fade: { st: 0, d: 0 } },
+      { layer: 'cover', x: 40, y: 196, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } },
+    ],
   }
 }
 
@@ -670,11 +723,18 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
  *  quels faute de table de translittération. Le point d'extension est ici. */
 function nomAr(n) { return String(n ?? '') }
 function ligueAr(l) { return String(l ?? '') }
+/**
+ * La ligne du pied : ce qu'on sait du but EN PLUS de son auteur.
+ *
+ * Elle repetait le nom du buteur, qui est deja un calque anime au centre de
+ * la carte — « Lamine Yamal » deux fois sur la meme image (17/10/2026). Le
+ * pied ne porte plus que la precision : penalty, csc, ou le passeur. Sans
+ * precision, il reste vide et la ligne n'est pas dessinee.
+ */
 function texteBut(g) {
-  const qui = nomAr(g.scorer)
-  if (g.ownGoal) return `${qui} · هدف في مرماه`
-  if (g.penalty) return `${qui} · من ركلة جزاء`
-  return g.assist ? `${qui} · صناعة ${nomAr(g.assist)}` : qui
+  if (g.ownGoal) return 'هدف في مرماه'
+  if (g.penalty) return 'من ركلة جزاء'
+  return g.assist ? `صناعة ${nomAr(g.assist)}` : ''
 }
 
 

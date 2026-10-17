@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritGoalAnimSpec, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -551,9 +551,19 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           for (let i = 0; i < ms.length; i++) specs.push(await carte(ms[i], i, ms.length, data.heading, data.lang))
         }
         else if (type === 'goal') {
-          // Barça special (2026-09-14): looping confetti video under the card + stadium roar at t=0
-          if (data.special === 'barca') { data.bgVideo = await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti-paper.mp4') }
-          specs.push(await drawGoalAnimSpec(data))
+          // ── LE GABARIT DE MEHDI, ENFIN SUR LE CHEMIN DU REEL ───────────
+          // Cette branche est la seule que l'automatisation emprunte quand un
+          // but tombe, et elle tirait encore l'ANCIENNE carte creme a
+          // confettis : le but de Lamine Yamal du 17/10 est sorti comme ca,
+          // en public, alors que `gabaritGoalLayers` existait depuis la
+          // veille et servait deja la branche image. `data.ancien` rebascule
+          // sur l'ancienne carte sans redeploiement, comme pour les autres.
+          if (data.ancien && data.special === 'barca') {
+            // La video de confettis n'a de sens que sous l'ancienne carte,
+            // qui etait transparente. La plaque, elle, est opaque.
+            data.bgVideo = await cachedAsset(BARCA_ASSETS.confetti, 'p90-barca-confetti-paper.mp4')
+          }
+          specs.push(await (data.ancien ? drawGoalAnimSpec(data) : gabaritGoalAnimSpec(data)))
         }
         else if (type === 'article') specs.push(await drawArticleLayers(data))
         else {
