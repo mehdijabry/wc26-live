@@ -118,3 +118,51 @@ export function captionBut(o: {
     .filter((v, i, a) => a.indexOf(v) === i).join(' '))
   return lignes.filter((l, i, a) => !(l === '' && a[i - 1] === '')).join('\n')
 }
+
+/**
+ * LA NOTIFICATION D'UN BUT — et pourquoi elle ne ressemble pas à la légende.
+ *
+ * Mehdi, 17/10/2026 : elle se génère À PART, et **elle n'a pas à appâter**.
+ * C'est l'inverse exact de la règle qui gouverne le reste de ce fichier.
+ * Une légende Facebook s'adresse à quelqu'un qui fait défiler son fil et
+ * qu'il faut arrêter ; une notification arrive sur un écran verrouillé, sans
+ * avoir rien demandé. « Hal ra'ayta hadaf… ? » dans un fil, c'est une
+ * accroche ; sur un écran verrouillé, c'est du racolage — et ça se paie en
+ * désabonnements, pas en clics.
+ *
+ * Donc : le fait, et rien d'autre. Qui a marqué, contre qui, à quelle
+ * minute. Pas de question rhétorique, pas de superlatif, pas de mot-dièse.
+ * La rotation existe quand même, pour que trois buts dans la même soirée ne
+ * sortent pas sous une formule identique, mais toutes les variantes disent
+ * la même chose : il y a un but, le voici.
+ *
+ * LES CHIFFRES RESTENT LATINS et la minute s'écrit « الدقيقة 41 » — le
+ * nombre est précédé d'un mot arabe, donc l'algorithme bidirectionnel le
+ * laisse en place (voir l'en-tête de ce fichier).
+ */
+export function pushDeBut(o: {
+  buteur: string; passeur?: string; equipes?: string; competitionAr?: string
+  minute?: string; penalty?: boolean; csc?: boolean
+}, index = 0): { titre: string; corps: string } {
+  const qui = String(o.buteur || '').trim()
+  const min = String(o.minute || '').replace(/\D/g, '')
+  const quand = min ? `الدقيقة ${min}` : ''
+
+  // Le titre nomme le fait. Les deux exceptions changent la NATURE du but,
+  // pas son emballage : les taire serait inexact.
+  const titre = o.csc
+    ? `⚽ هدف في المرمى الخطأ${o.equipes ? ` · ${o.equipes}` : ''}`
+    : qui
+      ? [`⚽ هدف ${qui}`, `⚽ ${qui} يسجل`, `⚽ سجّل ${qui}`][((index % 3) + 3) % 3]
+        + (o.penalty ? ' من نقطة الجزاء' : '')
+      : `⚽ هدف جديد${o.equipes ? ` · ${o.equipes}` : ''}`
+
+  // Le corps situe : la rencontre, la minute, la compétition, le passeur.
+  // Chaque élément n'apparaît que s'il est connu — une notification à
+  // trous vaut mieux qu'une notification qui comble.
+  const morceaux = [o.equipes, quand, o.competitionAr].filter(Boolean) as string[]
+  const corps = [morceaux.join(' · '), o.passeur ? `صناعة ${o.passeur}` : '']
+    .filter(Boolean).join(' — ') || 'شاهد الهدف على الموقع'
+
+  return { titre: titre.slice(0, 100), corps: corps.slice(0, 240) }
+}

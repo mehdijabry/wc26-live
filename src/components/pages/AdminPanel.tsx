@@ -3939,6 +3939,12 @@ function Buts() {
   const [passeur, setPasseur] = useState('')
   const [minute, setMinute] = useState('')
   const [surFb, setSurFb] = useState(true)
+  // La notification vit à part de l'accroche : deux textes, deux boutons
+  // de régénération, deux cases. Une notification n'appâte pas (Mehdi,
+  // 17/10/2026) — elle annonce.
+  const [surPush, setSurPush] = useState(true)
+  const [pushTitre, setPushTitre] = useState('')
+  const [pushCorps, setPushCorps] = useState('')
   const [vignette, setVignette] = useState('')
   const [carte, setCarte] = useState<string | null>(null)
   const [occupe, setOccupe] = useState<string | null>(null)
@@ -3971,8 +3977,9 @@ function Buts() {
         buteur: '', minute: d.minute ?? '', equipes: d.equipes ?? '',
         competition: d.competition ?? '', adversaire: (d.equipes ?? '').split(/\s*[–-]\s*/)[1] ?? '',
         videoId: d.videoId,
-      }) as { accroche?: string }
+      }) as { accroche?: string; push?: { titre?: string; corps?: string } }
       setCaption(a.accroche || d.titre || '')
+      setPushTitre(a.push?.titre || ''); setPushCorps(a.push?.corps || '')
     } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
   }
 
@@ -3986,6 +3993,20 @@ function Buts() {
         suivante: true,
       }) as { accroche?: string }
       if (d.accroche) setCaption(d.accroche)
+    } catch { /* on garde ce qui est écrit */ } finally { setOccupe(null) }
+  }
+
+  /** ↻ de la NOTIFICATION seule : sa rotation est indépendante. */
+  async function refairePush() {
+    setOccupe('push')
+    try {
+      const d = await adminPost('/admin/but/accroche', {
+        buteur, passeur, minute, equipes, competition,
+        adversaire: equipes.split(/\s*[–-]\s*/)[1] ?? '',
+        videoId: ap?.videoId,
+        suivantePush: true,
+      }) as { push?: { titre?: string; corps?: string } }
+      if (d.push?.titre) { setPushTitre(d.push.titre); setPushCorps(d.push.corps || '') }
     } catch { /* on garde ce qui est écrit */ } finally { setOccupe(null) }
   }
 
@@ -4006,12 +4027,16 @@ function Buts() {
       const d = await adminPost('/admin/but/publier', {
         videoId: ap.videoId, source: ap.source, titre: ap.titre, description: ap.description,
         vignette: vignette || ap.vignette, caption, competition, equipes, buteur, minute, fb: surFb,
-      }) as { ok?: boolean; error?: string; fb?: { ok: boolean; note?: string } }
+        push: surPush, pushTitre, pushCorps,
+      }) as { ok?: boolean; error?: string; fb?: { ok: boolean; note?: string }; push?: { ok: boolean; note?: string } }
       if (d.error) { setMsg(d.error); return }
-      setMsg(surFb
-        ? (d.fb?.ok ? 'Publié sur le site et sur Facebook.' : `Publié sur le site. Facebook : ${d.fb?.note ?? 'échec'}`)
-        : 'Publié sur le site.')
+      setMsg([
+        'Publié sur le site.',
+        surFb ? (d.fb?.ok ? 'Facebook : posté.' : `Facebook : ${d.fb?.note ?? 'échec'}`) : '',
+        surPush ? (d.push?.ok ? `Notification : ${d.push.note}.` : `Notification : ${d.push?.note ?? 'échec'}`) : '',
+      ].filter(Boolean).join(' '))
       setAp(null); setUrl(''); setCaption(''); setButeur(''); setMinute('')
+      setPushTitre(''); setPushCorps('')
       charger()
     } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
   }
@@ -4112,10 +4137,46 @@ function Buts() {
                   className="absolute top-2 end-2 w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 text-sm disabled:opacity-40"
                 >↻</button>
               </div>
-              <div className="flex items-center gap-3">
+              {/* ── LA NOTIFICATION, À PART DE L'ACCROCHE ──────────────
+                  Deux textes qui ne poursuivent pas le même but : la
+                  légende arrête quelqu'un qui fait défiler son fil, la
+                  notification arrive sur un écran verrouillé sans qu'on
+                  l'ait demandée. Elle annonce le fait, elle n'appâte pas
+                  (Mehdi, 17/10/2026) — d'où sa propre rotation. */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono uppercase tracking-wider text-slate-500">
+                    Notification push
+                  </span>
+                  <button
+                    type="button" onClick={() => void refairePush()} disabled={occupe === 'push'}
+                    title="Autre formulation"
+                    className="ms-auto w-7 h-7 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-xs disabled:opacity-40"
+                  >↻</button>
+                </div>
+                <input
+                  value={pushTitre} onChange={(e) => setPushTitre(e.target.value)}
+                  dir="auto" placeholder="Titre (⚽ هدف …)" maxLength={100}
+                  className={champ}
+                />
+                <input
+                  value={pushCorps} onChange={(e) => setPushCorps(e.target.value)}
+                  dir="auto" placeholder="Corps — l'affiche, la minute, la compétition" maxLength={240}
+                  className={champ}
+                />
+                <p className="text-[11px] text-slate-500">
+                  Ouvre <span className="font-mono">/v/{ap.videoId}</span> — la page du but.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 flex-wrap">
                 <label className="flex items-center gap-1.5 text-sm">
                   <input type="checkbox" checked={surFb} onChange={(e) => setSurFb(e.target.checked)} />
                   Publier aussi sur Facebook
+                </label>
+                <label className="flex items-center gap-1.5 text-sm">
+                  <input type="checkbox" checked={surPush} onChange={(e) => setSurPush(e.target.checked)} />
+                  Envoyer la notification
                 </label>
                 <button onClick={() => void publier()} disabled={occupe === 'publier'}
                   className="ms-auto px-4 py-2 rounded-lg bg-accent-gold text-ink-900 text-sm font-semibold disabled:opacity-40">

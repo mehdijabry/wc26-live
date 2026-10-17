@@ -2322,15 +2322,31 @@ async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response>
   const b = await readBoundedJson(req, 4_000) as {
     buteur?: string; passeur?: string; adversaire?: string; minute?: string; equipes?: string
     competition?: string; penalty?: boolean; csc?: boolean; suivante?: boolean; videoId?: string
+    suivantePush?: boolean
   } | null
   // `suivante` fait tourner la rotation : Mehdi appuie sur ↻ jusqu'à ce
   // qu'une formulation lui plaise.
   let n = Number((await env.CACHE.get('but:rotation')) ?? '0')
   if (b?.suivante) { n = (n + 1) % 5; await env.CACHE.put('but:rotation', String(n), { expirationTtl: 7 * 86400 }) }
-  const { captionBut } = await import('./accroches')
+  // LA NOTIFICATION A SA PROPRE ROTATION. Les deux textes ne se
+  // ressemblent pas et ne se régénèrent pas ensemble : Mehdi peut faire
+  // tourner la légende dix fois sans toucher à la notification, et
+  // l'inverse (17/10/2026).
+  let np = Number((await env.CACHE.get('but:rotation:push')) ?? '0')
+  if (b?.suivantePush) { np = (np + 1) % 3; await env.CACHE.put('but:rotation:push', String(np), { expirationTtl: 7 * 86400 }) }
+  const { captionBut, pushDeBut } = await import('./accroches')
   const auto = await import('./automation')
+  const compAr = auto.leagueAr((safeString(b?.competition ?? '', 80) ?? ''))
   return jsonResp({
     ok: true,
+    push: pushDeBut({
+      buteur: (safeString(b?.buteur ?? '', 120) ?? ''),
+      passeur: (safeString(b?.passeur ?? '', 120) ?? ''),
+      equipes: (safeString(b?.equipes ?? '', 160) ?? ''),
+      competitionAr: compAr,
+      minute: (safeString(b?.minute ?? '', 12) ?? ''),
+      penalty: !!b?.penalty, csc: !!b?.csc,
+    }, np),
     accroche: captionBut({
       buteur: (safeString(b?.buteur ?? '', 120) ?? ''),
       passeur: (safeString(b?.passeur ?? '', 120) ?? ''),
@@ -2349,6 +2365,7 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
     videoId?: string; source?: string; titre?: string; description?: string
     caption?: string; competition?: string; equipes?: string; buteur?: string; minute?: string
     vignette?: string; fb?: boolean
+    push?: boolean; pushTitre?: string; pushCorps?: string
   } | null
   const videoId = (safeString(b?.videoId ?? '', 40) ?? '')
   if (!videoId) return jsonResp({ error: 'videoId requis' }, 400)
@@ -2410,6 +2427,37 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
     }
   }
 
+  // ── LA NOTIFICATION PART AVANT FACEBOOK ─────────────────────────────
+  // Elle ne dépend que de la publication sur le site, qui vient d'aboutir.
+  // La chaîne Facebook, elle, peut échouer ou traîner (rendu de l'image,
+  // aspiration de l'aperçu, jeton périmé) — faire attendre l'abonné pour
+  // ça reviendrait à lui envoyer un but avec dix minutes de retard.
+  //
+  // `tag` porte l'identifiant de la vidéo : si le même but était republié,
+  // le système remplacerait la notification au lieu d'en empiler une
+  // seconde sur l'écran.
+  let push: { ok: boolean; note?: string } = { ok: false, note: 'non demandé' }
+  if (b?.push) {
+    const titre = (safeString(b?.pushTitre ?? '', 100) ?? '').trim()
+    const corps = (safeString(b?.pushCorps ?? '', 240) ?? '').trim()
+    if (!titre) {
+      push = { ok: false, note: 'titre de notification vide' }
+    } else {
+      try {
+        const r = await broadcastCore(env as unknown as Env, {
+          title: titre,
+          body: corps || 'شاهد الهدف على الموقع',
+          url: `/v/${videoId}`,
+          tag: `but-${videoId}`.slice(0, 60),
+          icon: '/icon-192.png',
+        })
+        push = { ok: r.sent > 0, note: `${r.sent}/${r.total} envoyées` }
+      } catch (e) {
+        push = { ok: false, note: String(e).slice(0, 160) }
+      }
+    }
+  }
+
   let fb: { ok: boolean; note?: string } = { ok: false, note: 'non demandé' }
   if (b?.fb) {
     const auto = await import('./automation')
@@ -2450,7 +2498,7 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
       })
     }
   }
-  return jsonResp({ ok: true, videoId, fb })
+  return jsonResp({ ok: true, videoId, fb, push })
 }
 
 async function handleButListe(env: AdminEnv): Promise<Response> {
