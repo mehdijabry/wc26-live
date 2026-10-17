@@ -37,6 +37,8 @@ export type LigneVideo = {
   source: string
   kind: string
   titre: string
+  /** Rangée en base quand elle ne se déduit pas de l'identifiant (X). */
+  vignette?: string | null
   description?: string | null
   publie_at?: string | null
   match_id?: string | null
@@ -64,6 +66,9 @@ const estX = (source: string): boolean => source === 'x' || source.startsWith('x
  * dans le studio), donc la fenêtre garde le bon format dans les deux cas.
  */
 function vignettes(v: LigneVideo): { principale: string | null; repli: string | null } {
+  // Celle qui est RANGÉE gagne : pour X elle est la seule qu'on ait, et
+  // pour un but saisi à la main Mehdi peut en imposer une autre.
+  if (v.vignette) return { principale: v.vignette, repli: null }
   if (estX(v.source)) return { principale: null, repli: null }
   return {
     principale: `https://i.ytimg.com/vi/${v.video_id}/maxresdefault.jpg`,

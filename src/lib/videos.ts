@@ -25,6 +25,8 @@ export type VideoMatch = {
   score_ext: number | null
   buteur: string | null
   minute: string | null
+  /** Rangée en base quand elle ne se déduit pas de l'identifiant (X). */
+  vignette?: string | null
 }
 
 /**
@@ -46,5 +48,10 @@ export function lienVideo(v: VideoMatch): string {
     : `https://www.youtube.com/watch?v=${v.video_id}`
 }
 
+/**
+ * Celle qui est RANGÉE gagne : une vidéo X n'a pas d'adresse de vignette
+ * déductible de son identifiant, et sans elle ses cartes sortaient avec un
+ * cadre vide. Pour YouTube, elle se recalcule toujours.
+ */
 export const vignetteDe = (v: VideoMatch): string | null =>
-  v.source.startsWith('x-') ? null : `https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg`
+  v.vignette ?? (v.source.startsWith('x-') ? null : `https://i.ytimg.com/vi/${v.video_id}/hqdefault.jpg`)

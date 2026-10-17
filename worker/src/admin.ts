@@ -2147,11 +2147,13 @@ async function handleButApercu(env: AdminEnv, req: Request): Promise<Response> {
     const j = await r.json().catch(() => ({})) as { author_name?: string; html?: string }
     const texte = texteDuPost(j.html ?? '')
     const d = devinerChamps(texte, j.author_name ?? '')
+    const v = await vignetteDeX(ref.id)
     return jsonResp({
       ok: true, source: 'x', videoId: ref.id,
       titre: texte.slice(0, 200) || `Post de ${j.author_name ?? '—'}`,
       description: texte, chaine: j.author_name ?? '',
-      vignette: null, lien: `https://x.com/i/status/${ref.id}`, embed: j.html ?? null,
+      vignette: v.url, rapport: v.rapport,
+      lien: `https://x.com/i/status/${ref.id}`, embed: j.html ?? null,
       ...d,
     })
   }
@@ -2181,6 +2183,45 @@ async function handleButApercu(env: AdminEnv, req: Request): Promise<Response> {
     // d'avance ne peuvent pas inventer un buteur (17/10/2026).
     ...devinerChamps(`${titre}\n${desc}`, String(sn.channelTitle ?? '')),
   })
+}
+
+/**
+ * LA VIGNETTE D'UNE VIDÉO X.
+ *
+ * L'oEmbed donne le texte mais aucune image, et la page publique de X ne
+ * rend plus rien à un robot : mesuré le 17/10/2026, `x.com/.../status/...`
+ * renvoie 46 Ko de coquille JavaScript à `facebookexternalhit` comme à
+ * `Twitterbot`, sans une seule balise `<meta>`.
+ *
+ * Reste le point de SYNDICATION, celui qui alimente les tweets embarqués
+ * sur les sites tiers : gratuit, sans authentification, et il porte le
+ * poster de la vidéo ET son rapport d'image. Son jeton se calcule à partir
+ * de l'identifiant — c'est ce que fait le script d'embed de X lui-même.
+ *
+ * Il peut disparaître sans préavis (X a déjà fermé le reste). D'où la
+ * colonne `vignette` en base, posée à la publication : la page /v/<id> ne
+ * redemandera jamais cette adresse, elle la relira.
+ */
+async function vignetteDeX(id: string): Promise<{ url: string | null; rapport: number | null }> {
+  try {
+    const jeton = ((Number(id) / 1e15) * Math.PI).toString(6 ** 2).replace(/(0+|\.)/g, '')
+    const r = await fetch(`https://cdn.syndication.twimg.com/tweet-result?id=${encodeURIComponent(id)}&token=${jeton}&lang=fr`, {
+      headers: { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36' },
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (!r.ok) return { url: null, rapport: null }
+    const j = await r.json().catch(() => ({})) as {
+      video?: { poster?: string }
+      photos?: Array<{ url?: string }>
+      mediaDetails?: Array<{ media_url_https?: string; video_info?: { aspect_ratio?: [number, number] } }>
+    }
+    const m = j.mediaDetails?.[0]
+    const ar = m?.video_info?.aspect_ratio
+    return {
+      url: j.video?.poster ?? m?.media_url_https ?? j.photos?.[0]?.url ?? null,
+      rapport: ar && ar[1] ? ar[0] / ar[1] : null,
+    }
+  } catch { return { url: null, rapport: null } }
 }
 
 /** Le texte d'un post X, extrait du HTML que rend l'oEmbed. */
@@ -2258,17 +2299,29 @@ function devinerChamps(texte: string, compte: string): {
  */
 async function composerAccrocheBut(env: AdminEnv, o: {
   buteur: string; adversaire?: string; minute?: string; equipes?: string
-  competitionAr?: string; penalty?: boolean; csc?: boolean
+  competitionAr?: string; penalty?: boolean; csc?: boolean; videoId?: string
 }): Promise<string> {
   const { captionBut } = await import('./accroches')
   const n = Number((await env.CACHE.get('but:rotation')) ?? '0')
-  return captionBut({ ...o, lien: 'pressing90.live/buts' }, n)
+  return captionBut({ ...o, lien: lienAccroche(o.videoId) }, n)
 }
+
+/**
+ * « Regarde-le sur … » doit mener AU BUT, pas à la liste du jour.
+ *
+ * Depuis le passage au post de lien, l'aperçu Facebook pointe sur
+ * /v/<id> ; laisser la légende renvoyer vers /buts enverrait le lecteur
+ * à deux endroits différents selon qu'il clique l'image ou le texte.
+ * Tant que l'identifiant n'est pas connu (la toute première composition),
+ * la liste reste le repli.
+ */
+const lienAccroche = (videoId?: string): string =>
+  videoId ? `pressing90.live/v/${videoId}` : 'pressing90.live/buts'
 
 async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response> {
   const b = await readBoundedJson(req, 4_000) as {
     buteur?: string; passeur?: string; adversaire?: string; minute?: string; equipes?: string
-    competition?: string; penalty?: boolean; csc?: boolean; suivante?: boolean
+    competition?: string; penalty?: boolean; csc?: boolean; suivante?: boolean; videoId?: string
   } | null
   // `suivante` fait tourner la rotation : Mehdi appuie sur ↻ jusqu'à ce
   // qu'une formulation lui plaise.
@@ -2286,7 +2339,7 @@ async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response>
       equipes: (safeString(b?.equipes ?? '', 160) ?? ''),
       competitionAr: auto.leagueAr((safeString(b?.competition ?? '', 80) ?? '')),
       penalty: !!b?.penalty, csc: !!b?.csc,
-      lien: 'pressing90.live/buts',
+      lien: lienAccroche(safeString(b?.videoId ?? '', 40) ?? ''),
     }, n),
   })
 }
@@ -2328,13 +2381,34 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
     // rien inventer, et si ça ne se scinde pas on garde tout à gauche.
     equipe_dom: deuxEquipes[0] || null,
     equipe_ext: deuxEquipes[1] || null,
+    // ON RANGE LA VIGNETTE. Pour YouTube elle se recalculerait, pour X
+    // non : elle vient du point de syndication, qui peut fermer. La page
+    // /v/<id> doit pouvoir refaire son image de partage dans six mois
+    // sans redemander quoi que ce soit à X.
+    vignette: (safeString(b?.vignette ?? '', 500) ?? '') || null,
     publie_site: true,
   }
 
-  const ins = await fetch(`${e.SUPABASE_URL}/rest/v1/videos_matchs?on_conflict=video_id`, {
-    method: 'POST', headers: entetes, body: JSON.stringify(ligne),
-  })
-  if (!ins.ok) return jsonResp({ error: `base ${ins.status}: ${(await ins.text()).slice(0, 200)}` }, 502)
+  // ── L'INSERTION NE DÉPEND PAS DE L'ORDRE DES DÉPLOIEMENTS ───────────
+  // `vignette` arrive avec la migration 035, appliquée à la main. Un
+  // worker déployé avant elle refuserait toute publication avec un
+  // « column does not exist » — et c'est exactement ce qui a coûté une
+  // soirée avec la 025. On retente donc sans la colonne, une fois.
+  const envoyer = (corps: Record<string, unknown>) =>
+    fetch(`${e.SUPABASE_URL}/rest/v1/videos_matchs?on_conflict=video_id`, {
+      method: 'POST', headers: entetes, body: JSON.stringify(corps),
+    })
+  let ins = await envoyer(ligne)
+  if (!ins.ok) {
+    const t = await ins.text()
+    if (/vignette/i.test(t)) {
+      const { vignette: _ignoree, ...sansVignette } = ligne
+      ins = await envoyer(sansVignette)
+      if (!ins.ok) return jsonResp({ error: `base ${ins.status}: ${(await ins.text()).slice(0, 200)}` }, 502)
+    } else {
+      return jsonResp({ error: `base ${ins.status}: ${t.slice(0, 200)}` }, 502)
+    }
+  }
 
   let fb: { ok: boolean; note?: string } = { ok: false, note: 'non demandé' }
   if (b?.fb) {
@@ -2355,6 +2429,7 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
       video_id: videoId, source: ligne.source, kind: 'but', titre: ligne.titre,
       competition: ligne.competition, equipe_dom: ligne.equipe_dom, equipe_ext: ligne.equipe_ext,
       buteur: ligne.buteur, minute: ligne.minute, score_dom: null, score_ext: null,
+      vignette: ligne.vignette,
     })
     const image = og
       ?? (b?.vignette
@@ -2404,12 +2479,21 @@ async function handleButCarte(env: AdminEnv, req: Request): Promise<Response> {
   const eq = ((safeString(b?.equipes ?? '', 160) ?? '')).split(/\s*[–-]\s*|\s+vs\.?\s+/i)
   try {
     const auto = await import('./automation')
-    const url = await auto.renderImage(env as unknown as Parameters<typeof auto.renderImage>[0], 'but-clip', {
+    // ── L'APERÇU MONTRE CE QUI SERA PUBLIÉ ───────────────────────────
+    // Il rendait la carte « but-clip » en 4:5, celle des anciens posts
+    // photo. Depuis qu'un but part en post de LIEN, ce que Facebook
+    // affiche est l'image Open Graph de /v/<id>, en 1200×630 : montrer
+    // l'autre reviendrait à faire valider une image qui ne sortira pas.
+    const buteur = (safeString(b?.buteur ?? '', 120) ?? '')
+    const minute = (safeString(b?.minute ?? '', 12) ?? '')
+    const url = await auto.renderImage(env as unknown as Parameters<typeof auto.renderImage>[0], 'og-video', {
       lang: 'ar',
+      etiquette: 'الهدف',
       competition: auto.leagueAr((safeString(b?.competition ?? '', 80) ?? '')),
       home: eq[0] ?? '', away: eq[1] ?? '',
-      scorer: (safeString(b?.buteur ?? '', 120) ?? ''),
-      minute: (safeString(b?.minute ?? '', 12) ?? ''),
+      titre: buteur || [eq[0], eq[1]].filter(Boolean).join(' — '),
+      sousTitre: buteur ? [eq[0], eq[1]].filter(Boolean).join(' — ') : '',
+      minute,
       vignette: b?.vignette ?? null,
       barca: true,
     })

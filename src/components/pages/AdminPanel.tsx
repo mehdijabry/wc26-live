@@ -3970,6 +3970,7 @@ function Buts() {
       const a = await adminPost('/admin/but/accroche', {
         buteur: '', minute: d.minute ?? '', equipes: d.equipes ?? '',
         competition: d.competition ?? '', adversaire: (d.equipes ?? '').split(/\s*[–-]\s*/)[1] ?? '',
+        videoId: d.videoId,
       }) as { accroche?: string }
       setCaption(a.accroche || d.titre || '')
     } catch (e) { setMsg(String(e)) } finally { setOccupe(null) }
@@ -3981,6 +3982,7 @@ function Buts() {
       const d = await adminPost('/admin/but/accroche', {
         buteur, passeur, minute, equipes, competition,
         adversaire: equipes.split(/\s*[–-]\s*/)[1] ?? '',
+        videoId: ap?.videoId,
         suivante: true,
       }) as { accroche?: string }
       if (d.accroche) setCaption(d.accroche)
