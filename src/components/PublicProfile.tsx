@@ -12,7 +12,7 @@
  */
 import { motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import { useT, useLang, localeOf } from '../lib/i18n'
@@ -42,6 +42,7 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
   const { slug: slugUrl = '' } = useParams()
   const slug = slugProp ?? slugUrl
   const t = useT()
+  const navigate = useNavigate()
   const lang = useLang((s) => s.lang)
   const moi = useAuth((s) => s.user)
   const rafraichirProfil = useAuth((s) => s.refreshProfile)
@@ -62,7 +63,20 @@ export function PublicProfile({ slug: slugProp }: { slug?: string } = {}) {
       const { data } = await supabase.rpc('profil_public', { p_alias: slug })
       if (!vivant) return
       const ligne = Array.isArray(data) ? data[0] : data
-      if (!ligne) { setEtat('introuvable'); return }
+      if (!ligne) {
+        // ── LES ANCIENS LIENS CONTINUENT DE MARCHER ────────────────────
+        // Avant le 17/10, l'adresse publique d'un joueur etait le slug de son
+        // TABLEAU de Coupe du monde — /u/fan_7afaf2. Ces liens ont ete
+        // partages. On retrouve donc le joueur par ce slug et on renvoie vers
+        // son alias, plutot que d'afficher « introuvable » a quelqu'un qui
+        // suit un lien parfaitement valide.
+        const { data: vieux } = await supabase!
+          .from('public_brackets').select('alias').eq('share_slug', slug).maybeSingle()
+        const ancien = (vieux as { alias?: string } | null)?.alias
+        if (!vivant) return
+        if (ancien) { navigate(`/u/${ancien}`, { replace: true }); return }
+        setEtat('introuvable'); return
+      }
       setP(ligne as Profil)
       setEtat('pret')
     })()
