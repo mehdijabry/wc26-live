@@ -6,6 +6,10 @@
 // Renders are serialized (one at a time) — the free instance has 0.1 CPU.
 import express from 'express'
 import fs from 'node:fs/promises'
+// Lecture SYNCHRONE du cgroup : trois fichiers de quelques octets, lus
+// seulement sur /health. Les rendre asynchrones compliquerait la sonde
+// pour rien.
+import nodeFs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawArticlePost, drawArticleStory, drawGoalSlide, drawGoalLayers, drawMatchLayers, drawUclMatchLayers, drawArticleLayers, drawGoalAnimSpec, drawTaleBeatLayers, drawTaleCover, drawLineupPost, drawStoryCover, registerBrandFonts, setTheme } from './draw.js'
@@ -105,11 +109,61 @@ let picRss = 0
 const mesurerRss = () => { const r = process.memoryUsage().rss; if (r > picRss) picRss = r; return r }
 setInterval(mesurerRss, 2000).unref()
 
-app.get('/health', (_req, res) => res.json({
-  ok: true, pending, uptime: Math.round(process.uptime()),
-  rss: Math.round(mesurerRss() / MO), pic: Math.round(picRss / MO), limite: 512,
-  files: { video: enAttente.video, image: enAttente.image },
-}))
+// ── LA MÉMOIRE DU CONTENEUR, PAS CELLE D'EXPRESS (19/10/2026) ──────────
+//
+// `process.memoryUsage().rss` ne mesure QUE le processus Express. Or tout
+// ce qui coûte cher vit ailleurs : la boucle d'images et l'assemblage
+// ffmpeg tournent dans des processus ENFANTS, précisément pour que leur
+// mémoire soit rendue au système entre les deux phases. La sonde posée le
+// 15/10 regardait donc l'endroit où il n'y a rien à voir — elle rapporte
+// 130 Mo sur 512 pendant que le conteneur se fait tuer.
+//
+// Linux publie la vérité dans le cgroup, et elle couvre tout le conteneur :
+// Express, les enfants, ffmpeg, et le cache de pages. `memory.events`
+// contient en prime un compteur `oom_kill` — c'est LA preuve qu'on
+// cherchait depuis le 15/10, et elle survit au redémarrage du processus
+// (le cgroup, lui, ne redémarre pas).
+//
+// cgroup v2 d'abord (Render), v1 en repli, et rien du tout en local sur
+// macOS : les champs valent alors `null`, ce qui se lit comme « pas
+// mesuré » et non comme « zéro ».
+const lireFichier = (f) => { try { return nodeFs.readFileSync(f, 'utf8').trim() } catch { return null } }
+const lireNombre = (f) => { const v = lireFichier(f); if (v === null || v === 'max') return null; const n = Number(v); return Number.isFinite(n) ? n : null }
+
+function memoireConteneur() {
+  // v2
+  let courant = lireNombre('/sys/fs/cgroup/memory.current')
+  let pic = lireNombre('/sys/fs/cgroup/memory.peak')
+  let max = lireNombre('/sys/fs/cgroup/memory.max')
+  let oom = null, souspression = null
+  const ev = lireFichier('/sys/fs/cgroup/memory.events')
+  if (ev) {
+    const m = /^oom_kill (\d+)$/m.exec(ev); if (m) oom = Number(m[1])
+    const h = /^high (\d+)$/m.exec(ev); if (h) souspression = Number(h[1])
+  }
+  // v1 en repli
+  if (courant === null) courant = lireNombre('/sys/fs/cgroup/memory/memory.usage_in_bytes')
+  if (pic === null) pic = lireNombre('/sys/fs/cgroup/memory/memory.max_usage_in_bytes')
+  if (max === null) max = lireNombre('/sys/fs/cgroup/memory/memory.limit_in_bytes')
+  if (oom === null) souspression = lireNombre('/sys/fs/cgroup/memory/memory.failcnt') ?? souspression
+
+  const enMo = (v) => (v === null ? null : Math.round(v / MO))
+  // Un `memory.max` absurde (le cgroup racine rend 2^63) ne veut rien dire.
+  const plafond = max !== null && max < 64 * 1024 * MO ? enMo(max) : null
+  return { courant: enMo(courant), pic: enMo(pic), plafond, oomKills: oom, sousPression: souspression }
+}
+
+app.get('/health', (_req, res) => {
+  const c = memoireConteneur()
+  res.json({
+    ok: true, pending, uptime: Math.round(process.uptime()),
+    // `rss`/`pic` restent : ils disent ce que fait Express, et l'écart avec
+    // `conteneur` dit ce que font les enfants.
+    rss: Math.round(mesurerRss() / MO), pic: Math.round(picRss / MO), limite: c.plafond ?? 512,
+    conteneur: c,
+    files: { video: enAttente.video, image: enAttente.image },
+  })
+})
 
 // ESPN proxy — ESPN's site API 403s Cloudflare Workers egress IPs, so the
 // worker's automation reads today's scoreboards through this box

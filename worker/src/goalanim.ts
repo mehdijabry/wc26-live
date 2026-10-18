@@ -98,13 +98,28 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
         const age = Date.now() - (job.stageAt ?? job.startedAt)
         if (age > 4 * 60_000 && (job.renderRetries ?? 0) < 2) {
           let uptime = -1
-          try { const h = await fetch(`${env.STUDIO_URL}/health`, { signal: AbortSignal.timeout(10_000) }); if (h.ok) uptime = Number(((await h.json()) as { uptime?: number }).uptime ?? -1) } catch { /* studio unreachable — leave it to the timeout */ }
+          // LA MÉMOIRE DU CONTENEUR EST RAPPORTÉE AVEC LE REDÉMARRAGE.
+          // Depuis le 19/10 le studio lit le cgroup, qui couvre Express,
+          // ses enfants et ffmpeg — et dont le compteur `oom_kill` SURVIT
+          // au redémarrage du processus. Sans cette ligne, le journal
+          // disait « le studio a redémarré » sans jamais dire pourquoi,
+          // et on en est resté à deviner depuis le 15/10.
+          let memoire = ''
+          try {
+            const h = await fetch(`${env.STUDIO_URL}/health`, { signal: AbortSignal.timeout(10_000) })
+            if (h.ok) {
+              const j = (await h.json()) as { uptime?: number; conteneur?: { courant?: number | null; pic?: number | null; plafond?: number | null; oomKills?: number | null } }
+              uptime = Number(j.uptime ?? -1)
+              const c = j.conteneur
+              if (c) memoire = ` · conteneur ${c.courant ?? '?'}/${c.plafond ?? '?'} Mo, pic ${c.pic ?? '?'}, oom_kill ${c.oomKills ?? '?'}`
+            }
+          } catch { /* studio unreachable — leave it to the timeout */ }
           if (uptime >= 0 && uptime * 1000 < age - 60_000) {
             job.renderRetries = (job.renderRetries ?? 0) + 1
             job.stage = 'render'; job.stageAt = Date.now()
             await env.CACHE.delete(`auto:goalanim:sent:${job.item.id}`)
             await saveJob(env, job)
-            await log(env, date, 'goal-anim', false, `${job.item.home} v ${job.item.away}: the studio restarted ${Math.round(uptime / 60)} min ago, render lost after ${Math.round(age / 60000)} min — resending (try ${job.renderRetries + 1}/3)`)
+            await log(env, date, 'goal-anim', false, `${job.item.home} v ${job.item.away}: the studio restarted ${Math.round(uptime / 60)} min ago, render lost after ${Math.round(age / 60000)} min — resending (try ${job.renderRetries + 1}/3)${memoire}`)
             return 'render lost — resent'
           }
         }
