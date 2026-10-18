@@ -21,7 +21,23 @@ const TIER_COLORS: Record<string, string> = {
   Legend: 'text-yellow-300',
 }
 
-export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
+export function UserMenu({ panneau = false, onNaviguer }: {
+  panneau?: boolean
+  /**
+   * Appelé quand un lien du menu emmène ailleurs.
+   *
+   * En mode « panneau », ce composant est DANS le tiroir de `Navigation`,
+   * et son propre `setMenuOpen(false)` ne ferme que sa liste déroulante —
+   * pas le tiroir qui l'héberge. Les raccourcis (mes paris, classement,
+   * profil public) laissaient donc le tiroir ouvert par-dessus la page
+   * qu'on venait de demander (Mehdi, 17/10/2026).
+   *
+   * Le changement d'adresse ferme déjà le tiroir ; ce rappel couvre le cas
+   * où la page demandée est CELLE QU'ON REGARDE DÉJÀ — l'adresse ne bouge
+   * pas, et sans lui le tiroir resterait ouvert sur un clic sans effet.
+   */
+  onNaviguer?: () => void
+} = {}) {
   const { user, profile, profilEtat, signOut, initialized, updateAlias } = useAuth()
   // Le solde suit la langue affichée, il était figé en « fr-FR ».
   const lang = useLang((s) => s.lang)
@@ -249,7 +265,7 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
             <div className="mt-4 space-y-1.5">
               <Link
                 to="/my-bets"
-                onClick={() => setMenuOpen(false)}
+                onClick={() => { setMenuOpen(false); onNaviguer?.() }}
                 className="block w-full px-3 py-2 rounded-lg bg-accent-gold/10 hover:bg-accent-gold/20 text-xs text-slate-800 transition-colors"
               >
                 🎟️ {t('My bets')}
@@ -259,7 +275,7 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
                   quatre-vingt-dix matchs (Mehdi, 2026-10-10). */}
               <Link
                 to="/board"
-                onClick={() => setMenuOpen(false)}
+                onClick={() => { setMenuOpen(false); onNaviguer?.() }}
                 className="block w-full px-3 py-2 rounded-lg bg-accent-gold/10 hover:bg-accent-gold/20 text-xs text-slate-800 transition-colors"
               >
                 🏆 {t('Standings')}
@@ -271,7 +287,7 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
               {alias && (
                 <Link
                   to={`/u/${alias}`}
-                  onClick={() => setMenuOpen(false)}
+                  onClick={() => { setMenuOpen(false); onNaviguer?.() }}
                   className="block w-full px-3 py-2 rounded-lg bg-accent-green/10 hover:bg-accent-green/20 text-xs text-slate-800 transition-colors"
                 >
                   🌍 {t('View my public profile')} <span className="text-slate-500 font-mono">/u/{alias}</span>
@@ -284,7 +300,7 @@ export function UserMenu({ panneau = false }: { panneau?: boolean } = {}) {
                   un resultat referme le menu, sinon il resterait ouvert
                   par-dessus la page du joueur. */}
               <div className="mt-2">
-                <RechercheJoueurs onNaviguer={() => setMenuOpen(false)} />
+                <RechercheJoueurs onNaviguer={() => { setMenuOpen(false); onNaviguer?.() }} />
               </div>
             </div>
 

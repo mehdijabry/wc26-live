@@ -1,6 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { useEffect, useState } from 'react'
-import { Link, NavLink } from 'react-router-dom'
+import { Link, NavLink, useLocation } from 'react-router-dom'
 import { UserMenu } from './UserMenu'
 import { Notifications } from './Notifications'
 import Avatar from './Avatar'
@@ -56,6 +56,19 @@ export function Navigation() {
   const setLang = useLang((s) => s.setLang)
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // ── LE TIROIR SE FERME DÈS QU'ON CHANGE DE PAGE ──────────────────────
+  // Il ne se fermait que sur ses PROPRES liens, qui appellent chacun
+  // `setMenuOpen(false)` à la main. Tout ce qui navigue depuis l'intérieur
+  // sans passer par eux — les raccourcis du compte, la recherche de
+  // joueur, un lien ajouté demain — laissait le tiroir ouvert par-dessus
+  // la page demandée (Mehdi, 17/10/2026).
+  //
+  // Une règle unique posée sur l'adresse vaut mieux qu'un rappel par
+  // lien : elle couvre aussi ceux qui n'existent pas encore. `UserMenu`
+  // suit déjà exactement ce schéma pour sa liste déroulante.
+  const chemin = useLocation().pathname
+  useEffect(() => { setMenuOpen(false) }, [chemin])
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12)
@@ -315,7 +328,7 @@ export function Navigation() {
               )}
 
               <div className="mb-6 pb-6 border-b border-slate-200">
-                <UserMenu panneau />
+                <UserMenu panneau onNaviguer={() => setMenuOpen(false)} />
               </div>
 
               <nav className="space-y-1">
