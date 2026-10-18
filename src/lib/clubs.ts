@@ -43,6 +43,7 @@
  * C'est donc le navigateur que l'hôte traite différemment, pas la route.
  */
 import { teamBadgeFallback } from './utils'
+import { fetchLecture } from './reseau'
 
 const ESPN_DETAIL = 'https://site.web.api.espn.com/apis/site/v2/sports/soccer'
 /** Le listing des clubs d'un championnat, via son classement — CORS ouvert. */
@@ -268,7 +269,7 @@ export function slugDuClub(nom: string): string {
 }
 
 async function jget<T>(url: string): Promise<T> {
-  const r = await fetch(url)
+  const r = await fetchLecture(url)
   if (!r.ok) throw new Error(`${r.status} ${r.statusText} — ${url}`)
   return (await r.json()) as T
 }

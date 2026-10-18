@@ -1,8 +1,24 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { DELAI_SUPABASE, fetchBorne } from './reseau'
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
 const anon = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
 
+/**
+ * LE CLIENT PASSE PAR UN `fetch` BORNÉ — et c'est le point important.
+ *
+ * Mehdi, 18/10/2026 : « il faut absolument actualiser pour que ça charge ».
+ * Une requête Supabase partie au réveil de l'appareil peut rester en l'air
+ * sans jamais aboutir ni échouer, et le composant qui l'attend reste sur
+ * son squelette pour toujours — `ResumesALaUne` en tête. Douze secondes :
+ * une instance froide répond en cinq à quinze sur cellulaire, et au-delà
+ * il vaut mieux une erreur franche qu'une attente sans fin.
+ *
+ * ON NE RETENTE RIEN ICI. Le client sert aussi les écritures — un pari
+ * posé, des crampons débités — et rejouer une écriture dont on n'a pas vu
+ * la réponse, c'est risquer de la passer deux fois. La reprise appartient
+ * aux appelants qui SAVENT qu'ils lisent.
+ */
 export const supabase: SupabaseClient | null =
   url && anon
     ? createClient(url, anon, {
@@ -11,12 +27,22 @@ export const supabase: SupabaseClient | null =
           autoRefreshToken: true,
           detectSessionInUrl: true,
         },
+        global: {
+          fetch: (entree, init) => fetchBorne(entree as RequestInfo | URL, init as RequestInit, DELAI_SUPABASE),
+        },
       })
     : null
 
 export const SUPABASE_CONFIGURED = supabase !== null
 
 /**
+ * ⚠️ `withTimeout` NE SUFFIT PAS, ET N'A JAMAIS SUFFI. Il faut PENSER à
+ * l'appeler, donc chaque appel écrit depuis l'a oublié et le blocage est
+ * revenu par la porte d'à côté (18/10/2026). La vraie borne est désormais
+ * dans le `fetch` du client, ci-dessus : on ne peut plus l'oublier. Celle-ci
+ * reste utile pour borner autre chose qu'une requête — une promesse d'auth
+ * qui dépend d'un verrou local, par exemple.
+ *
  * Race a Supabase (or any other) promise against a timeout. Returns the
  * fallback if the timeout fires first — never throws. Without this guard,
  * a slow Supabase cold-start (5-15s on mobile cellular) keeps NewsTicker

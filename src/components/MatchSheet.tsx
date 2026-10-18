@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
 import { isMatchPaused, liveClock } from '../lib/api'
+import { fetchLecture } from '../lib/reseau'
 
 /**
  * MatchSheet — modal opened by tapping any match card on the daily
@@ -141,7 +142,7 @@ export function MatchSheet({
 
     async function load() {
       try {
-        const r = await fetch(
+        const r = await fetchLecture(
           // Hôte `site.web.api` : voir la note sur ESPN_DIRECT dans src/lib/api.ts.
           `https://site.web.api.espn.com/apis/site/v2/sports/soccer/eng.1/summary?event=${eventId}`
         )

@@ -137,7 +137,7 @@ export function NewsTicker() {
       //     articles and a grey auth button (every Supabase-dependent
       //     read was awaiting the same idle connection). Now we fall
       //     back to an empty list and render ESPN alone.
-      //   - ESPN: fetchNews has its own per-request AbortSignal.timeout
+      //   - ESPN : fetchNews borne chaque requête (voir lib/reseau.ts)
       //     (4s), so this outer timeout is a belt-and-braces 8s cap.
       const oursPromise = withTimeout(fetchInternalArticles(), 6_000, [] as NewsArticle[])
       const espnPromise = withTimeout(fetchNews(5), 8_000, [] as NewsArticle[])

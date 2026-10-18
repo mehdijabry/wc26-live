@@ -20,10 +20,21 @@ import { videosRecentes, vignetteDe, type VideoMatch } from '../lib/videos'
  * porte de sortie. Le défilement automatique s'arrête donc aussi au
  * sixième — sinon il repasserait au premier et contredirait la butée.
  *
- * ── TROIS ÉTATS ──────────────────────────────────────────────────────────
+ * ── TROIS ÉTATS, ET UN ÉCHEC N'EST PAS UN CHARGEMENT ─────────────────────
  * `null` = on ne sait pas encore ; liste vide = il n'y a rien et le bloc
  * entier disparaît. Un titre posé sur du vide est pire que pas de titre
  * (leçon du 17/10 sur la fiche de match).
+ *
+ * LE BOGUE DU 18/10 ÉTAIT ICI AUSSI. `videosRecentes` rend `null` quand la
+ * lecture échoue, et ce composant faisait `if (!l) return` : l'état restait
+ * à `null`, c'est-à-dire « en cours de chargement », et le squelette pulsait
+ * pour toujours. Mehdi : « on voit juste un genre d'animation chargement
+ * mais rien ne se passe, il faut absolument actualiser ». Deux états pour
+ * trois situations : l'échec portait le costume de l'attente.
+ *
+ * Maintenant : on retente deux fois, en espaçant, puis on renonce — et
+ * renoncer veut dire faire DISPARAÎTRE le bloc, pas laisser un squelette.
+ * L'accueil a d'autres choses à montrer, et /resumes reste à un geste.
  */
 export function ResumesALaUne() {
   const t = useT()
@@ -32,25 +43,54 @@ export function ResumesALaUne() {
 
   useEffect(() => {
     let vivant = true
-    void videosRecentes(null, 30).then((l) => {
-      if (!vivant || !l) return
-      // UN MATCH NE PASSE QU'UNE FOIS. Les diffuseurs publient souvent
-      // deux versions du même match — le résumé court puis l'EXTENDED —
-      // et sans ce tri l'accueil montrait Lorient - Monaco deux fois
-      // d'affilée sur six vignettes (relevé le 18/10). On garde la
-      // première, qui est la plus récente.
-      const vus = new Set<string>()
-      const retenus: VideoMatch[] = []
-      for (const v of l) {
-        if (v.kind === 'but') continue
-        const cle = v.match_id ?? `${v.equipe_dom ?? ''}|${v.equipe_ext ?? ''}`
-        if (vus.has(cle)) continue
-        vus.add(cle); retenus.push(v)
-        if (retenus.length === 6) break
-      }
-      setListe(retenus)
-    })
-    return () => { vivant = false }
+    let horloge: number | undefined
+    let essais = 0
+
+    const charger = () => {
+      void videosRecentes(null, 30).then((l) => {
+        if (!vivant) return
+        if (!l) {
+          // ÉCHEC — et il faut le dire à l'écran, pas l'attendre. Deux
+          // reprises : la première requête d'une page qui s'ouvre part
+          // souvent avant que la connexion ne soit prête.
+          if (++essais <= 2) { horloge = window.setTimeout(charger, 3000 * essais); return }
+          setListe([])   // le bloc s'efface, aucun squelette ne survit
+          return
+        }
+        // UN MATCH NE PASSE QU'UNE FOIS. Les diffuseurs publient souvent
+        // deux versions du même match — le résumé court puis l'EXTENDED —
+        // et sans ce tri l'accueil montrait Lorient - Monaco deux fois
+        // d'affilée sur six vignettes (relevé le 18/10). On garde la
+        // première, qui est la plus récente.
+        const vus = new Set<string>()
+        const retenus: VideoMatch[] = []
+        for (const v of l) {
+          if (v.kind === 'but') continue
+          const cle = v.match_id ?? `${v.equipe_dom ?? ''}|${v.equipe_ext ?? ''}`
+          if (vus.has(cle)) continue
+          vus.add(cle); retenus.push(v)
+          if (retenus.length === 6) break
+        }
+        setListe(retenus)
+      })
+    }
+    charger()
+
+    // L'APPAREIL QUI SE RÉVEILLE REDEMANDE. Un téléphone rouvert sur
+    // l'onglet d'hier gardait l'écran de la veille ; et si le premier
+    // chargement a renoncé, c'est ici qu'il repart.
+    const auRetour = () => {
+      if (document.hidden || !vivant) return
+      essais = 0
+      charger()
+    }
+    document.addEventListener('visibilitychange', auRetour)
+
+    return () => {
+      vivant = false
+      if (horloge) clearTimeout(horloge)
+      document.removeEventListener('visibilitychange', auRetour)
+    }
   }, [])
 
   const n = liste?.length ?? 0

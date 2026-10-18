@@ -4,12 +4,30 @@
 # specific paths go AFTER so they override.
 
 # Default for HTML and everything else: browser never caches (so
-# deploys go live instantly), CDN caches for 60s (so concurrent
+# deploys go live instantly), CDN caches for 300s (so concurrent
 # visitors don't hit origin). The Cache-Control / CDN-Cache-Control
 # split is a Cloudflare feature — the s-maxage applies at CF, the
 # max-age applies in the browser.
+#
+# ── PAS DE `must-revalidate` ICI, ET C'EST LE POINT (18/10/2026) ──────
+# Les règles de ce fichier sont FUSIONNÉES, pas remplacées : une
+# directive posée par le fourre-tout survit dans toutes les règles plus
+# précises. `must-revalidate` se retrouvait donc collé aux paquets
+# hachés, qui sortaient en « max-age=31536000, must-revalidate,
+# immutable » — mesuré sur la production. C'est contradictoire : on dit
+# au navigateur que le fichier ne changera JAMAIS, et dans la même
+# phrase qu'il doit aller vérifier. Safari, qui tranche prudemment, s'en
+# sert pour revalider à chaque navigation — et comme chaque page de
+# l'application charge son propre paquet, ça fait un aller-retour
+# réseau par changement de page.
+#
+# Le retirer ne rend pas le HTML moins frais : `max-age=0` le rend périmé
+# sur-le-champ, donc tout cache doit déjà revalider avant de le
+# réutiliser. `must-revalidate` n'ajoutait que l'interdiction de servir
+# une version périmée en cas de panne réseau — ce qu'on préférerait
+# justement autoriser.
 /*
-  Cache-Control: public, max-age=0, must-revalidate
+  Cache-Control: public, max-age=0
   CDN-Cache-Control: public, s-maxage=300
 
 # Vite-hashed bundles (index-abc123.js, etc.) — content changes

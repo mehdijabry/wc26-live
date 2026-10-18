@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useLang } from '../lib/i18n'
 import { SectionFiche } from './SectionFiche'
+import { fetchBorne } from '../lib/reseau'
 
 /**
  * LE STADE D'UN MATCH : une photo, deux phrases, et le temps qu'il y faisait.
@@ -181,7 +182,7 @@ async function pagesWiki(dom: string, requete: string): Promise<PageWiki[]> {
     + '&prop=description%7Cpageimages%7Cextracts%7Ccoordinates'
     + '&exintro=1&explaintext=1&exsentences=2'
     + '&piprop=thumbnail&pithumbsize=640&format=json&origin=*'
-  const r = await fetch(url, { signal: AbortSignal.timeout(9000) })
+  const r = await fetchBorne(url, {}, 9000)
   if (!r.ok) return []
   const j = await r.json() as { query?: { pages?: Record<string, PageWiki> } }
   return Object.values(j.query?.pages ?? {})
@@ -300,7 +301,7 @@ async function chercherMeteo(lat: number, lon: number, coupDEnvoi: Date): Promis
     + `?latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}`
     + '&hourly=temperature_2m,precipitation_probability,wind_speed_10m,weather_code'
     + '&past_days=2&forecast_days=7&timezone=UTC'
-  const r = await fetch(url, { signal: AbortSignal.timeout(9000) })
+  const r = await fetchBorne(url, {}, 9000)
   if (!r.ok) return null
   const j = await r.json() as {
     hourly?: {

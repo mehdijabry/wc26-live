@@ -3,6 +3,8 @@
  * caches ESPN's public soccer API for the FIFA World Cup 26.
  */
 
+import { fetchBorne, fetchLecture } from './reseau'
+
 export const API_BASE =
   import.meta.env.VITE_API_BASE ?? 'https://wc26-api.nameless-violet-5dc1.workers.dev'
 
@@ -71,8 +73,14 @@ export type EspnEvent = {
 
 export type EspnScoreboard = { events?: EspnEvent[] }
 
+/**
+ * TOUT CE QUI SORT D'ICI EST BORNÉ. Voir `lib/reseau.ts` : un `fetch` nu
+ * peut rester en l'air sans jamais aboutir ni échouer, et l'appelant qui
+ * l'attend ne reprogramme alors jamais son prochain essai — c'est le
+ * squelette qui pulse pour toujours sur l'accueil (18/10/2026).
+ */
 async function jget<T>(path: string): Promise<T> {
-  const resp = await fetch(`${API_BASE}${path}`)
+  const resp = await fetchLecture(`${API_BASE}${path}`)
   if (!resp.ok) throw new Error(`API ${path} → ${resp.status}`)
   return (await resp.json()) as T
 }
@@ -145,7 +153,7 @@ export type HistoryResponse = {
 
 
 async function jgetDirect<T>(url: string): Promise<T> {
-  const resp = await fetch(url)
+  const resp = await fetchLecture(url)
   if (!resp.ok) throw new Error(`${resp.status} ${resp.statusText}`)
   return resp.json() as Promise<T>
 }
@@ -601,9 +609,7 @@ async function ensureLeagueNames(events: EspnEvent[]): Promise<void> {
   if (!headerFetchedThisSession) {
     headerFetchedThisSession = true
     try {
-      const r = await fetch('https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=soccer', {
-        signal: AbortSignal.timeout(5000),
-      })
+      const r = await fetchBorne('https://site.web.api.espn.com/apis/v2/scoreboard/header?sport=soccer', {}, 5000)
       const d = await r.json() as { sports?: Array<{ leagues?: Array<{ id?: number | string; name?: string; shortName?: string; slug?: string }> }> }
       for (const lg of d.sports?.[0]?.leagues ?? []) {
         const id = String(lg.id ?? '')
@@ -623,9 +629,7 @@ async function ensureLeagueNames(events: EspnEvent[]): Promise<void> {
     const evId = sampleEvent.get(id)
     if (!evId) return
     try {
-      const r = await fetch(`https://site.web.api.espn.com/apis/site/v2/sports/soccer/all/summary?event=${evId}`, {
-        signal: AbortSignal.timeout(5000),
-      })
+      const r = await fetchBorne(`https://site.web.api.espn.com/apis/site/v2/sports/soccer/all/summary?event=${evId}`, {}, 5000)
       const d = await r.json() as { header?: { league?: { name?: string; abbreviation?: string; slug?: string } } }
       const lg = d.header?.league
       const label = lg?.name ?? lg?.abbreviation
@@ -1434,7 +1438,7 @@ export async function broadcastersForMatch(
 
     const eventName = `${slug(homeTeam)}_vs_${slug(awayTeam)}`
     try {
-      const search = await fetch(`${TSDB}/searchevents.php?e=${eventName}`)
+      const search = await fetchLecture(`${TSDB}/searchevents.php?e=${eventName}`)
       if (!search.ok) return []
       const sj = await search.json() as { event?: Array<{ idEvent?: string; dateEvent?: string }> }
       const candidates = sj.event ?? []
@@ -1448,7 +1452,7 @@ export async function broadcastersForMatch(
         .sort((a, b) => a.dt - b.dt)[0]
       if (!best || best.dt > 2 * 86_400_000) return []
 
-      const tv = await fetch(`${TSDB}/lookuptv.php?id=${best.c.idEvent}`)
+      const tv = await fetchLecture(`${TSDB}/lookuptv.php?id=${best.c.idEvent}`)
       if (!tv.ok) return []
       const tj = await tv.json() as { tvevent?: Array<{ strCountry?: string; strChannel?: string; strLogo?: string }> }
       const out: LiveBroadcaster[] = []
@@ -2075,7 +2079,7 @@ export async function fetchNews(perLeague = 4): Promise<NewsArticle[]> {
     NEWS_LEAGUES.map(async (lg) => {
       try {
         const url = `https://site.web.api.espn.com/apis/site/v2/sports/soccer/${lg.slug}/news?limit=${perLeague}`
-        const r = await fetch(url, { signal: AbortSignal.timeout(4000) })
+        const r = await fetchBorne(url, {}, 4000)
         if (!r.ok) return []
         const d = await r.json() as { articles?: EspnArticle[] }
         const arr = d.articles ?? []
@@ -2274,7 +2278,7 @@ export async function fetchLiveOdds(evId: string, leagueSlug: string): Promise<M
   if (hit && Date.now() - hit.at < 60_000) return hit.odds
   let odds: MatchOdds | null = null
   try {
-    const r = await fetch(
+    const r = await fetchBorne(
       `https://sports.core.api.espn.com/v2/sports/soccer/leagues/${leagueSlug}/events/${evId}/competitions/${evId}/odds`
     )
     if (r.ok) {

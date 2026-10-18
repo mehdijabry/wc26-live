@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { fetchBorne } from '../lib/reseau'
 
 /**
  * Public feature flags, toggled from the admin panel and served by the
@@ -42,7 +43,7 @@ export const useSiteSettings = create<State>((set) => ({
   loaded: false,
   async load() {
     try {
-      const r = await fetch(`${WORKER}/site-settings`, { signal: AbortSignal.timeout(5000) })
+      const r = await fetchBorne(`${WORKER}/site-settings`, {}, 5000)
       if (!r.ok) throw new Error(String(r.status))
       const s = await r.json() as Partial<SiteSettings>
       const next: SiteSettings = {

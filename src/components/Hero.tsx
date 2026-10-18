@@ -91,13 +91,20 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
     let stop = false
     let timer: number | undefined
     async function load() {
+      let ok = false
       try {
         const d = await api.today(ymdLocal(new Date()))
         if (stop) return
         setFeats(pickFeatured(d))
         setFetchedAt(Date.now())
-      } catch { /* keep previous */ }
-      timer = window.setTimeout(load, 60_000)
+        ok = true
+      } catch { /* on garde l'affichage précédent */ }
+      if (stop) return
+      // UN ÉCHEC NE SE RATTRAPE PAS DANS UNE MINUTE. Au premier
+      // chargement il n'y a pas d'« affichage précédent » à garder : le
+      // visiteur regarde un vide. Dix secondes, le temps qu'une connexion
+      // qui se réveille soit prête (18/10/2026).
+      timer = window.setTimeout(load, ok ? 60_000 : 10_000)
     }
     load()
     return () => { stop = true; if (timer) clearTimeout(timer) }
