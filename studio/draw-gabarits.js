@@ -1780,3 +1780,201 @@ export async function gabaritOgVideo(d = {}) {
   txt(ctx, 'pressing90.live', cx, H - 48, { size: 24, font: 'Archivo', color: 'rgba(244,243,238,0.55)' })
   return c
 }
+
+// ╔══════════════════════════════════════════════════════════════════════╗
+// ║ LES DEUX CARTES SANS LIEN — gabarits « resumes-du-jour » et          ║
+// ║ « but-filet », 1080×1350                                             ║
+// ║                                                                      ║
+// ║ Mehdi, 18/10/2026 : « tous les posts images vont avec un lien        ║
+// ║ directement dans la description et FB pénalise pour ça, ils          ║
+// ║ n'aiment pas qu'on quitte la page ». On revient donc à une IMAGE     ║
+// ║ publiée en photo, le lien en premier commentaire.                    ║
+// ║                                                                      ║
+// ║ Ces deux cartes doivent se distinguer d'un coup d'œil dans le fil :  ║
+// ║ la journée porte les ÉCUSSONS DES CHAMPIONNATS sur un panneau de     ║
+// ║ stade, le but porte un BALLON DANS LE FILET et l'aperçu du clip.     ║
+// ╚══════════════════════════════════════════════════════════════════════╝
+
+/** Les plaques font 1664 de large, la chaîne travaille en 1080. */
+const E45 = 1080 / 1664
+const e45 = (n) => Math.round(n * E45)
+
+/**
+ * LA CARTE DE LA JOURNÉE — une seule par jour.
+ *
+ * Mehdi : « une image unique, la seule chose qui change dessus d'un post à
+ * l'autre c'est la date et les logos de championnats qui ont joué ce
+ * jour ». D'où un panneau VIDE sur la plaque : le nombre d'écussons change
+ * — six un dimanche, un seul un mardi — et des cases dessinées
+ * laisseraient des trous les jours creux.
+ *
+ * `d.competitions` : [{ logo, label }]. On répartit sur une ou deux
+ * rangées selon le nombre, et la taille suit : deux écussons occupent la
+ * largeur, six se serrent. Personne ne compte les logos, on lit « il y a
+ * eu du football partout » ou « il y a eu la Ligue des champions ».
+ */
+export async function gabaritResumesDuJour(d = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1350
+  const lang = ['fr', 'en', 'ar'].includes(d.lang) ? d.lang : 'ar'
+  const rtl = lang === 'ar'
+  const ligne = (t, x, y, o = {}) => (rtl ? ar(ctx, t, x, y, o) : txt(ctx, t, x, y, o))
+
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poserPlaque(ctx, 'resumes-du-jour', W, H)
+
+  const { filet, panneau } = CASES['resumes-du-jour']
+  const yFilet = e45(filet)
+  const [px, py, pw, ph] = panneau.map(e45)
+
+  // ── L'EN-TÊTE : le titre, puis la date sous le filet doré ────────────
+  paintLogo(ctx, W / 2 - 54, 44, 108)
+  if (d.titre) ligne(d.titre, W / 2, yFilet - 78, { size: 52, color: CREME })
+  if (d.date) ligne(d.date, W / 2, yFilet + 54, { size: 30, color: OR })
+
+  // ── LE PANNEAU : les écussons des championnats du jour ───────────────
+  const comps = (Array.isArray(d.competitions) ? d.competitions : []).slice(0, 6)
+  const ecussons = []
+  for (const k of comps) {
+    const im = await crest(k && k.logo)
+    if (im) ecussons.push({ im, label: (k && k.label) || '' })
+  }
+  if (ecussons.length) {
+    // Une rangée jusqu'à trois, deux rangées au-delà : au-delà de trois
+    // sur une ligne, un écusson tombe sous les 120 px et ne se reconnaît
+    // plus.
+    const parRangee = ecussons.length <= 3 ? ecussons.length : Math.ceil(ecussons.length / 2)
+    const rangees = Math.ceil(ecussons.length / parRangee)
+    const T = Math.min(Math.round((pw - 60) / parRangee) - 40, Math.round((ph - 70) / rangees) - 46, 210)
+    const hRangee = T + 46
+    const yDebut = py + (ph - rangees * hRangee) / 2
+    for (let i = 0; i < ecussons.length; i++) {
+      const r = Math.floor(i / parRangee)
+      const dansRangee = Math.min(parRangee, ecussons.length - r * parRangee)
+      const pas = pw / dansRangee
+      const cx = px + pas * ((i % parRangee) + 0.5)
+      const cy = yDebut + r * hRangee
+      ctx.drawImage(ecussons[i].im, cx - T / 2, cy, T, T)
+      if (ecussons[i].label) {
+        ligneTenue(ctx, ecussons[i].label, cx, cy + T + 24, pas - 18,
+                   { size: 22, min: 15, color: 'rgba(244,243,238,0.72)', rtl })
+      }
+    }
+  }
+
+  // ── LE PIED : ce qu'on vient chercher, et où ─────────────────────────
+  if (d.accroche) ligne(d.accroche, W / 2, py + ph + 86, { size: 34, color: CREME })
+  blocInscription(ctx, W / 2, 1108, 104, W, { compact: true, lang })
+  return c
+}
+
+/**
+ * LA CARTE D'UN BUT — l'aperçu du clip dans le filet.
+ *
+ * La fenêtre n'est PAS dessinée sur la plaque, et c'est délibéré : un but
+ * arrive en 16:9 depuis YouTube et en 9:16 depuis X. Une fenêtre cuite
+ * rognerait un quart de l'image une fois sur deux — c'est la leçon des
+ * trois plaques d'OG, mesurées à 0,42 et 1,11 au lieu de 0,56 et 1,00. On
+ * garde donc un rectangle mat et on trace le cadre au rendu, aux
+ * proportions réelles de la vignette.
+ */
+export async function gabaritButFilet(d = {}) {
+  registerBrandFonts()
+  const W = 1080, H = 1350
+  const lang = ['fr', 'en', 'ar'].includes(d.lang) ? d.lang : 'ar'
+  const rtl = lang === 'ar'
+  const ligne = (t, x, y, o = {}) => (rtl ? ar(ctx, t, x, y, o) : txt(ctx, t, x, y, o))
+
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  await poserPlaque(ctx, 'but-filet', W, H)
+
+  const [zx, zy, zw, zh] = CASES['but-filet'].fenetre.map(e45)
+  const [, ly, , lh] = CASES['but-filet'].legende.map(e45)
+
+  // ── L'EN-TÊTE ────────────────────────────────────────────────────────
+  paintLogo(ctx, 40, 40, 104)
+  if (d.competition) ligne(d.competition, W / 2, 112, { size: 34, color: OR })
+
+  // ── LA FENÊTRE, AU FORMAT RÉEL DE LA VIGNETTE ────────────────────────
+  const vign = d.vignette ? await loadImgOuRepli(d.vignette, d.vignetteRepli || null) : null
+  const [sx, sy, sw, sh] = vign ? sansBandes(vign) : [0, 0, 16, 9]
+  const rapport = sh ? sw / sh : 16 / 9
+  let fw = zw, fh = zw / rapport
+  if (fh > zh) { fh = zh; fw = zh * rapport }
+  fw = Math.round(fw); fh = Math.round(fh)
+  const fx = Math.round(zx + (zw - fw) / 2), fy = Math.round(zy + (zh - fh) / 2)
+  const R = 14
+
+  // ── LA DALLE NE RESTE JAMAIS NUE ─────────────────────────────────────
+  // La zone de la plaque est en 1,63 ; un clip de X arrive en 9:16 et n'en
+  // occupe qu'un tiers. La première version laissait le rectangle mat à
+  // découvert de part et d'autre, avec son arête franche : la carte
+  // semblait inachevée. On remplit donc toute la zone d'un fond tiré de
+  // la vignette elle-même, réduit à vingt-quatre pixels puis réétiré —
+  // node-canvas n'a pas de flou, mais un aller-retour d'échelle en tient
+  // lieu — et noyé sous un voile. Sur un clip 16:9 la fenêtre le
+  // recouvre entièrement : il ne se voit que quand il sert.
+  if (vign && fw < zw - 8) {
+    const N = 24
+    const mini = createCanvas(N, Math.max(2, Math.round(N / rapport)))
+    mini.getContext('2d').drawImage(vign, sx, sy, sw, sh, 0, 0, mini.width, mini.height)
+    ctx.save()
+    ctx.beginPath(); ctx.rect(zx, zy, zw, zh); ctx.clip()
+    const r = Math.max(zw / mini.width, zh / mini.height)
+    const lw = mini.width * r, lh = mini.height * r
+    ctx.drawImage(mini, zx + (zw - lw) / 2, zy + (zh - lh) / 2, lw, lh)
+    // Le voile est ÉPAIS : un gazon plein soleil reste lumineux même très
+    // réduit, et à 0,62 la dalle virait au bloc vert qui mangeait la
+    // fenêtre. À 0,84 il ne reste qu'une ombre colorée, et l'œil va droit
+    // au clip.
+    ctx.fillStyle = 'rgba(5,8,15,0.84)'; ctx.fillRect(zx, zy, zw, zh)
+    ctx.restore()
+  }
+
+  ctx.save()
+  cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.clip()
+  ctx.fillStyle = '#05080F'; ctx.fillRect(fx, fy, fw, fh)
+  if (vign) {
+    const r = Math.max(fw / sw, fh / sh)
+    ctx.drawImage(vign, sx, sy, sw, sh, fx + (fw - sw * r) / 2, fy + (fh - sh * r) / 2, sw * r, sh * r)
+  }
+  ctx.strokeStyle = 'rgba(5,8,15,0.5)'; ctx.lineWidth = 22
+  cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.stroke()
+  ctx.restore()
+  ctx.save()
+  cheminArrondi(ctx, fx, fy, fw, fh, R)
+  ctx.strokeStyle = OR; ctx.lineWidth = 3; ctx.stroke()
+  ctx.restore()
+
+  // Le bouton de lecture, dimensionné par la fenêtre : sur un clip
+  // vertical elle est trois fois plus étroite, un disque fixe la
+  // boucherait.
+  const px = fx + fw / 2, py = fy + fh / 2
+  const RB = Math.max(44, Math.min(82, Math.round(Math.min(fw, fh) * 0.17)))
+  ctx.save()
+  const halo = ctx.createRadialGradient(px, py, RB * 0.6, px, py, RB * 2.1)
+  halo.addColorStop(0, 'rgba(5,8,15,0.55)'); halo.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(px, py, RB * 2.1, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(px, py, RB, 0, Math.PI * 2)
+  ctx.fillStyle = 'rgba(5,8,15,0.88)'; ctx.fill()
+  ctx.lineWidth = 4; ctx.strokeStyle = OR; ctx.stroke()
+  const tp = RB * 0.42
+  ctx.beginPath()
+  ctx.moveTo(px - tp * 0.68, py - tp); ctx.lineTo(px + tp * 1.12, py); ctx.lineTo(px - tp * 0.68, py + tp)
+  ctx.closePath(); ctx.fillStyle = OR; ctx.fill()
+  ctx.restore()
+
+  if (d.minute) {
+    txt(ctx, String(d.minute), fx + fw - 22, fy + fh - 30,
+        { size: Math.round(Math.min(fw, fh) * 0.1), font: 'Anton', color: CREME, align: 'right' })
+  }
+
+  // ── LA LÉGENDE : qui, et contre qui ──────────────────────────────────
+  const cy = ly + lh / 2
+  if (d.buteur) ligneTenue(ctx, d.buteur, W / 2, cy - 44, W - 140, { size: 64, min: 36, color: CREME, rtl })
+  const affiche = [d.home, d.away].filter(Boolean).join(' — ')
+  if (affiche) ligneTenue(ctx, affiche, W / 2, cy + 34, W - 160, { size: 32, min: 20, color: 'rgba(244,243,238,0.78)', rtl })
+
+  txt(ctx, 'pressing90.live', W / 2, H - 46, { size: 26, font: 'Archivo', color: 'rgba(244,243,238,0.5)' })
+  return c
+}

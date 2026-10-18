@@ -12,7 +12,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritGoalAnimSpec, gabaritButClip, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant, gabaritOgVideo } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritGoalAnimSpec, gabaritButClip, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant, gabaritOgVideo, gabaritResumesDuJour, gabaritButFilet } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -319,6 +319,12 @@ app.post('/render/image', async (req, res) => {
         // sous un post de LIEN. La fenetre epouse le format reel de la
         // vignette, bandes noires rognees — voir gabaritOgVideo.
         case 'og-video': canvas = await gabaritOgVideo(data); break
+        // LES DEUX CARTES SANS LIEN (18/10/2026). Facebook penalise les
+        // publications qui emmenent ailleurs : on repasse en post PHOTO,
+        // le lien en premier commentaire. La journee porte les ecussons
+        // des championnats, le but porte le ballon dans le filet.
+        case 'resumes-du-jour': canvas = await gabaritResumesDuJour(data); break
+        case 'but-filet': canvas = await gabaritButFilet(data); break
         case 'gabarit-album': canvas = await gabaritAlbumFinal(data); break
         case 'gabarit-stats': canvas = await gabaritStatsMatch(data); break
         case 'gabarit-tableau': canvas = await gabaritTableauSoiree(data); break

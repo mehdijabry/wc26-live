@@ -35,6 +35,10 @@ export const UTILE = {
   // Les deux plaques du ticket arrivent en 1152x2048, soit du 9:16 exact :
   // rien a rogner, la hauteur utile est la hauteur du fichier.
   'but-clip': 2080,
+  // Les deux plaques du 18/10/2026, en 1664x2080 (4:5 exact) : rien a
+  // rogner, la hauteur utile est celle du fichier.
+  'resumes-du-jour': 2080,
+  'but-filet': 2080,
   'ticket-gagnant': 2048,
   'ticket-gagnant-barca': 2048,
   // Plaques de but refaites le 16/10/2026 en 1080x1920 : les anciennes
@@ -80,6 +84,19 @@ export const CASES = {
   // fractions parce que le rendu se fait en 1080x1350 : x 5,1 % → 94,9 %,
   // fenêtre 21 % → 58,6 %, bandeau 61,8 % → 77,2 %.
   'but-clip': { fenetre: [55, 283, 970, 508], bandeau: [55, 834, 970, 208] },
+  // ── LES DEUX PLAQUES DU 18/10/2026 ──────────────────────────────────
+  // Relevees A L'ENCRE sur les fichiers 1664x2080, pas a l'oeil :
+  //  · « resumes-du-jour » : le filet dore traverse a y 403, et le cadre
+  //    du panneau occupe x 120→1543, y 653→1374.
+  //  · « but-filet » : le rectangle mat du centre va de x 160 a 1501 et
+  //    de y 467 a 1290. Ses bords se trouvent par un SAUT de luminance
+  //    moyenne, pas par uniformite : les mailles du filet passent devant
+  //    le bord gauche et cassent toute mesure de platitude.
+  //
+  // Exprimees ici A L'ECHELLE DE LA PLAQUE ; les fonctions de dessin les
+  // ramenent en 1080x1350 par le rapport 1080/1664.
+  'resumes-du-jour': { filet: 403, panneau: [120, 653, 1423, 721] },
+  'but-filet': { fenetre: [160, 467, 1341, 823], legende: [96, 1456, 1472, 458] },
   'but-neutre': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'but-barca': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'soiree-4-moments': {
