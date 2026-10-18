@@ -108,10 +108,13 @@ export async function processGoalAnim(env: Env, s: AutomationSettings, date: str
           try {
             const h = await fetch(`${env.STUDIO_URL}/health`, { signal: AbortSignal.timeout(10_000) })
             if (h.ok) {
-              const j = (await h.json()) as { uptime?: number; conteneur?: { courant?: number | null; pic?: number | null; plafond?: number | null; oomKills?: number | null } }
+              const j = (await h.json()) as { uptime?: number; conteneur?: { courant?: number | null; pic?: number | null; picSession?: number | null; plafond?: number | null; oomKills?: number | null } }
               uptime = Number(j.uptime ?? -1)
               const c = j.conteneur
-              if (c) memoire = ` · conteneur ${c.courant ?? '?'}/${c.plafond ?? '?'} Mo, pic ${c.pic ?? '?'}, oom_kill ${c.oomKills ?? '?'}`
+              // `picSession` est la crête relevée par le studio lui-même :
+              // le `memory.peak` du cgroup repart à zéro avec le conteneur,
+              // et c'est justement l'instant qui nous intéresse.
+              if (c) memoire = ` · conteneur ${c.courant ?? '?'}/${c.plafond ?? '?'} Mo, crête ${c.picSession ?? c.pic ?? '?'}, oom_kill ${c.oomKills ?? '?'}`
             }
           } catch { /* studio unreachable — leave it to the timeout */ }
           if (uptime >= 0 && uptime * 1000 < age - 60_000) {

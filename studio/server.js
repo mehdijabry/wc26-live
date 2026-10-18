@@ -153,8 +153,37 @@ function memoireConteneur() {
   return { courant: enMo(courant), pic: enMo(pic), plafond, oomKills: oom, sousPression: souspression }
 }
 
+// ── LE GUETTEUR : le pic du CONTENEUR, échantillonné en continu ───────
+//
+// `memory.peak` du cgroup repart à zéro quand Render redémarre le
+// conteneur — et c'est précisément quand il redémarre qu'on voudrait
+// savoir jusqu'où il était monté. On échantillonne donc nous-mêmes toutes
+// les deux secondes et on garde la crête, qui est lisible sur /health
+// AVANT la mort : le worker interroge /health dès qu'un rendu a quatre
+// minutes de retard, c'est-à-dire en pleine boucle d'images.
+//
+// Et on l'écrit sur la sortie standard quand ça chauffe : les journaux de
+// Render, eux, survivent au redémarrage. C'est la seule trace qui restera
+// si le conteneur est tué sans prévenir.
+let picConteneur = 0
+let dernierCri = 0
+const guetter = () => {
+  const c = memoireConteneur()
+  if (c.courant === null) return
+  if (c.courant > picConteneur) picConteneur = c.courant
+  const plafond = c.plafond ?? 512
+  // Au-delà de 80 % on le dit, au plus une fois par minute pour ne pas
+  // noyer le journal pendant les vingt minutes d'une boucle d'images.
+  if (c.courant > plafond * 0.8 && Date.now() - dernierCri > 60_000) {
+    dernierCri = Date.now()
+    console.log(`[mémoire] conteneur ${c.courant}/${plafond} Mo (pic ${picConteneur}, oom_kill ${c.oomKills ?? '?'}) — ${pending} rendu(s) en cours`)
+  }
+}
+setInterval(guetter, 2000).unref()
+
 app.get('/health', (_req, res) => {
   const c = memoireConteneur()
+  c.picSession = Math.max(picConteneur, c.courant ?? 0)
   res.json({
     ok: true, pending, uptime: Math.round(process.uptime()),
     // `rss`/`pic` restent : ils disent ce que fait Express, et l'écart avec
