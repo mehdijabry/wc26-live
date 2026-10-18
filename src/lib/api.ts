@@ -225,7 +225,7 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
   '2026-uefa.champions':             { label: 'Champions League',        tier: 6, slug: 'uefa.champions' },
 
   // Tier 11 — Copa Libertadores
-  '2026-conmebol.libertadores':       { label: 'Copa Libertadores',       tier: 7, slug: 'conmebol.libertadores' },
+  '2026-conmebol.libertadores':       { label: 'Copa Libertadores',       tier: 9.5, slug: 'conmebol.libertadores' },
 
   // Tier 12-16 — Top 5 European domestic leagues
   '2026-eng.1':                       { label: 'Premier League',          tier: 9, slug: 'eng.1' },
@@ -235,8 +235,8 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
   '2026-fra.1':                       { label: 'Ligue 1',                 tier: 9, slug: 'fra.1' },
 
   // Tier 17-18 — Other UEFA club competitions
-  '2026-uefa.europa':                 { label: 'Europa League',           tier: 7, slug: 'uefa.europa' },
-  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 8, slug: 'uefa.europa.conf' },
+  '2026-uefa.europa':                 { label: 'Europa League',           tier: 9.5, slug: 'uefa.europa' },
+  '2026-uefa.europa.conf':           { label: 'Conference League',       tier: 9.5, slug: 'uefa.europa.conf' },
 
   // Tier 19 — Other big domestic leagues (Americas + Saudi)
   '2026-sau.1':                       { label: 'Saudi Pro League',         tier: 13, slug: 'sau.1' },
@@ -253,7 +253,7 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
   '2026-sco.1':                       { label: 'Scottish Premiership',    tier: 12, slug: 'sco.1' },
 
   // Tier 21 — Other CONMEBOL clubs
-  '2026-conmebol.sudamericana':       { label: 'Copa Sudamericana',       tier: 8, slug: 'conmebol.sudamericana' },
+  '2026-conmebol.sudamericana':       { label: 'Copa Sudamericana',       tier: 9.5, slug: 'conmebol.sudamericana' },
 
   // Tier 22 — Second tiers
   '2026-eng.2':                       { label: 'Championship (England)',   tier: 14, slug: 'eng.2' },
@@ -282,13 +282,22 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
  *    1       Continental national crowns (Euro, Copa América, AFCON, Asian Cup, Gold Cup)
  *    2       World Cup qualifiers · UEFA Nations League
  *    3       Continental qualifiers · CONCACAF Nations League · Finalissima
- *    5       Club World Cup · Intercontinental Cup
- *    6       Champions League + its qualifying + UEFA Super Cup
- *    7       Europa League + qualifying · Libertadores
- *    8       Conference League + qualifying · Sudamericana
+ *    6       UEFA Champions League + its qualifying
+ *    8       The five domestic cups — FA Cup · Copa del Rey · Coppa Italia
+ *            · DFB-Pokal · Coupe de France
  *    9       Big-5 domestic leagues — PL · LaLiga · Serie A · Bundesliga · Ligue 1
- *    9.5     Continental CLs outside Europe — CAF · AFC · Concacaf
- *   10       Big-5 domestic cups · super cups · Carabao Cup
+ *    9.5     EVERY other club competition — Europa, Conference, Club World
+ *            Cup, Super Cup, Libertadores, Sudamericana, CAF, AFC, Concacaf
+ *   10       Super cups · Carabao Cup · other domestic cups
+ *
+ * RÈGLE DE MEHDI (17/10/2026), et elle est exclusive : « aucune
+ * compétition ne prime sur les 5 grands championnats à part la FA Cup, la
+ * Copa del Rey, la Coppa Italia, la DFB-Pokal, la Coupe de France et
+ * l'UEFA Champions League ». Tout le reste du football de CLUB passe donc
+ * sous le palier 9, Ligue Europa et Mondial des clubs compris. Les
+ * sélections nationales (paliers 0-3) ne sont pas concernées : sa règle
+ * précédente — « une sélection passe toujours avant un club » — tient
+ * toujours, et sa liste ne cite que des compétitions de clubs.
  *   11       National-team friendlies · minor regional national tournaments
  *   11       Strong European leagues — Eredivisie · Primeira · Belgian · Süper Lig · Scottish
  *   12       Big Americas + Saudi — Brasileirão · Argentina · MLS · Liga MX · Saudi Pro League
@@ -331,8 +340,8 @@ const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }
   '20220': { label: 'COSAFA Cup',                        tier: 11, slug: 'caf.cosafa' },
 
   // ── 5 · Global club ─────────────────────────────────────────────────
-  '5501':  { label: 'FIFA Club World Cup',               tier: 5, slug: 'fifa.cwc' },
-  '22902': { label: 'FIFA Intercontinental Cup',         tier: 5, slug: 'fifa.intercontinental_cup' },
+  '5501':  { label: 'FIFA Club World Cup',               tier: 9.5, slug: 'fifa.cwc' },
+  '22902': { label: 'FIFA Intercontinental Cup',         tier: 9.5, slug: 'fifa.intercontinental_cup' },
 
   // ── 6 · Champions League ────────────────────────────────────────────
   '775':   { label: 'Champions League',                  tier: 6, slug: 'uefa.champions' },
@@ -345,17 +354,17 @@ const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }
   '710':   { label: 'Ligue 1',                           tier: 9, slug: 'fra.1' },
 
   // ── 8 · Europa League · Libertadores · Big-5 domestic cups ─────────
-  '776':   { label: 'Europa League',                     tier: 7, slug: 'uefa.europa' },
-  '783':   { label: 'Copa Libertadores',                 tier: 7, slug: 'conmebol.libertadores' },
-  '3918':  { label: 'FA Cup',                            tier: 10, slug: 'eng.fa' },
-  '3951':  { label: 'Copa del Rey',                      tier: 10, slug: 'esp.copa_del_rey' },
-  '3956':  { label: 'Coppa Italia',                      tier: 10, slug: 'ita.coppa_italia' },
-  '3954':  { label: 'DFB-Pokal',                         tier: 10, slug: 'ger.dfb_pokal' },
-  '3952':  { label: 'Coupe de France',                   tier: 10, slug: 'fra.coupe_de_france' },
+  '776':   { label: 'Europa League',                     tier: 9.5, slug: 'uefa.europa' },
+  '783':   { label: 'Copa Libertadores',                 tier: 9.5, slug: 'conmebol.libertadores' },
+  '3918':  { label: 'FA Cup',                            tier: 8, slug: 'eng.fa' },
+  '3951':  { label: 'Copa del Rey',                      tier: 8, slug: 'esp.copa_del_rey' },
+  '3956':  { label: 'Coppa Italia',                      tier: 8, slug: 'ita.coppa_italia' },
+  '3954':  { label: 'DFB-Pokal',                         tier: 8, slug: 'ger.dfb_pokal' },
+  '3952':  { label: 'Coupe de France',                   tier: 8, slug: 'fra.coupe_de_france' },
 
   // ── 9 · Conference League · Sudamericana · other continental club · super cups · League Cup ──
-  '20296': { label: 'Conference League',                 tier: 8, slug: 'uefa.europa.conf' },
-  '5454':  { label: 'Copa Sudamericana',                 tier: 8, slug: 'conmebol.sudamericana' },
+  '20296': { label: 'Conference League',                 tier: 9.5, slug: 'uefa.europa.conf' },
+  '5454':  { label: 'Copa Sudamericana',                 tier: 9.5, slug: 'conmebol.sudamericana' },
   // ── LES LIGUES DES CHAMPIONS HORS EUROPE PASSENT SOUS LES 5 GRANDS ──
   // Mehdi, 17/10/2026 : « CAF Champions League toujours en dessous des 5
   // grands championnats — pas le cas de l'UEFA CL, qui elle est toujours
@@ -375,19 +384,19 @@ const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }
   '3902':  { label: 'AFC Champions League Elite',        tier: 9.5, slug: 'afc.champions' },
   '5699':  { label: 'Concacaf Champions Cup',            tier: 9.5, slug: 'concacaf.champions' },
   '5692':  { label: 'Concacaf Champions Cup',            tier: 9.5, slug: 'concacaf.champions_cup' },
-  '5462':  { label: 'UEFA Super Cup',                    tier: 6, slug: 'uefa.super_cup' },
+  '5462':  { label: 'UEFA Super Cup',                    tier: 9.5, slug: 'uefa.super_cup' },
   '5329':  { label: 'Community Shield',                  tier: 10, slug: 'eng.charity' },
   '8102':  { label: 'Supercopa de España',               tier: 10, slug: 'esp.super_cup' },
   '8103':  { label: 'Supercoppa Italiana',               tier: 10, slug: 'ita.super_cup' },
   '8101':  { label: 'DFL-Supercup',                      tier: 10, slug: 'ger.super_cup' },
   '8357':  { label: 'Trophée des Champions',             tier: 10, slug: 'fra.super_cup' },
   '3920':  { label: 'Carabao Cup',                       tier: 10, slug: 'eng.league_cup' },
-  '8333':  { label: 'CONMEBOL Recopa',                   tier: 8, slug: 'conmebol.recopa' },
-  '18000': { label: 'CAF Confederation Cup',             tier: 8, slug: 'caf.confed' },
-  '2466':  { label: 'AFC Champions League Two',          tier: 8, slug: 'afc.cup' },
+  '8333':  { label: 'CONMEBOL Recopa',                   tier: 9.5, slug: 'conmebol.recopa' },
+  '18000': { label: 'CAF Confederation Cup',             tier: 9.5, slug: 'caf.confed' },
+  '2466':  { label: 'AFC Champions League Two',          tier: 9.5, slug: 'afc.cup' },
   '19874': { label: 'Champions League Qualifying',       tier: 6, slug: 'uefa.champions_qual' },
-  '19887': { label: 'Europa League Qualifying',          tier: 7, slug: 'uefa.europa_qual' },
-  '20221': { label: 'Conference League Qualifying',      tier: 8, slug: 'uefa.europa.conf_qual' },
+  '19887': { label: 'Europa League Qualifying',          tier: 9.5, slug: 'uefa.europa_qual' },
+  '20221': { label: 'Conference League Qualifying',      tier: 9.5, slug: 'uefa.europa.conf_qual' },
 
   // ── 10 · National-team friendlies ──────────────────────────────────
   '3922':  { label: 'International Friendlies',          tier: 11, slug: 'fifa.friendly' },
@@ -521,18 +530,21 @@ function leagueIdFromUid(uid?: string): string | null {
 // the listed ones (alphabetically). Keep short — this is the ONLY place
 // that overrides the tier ladder.
 const SLUG_RANK: Record<string, number> = {
-  // Tier 6: UCL → its qualifying → UEFA Super Cup
-  'uefa.champions': 1, 'uefa.champions_qual': 2, 'uefa.super_cup': 3,
-  // Tier 7: UEL → its qualifying → Libertadores
-  'uefa.europa': 1, 'uefa.europa_qual': 2, 'conmebol.libertadores': 3,
-  // Tier 8: Conference → its qualifying → Sudamericana
-  'uefa.europa.conf': 1, 'uefa.europa.conf_qual': 2, 'conmebol.sudamericana': 3,
+  // Tier 6: UCL → its qualifying
+  'uefa.champions': 1, 'uefa.champions_qual': 2,
+  // Tier 8: the five domestic cups Mehdi named, conventional order
+  'eng.fa': 1, 'esp.copa_del_rey': 2, 'ita.coppa_italia': 3, 'ger.dfb_pokal': 4, 'fra.coupe_de_france': 5,
   // Tier 9: the Big 5, conventional order
   'eng.1': 1, 'esp.1': 2, 'ita.1': 3, 'ger.1': 4, 'fra.1': 5,
-  // Tier 9.5: the continental CLs outside Europe (see LEAGUE_BY_ID)
-  'caf.champions': 1, 'afc.champions': 2, 'concacaf.champions': 3, 'concacaf.champions_cup': 3,
-  // Tier 10: domestic cups then super cups then Carabao
-  'eng.fa': 1, 'esp.copa_del_rey': 2, 'ita.coppa_italia': 3, 'ger.dfb_pokal': 4, 'fra.coupe_de_france': 5,
+  // Tier 9.5: EVERY other club competition — European, continental, world.
+  'fifa.cwc': 1, 'fifa.intercontinental_cup': 2,
+  'uefa.europa': 3, 'uefa.europa_qual': 4, 'uefa.europa.conf': 5, 'uefa.europa.conf_qual': 6,
+  'uefa.super_cup': 7,
+  'conmebol.libertadores': 8, 'conmebol.sudamericana': 9, 'conmebol.recopa': 10,
+  'caf.champions': 11, 'caf.confed': 12,
+  'afc.champions': 13, 'afc.cup': 14,
+  'concacaf.champions': 15, 'concacaf.champions_cup': 15,
+  // Tier 10: super cups and the Carabao — Mehdi ne les a pas nommées
   'eng.league_cup': 6, 'eng.charity': 7, 'esp.super_cup': 8, 'ita.super_cup': 9, 'ger.super_cup': 10, 'fra.super_cup': 11,
   // Tier 12
   'ned.1': 1, 'por.1': 2, 'bel.1': 3, 'tur.1': 4, 'sco.1': 5,
@@ -712,13 +724,13 @@ function tagEvent(ev: EspnEvent): { label: string; tier: number; slug: string } 
     } else if (bare.includes('uefa.champions')) {
       base = { label: 'Champions League', tier: 6, slug: 'uefa.champions' }
     } else if (bare.includes('uefa.europa.conf')) {
-      base = { label: 'Conference League', tier: 8, slug: 'uefa.europa.conf' }
+      base = { label: 'Conference League', tier: 9.5, slug: 'uefa.europa.conf' }
     } else if (bare.includes('uefa.europa')) {
-      base = { label: 'Europa League', tier: 7, slug: 'uefa.europa' }
+      base = { label: 'Europa League', tier: 9.5, slug: 'uefa.europa' }
     } else if (bare.includes('uefa.euro')) {
       base = { label: 'UEFA Euro', tier: 1, slug: 'uefa.euro' }
     } else if (bare.includes('conmebol.libert')) {
-      base = { label: 'Copa Libertadores', tier: 7, slug: 'conmebol.libertadores' }
+      base = { label: 'Copa Libertadores', tier: 9.5, slug: 'conmebol.libertadores' }
     } else if (bare.includes('international-friendly')) {
       // National-team friendlies — senior men, so they rank above ALL
       // club competitions (user rule).

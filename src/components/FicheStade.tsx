@@ -125,29 +125,82 @@ function Pictogramme({ f }: { f: ReturnType<typeof famille> }) {
 
 /** L'alphabet de Wikipédia : son propre domaine par langue, l'anglais en repli. */
 const wikiDe = (lang: string) => (lang === 'fr' ? 'fr' : lang === 'ar' ? 'ar' : 'en')
+/** Le mot « stade » dans la langue du wiki interrogé. */
+const MOT_STADE: Record<string, string> = { fr: 'stade', en: 'stadium', ar: 'ملعب' }
 
-async function chercherStade(nom: string, lang: string): Promise<Stade | null> {
-  const dom = wikiDe(lang)
+/**
+ * UNE IMAGE DE LOGO N'EST PAS UNE PHOTO DE STADE.
+ *
+ * `pageimages` rend l'image de tête de l'article, et pour le Bernabéu la
+ * Wikipédia française met son LOGO 2025 — un SVG. On la refuse et on va
+ * chercher la photo sur la Wikipédia anglaise, mieux illustrée.
+ */
+const estLogo = (url: string) => /\.svg|logo|crest|badge|escudo|wappen|\u0634\u0639\u0627\u0631/i.test(url)
+
+type PageWiki = {
+  index?: number
+  title?: string
+  extract?: string
+  thumbnail?: { source?: string }
+  coordinates?: Array<{ lat?: number; lon?: number }>
+}
+
+/**
+ * LE PREMIER RÉSULTAT N'EST PAS LE BON, ET DEUX FILTRES SONT NÉCESSAIRES.
+ *
+ * Mehdi, 17/10/2026 : « plusieurs photos de stade sont comme ça » — la
+ * fiche du Real Madrid affichait le portrait en noir et blanc de Santiago
+ * Bernabéu, l'HOMME. Mesuré ce jour-là sur fr.wikipedia :
+ *
+ *   · « Santiago Bernabéu Madrid » → 1. l'homme · 2. la station de métro
+ *     · 3. le stade. Ajouter la ville AGGRAVE le cas : elle fait remonter
+ *     la station de métro, qui porte le même nom.
+ *   · « stade Santiago Bernabéu » → 1. l'homme · 2. le stade.
+ *
+ * D'où la règle : on préfixe le mot « stade » dans la langue du wiki, on
+ * retire la ville, et on retient le premier résultat QUI PORTE DES
+ * COORDONNÉES. Une biographie n'en a pas ; un stade en a toujours. Ces
+ * mêmes coordonnées servent ensuite à la météo, donc le filtre qui
+ * garantit le bon article garantit aussi la bonne météo.
+ */
+async function interrogerWiki(dom: string, nom: string): Promise<PageWiki | null> {
+  const mot = MOT_STADE[dom] ?? MOT_STADE.en
   const url = `https://${dom}.wikipedia.org/w/api.php?action=query&generator=search`
-    + `&gsrsearch=${encodeURIComponent(nom)}&gsrlimit=1`
+    + `&gsrsearch=${encodeURIComponent(`${mot} ${nom}`)}&gsrlimit=5`
     + '&prop=pageimages%7Cextracts%7Ccoordinates&exintro=1&explaintext=1&exsentences=2'
     + '&piprop=thumbnail&pithumbsize=640&format=json&origin=*'
   const r = await fetch(url, { signal: AbortSignal.timeout(9000) })
   if (!r.ok) return null
-  const j = await r.json() as {
-    query?: { pages?: Record<string, {
-      title?: string; extract?: string
-      thumbnail?: { source?: string }
-      coordinates?: Array<{ lat?: number; lon?: number }>
-    }> }
+  const j = await r.json() as { query?: { pages?: Record<string, PageWiki> } }
+  const pages = Object.values(j.query?.pages ?? {})
+    .sort((a, b) => (a.index ?? 99) - (b.index ?? 99))
+  return pages.find((p) => p.coordinates?.length) ?? null
+}
+
+async function chercherStade(nom: string, lang: string): Promise<Stade | null> {
+  const dom = wikiDe(lang)
+  const p = await interrogerWiki(dom, nom)
+  // Rien dans la langue du site : la Wikipédia anglaise couvre des stades
+  // que les autres ignorent, et mieux vaut une notice en anglais que pas
+  // de stade du tout.
+  const page = p ?? (dom === 'en' ? null : await interrogerWiki('en', nom).catch(() => null))
+  if (!page?.title) return null
+
+  let image = page.thumbnail?.source ?? null
+  // Pas de photo, ou un logo à la place : on ne garde que la PHOTO de la
+  // version anglaise, le texte reste dans la langue du lecteur.
+  if (dom !== 'en' && (!image || estLogo(image))) {
+    const en = await interrogerWiki('en', nom).catch(() => null)
+    const autre = en?.thumbnail?.source
+    if (autre && !estLogo(autre)) image = autre
   }
-  const p = Object.values(j.query?.pages ?? {})[0]
-  if (!p || !p.title) return null
-  const co = p.coordinates?.[0]
+  if (image && estLogo(image)) image = null
+
+  const co = page.coordinates?.[0]
   return {
-    nom: p.title,
-    extrait: (p.extract ?? '').trim(),
-    image: p.thumbnail?.source ?? null,
+    nom: page.title,
+    extrait: (page.extract ?? '').trim(),
+    image,
     lat: typeof co?.lat === 'number' ? co.lat : null,
     lon: typeof co?.lon === 'number' ? co.lon : null,
   }
@@ -197,7 +250,11 @@ export default function FicheStade({ venue, ville, coupDEnvoi }: {
   const [stade, setStade] = useState<Stade | null | undefined>(undefined)
   const [meteo, setMeteo] = useState<Meteo | null>(null)
 
-  const requete = venue ? `${venue}${ville ? ` ${ville}` : ''}` : ''
+  // LA VILLE NE VA PAS DANS LA RECHERCHE. « Santiago Bernabéu Madrid »
+  // fait remonter la station de métro du même nom (mesuré le 17/10) ;
+  // le nom du stade seul, préfixé du mot « stade », tombe juste. Elle
+  // reste affichée sous le nom, elle vient d'ESPN.
+  const requete = venue ?? ''
 
   useEffect(() => {
     if (!requete) { setStade(null); return }

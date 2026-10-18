@@ -924,18 +924,24 @@ const AUTO_LEAGUES: Record<string, { rank: number; label: string }> = {
   'fifa.worldq.uefa': { rank: 1, label: 'World Cup Qualifiers · UEFA' }, 'fifa.worldq.caf': { rank: 1, label: 'World Cup Qualifiers · CAF' },
   'fifa.worldq.conmebol': { rank: 1, label: 'World Cup Qualifiers · CONMEBOL' }, 'fifa.worldq.afc': { rank: 2, label: 'World Cup Qualifiers · AFC' },
   'fifa.worldq.concacaf': { rank: 2, label: 'World Cup Qualifiers · CONCACAF' },
-  'club.world.cup': { rank: 3, label: 'FIFA Club World Cup' }, 'uefa.super_cup': { rank: 3, label: 'UEFA Super Cup' },
-  'uefa.champions': { rank: 4, label: 'UEFA Champions League' }, 'uefa.europa': { rank: 5, label: 'UEFA Europa League' }, 'uefa.europa.conf': { rank: 6, label: 'UEFA Conference League' },
-  'conmebol.libertadores': { rank: 6, label: 'Copa Libertadores' },
-  // LA CAF PASSE SOUS LES 5 GRANDS (Mehdi, 17/10/2026). Au rang 6 elle
-  // sortait avant la Premier League dans les posts de la journée, alors
-  // que l'UEFA CL, elle, doit rester en tête — 8,5 la place juste après
-  // la Ligue 1 (8) et avant les coupes nationales (9). Le même correctif
-  // existe côté site, dans SLUG_RANK et LEAGUE_BY_ID de src/lib/api.ts.
-  'caf.champions_league': { rank: 8.5, label: 'CAF Champions League' },
+  // ── CE QUI PASSE DEVANT LES 5 GRANDS, ET RIEN D'AUTRE ─────────────
+  // Mehdi, 17/10/2026 : « aucune compétition ne prime sur les 5 grands
+  // championnats à part la FA Cup, la Copa del Rey, la Coppa Italia, la
+  // DFB-Pokal, la Coupe de France et l'UEFA Champions League ». La Ligue
+  // Europa, la Conference, la Libertadores, le Mondial des clubs et la
+  // Supercoupe d'Europe passaient tous devant : ils descendent au 8,5.
+  // Les sélections (rangs 0-2) ne sont pas concernées — sa liste ne cite
+  // que des compétitions de clubs, et sa règle « une sélection avant un
+  // club » tient toujours. Miroir de src/lib/api.ts.
+  'uefa.champions': { rank: 4, label: 'UEFA Champions League' },
+  'eng.fa': { rank: 5, label: 'FA Cup' }, 'esp.copa_del_rey': { rank: 5, label: 'Copa del Rey' },
+  'ita.coppa_italia': { rank: 5, label: 'Coppa Italia' }, 'ger.dfb_pokal': { rank: 5, label: 'DFB-Pokal' },
+  'fra.coupe_de_france': { rank: 5, label: 'Coupe de France' },
   'eng.1': { rank: 7, label: 'Premier League' }, 'esp.1': { rank: 7, label: 'LaLiga' }, 'ita.1': { rank: 8, label: 'Serie A' }, 'ger.1': { rank: 8, label: 'Bundesliga' }, 'fra.1': { rank: 8, label: 'Ligue 1' },
-  'eng.fa': { rank: 9, label: 'FA Cup' }, 'eng.league_cup': { rank: 9, label: 'Carabao Cup' }, 'esp.copa_del_rey': { rank: 9, label: 'Copa del Rey' },
-  'ita.coppa_italia': { rank: 9, label: 'Coppa Italia' }, 'fra.coupe_de_france': { rank: 9, label: 'Coupe de France' }, 'ger.dfb_pokal': { rank: 9, label: 'DFB-Pokal' },
+  'club.world.cup': { rank: 8.5, label: 'FIFA Club World Cup' }, 'uefa.super_cup': { rank: 8.5, label: 'UEFA Super Cup' },
+  'uefa.europa': { rank: 8.5, label: 'UEFA Europa League' }, 'uefa.europa.conf': { rank: 8.5, label: 'UEFA Conference League' },
+  'conmebol.libertadores': { rank: 8.5, label: 'Copa Libertadores' }, 'caf.champions_league': { rank: 8.5, label: 'CAF Champions League' },
+  'eng.league_cup': { rank: 9, label: 'Carabao Cup' },
 }
 // Friendlies only make the cut when one side is a household name.
 const BIG_NATIONS = new Set(['morocco', 'france', 'spain', 'england', 'germany', 'italy', 'portugal', 'netherlands', 'belgium', 'croatia', 'argentina', 'brazil', 'uruguay', 'colombia', 'mexico', 'united states', 'usa', 'canada', 'japan', 'south korea', 'senegal', 'egypt', 'algeria', 'tunisia', 'nigeria', 'cameroon', 'ivory coast', "côte d'ivoire", 'ghana', 'saudi arabia', 'iran', 'australia', 'switzerland', 'denmark', 'sweden', 'norway', 'poland', 'austria', 'türkiye', 'turkey', 'serbia', 'scotland', 'wales', 'ecuador', 'chile', 'qatar', 'mali', 'south africa'])
