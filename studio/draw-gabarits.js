@@ -1840,30 +1840,96 @@ const e45 = (n) => Math.round(n * E45)
  * qui en fait une signature et non un slogan.
  */
 const SIGNATURE = {
-  // AUCUN EMOJI. Ni Tajawal ni Archivo n'en portent le glyphe : le ballon
-  // sortait en rond plein au bas de la carte (18/10). Les emoji vont dans
-  // la légende du post, où c'est le système qui les dessine.
-  ar: 'تابعنا ليصلك كل هدف وكل ملخص أول بأول',
-  fr: 'Suivez-nous : chaque but et chaque résumé, dès qu’il sort',
-  en: 'Follow us — every goal and every highlight, the moment it drops',
+  // SANS POINT FINAL. Dans un passage arabe, la ponctuation de fin se
+  // place au bord GAUCHE du bloc — typographiquement juste, mais ici le
+  // point venait se coller aux deux-points de « Pressing90.live : » et on
+  // lisait « .live : . متعة ». Une signature n'a pas besoin de point.
+  ar: 'Pressing90.live : متعة كرة القدم.. مجاناً وبدون أي إعلانات',
+  fr: 'Pressing90.live : le plaisir du football, gratuit et sans aucune publicité',
+  en: 'Pressing90.live — the joy of football, free and with no ads at all',
 }
-function signature(ctx, lang, cx, y, taille, largeur) {
-  // UN VOILE SOUS LA PHRASE. Posée telle quelle au bas des cartes, elle
-  // tombait sur l'herbe éclairée ou sur les mailles et devenait illisible.
-  // Le dégradé s'ouvre et se referme sur du transparent : on y lit une
-  // pénombre, pas un bandeau collé.
-  const h = taille * 2.6
-  const g = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2)
+/**
+ * « LE LIEN EST EN COMMENTAIRE ».
+ *
+ * Mehdi, 18/10/2026. C'est la conséquence directe de la règle du jour :
+ * plus aucun lien en description, parce que Facebook pénalise ce qui
+ * emmène ailleurs. Le lien part donc en premier commentaire — encore
+ * faut-il le dire, sinon personne ne va le chercher.
+ */
+const EN_COMMENTAIRE = {
+  ar: 'الرابط في التعليقات',
+  fr: 'Le lien est en commentaire',
+  en: 'Link in the comments',
+}
+
+/**
+ * LE PIED DE CARTE : l'instruction, puis la signature.
+ *
+ * L'instruction passe devant, en or et plus grande : c'est elle qui fait
+ * agir. La signature vient dessous, plus discrète — elle se répète à
+ * chaque post, elle n'a pas à crier.
+ *
+ * LE VOILE EST INDISPENSABLE. Posées telles quelles au bas des cartes,
+ * ces deux lignes tombent sur l'herbe éclairée ou sur les mailles et
+ * deviennent illisibles. Le dégradé s'ouvre et se referme sur du
+ * transparent : on y lit une pénombre, pas un bandeau collé.
+ *
+ * La version française est deux fois plus longue que l'arabe : tout
+ * passe par `ligneTenue`, qui réduit le corps avant de couper.
+ */
+function piedDeCarte(ctx, lang, cx, yBas, taille, largeur) {
+  const t1 = EN_COMMENTAIRE[lang] ?? EN_COMMENTAIRE.en
+  const t2 = SIGNATURE[lang] ?? SIGNATURE.en
+  const rtl = lang === 'ar'
+  const y1 = yBas - Math.round(taille * 1.5)
+  const h = taille * 4.6
+  const g = ctx.createLinearGradient(0, y1 - h * 0.42, 0, y1 + h * 0.58)
   g.addColorStop(0, 'rgba(5,8,15,0)')
-  g.addColorStop(0.35, 'rgba(5,8,15,0.78)')
-  g.addColorStop(0.65, 'rgba(5,8,15,0.78)')
+  g.addColorStop(0.3, 'rgba(5,8,15,0.8)')
+  g.addColorStop(0.7, 'rgba(5,8,15,0.8)')
   g.addColorStop(1, 'rgba(5,8,15,0)')
-  ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, y - h / 2, cx * 2, h); ctx.restore()
-  // `ligneTenue` parce que la version française est deux fois plus longue
-  // que l'arabe : une signature qui déborde est pire qu'une signature
-  // courte.
-  ligneTenue(ctx, SIGNATURE[lang] ?? SIGNATURE.en, cx, y, largeur,
-             { size: taille, min: 16, color: 'rgba(217,181,74,0.95)', rtl: lang === 'ar' })
+  ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, y1 - h * 0.42, cx * 2, h); ctx.restore()
+
+  ligneTenue(ctx, t1, cx, y1, largeur, { size: taille, min: 16, color: OR, rtl })
+  ligneMixte(ctx, t2, cx, yBas, largeur, Math.round(taille * 0.78))
+}
+
+/**
+ * UNE LIGNE QUI MÊLE DU LATIN ET DE L'ARABE SE TRACE EN DEUX FOIS.
+ *
+ * « Pressing90.live : متعة كرة القدم.. مجاناً وبدون أي إعلانات. » rendue
+ * d'un seul `fillText` sortait à l'envers (18/10/2026) : le nom de domaine
+ * se retrouvait à DROITE et le point final sautait tout à gauche.
+ * L'algorithme bidirectionnel avait résolu la ligne entière en RTL, parce
+ * qu'elle est majoritairement arabe — le « P » initial n'y change rien.
+ *
+ * C'est la même famille de pièges que les chiffres dans une phrase arabe,
+ * déjà payée deux fois sur d'autres formats. La parade est la même : on
+ * ne confie jamais l'ordre d'une ligne mixte au moteur de rendu. On coupe
+ * au premier caractère arabe, on mesure les deux morceaux, et on les pose
+ * soi-même — le latin à gauche, l'arabe à sa suite, chacun dans sa police.
+ * À l'intérieur de chaque morceau, le moteur fait son travail et le fait
+ * bien.
+ */
+function ligneMixte(ctx, texte, cx, y, largeur, taille) {
+  const m = String(texte).match(/^([^\u0600-\u06FF]+?)([\u0600-\u06FF][\s\S]*)$/)
+  const couleur = 'rgba(244,243,238,0.72)'
+  if (!m) { ligneTenue(ctx, texte, cx, y, largeur, { size: taille, min: 14, color: couleur }); return }
+  const [, latin, arabe] = m
+  let t = taille
+  const mesurer = () => {
+    ctx.font = `${t}px Archivo`; const a = ctx.measureText(latin).width
+    ctx.font = `bold ${t}px Tajawal`; const b = ctx.measureText(arabe).width
+    return [a, b, a + b]
+  }
+  let [wL, , total] = mesurer()
+  while (total > largeur && t > 13) { t -= 1; [wL, , total] = mesurer() }
+  const x = cx - total / 2
+  ctx.save()
+  ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = couleur
+  ctx.font = `${t}px Archivo`; ctx.fillText(latin, x, y)
+  ctx.font = `bold ${t}px Tajawal`; ctx.fillText(arabe, x + wL, y)
+  ctx.restore()
 }
 
 /**
@@ -1933,8 +1999,8 @@ export async function gabaritResumesDuJour(d = {}) {
 
   // ── LE PIED : ce qu'on vient chercher, et où ─────────────────────────
   if (d.accroche) ligne(d.accroche, W / 2, py + ph + 74, { size: 34, color: CREME })
-  blocInscription(ctx, W / 2, 1082, 96, W, { compact: true, lang })
-  signature(ctx, lang, W / 2, H - 38, 28, W - 90)
+  blocInscription(ctx, W / 2, 1028, 88, W, { compact: true, lang })
+  piedDeCarte(ctx, lang, W / 2, H - 34, 28, W - 80)
   return c
 }
 
@@ -2056,7 +2122,7 @@ export async function gabaritButFilet(d = {}) {
                { size: large ? 26 : 32, min: 18, color: 'rgba(244,243,238,0.78)', rtl })
   }
 
-  signature(ctx, lang, W / 2, large ? H - 34 : 1232, large ? 23 : 27, W - (large ? 170 : 110))
+  piedDeCarte(ctx, lang, W / 2, large ? H - 26 : 1296, large ? 22 : 27, W - (large ? 150 : 80))
   return c
 }
 

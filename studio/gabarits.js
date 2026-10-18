@@ -107,10 +107,13 @@ export const CASES = {
   // le ballon. Ce qui suit n'est plus une fenetre mais une ZONE LIBRE,
   // celle ou le filet est le plus sombre et ou une image se pose sans rien
   // masquer d'utile. La vignette y est centree A SA PROPRE FORME.
-  'but-filet': { zone: [0.09, 0.17, 0.82, 0.56], legende: 0.79 },
+  'but-filet': { zone: [0.09, 0.16, 0.82, 0.54], legende: 0.77 },
   // La zone commence SOUS l'en-tete : a 0,08 la ligne de competition
   // passait dessous et disparaissait (vu le 18/10 sur le but d'Abde).
-  'but-filet-large': { zone: [0.22, 0.15, 0.71, 0.53], legende: 0.80 },
+  // La zone se resserre encore depuis le 18/10 : le pied porte desormais
+  // DEUX lignes — « le lien est en commentaire » puis la signature — et
+  // il lui faut la place.
+  'but-filet-large': { zone: [0.22, 0.13, 0.71, 0.45], legende: 0.70 },
   'but-neutre': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'but-barca': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'soiree-4-moments': {
