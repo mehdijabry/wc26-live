@@ -1,4 +1,5 @@
 import { AnimatePresence, motion } from 'framer-motion'
+import FicheStade from './FicheStade'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
@@ -223,6 +224,20 @@ export function MatchSheet({
   const noteHead = comp?.notes?.[0]?.headline ?? comp?.notes?.[0]?.text ?? ''
   const roundLabel = deriveRoundLabel(seasonSlug, noteHead)
 
+  // ── LE STADE ────────────────────────────────────────────────────────
+  // Mehdi, 17/10/2026 : le nom du terrain était déjà là, en haut, en petit.
+  // Il voulait la photo, deux phrases et la météo. Le bloc se place AVANT
+  // la feuille de match quand le match n'a pas commencé — c'est alors ce
+  // qu'il y a de plus utile à lire, et la fiche est vide par ailleurs — et
+  // APRÈS une fois le match lancé, où les buts et les cartons passent
+  // devant.
+  const blocStade = venue ? (
+    <Section title="Venue">
+      <FicheStade venue={venue} ville={venueLoc?.city ?? null} coupDEnvoi={kickoff} />
+    </Section>
+  ) : null
+  const stadeEnTete = !isLive && !isDone
+
   const node = (
     <AnimatePresence>
       {open && (
@@ -353,6 +368,8 @@ export function MatchSheet({
                   it dominated the sheet). The curated rights map lives
                   on in api.ts for the /watch pages. */}
 
+              {stadeEnTete && blocStade}
+
               {/* Events timeline — Footmercato-style row:
                     74' [ball] 3-1   M. Olise (PD M. Gusto)
                   Minute → icon → running score (goals only) → player
@@ -453,6 +470,8 @@ export function MatchSheet({
                   </div>
                 </Section>
               ) : null}
+
+              {!stadeEnTete && blocStade}
             </div>
           </motion.aside>
         </>
