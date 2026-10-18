@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useBalayage } from '../lib/geste'
 import Ecusson from './Ecusson'
 import { Link } from 'react-router-dom'
 import { api, eventTeams, liveClock, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
@@ -123,46 +124,13 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
     return () => clearInterval(id)
   }, [])
 
-  // ── LE GESTE : BALAYER OU MOLETTER ──────────────────────────────────
-  // `suivant(+1 | -1)` relaie `go()` en circulaire. Deux garde-fous que
-  // l'absence de flèches rend nécessaires :
-  //   · un VERROU de 350 ms, sinon une molette inertielle (le trackpad
-  //     d'un Mac en envoie une centaine d'événements) traverse vingt
-  //     affiches d'un seul coup de doigt ;
-  //   · le balayage n'est pris que s'il est franchement HORIZONTAL —
-  //     40 px et deux fois plus large que haut — sans quoi un simple
-  //     défilement de la page ferait sauter l'affiche.
-  const feuille = useRef(0)
-  const suivant = (pas: number) => {
+  // Le geste vit dans `lib/geste` depuis le 18/10 : le carrousel des
+  // résumés de l'accueil demande exactement le même, verrou et seuil
+  // d'horizontalité compris.
+  const auToucher = useBalayage((pas) => {
     const n = featsRef.current.length
-    if (n < 2) return
-    const t = Date.now()
-    if (t - feuille.current < 350) return
-    feuille.current = t
-    go(((curRef.current + pas) % n + n) % n)
-  }
-  const depart = useRef<{ x: number; y: number } | null>(null)
-  const auToucher = {
-    onTouchStart: (e: React.TouchEvent) => {
-      depart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-    },
-    onTouchEnd: (e: React.TouchEvent) => {
-      const d = depart.current; depart.current = null
-      if (!d) return
-      const dx = e.changedTouches[0].clientX - d.x
-      const dy = e.changedTouches[0].clientY - d.y
-      if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 2) return
-      suivant(dx < 0 ? 1 : -1)
-    },
-    onWheel: (e: React.WheelEvent) => {
-      // La molette VERTICALE compte aussi : c'est elle qu'on a sous le
-      // doigt sur une souris, et le bandeau n'a rien d'autre à faire
-      // défiler. On ne retient que le mouvement dominant.
-      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
-      if (Math.abs(d) < 8) return
-      suivant(d > 0 ? 1 : -1)
-    },
-  }
+    if (n > 1) go(((curRef.current + pas) % n + n) % n)
+  })
 
   // 1s ticker so a live minute advances between polls.
   useEffect(() => {

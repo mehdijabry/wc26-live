@@ -1,6 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import IconeMasque from './IconeMasque'
-import { ButDuJour } from './ButDuJour'
+import { ResumesALaUne } from './ResumesALaUne'
 import Ecusson from './Ecusson'
 import { Icone } from './Icone'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -283,7 +283,7 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
             {t('Missed it? You can still catch it.')}
           </h2>
 
-          {vitrine && <ButDuJour />}
+          {vitrine && <ResumesALaUne />}
 
           {/* ── DEUX PASTILLES, PAS DEUX PAVÉS ────────────────────────
               « Subtil et pas trop encombrant, mais visible et facilement
