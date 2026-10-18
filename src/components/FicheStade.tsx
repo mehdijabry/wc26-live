@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useLang } from '../lib/i18n'
+import { SectionFiche } from './SectionFiche'
 
 /**
  * LE STADE D'UN MATCH : une photo, deux phrases, et le temps qu'il y faisait.
@@ -163,6 +164,11 @@ type PageWiki = {
  * mêmes coordonnées servent ensuite à la météo, donc le filtre qui
  * garantit le bon article garantit aussi la bonne météo.
  */
+/** Les mots qui désignent un lieu de match, dans les langues qu'on sert. */
+const TITRE_DE_LIEU = /stadi|stade|estadio|arena|\bpark\b|\bfield\b|ground|\u0645\u0644\u0639\u0628/i
+/** Une page de saison ou une liste n'est jamais le stade qu'on cherche. */
+const PAS_UN_LIEU = /\b(?:19|20)\d{2}[–\-/]\d{2}\b|\bseason\b|saison|list of|liste de|\u0642\u0627\u0626\u0645\u0629/i
+
 async function interrogerWiki(dom: string, nom: string): Promise<PageWiki | null> {
   const mot = MOT_STADE[dom] ?? MOT_STADE.en
   const url = `https://${dom}.wikipedia.org/w/api.php?action=query&generator=search`
@@ -174,7 +180,52 @@ async function interrogerWiki(dom: string, nom: string): Promise<PageWiki | null
   const j = await r.json() as { query?: { pages?: Record<string, PageWiki> } }
   const pages = Object.values(j.query?.pages ?? {})
     .sort((a, b) => (a.index ?? 99) - (b.index ?? 99))
-  return pages.find((p) => p.coordinates?.length) ?? null
+    .filter((p) => p.title && !PAS_UN_LIEU.test(p.title))
+
+  // LES COORDONNÉES SONT UN INDICE, PAS UNE CONDITION. Première version :
+  // on exigeait des coordonnées, parce qu'une biographie n'en a pas. Mais
+  // « El Sadar Stadium » n'en publie pas non plus sur la Wikipédia
+  // ANGLAISE — son infobox n'alimente pas l'index géographique — et la
+  // fiche d'Osasuna - Racing est sortie avec un intitulé « VENUE » et rien
+  // dessous (Mehdi, 17/10/2026 : « c'est inacceptable »).
+  //
+  // Donc : d'abord celui qui porte des coordonnées, sinon le premier dont
+  // le TITRE nomme un lieu de match. Santiago Bernabéu l'homme n'a ni
+  // l'un ni l'autre et reste écarté ; le stade passe par l'une ou l'autre
+  // porte selon le wiki.
+  return pages.find((p) => p.coordinates?.length)
+    ?? pages.find((p) => TITRE_DE_LIEU.test(p.title as string))
+    ?? null
+}
+
+/**
+ * NETTOIE LA NOTICE DE SES MARQUEURS D'ÉDITION.
+ *
+ * L'extrait en texte brut garde les appels de modèle des contributeurs :
+ * « Le stade El Sadar ([Quoi ?]anciennement connu sous le nom… » — vu sur
+ * El Sadar le 17/10/2026. On retire les crochets ([Quoi ?], [réf.
+ * nécessaire], [1], [citation needed]) puis on rééquilibre les
+ * parenthèses : une parenthèse ouverte jamais fermée, parce que son
+ * contenu vient d'être retiré ou que la coupe à deux phrases est tombée
+ * au milieu, donne une phrase qui semble inachevée. On supprime alors la
+ * parenthèse orpheline elle-même, pas le texte autour.
+ */
+function nettoyerNotice(t: string): string {
+  let x = t.replace(/\[[^\]]{0,40}\]/g, '')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\s+([,;.])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim()
+  // Parenthèses orphelines, retirées de la fin vers le début.
+  for (let garde = 0; garde < 4; garde++) {
+    const o = (x.match(/\(/g) ?? []).length
+    const f = (x.match(/\)/g) ?? []).length
+    if (o === f) break
+    const i = o > f ? x.lastIndexOf('(') : x.indexOf(')')
+    if (i < 0) break
+    x = (x.slice(0, i) + x.slice(i + 1)).replace(/\s{2,}/g, ' ').trim()
+  }
+  return x
 }
 
 async function chercherStade(nom: string, lang: string): Promise<Stade | null> {
@@ -199,7 +250,7 @@ async function chercherStade(nom: string, lang: string): Promise<Stade | null> {
   const co = page.coordinates?.[0]
   return {
     nom: page.title,
-    extrait: (page.extract ?? '').trim(),
+    extrait: nettoyerNotice(page.extract ?? ''),
     image,
     lat: typeof co?.lat === 'number' ? co.lat : null,
     lon: typeof co?.lon === 'number' ? co.lon : null,
@@ -241,7 +292,9 @@ async function chercherMeteo(lat: number, lon: number, coupDEnvoi: Date): Promis
   }
 }
 
-export default function FicheStade({ venue, ville, coupDEnvoi }: {
+export default function FicheStade({ titre, venue, ville, coupDEnvoi }: {
+  /** L'intitulé de la section. Il part avec le bloc : voir SectionFiche. */
+  titre: string
   venue?: string | null
   ville?: string | null
   coupDEnvoi?: Date | null
@@ -290,6 +343,7 @@ export default function FicheStade({ venue, ville, coupDEnvoi }: {
 
   if (stade === undefined) {
     return (
+      <SectionFiche titre={titre}>
       <div className="flex gap-4">
         <div className="w-28 h-20 sm:w-40 sm:h-28 rounded-xl bg-slate-100 animate-pulse shrink-0" />
         <div className="flex-1 space-y-2 py-1">
@@ -298,15 +352,17 @@ export default function FicheStade({ venue, ville, coupDEnvoi }: {
           <div className="h-3 w-4/5 rounded bg-slate-100 animate-pulse" />
         </div>
       </div>
+      </SectionFiche>
     )
   }
+  // Rien trouvé : pas de section du tout, pas même son intitulé.
   if (!stade) return null
 
   const f = meteo ? famille(meteo.code) : null
   const au = lang === 'fr' ? 'Au coup d’envoi' : lang === 'ar' ? 'عند انطلاق المباراة' : 'At kickoff'
 
   return (
-    <div>
+    <SectionFiche titre={titre}>
       <div className="flex gap-4">
         {stade.image && (
           <img
@@ -341,6 +397,6 @@ export default function FicheStade({ venue, ville, coupDEnvoi }: {
           </span>
         </div>
       )}
-    </div>
+    </SectionFiche>
   )
 }

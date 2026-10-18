@@ -1,5 +1,6 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import FicheStade from './FicheStade'
+import { SectionFiche } from './SectionFiche'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
@@ -231,10 +232,11 @@ export function MatchSheet({
   // qu'il y a de plus utile à lire, et la fiche est vide par ailleurs — et
   // APRÈS une fois le match lancé, où les buts et les cartons passent
   // devant.
+  // Le titre part AVEC le bloc : lui seul sait s'il a trouvé un stade, et
+  // un « VENUE » posé au-dessus du vide est pire que pas de section du
+  // tout (Mehdi, 17/10/2026, sur El Sadar).
   const blocStade = venue ? (
-    <Section title="Venue">
-      <FicheStade venue={venue} ville={venueLoc?.city ?? null} coupDEnvoi={kickoff} />
-    </Section>
+    <FicheStade titre="Venue" venue={venue} ville={venueLoc?.city ?? null} coupDEnvoi={kickoff} />
   ) : null
   const stadeEnTete = !isLive && !isDone
 
@@ -434,7 +436,12 @@ export function MatchSheet({
               {/* Stats — possession, shots, cards, passes, etc. ESPN ships
                   ~28 stats per team during live; we show the ones that
                   matter and skip the obscure ratio metrics. */}
-              {stats.length === 2 && stats[0].statistics?.length && stats[1].statistics?.length && (
+              {/* La garde porte sur ce qui sera RÉELLEMENT dessiné. Compter
+                  les statistiques livrées par ESPN ne suffit pas : il en
+                  envoie parfois une trentaine dont aucune n'est dans notre
+                  tableau, et l'intitulé « TEAM STATS » se posait alors sur
+                  du vide (vu le 17/10 sur Osasuna - Racing). */}
+              {aDesStats(stats) && (
                 <Section title="Team stats">
                   <TeamStatsTable home={stats[0]} away={stats[1]} />
                 </Section>
@@ -534,15 +541,10 @@ function TeamColumn({ c, align }: { c: Competitor | undefined; align: 'left' | '
   )
 }
 
+// L'habillage vit dans SectionFiche : FicheStade s'en sert aussi, pour
+// décider LUI-MÊME s'il y a une section à poser (voir ce fichier).
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="px-5 sm:px-6 py-5 border-b border-slate-100 last:border-0">
-      <div className="text-[10px] uppercase tracking-[0.22em] font-mono text-accent-gold mb-3">
-        {title}
-      </div>
-      {children}
-    </div>
-  )
+  return <SectionFiche titre={title}>{children}</SectionFiche>
 }
 
 /**
@@ -764,6 +766,14 @@ const STAT_LABELS: Array<{ key: string; label: string; pct?: boolean }> = [
 ]
 
 type BoxscoreTeam = NonNullable<NonNullable<SummaryResponse['boxscore']>['teams']>[number]
+
+/** Y a-t-il au moins UNE statistique que le tableau sait dessiner ? */
+function aDesStats(teams: BoxscoreTeam[]): boolean {
+  if (teams.length !== 2) return false
+  const noms = new Set<string>()
+  for (const t of teams) for (const s of t.statistics ?? []) if (s.name) noms.add(s.name)
+  return STAT_LABELS.some(({ key }) => noms.has(key))
+}
 
 function TeamStatsTable({ home, away }: { home: BoxscoreTeam; away: BoxscoreTeam }) {
   // Index by name for O(1) lookup
