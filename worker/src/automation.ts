@@ -3192,20 +3192,17 @@ export async function runAutomationTick(env: Env): Promise<void> {
     try { const v = await import('./videos'); await v.scanResumes(env, date) }
     catch (e) { await log(env, date, 'yt-scan', false, String(e).slice(0, 200)) }
   }
-  // ── LE FILET DE LA JOURNÉE : 23 h 50 LOCALES ──────────────────────────
-  // La passe de cinq minutes publie la journée dès qu'elle se boucle
-  // d'elle-même — plus aucune rencontre en cours, et un résumé pour chacune
-  // de celles qui sont terminées. Il arrive qu'elle ne se boucle jamais :
-  // un diffuseur qui ne sort pas son résumé retiendrait le post pour
-  // toujours. À 23 h 50 la journée est finie, on publie ce qu'on a.
-  if (s.resumesVideo !== false && hour === 23 && minute >= 50) {
-    const verrou = `auto:journee-resumes:${date}`
-    if (!(await env.CACHE.get(verrou))) {
-      await env.CACHE.put(verrou, '1', { expirationTtl: 36 * 3600 })
-      try { const v = await import('./videos'); await v.publierJourneeResumes(env, date, true) }
-      catch (e) { await log(env, date, 'yt-journee', false, String(e).slice(0, 200)) }
-    }
-  }
+  // ── PLUS DE CRÉNEAU DE FIN DE JOURNÉE ICI (19/10/2026) ────────────────
+  // Il y avait là un filet calé sur `hour === 23 && minute >= 50` : dix
+  // minutes par jour, et si les ticks du worker étaient occupés pendant
+  // ces dix minutes-là, la journée était perdue sans rattrapage. C'est
+  // exactement ce qui est arrivé au 18/10, un soir de reels de but — le
+  // verrou du filet n'a jamais été posé et le résumé n'est jamais sorti.
+  //
+  // L'heure limite est désormais une CONDITION évaluée dans
+  // `publierJourneeResumes`, à chaque passe de cinq minutes : « a-t-on
+  // dépassé 23 h 50 pour cette journée-là ? ». La réponse ne dépend plus
+  // de l'instant où la question est posée.
   if (hour === 7 && minute >= 30 && minute <= 44) {
     const y = yesterdayParts()
     try { await runResultsReel(env, s, date, y.label, hour, minute, false, y.date) } catch (e) { await log(env, date, 'results-reel', false, String(e)) }

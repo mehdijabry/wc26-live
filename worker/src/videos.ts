@@ -455,6 +455,59 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
  * publication qui échoue ne doit pas pouvoir être retentée en boucle toutes
  * les cinq minutes avec un commentaire à chaque fois.
  */
+/**
+ * Les matchs d'une journée qui ONT déjà un résumé en base — publiés ou non.
+ *
+ * Sert à répondre « la journée est-elle complète ? ». Le faire sur la seule
+ * file d'attente rendait la réponse toujours NON dès qu'une ligne avait été
+ * publiée par ailleurs, ce qui était le cas de tout l'arriéré du 18/10.
+ */
+type LigneJour = {
+  video_id: string; kind: string; source: string; match_id: string; publie_at: string
+  competition: string | null
+  equipe_dom: string | null; equipe_ext: string | null
+  score_dom: number | null; score_ext: number | null
+}
+
+/**
+ * TOUS les résumés d'une journée — publiés ou non.
+ *
+ * C'est la seule liste honnête pour un post qui prétend résumer la journée.
+ * Bâtir la carte et la légende sur la seule FILE D'ATTENTE donnait un post
+ * amputé : le 18/10, quatre matchs et deux écussons là où la journée en
+ * comptait dix-huit et cinq, parce que tout le reste avait déjà été marqué
+ * publié par l'ancien régime. Elle sert aussi à répondre « la journée
+ * est-elle complète ? » — question à laquelle la file répondait toujours
+ * non dès qu'une ligne avait été publiée ailleurs.
+ */
+async function lignesDuJour(env: Env, jour: string): Promise<LigneJour[]> {
+  const debut = `${jour}T00:00:00Z`, fin = `${jour}T23:59:59.999Z`
+  const r = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/videos_matchs?match_id=not.is.null`
+    + `&kind=in.(resume,resume_court,resume_long)`
+    + `&publie_at=gte.${encodeURIComponent(debut)}&publie_at=lte.${encodeURIComponent(fin)}`
+    + `&select=video_id,kind,source,match_id,publie_at,competition,equipe_dom,equipe_ext,score_dom,score_ext`
+    + `&order=publie_at.asc&limit=300`,
+    { headers: sbHeaders(env) },
+  )
+  return (await r.json().catch(() => [])) as LigneJour[]
+}
+
+/**
+ * Rend la journée à la passe suivante — sauf au troisième échec, où on
+ * renonce pour de bon plutôt que de recommencer indéfiniment.
+ *
+ * Une chaîne de publication qui s'arrête doit se VOIR : le journal KV n'est
+ * lu par personne (règle posée après la file de rendus gelée du 13/10).
+ */
+async function relacher(env: Env, verrou: string, essais: number): Promise<void> {
+  if (essais >= 3) {
+    await env.CACHE.put(verrou, 'abandon', { expirationTtl: 4 * 86400 })
+    return
+  }
+  await env.CACHE.delete(verrou)
+}
+
 export async function publierJourneeResumes(env: Env, date: string, force: boolean): Promise<string | null> {
   type Attente = {
     video_id: string; kind: string; source: string; titre: string; match_id: string
@@ -515,8 +568,13 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     // La playlist du site montre tout — court, long, les deux. La légende,
     // elle, liste des RENCONTRES : « Barcelona 2-1 Girona » deux fois de
     // suite ferait croire à une erreur.
-    const parMatch = new Map<string, Attente>()
-    for (const x of lignes) {
+    // La journée entière, pas seulement ce qui reste à publier.
+    const toutes = await lignesDuJour(env, jour)
+    const parMatch = new Map<string, LigneJour>()
+    // `lignes` en secours : si la lecture de la journée échoue, mieux vaut
+    // un post amputé qu'aucun post. `Attente` porte tous les champs de
+    // `LigneJour`, plus le titre.
+    for (const x of (toutes.length ? toutes : lignes)) {
       const vu = parMatch.get(x.match_id)
       // Le court l'emporte sur l'extended : c'est lui qui porte le score
       // relevé dans le titre, et il est sorti pour tout le monde.
@@ -525,7 +583,17 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     const matchs = [...parMatch.values()]
 
     // ── LA JOURNÉE EST-ELLE BOUCLÉE ? ─────────────────────────────────
-    let raison = force ? 'journée close' : ''
+    // L'HEURE LIMITE EST UNE CONDITION, PAS UN CRÉNEAU. Le filet vivait
+    // dans le planificateur, sous la forme `hour === 23 && minute >= 50` :
+    // dix minutes par jour, et si les ticks du worker étaient occupés
+    // pendant ces dix minutes-là — un soir de reels de but, par exemple —
+    // la journée était perdue sans aucun rattrapage. C'est exactement ce
+    // qui s'est passé le 18/10 : le verrou du filet n'a jamais été posé.
+    // La question « a-t-on dépassé 23 h 50 pour CETTE journée ? » se pose
+    // maintenant à chaque passe de cinq minutes, et la réponse ne dépend
+    // plus de l'instant où on la pose.
+    const apres2350 = Date.now() > Date.parse(`${jour}T22:50:00Z`)
+    let raison = force ? 'journée close' : apres2350 ? 'heure limite atteinte' : ''
     if (!raison) {
       if (jour < aujourdhui) {
         // Une journée passée est finie par construction : on ne l'attend
@@ -536,7 +604,13 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
         const nos = new Set(SOURCES.map((o) => o.slug))
         const suivis = pool.filter((m) => nos.has(m.slug))
         const enCours = suivis.filter((m) => !m.completed)
-        const couverts = new Set(matchs.map((m) => m.match_id))
+        // CE QUI EST COUVERT SE LIT SUR TOUTE LA JOURNÉE, pas sur la file
+        // d'attente. Les lignes déjà marquées `publie_fb` — tout l'arriéré
+        // de l'ancien régime, qui publiait match par match — ne sont pas
+        // dans `matchs`, et les compter comme manquantes rendait
+        // « complète » INATTEIGNABLE : la journée n'était jamais bouclée,
+        // et seul le filet pouvait encore la sortir.
+        const couverts = new Set(toutes.map((x) => x.match_id))
         const manquants = suivis.filter((m) => m.completed && !couverts.has(m.id))
         // `suivis.length === 0` : ESPN n'a rien rendu (proxy en panne) ou
         // aucun de nos championnats ne jouait. Dans les deux cas on ne sait
@@ -548,7 +622,16 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
       }
     }
 
-    await env.CACHE.put(verrou, '1', { expirationTtl: 4 * 86400 })
+    // LE VERROU EST D'ABORD UNE RÉSERVATION COURTE. Il empêche deux
+    // passes de publier la même journée en même temps, mais il ne doit
+    // PAS condamner la journée quand la publication échoue : le studio
+    // peut dormir, Facebook peut refuser. Posé à dix minutes, il est
+    // prolongé à quatre jours une fois le post sorti, et effacé si la
+    // tentative rate — trois essais, puis on renonce en le disant.
+    const cleEssais = `fb:journee-essais:${jour}`
+    const essais = Number((await env.CACHE.get(cleEssais)) ?? '0') + 1
+    await env.CACHE.put(verrou, 'en cours', { expirationTtl: 600 })
+    await env.CACHE.put(cleEssais, String(essais), { expirationTtl: 4 * 86400 })
 
     // ── L'IMAGE : LA DATE ET LES ÉCUSSONS DES CHAMPIONNATS DU JOUR ─────
     // Mehdi : « l'image qu'on publiera pour highlights sera une image
@@ -577,8 +660,9 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
         accroche: 'كل ملخصات المباريات في مكان واحد',
       })
     } catch (e) {
-      await log(env, date, 'yt-journee', false, `rendu échoué (${jour}): ${String(e).slice(0, 180)}`)
-      return `journée ${jour}: rendu échoué`
+      await relacher(env, verrou, essais)
+      await log(env, date, 'yt-journee', false, `rendu échoué (${jour}), essai ${essais}/3 : ${String(e).slice(0, 160)}`)
+      return `journée ${jour}: rendu échoué (essai ${essais}/3)`
     }
 
     // ── LE LIEN DE LA JOURNÉE PART EN COMMENTAIRE, PAS EN DESCRIPTION ──
@@ -599,6 +683,13 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
       title: `ملخصات اليوم — ${jour}`,
       comment: `🎬 ${lien}`,
     })
+
+    if (p.ok) {
+      // Publié : le verrou devient définitif.
+      await env.CACHE.put(verrou, '1', { expirationTtl: 4 * 86400 })
+    } else {
+      await relacher(env, verrou, essais)
+    }
 
     // Tout ce que la journée contenait est marqué, y compris les extendeds
     // qui n'apparaissent pas dans la légende : ils sont dans la playlist,
