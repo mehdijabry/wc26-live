@@ -84,21 +84,44 @@ const estBut = (kind: string): boolean => kind === 'but'
  * Mehdi, 17/10/2026 : « la vidéo publiée sur le site ne se joue pas dans
  * le site, elle redirige vers X ». Les cartes pointaient vers la source ;
  * elles pointent maintenant vers /v/<id>, et c'est ICI que le lecteur est
- * embarqué. On n'héberge toujours rien : l'iframe est la leur, les vues
- * leur reviennent.
+ * embarqué. On n'héberge rien : l'iframe est la leur, les vues leur
+ * reviennent.
  *
- * L'embed de X rend la carte du post AVEC son lecteur, et il joue en
- * place — vérifié le 17/10 sur le but de Fermín. Il ne demande ni script
- * ni jeton.
+ * ── LE LECTEUR NU DE X ────────────────────────────────────────────────
+ * Premier choix : `platform.twitter.com/embed/Tweet.html`, qui rend la
+ * CARTE entière — avatar, pseudo, texte espagnol, « Follow », barre
+ * d'actions, bulle « View replies » posée sur la vidéo. Mehdi : « peut-on
+ * afficher juste le lecteur ? je vois d'autres sites qui postent la vidéo
+ * X sans toute la panoplie ». J'avais répondu que ce n'était pas possible
+ * — à tort, et sans chercher.
+ *
+ * `twitter.com/i/videos/tweet/<id>` existe toujours : une page de huit
+ * lignes qui ne charge que `TwitterVideoPlayerIframe.js`, soit la vidéo,
+ * un bouton de lecture et un compteur de vues. Mesuré le 17/10, son
+ * en-tête porte `frame-ancestors *` — X autorise explicitement qu'on
+ * l'encadre, et c'est son lecteur qui joue, donc la vue continue de lui
+ * être comptée. C'est l'inverse exact de servir le fichier mp4
+ * nous-mêmes, qui lui aurait retiré la vue et l'attribution.
+ *
+ * Point de fragilité à connaître : ce chemin n'est plus documenté. S'il
+ * ferme, le repli est la carte complète — une ligne à changer ici.
  */
 export function lecteurDe(v: LigneVideo): string {
   return estX(v.source)
-    ? `https://platform.twitter.com/embed/Tweet.html?id=${encodeURIComponent(v.video_id)}&theme=dark&dnt=true`
+    ? `https://twitter.com/i/videos/tweet/${encodeURIComponent(v.video_id)}`
     : `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.video_id)}?rel=0&modestbranding=1`
 }
 
-/** Le format du lecteur : la carte de X est haute, YouTube est en 16:9. */
-export const lecteurEstCarte = (v: LigneVideo): boolean => estX(v.source)
+/**
+ * Le format PAR DÉFAUT du cadre, avant que la page n'ait mesuré l'affiche.
+ *
+ * Les deux lecteurs remplissent leur cadre sans bande noire — ils
+ * recadrent. Un cadre au mauvais format rogne donc la vidéo au lieu de la
+ * laisser respirer. Les clips de X sont verticaux neuf fois sur dix (ce
+ * sont des posts téléphone), YouTube est en 16:9 franc ; la page corrige
+ * ensuite avec les proportions réelles de la vignette.
+ */
+export const rapportParDefaut = (v: LigneVideo): number => (estX(v.source) ? 9 / 16 : 16 / 9)
 
 /** Ce que l'étiquette annonce, dans la langue de la page. */
 function etiquetteDe(kind: string, lang: string): string {

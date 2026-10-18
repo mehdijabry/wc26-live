@@ -326,7 +326,10 @@ export default {
           titre: await vp.titreEditorial(v, lg),
           recit, source,
           lecteur: vp.lecteurDe(v),
-          carte: vp.lecteurEstCarte(v),
+          // Le format du cadre : une valeur de départ ici, que la page
+          // affine en mesurant l'affiche — les deux lecteurs recadrent,
+          // donc un cadre faux rogne la vidéo.
+          rapport: vp.rapportParDefaut(v),
           lien: vp.lienPartage(v.video_id),
           // L'image de partage : rendue ici, parce que la fonction Pages
           // n'a pas de quoi la demander au studio.

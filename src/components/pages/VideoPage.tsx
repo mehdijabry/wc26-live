@@ -35,12 +35,13 @@ type Charge = {
     competition: string | null; equipe_dom: string | null; equipe_ext: string | null
     score_dom: number | null; score_ext: number | null
     buteur: string | null; minute: string | null; publie_at: string
+    vignette: string | null
   }
   titre: string
   recit: string
   source: string
   lecteur: string
-  carte: boolean
+  rapport: number
   lien: string
 }
 
@@ -50,6 +51,17 @@ export default function VideoPage() {
   const lang = useLang((s) => s.lang)
   const [d, setD] = useState<Charge | null>(null)
   const [echec, setEchec] = useState(false)
+  /**
+   * LE FORMAT RÉEL DE LA VIDÉO, MESURÉ SUR SON AFFICHE.
+   *
+   * Les deux lecteurs — celui de X comme celui de YouTube — REMPLISSENT
+   * leur cadre en recadrant : un cadre 16:9 autour d'un clip vertical lui
+   * mange les deux tiers. Le serveur donne une valeur de départ d'après la
+   * source, et on la corrige ici : l'affiche d'une vidéo a ses
+   * proportions, et la charger ne coûte rien puisque le navigateur l'a
+   * déjà en cache depuis la liste.
+   */
+  const [rapport, setRapport] = useState<number | null>(null)
 
   useEffect(() => {
     let vivant = true
@@ -61,6 +73,28 @@ export default function VideoPage() {
       .catch(() => { if (vivant) setEchec(true) })
     return () => { vivant = false }
   }, [id, lang])
+
+  // SEULEMENT POUR X. Là, l'affiche rangée EST une image de la vidéo, donc
+  // ses proportions sont les siennes. Ailleurs c'est une image choisie à la
+  // main dans l'admin : la mesurer réglerait le cadre sur l'illustration et
+  // non sur le clip — et `hqdefault` de YouTube est en 4:3, ce qui aurait
+  // tassé tous les résumés.
+  const affichePoster = d?.video?.source?.startsWith('x') ? (d.video.vignette ?? null) : null
+  useEffect(() => {
+    setRapport(null)
+    if (!affichePoster) return
+    let vivant = true
+    const im = new Image()
+    im.onload = () => {
+      // Une affiche carrée de 120×90 est le placeholder d'une vignette
+      // absente : on ne règle pas le cadre sur une image d'erreur.
+      if (vivant && im.naturalWidth > 200 && im.naturalHeight > 200) {
+        setRapport(im.naturalWidth / im.naturalHeight)
+      }
+    }
+    im.src = affichePoster
+    return () => { vivant = false }
+  }, [affichePoster])
 
   usePageHead({
     titre: d?.titre ?? 'Pressing 90’',
@@ -96,24 +130,33 @@ export default function VideoPage() {
             </p>
           )}
 
-          {/* ── LE LECTEUR DE L'AYANT DROIT ───────────────────────────
-              La carte de X est haute et porte le texte du post au-dessus
-              de la vidéo ; YouTube est en 16:9 franc. Deux hauteurs, donc,
-              sinon l'une des deux sort rognée ou flottant dans du vide. */}
-          <div
-            className={`mt-5 rounded-2xl overflow-hidden border border-accent-gold/35 bg-ink-900 ${
-              d.carte ? 'h-[660px] sm:h-[720px]' : 'aspect-video'
-            }`}
-          >
-            <iframe
-              src={d.lecteur}
-              title={d.titre}
-              className="w-full h-full"
-              style={{ border: 0 }}
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-              allowFullScreen
-              loading="eager"
-            />
+          {/* ── LE LECTEUR DE L'AYANT DROIT, ET RIEN D'AUTRE ──────────
+              Sur X c'est `i/videos/tweet/<id>` : la vidéo seule, sans
+              l'avatar, le texte du post ni la barre d'actions. C'est le
+              lecteur de X qui joue, donc la vue lui est comptée — on ne
+              sert jamais le fichier nous-mêmes.
+
+              Le cadre prend les proportions de la vidéo, bornées en
+              hauteur : un clip vertical pleine largeur ferait trois écrans
+              sur un téléphone, et il faudrait défiler pour voir le but. */}
+          <div className="mt-5 flex justify-center">
+            <div
+              className="w-full rounded-2xl overflow-hidden border border-accent-gold/35 bg-ink-900"
+              style={{
+                aspectRatio: String(rapport ?? d.rapport),
+                maxWidth: `calc(72vh * ${rapport ?? d.rapport})`,
+              }}
+            >
+              <iframe
+                src={d.lecteur}
+                title={d.titre}
+                className="w-full h-full"
+                style={{ border: 0 }}
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                allowFullScreen
+                loading="eager"
+              />
+            </div>
           </div>
 
           {d.recit && <p className="mt-6 text-[15px] leading-relaxed">{d.recit}</p>}
