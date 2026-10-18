@@ -1596,7 +1596,33 @@ function sansBandes(img) {
   if (plausible(gauche, droite) && haut + bas < N * 0.03) {
     return [Math.round(W * (gauche / N)), 0, Math.round(W * ((v1 - v0 + 1) / N)), H]
   }
+
   return [0, 0, W, H]
+}
+
+/**
+ * LA PREMIÈRE VIGNETTE QUI CHARGE, DANS L'ORDRE DONNÉ.
+ *
+ * YouTube publie une vignette AU FORMAT D'ORIGINE sous `oardefault.jpg` :
+ * 1080×1920 pour un Short, et 404 pour une vidéo ordinaire. C'est le seul
+ * signal déterministe du format réel — mesuré le 18/10 sur trois vidéos.
+ *
+ * Sans elle, `maxresdefault` rend un 16:9 dans lequel le clip vertical est
+ * encadré de part et d'autre par un recadrage large, et la carte sortait
+ * avec une vidéo verticale coincée au milieu d'une image large (le but
+ * d'Abde). J'avais d'abord tenté de détecter ces bandes à leur manque de
+ * détail : posée au jugé, l'heuristique n'a pas mordu, et elle risquait de
+ * rogner de vraies images larges. Une adresse qui répond ou non vaut mieux
+ * qu'une mesure qui devine.
+ */
+async function premiereImage(sources) {
+  for (const src of (Array.isArray(sources) ? sources : [sources]).filter(Boolean)) {
+    const im = await loadImgOuRepli(src, null)
+    // Une vignette absente revient parfois en 120×90 (l'image « pas de
+    // miniature » de YouTube) plutôt qu'en 404 : on l'écarte aussi.
+    if (im && (im.width > 200 || im.height > 200)) return im
+  }
+  return null
 }
 
 /** Un rectangle à coins arrondis, posé sur le chemin courant. */
@@ -1658,7 +1684,7 @@ export async function gabaritOgVideo(d = {}) {
   ctx.drawImage(f, (W - f.width * ech) / 2, (H - f.height * ech) / 2, f.width * ech, f.height * ech)
 
   // ── LA FENÊTRE, AU FORMAT RÉEL DE LA VIGNETTE ───────────────────────
-  const vign = d.vignette ? await loadImgOuRepli(d.vignette, d.vignetteRepli || null) : null
+  const vign = await premiereImage(d.vignettes ?? [d.vignette, d.vignetteRepli])
   const [sx, sy, sw, sh] = vign ? sansBandes(vign) : [0, 0, 16, 9]
   const MARGE = 44, MAXW = 700, MAXH = H - MARGE * 2
   const rapport = sh ? sw / sh : 16 / 9
@@ -1880,101 +1906,99 @@ export async function gabaritResumesDuJour(d = {}) {
  */
 export async function gabaritButFilet(d = {}) {
   registerBrandFonts()
-  const W = 1080, H = 1350
   const lang = ['fr', 'en', 'ar'].includes(d.lang) ? d.lang : 'ar'
   const rtl = lang === 'ar'
-  const ligne = (t, x, y, o = {}) => (rtl ? ar(ctx, t, x, y, o) : txt(ctx, t, x, y, o))
 
-  const c = createCanvas(W, H); const ctx = ctx2d(c)
-  await poserPlaque(ctx, 'but-filet', W, H)
-
-  const [zx, zy, zw, zh] = CASES['but-filet'].fenetre.map(e45)
-  const [, ly, , lh] = CASES['but-filet'].legende.map(e45)
-
-  // ── L'EN-TÊTE ────────────────────────────────────────────────────────
-  paintLogo(ctx, 40, 40, 104)
-  if (d.competition) ligne(d.competition, W / 2, 112, { size: 34, color: OR })
-
-  // ── LA FENÊTRE, AU FORMAT RÉEL DE LA VIGNETTE ────────────────────────
-  const vign = d.vignette ? await loadImgOuRepli(d.vignette, d.vignetteRepli || null) : null
+  // ── LA CARTE PREND LA FORME DU CLIP ──────────────────────────────────
+  // Un but de X arrive en 9:16, un but de YouTube en 16:9. Une seule
+  // plaque obligerait à caler l'un des deux dans un cadre qui n'est pas
+  // le sien — c'est précisément ce que Mehdi a refusé. Il y a donc deux
+  // plaques du même filet, et on choisit celle qui épouse le clip.
+  const vign = await premiereImage(d.vignettes ?? [d.vignette, d.vignetteRepli])
   const [sx, sy, sw, sh] = vign ? sansBandes(vign) : [0, 0, 16, 9]
   const rapport = sh ? sw / sh : 16 / 9
+  const large = rapport >= 1.25
+  const plaque = large ? 'but-filet-large' : 'but-filet'
+  const W = large ? 1200 : 1080
+  const H = large ? 675 : 1350
+
+  const c = createCanvas(W, H); const ctx = ctx2d(c)
+  const ligne = (t, x, y, o = {}) => (rtl ? ar(ctx, t, x, y, o) : txt(ctx, t, x, y, o))
+  await poserPlaque(ctx, plaque, W, H)
+
+  const { zone, legende } = CASES[plaque]
+  const zx = zone[0] * W, zy = zone[1] * H, zw = zone[2] * W, zh = zone[3] * H
+
+  // ── L'EN-TÊTE ────────────────────────────────────────────────────────
+  paintLogo(ctx, large ? 34 : 40, large ? 30 : 40, large ? 84 : 104)
+  if (d.competition) {
+    ligne(d.competition, W / 2, large ? 46 : 104, { size: large ? 28 : 34, color: OR })
+  }
+
+  // ── LA VIGNETTE, POSÉE NUE ET À SA PROPRE FORME ──────────────────────
+  // Aucun cadre dessiné sur la plaque, aucun fond ajouté : l'image occupe
+  // la zone libre au plus grand, et ce qui dépasse autour reste le filet.
+  // Un simple filet doré d'un trait la détache des mailles — sans lui, un
+  // clip sombre s'y fond.
   let fw = zw, fh = zw / rapport
   if (fh > zh) { fh = zh; fw = zh * rapport }
   fw = Math.round(fw); fh = Math.round(fh)
   const fx = Math.round(zx + (zw - fw) / 2), fy = Math.round(zy + (zh - fh) / 2)
-  const R = 14
+  const R = 12
 
-  // ── LA DALLE NE RESTE JAMAIS NUE ─────────────────────────────────────
-  // La zone de la plaque est en 1,63 ; un clip de X arrive en 9:16 et n'en
-  // occupe qu'un tiers. La première version laissait le rectangle mat à
-  // découvert de part et d'autre, avec son arête franche : la carte
-  // semblait inachevée. On remplit donc toute la zone d'un fond tiré de
-  // la vignette elle-même, réduit à vingt-quatre pixels puis réétiré —
-  // node-canvas n'a pas de flou, mais un aller-retour d'échelle en tient
-  // lieu — et noyé sous un voile. Sur un clip 16:9 la fenêtre le
-  // recouvre entièrement : il ne se voit que quand il sert.
-  if (vign && fw < zw - 8) {
-    const N = 24
-    const mini = createCanvas(N, Math.max(2, Math.round(N / rapport)))
-    mini.getContext('2d').drawImage(vign, sx, sy, sw, sh, 0, 0, mini.width, mini.height)
+  if (vign) {
     ctx.save()
-    ctx.beginPath(); ctx.rect(zx, zy, zw, zh); ctx.clip()
-    const r = Math.max(zw / mini.width, zh / mini.height)
-    const lw = mini.width * r, lh = mini.height * r
-    ctx.drawImage(mini, zx + (zw - lw) / 2, zy + (zh - lh) / 2, lw, lh)
-    // Le voile est ÉPAIS : un gazon plein soleil reste lumineux même très
-    // réduit, et à 0,62 la dalle virait au bloc vert qui mangeait la
-    // fenêtre. À 0,84 il ne reste qu'une ombre colorée, et l'œil va droit
-    // au clip.
-    ctx.fillStyle = 'rgba(5,8,15,0.84)'; ctx.fillRect(zx, zy, zw, zh)
+    // Une ombre portée sous la vignette : elle la décolle du filet mieux
+    // qu'un trait, et sans rien ajouter de visible.
+    ctx.shadowColor = 'rgba(0,0,0,0.75)'; ctx.shadowBlur = 38; ctx.shadowOffsetY = 10
+    cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.fillStyle = '#05080F'; ctx.fill()
+    ctx.restore()
+    ctx.save()
+    cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.clip()
+    const r = Math.max(fw / sw, fh / sh)
+    ctx.drawImage(vign, sx, sy, sw, sh, fx + (fw - sw * r) / 2, fy + (fh - sh * r) / 2, sw * r, sh * r)
+    ctx.restore()
+    ctx.save()
+    cheminArrondi(ctx, fx, fy, fw, fh, R)
+    ctx.strokeStyle = 'rgba(204,172,97,0.85)'; ctx.lineWidth = 2; ctx.stroke()
     ctx.restore()
   }
 
+  // Le bouton de lecture, dimensionné par la vignette.
+  const bx = fx + fw / 2, by = fy + fh / 2
+  const RB = Math.max(40, Math.min(78, Math.round(Math.min(fw, fh) * 0.17)))
   ctx.save()
-  cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.clip()
-  ctx.fillStyle = '#05080F'; ctx.fillRect(fx, fy, fw, fh)
-  if (vign) {
-    const r = Math.max(fw / sw, fh / sh)
-    ctx.drawImage(vign, sx, sy, sw, sh, fx + (fw - sw * r) / 2, fy + (fh - sh * r) / 2, sw * r, sh * r)
-  }
-  ctx.strokeStyle = 'rgba(5,8,15,0.5)'; ctx.lineWidth = 22
-  cheminArrondi(ctx, fx, fy, fw, fh, R); ctx.stroke()
-  ctx.restore()
-  ctx.save()
-  cheminArrondi(ctx, fx, fy, fw, fh, R)
-  ctx.strokeStyle = OR; ctx.lineWidth = 3; ctx.stroke()
-  ctx.restore()
-
-  // Le bouton de lecture, dimensionné par la fenêtre : sur un clip
-  // vertical elle est trois fois plus étroite, un disque fixe la
-  // boucherait.
-  const px = fx + fw / 2, py = fy + fh / 2
-  const RB = Math.max(44, Math.min(82, Math.round(Math.min(fw, fh) * 0.17)))
-  ctx.save()
-  const halo = ctx.createRadialGradient(px, py, RB * 0.6, px, py, RB * 2.1)
+  const halo = ctx.createRadialGradient(bx, by, RB * 0.6, bx, by, RB * 2.1)
   halo.addColorStop(0, 'rgba(5,8,15,0.55)'); halo.addColorStop(1, 'rgba(5,8,15,0)')
-  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(px, py, RB * 2.1, 0, Math.PI * 2); ctx.fill()
-  ctx.beginPath(); ctx.arc(px, py, RB, 0, Math.PI * 2)
+  ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(bx, by, RB * 2.1, 0, Math.PI * 2); ctx.fill()
+  ctx.beginPath(); ctx.arc(bx, by, RB, 0, Math.PI * 2)
   ctx.fillStyle = 'rgba(5,8,15,0.88)'; ctx.fill()
   ctx.lineWidth = 4; ctx.strokeStyle = OR; ctx.stroke()
   const tp = RB * 0.42
   ctx.beginPath()
-  ctx.moveTo(px - tp * 0.68, py - tp); ctx.lineTo(px + tp * 1.12, py); ctx.lineTo(px - tp * 0.68, py + tp)
+  ctx.moveTo(bx - tp * 0.68, by - tp); ctx.lineTo(bx + tp * 1.12, by); ctx.lineTo(bx - tp * 0.68, by + tp)
   ctx.closePath(); ctx.fillStyle = OR; ctx.fill()
   ctx.restore()
 
   if (d.minute) {
-    txt(ctx, String(d.minute), fx + fw - 22, fy + fh - 30,
+    txt(ctx, String(d.minute), fx + fw - 18, fy + fh - 26,
         { size: Math.round(Math.min(fw, fh) * 0.1), font: 'Anton', color: CREME, align: 'right' })
   }
 
-  // ── LA LÉGENDE : qui, et contre qui ──────────────────────────────────
-  const cy = ly + lh / 2
-  if (d.buteur) ligneTenue(ctx, d.buteur, W / 2, cy - 44, W - 140, { size: 64, min: 36, color: CREME, rtl })
+  // ── LA LÉGENDE ───────────────────────────────────────────────────────
+  const cy = legende * H
+  if (d.buteur) {
+    ligneTenue(ctx, d.buteur, W / 2, cy, W - (large ? 220 : 140),
+               { size: large ? 48 : 64, min: large ? 28 : 36, color: CREME, rtl })
+  }
   const affiche = [d.home, d.away].filter(Boolean).join(' — ')
-  if (affiche) ligneTenue(ctx, affiche, W / 2, cy + 34, W - 160, { size: 32, min: 20, color: 'rgba(244,243,238,0.78)', rtl })
+  if (affiche) {
+    ligneTenue(ctx, affiche, W / 2, cy + (large ? 58 : 76), W - (large ? 240 : 160),
+               { size: large ? 26 : 32, min: 18, color: 'rgba(244,243,238,0.78)', rtl })
+  }
 
-  txt(ctx, 'pressing90.live', W / 2, H - 46, { size: 26, font: 'Archivo', color: 'rgba(244,243,238,0.5)' })
+  txt(ctx, 'pressing90.live', W / 2, H - (large ? 28 : 46),
+      { size: large ? 22 : 26, font: 'Archivo', color: 'rgba(244,243,238,0.5)' })
   return c
 }
+

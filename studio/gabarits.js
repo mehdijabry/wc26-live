@@ -39,6 +39,9 @@ export const UTILE = {
   // rogner, la hauteur utile est celle du fichier.
   'resumes-du-jour': 2080,
   'but-filet': 2080,
+  // La version large, generee par accident le 18/10 et gardee : un clip
+  // 16:9 y respire, la carte epouse la forme de la video.
+  'but-filet-large': 1152,
   'ticket-gagnant': 2048,
   'ticket-gagnant-barca': 2048,
   // Plaques de but refaites le 16/10/2026 en 1080x1920 : les anciennes
@@ -96,7 +99,18 @@ export const CASES = {
   // Exprimees ici A L'ECHELLE DE LA PLAQUE ; les fonctions de dessin les
   // ramenent en 1080x1350 par le rapport 1080/1664.
   'resumes-du-jour': { filet: 403, panneau: [120, 653, 1423, 721] },
-  'but-filet': { fenetre: [160, 467, 1341, 823], legende: [96, 1456, 1472, 458] },
+  // ── LA PLAQUE DU BUT N'A PLUS DE FENETRE ────────────────────────────
+  // Mehdi, 18/10/2026 : « dans l'apercu il y'a un carre noir derriere qui
+  // ne rend pas bien... tu poseras directement l'apercu sur le gabari, il
+  // n'aura pas de cadre specifique, il prendra la forme de la video ».
+  // Les plaques sont donc nues : plus de rectangle mat, juste le filet et
+  // le ballon. Ce qui suit n'est plus une fenetre mais une ZONE LIBRE,
+  // celle ou le filet est le plus sombre et ou une image se pose sans rien
+  // masquer d'utile. La vignette y est centree A SA PROPRE FORME.
+  'but-filet': { zone: [0.09, 0.17, 0.82, 0.56], legende: 0.79 },
+  // La zone commence SOUS l'en-tete : a 0,08 la ligne de competition
+  // passait dessous et disparaissait (vu le 18/10 sur le but d'Abde).
+  'but-filet-large': { zone: [0.22, 0.15, 0.71, 0.53], legende: 0.80 },
   'but-neutre': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'but-barca': { entete: [34, 250, 700, 160], centre: [34, 430, 700, 560], pied: [34, 1010, 700, 150] },
   'soiree-4-moments': {
