@@ -153,35 +153,35 @@ export default function VideoPage() {
             >
               {d.embarquable === false ? (
                 /* ── L'AYANT DROIT REFUSE LA LECTURE HORS DE YOUTUBE ──
-                   LaLiga bloque ses propres résumés : le cadre affichait
-                   le message d'erreur de YouTube, avec sa balise <a>
+                   LaLiga bloque ses propres résumés : le cadre rendait le
+                   message d'erreur de YouTube, avec sa balise <a>
                    recrachée en texte brut (Mehdi, 18/10/2026). On ne
-                   contourne pas une décision d'ayant droit — mais on
-                   cesse de promettre une lecture qui n'aura pas lieu :
-                   notre affiche, notre bouton, et le clic part chez lui.
+                   contourne pas la décision d'un ayant droit.
+
+                   « On va laisser l'aperçu, mais en cliquant sur l'aperçu
+                   on redirige vers YouTube » : la vignette reste, pleine,
+                   avec le bouton de lecture — rien ne signale un défaut —
+                   et c'est TOUT le cadre qui est le lien. La promesse de
+                   l'image est tenue, simplement ailleurs.
+
                    Le drapeau est MESURÉ (status.embeddable), pas deviné
                    sur une liste de diffuseurs à tenir à jour. */
                 <a
                   href={d.lienSource}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="absolute inset-0 group"
+                  aria-label={t('Watch on YouTube')}
+                  className="absolute inset-0 group block"
                 >
                   {d.vignette && (
-                    <img src={d.vignette} alt="" className="w-full h-full object-cover opacity-60" />
+                    <img src={d.vignette} alt="" className="w-full h-full object-cover" />
                   )}
-                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
-                    <span className="w-16 h-16 rounded-full bg-ink-900/85 ring-2 ring-accent-gold flex items-center justify-center
+                  <span className="absolute inset-0 flex items-center justify-center">
+                    <span className="w-16 h-16 rounded-full bg-ink-900/80 ring-2 ring-accent-gold flex items-center justify-center
                                      group-hover:scale-105 transition-transform">
                       <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-accent-gold ms-1">
                         <path d="M8 5.5v13l11-6.5-11-6.5Z" />
                       </svg>
-                    </span>
-                    <span className="text-[13px] leading-snug text-cream/90 max-w-xs">
-                      {t('The rights holder only allows playback on YouTube.')}
-                    </span>
-                    <span className="px-4 py-2 rounded-xl bg-accent-gold text-ink-900 text-sm font-bold">
-                      {t('Watch on YouTube')}
                     </span>
                   </span>
                 </a>

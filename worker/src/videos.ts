@@ -36,6 +36,24 @@ export type Source = {
   competition: string
   /** Le slug ESPN, pour ne rattacher qu'aux matchs de cette compétition. */
   slug: string
+  /**
+   * L'AYANT DROIT INTERDIT LA LECTURE HORS DE YOUTUBE.
+   *
+   * Mesuré À LA MAIN, dans un vrai navigateur, sur notre propre page —
+   * parce que l'API ment sur ce point. `status.embeddable` rend `true`
+   * pour les trois résumés LaLiga en base (relevé le 18/10/2026) alors
+   * que le lecteur affiche « Cette vidéo inclut du contenu de LaLiga,
+   * qui a bloqué sa diffusion sur ce site Web ». Le champ de l'API
+   * reflète le réglage de la CHAÎNE ; le blocage, lui, vient du
+   * propriétaire du contenu et ne s'y voit pas.
+   *
+   * Il n'existe pas de signal automatique fiable : le scrapage de
+   * /embed/<id> rend ERROR pour tout le monde faute de référent, et
+   * l'erreur du lecteur par postMessage s'est contredite (onReady sur la
+   * vidéo bloquée, erreur 150 sur une qui marche). On relève donc par
+   * source, une fois, et on corrige le jour où un diffuseur change.
+   */
+  embedBloque?: boolean
   type: 'chaine' | 'playlist' | 'playlist-journee'
   id: string
   /**
@@ -68,7 +86,8 @@ export const SOURCES: Source[] = [
     type: 'playlist', id: 'PLRnudrgaT-tc', motCle: /champions league/i, extendedPourTous: true },
   { cle: 'seriea', nom: 'Serie A', competition: 'Serie A', slug: 'ita.1',
     type: 'chaine', id: 'UCBJeMCIeLQos7wacox4hmLQ', motCle: /serie a/i },
-  { cle: 'laliga', nom: 'LaLiga', competition: 'LaLiga', slug: 'esp.1',
+  // LaLiga bloque l'intégration de ses propres résumés : voir `embedBloque`.
+  { cle: 'laliga', nom: 'LaLiga', competition: 'LaLiga', slug: 'esp.1', embedBloque: true,
     type: 'playlist-journee', id: '', channelId: 'UCTv-XvfzLX3i4IGWAm4sbmA',
     motifPlaylist: /res[úu]menes\s*j\s*(\d+)/i, motCle: /resumen|laliga/i },
   { cle: 'bundesliga', nom: 'Bundesliga', competition: 'Bundesliga', slug: 'ger.1',
@@ -295,6 +314,9 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
         nouvelles.map((n) => n.video_id),
       )
       for (const n of nouvelles) {
+        // Une source bloquée l'emporte sur l'API, qui ne voit pas la
+        // restriction du propriétaire du contenu.
+        if (s.embedBloque) { n.embarquable = false; continue }
         const v = drapeaux.get(n.video_id)
         if (v !== undefined) n.embarquable = v
       }
@@ -308,16 +330,27 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
   // ne sait pas affiche le lecteur — donc, pour LaLiga, le message
   // d'erreur de YouTube. Cinquante par passe, une unité de quota.
   try {
+    // Les sources bloquées, d'abord et sans condition : la passe
+    // précédente les avait mises à `true` sur la foi de l'API.
+    for (const s of SOURCES.filter((o) => o.embedBloque)) {
+      await fetch(`${env.SUPABASE_URL}/rest/v1/videos_matchs?source=eq.${s.cle}`, {
+        method: 'PATCH',
+        headers: sbHeaders(env, { 'content-type': 'application/json', prefer: 'return=minimal' }),
+        body: JSON.stringify({ embarquable: false }),
+      })
+    }
+    const bloquees = new Set(SOURCES.filter((o) => o.embedBloque).map((o) => o.cle))
     const cleYt = (env as unknown as { YOUTUBE_API_KEY: string }).YOUTUBE_API_KEY
     const r = await fetch(
       `${env.SUPABASE_URL}/rest/v1/videos_matchs?embarquable=is.null&source=not.like.x*`
-      + '&select=video_id&order=publie_at.desc&limit=50',
+      + '&select=video_id,source&order=publie_at.desc&limit=50',
       { headers: sbHeaders(env) },
     )
     if (r.ok) {
-      const manquants = (await r.json().catch(() => [])) as Array<{ video_id: string }>
-      if (manquants.length) {
-        const drapeaux = await embarquables(cleYt, manquants.map((x) => x.video_id))
+      const manquants = (await r.json().catch(() => [])) as Array<{ video_id: string; source: string }>
+      const aMesurer = manquants.filter((x) => !bloquees.has(x.source))
+      if (aMesurer.length) {
+        const drapeaux = await embarquables(cleYt, aMesurer.map((x) => x.video_id))
         for (const [id, v] of drapeaux) await marquer(env, id, { embarquable: v })
         notes.push(`${drapeaux.size} mesurées`)
       }

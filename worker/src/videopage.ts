@@ -269,14 +269,20 @@ export function recitDeVideo(v: LigneVideo, lang: string): { recit: string; sour
     const score = v.score_dom !== null && v.score_dom !== undefined
       && v.score_ext !== null && v.score_ext !== undefined
       ? `${v.score_dom} – ${v.score_ext}` : ''
+    // LA PHRASE SUIT CE QUE LA PAGE FAIT VRAIMENT. « Le résumé se joue
+    // ci-dessus » devenait faux dès que le diffuseur refuse l'intégration
+    // — LaLiga — puisque la vignette renvoie alors sur YouTube.
+    const ailleurs = v.embarquable === false
     if (lang === 'fr') {
       phrases.push([
         affiche ? `${affiche}` : 'La rencontre',
         score ? ` s’est terminé ${score}` : ' est résumée ici',
-        comp ? `${score ? ', en' : ', en'} ${comp}` : '',
+        comp ? `, en ${comp}` : '',
         '.',
       ].join(''))
-      phrases.push('Le résumé complet se joue ci-dessus, chez son diffuseur.')
+      phrases.push(ailleurs
+        ? 'Le diffuseur n’autorise la lecture que sur YouTube : touchez l’aperçu pour l’y ouvrir.'
+        : 'Le résumé complet se joue ci-dessus, chez son diffuseur.')
     } else if (lang === 'en') {
       phrases.push([
         affiche ? `${affiche}` : 'The match',
@@ -284,7 +290,9 @@ export function recitDeVideo(v: LigneVideo, lang: string): { recit: string; sour
         comp ? `, in the ${comp}` : '',
         '.',
       ].join(''))
-      phrases.push('The full highlights play above, on the broadcaster’s own player.')
+      phrases.push(ailleurs
+        ? 'The broadcaster only allows playback on YouTube — tap the preview to open it there.'
+        : 'The full highlights play above, on the broadcaster’s own player.')
     } else {
       phrases.push([
         affiche ? `${affiche}` : 'المباراة',
@@ -292,7 +300,9 @@ export function recitDeVideo(v: LigneVideo, lang: string): { recit: string; sour
         comp ? ` في ${comp}` : '',
         '.',
       ].join(''))
-      phrases.push('الملخص الكامل يُعرض أعلاه عبر مشغّل الناقل الرسمي.')
+      phrases.push(ailleurs
+        ? 'الناقل يسمح بالمشاهدة على يوتيوب فقط — اضغط على الصورة لفتحه هناك.'
+        : 'الملخص الكامل يُعرض أعلاه عبر مشغّل الناقل الرسمي.')
     }
   }
 
