@@ -64,11 +64,25 @@ export async function effacerNotif(id: number): Promise<void> {
   await supabase.from('notifications').delete().eq('id', id)
 }
 
-/** Répondre à une demande d'ami depuis le panneau, sans changer de page. */
-export async function repondreAmi(demandeur: string, accepter: boolean): Promise<boolean> {
-  if (!supabase) return false
+/**
+ * Répondre à une demande d'ami depuis le panneau, sans changer de page.
+ *
+ * `dejaTraitee` est le cas qui a figé la cloche de Mehdi (17/10/2026) :
+ * `repondre_ami` lève « aucune demande en attente de ce joueur » quand
+ * l'amitié a DÉJÀ été acceptée. L'appelant traitait ça comme un échec et
+ * laissait la notification en place — or c'est exactement la situation où
+ * elle doit partir. On distingue donc les deux : un vrai échec (réseau,
+ * droits) garde la demande, une demande déjà réglée la retire.
+ */
+export async function repondreAmi(
+  demandeur: string,
+  accepter: boolean,
+): Promise<{ ok: boolean; dejaTraitee: boolean }> {
+  if (!supabase) return { ok: false, dejaTraitee: false }
   const { error } = await supabase.rpc('repondre_ami', { p_demandeur: demandeur, p_accepter: accepter })
-  return !error
+  if (!error) return { ok: true, dejaTraitee: false }
+  const m = `${error.message ?? ''}`.toLowerCase()
+  return { ok: false, dejaTraitee: m.includes('aucune demande en attente') }
 }
 
 /** Les clubs suivis du joueur connecté. */

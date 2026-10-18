@@ -5,6 +5,7 @@ import { localeOf, useLang, useT } from '../lib/i18n'
 import { Jeton } from './Jeton'
 import Avatar from './Avatar'
 import {
+  effacerNotif,
   marquerLues,
   mesNotifications,
   nonLues,
@@ -136,10 +137,24 @@ export function Notifications({ compact = false }: { compact?: boolean } = {}) {
     const id = String(n.donnees.id ?? '')
     if (!id) return
     setOccupe(true)
-    const ok = await repondreAmi(id, accepter)
+    const r = await repondreAmi(id, accepter)
+    // ── LA LIGNE PART DE LA BASE, PAS SEULEMENT DE L'ÉCRAN ────────────
+    // Elle ne quittait que la liste affichée : au rechargement, la
+    // demande revenait intacte (Mehdi, 17/10/2026 : « j'ai déjà accepté
+    // Saad mais la notif reste figée »). Et comme les demandes sont
+    // exclues de « tout marquer lu » — une demande sans réponse doit
+    // rester visible — plus rien ne pouvait l'effacer.
+    //
+    // `dejaTraitee` couvre le reliquat : l'amitié est acceptée depuis
+    // longtemps, la base refuse de répondre une seconde fois, et c'est
+    // précisément le moment de retirer la notification.
+    //
+    // Le déclencheur de la migration 036 l'efface désormais côté serveur ;
+    // ceci reste la ceinture, pour les bases qui n'ont pas encore reçu la
+    // migration et pour tout chemin qu'on n'aurait pas prévu.
+    if (r.ok || r.dejaTraitee) await effacerNotif(n.id)
     setOccupe(false)
-    if (!ok) return
-    // La demande traitée quitte la liste : elle n'a plus rien à proposer.
+    if (!r.ok && !r.dejaTraitee) return
     setListe((avant) => (avant ?? []).filter((x) => x.id !== n.id))
   }
 
