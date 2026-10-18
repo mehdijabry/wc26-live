@@ -358,6 +358,27 @@ function App() {
               </Suspense>
             }
           />
+          {/* UNE JOURNÉE EST UNE PLAYLIST, ET ELLE A SON ADRESSE.
+              C'est ce lien qu'on publie en premier commentaire sous le post
+              Facebook du jour (Mehdi, 18/10/2026) : la description n'en
+              porte plus aucun, et « les résumés récents » aurait désigné
+              autre chose le lendemain. */}
+          <Route
+            path="/resumes/:jour"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading the highlights…" />}>
+                <Videos kind="resume" />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/buts/:jour"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading the goals…" />}>
+                <Videos kind="but" />
+              </Suspense>
+            }
+          />
           <Route
             path="/v/:id"
             element={

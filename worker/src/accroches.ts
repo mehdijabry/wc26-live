@@ -14,7 +14,28 @@
  * carte de période et le ticket gagnant). Seule la ligne de score garde ses
  * chiffres, dans le format `A 2-5 B` qui s'affiche correctement sur la page
  * depuis des semaines.
+ *
+ * ── AUCUN LIEN EN DESCRIPTION, JAMAIS ─────────────────────────────────────
+ * Mehdi, 18/10/2026 : « plus aucun lien en description pour aucun type de
+ * format […] toujours les liens en commentaire, jamais en description ».
+ * Facebook pénalise ce qui fait quitter son fil, et la sanction ne touche
+ * pas que le post fautif : « à cause de cette erreur ces posts ont bloqué
+ * l'avancement d'autres posts qui avançaient bien, vu qu'on a publié
+ * beaucoup trop de liens ».
+ *
+ * ATTENTION — le nom de domaine écrit en clair EST un lien. Facebook
+ * transforme « pressing90.live » en lien cliquable sans qu'on le lui
+ * demande ; l'écrire dans une légende est donc exactement ce qu'on cherche
+ * à éviter. La signature de marque existe toujours, mais elle est DESSINÉE
+ * sur l'image (voir `piedDeCarte` dans le studio), où rien ne la rend
+ * cliquable. Dans la description il ne reste que `EN_COMMENTAIRE`.
  */
+
+/**
+ * « Le lien est en commentaire » — la seule mention de lien autorisée dans
+ * une description. Elle ne contient aucune adresse : elle dit où regarder.
+ */
+export const EN_COMMENTAIRE = 'الرابط في التعليقات 👇'
 
 const CHIFFRES_AR = ['', 'هدف واحد', 'هدفان', 'ثلاثة أهداف', 'أربعة أهداف', 'خمسة أهداف',
   'ستة أهداف', 'سبعة أهداف', 'ثمانية أهداف', 'تسعة أهداف', 'عشرة أهداف']
@@ -48,7 +69,7 @@ const tag = (s: string) => '#' + String(s || '').trim().replace(/[^\p{L}\p{N}]+/
  */
 export function captionResume(o: {
   dom: string; ext: string; scoreDom: number | null; scoreExt: number | null
-  competitionAr: string; lien: string
+  competitionAr: string
 }): string {
   const score = `⚽ ${o.dom} ${o.scoreDom ?? ''}-${o.scoreExt ?? ''} ${o.ext}`
   const tags = [tag(o.competitionAr), '#ملخص', '#كرة_القدم', '#Pressing90'].join(' ')
@@ -59,10 +80,53 @@ export function captionResume(o: {
     `🏆 ${o.competitionAr}`,
     '',
     'أي هدف كان الأجمل؟ 👇',
-    `👉 الملخص كاملا على ${o.lien}`,
+    EN_COMMENTAIRE,
     '',
     tags,
   ].join('\n')
+}
+
+/**
+ * LA LÉGENDE DU POST UNIQUE DE LA JOURNÉE.
+ *
+ * Mehdi, 18/10/2026 : « pour les posts automatisés highlight on ne publie
+ * plus chaque match seul, on publie un post une fois qu'on a les highlights
+ * du jour au complet ». Un post par match, c'était dix publications en
+ * rafale un soir de Champions League, chacune avec son lien — soit
+ * exactement ce que Facebook punit.
+ *
+ * La légende LISTE, elle ne promet pas : le lecteur voit la journée entière
+ * et décide. Les rencontres sont groupées par compétition et chaque groupe
+ * est annoncé par son nom arabe ; l'écusson, lui, est sur l'image.
+ *
+ * ── CE QU'ELLE NE CONTIENT PAS ────────────────────────────────────────────
+ * Aucune adresse, pas même le nom de domaine (voir l'en-tête). Le lien de
+ * la playlist du jour part en premier commentaire.
+ */
+export function captionJourneeResumes(o: {
+  dateAr: string
+  matchs: Array<{ dom: string; ext: string; scoreDom: number | null; scoreExt: number | null; competitionAr: string }>
+}): string {
+  const lignes: string[] = [`🎬 ملخصات اليوم — ${o.dateAr}`, '']
+  let derniere = ''
+  for (const m of o.matchs.slice(0, 14)) {
+    if (m.competitionAr && m.competitionAr !== derniere) {
+      lignes.push(`🏆 ${m.competitionAr}`)
+      derniere = m.competitionAr
+    }
+    // Le score garde ses chiffres latins dans le format `A 2-1 B`, entouré
+    // de noms latins : l'algorithme bidirectionnel ne le déplace pas.
+    const sc = m.scoreDom !== null && m.scoreExt !== null ? ` ${m.scoreDom}-${m.scoreExt} ` : ' 🆚 '
+    lignes.push(`▪️ ${m.dom}${sc}${m.ext}`)
+  }
+  if (o.matchs.length > 14) lignes.push(`…و${o.matchs.length - 14} مباريات أخرى`)
+  // Les compétitions du jour font les mots-dièses : trois à cinq, c'est ce
+  // que le playbook attend.
+  const comps = [...new Set(o.matchs.map((m) => m.competitionAr).filter(Boolean))].slice(0, 2)
+  lignes.push('', 'أي ملخص تشاهد أولاً؟ 👇', EN_COMMENTAIRE, '',
+              [...comps.map(tag), '#ملخصات', '#كرة_القدم', '#Pressing90']
+                .filter((v, i, a) => a.indexOf(v) === i).join(' '))
+  return lignes.join('\n')
 }
 
 /**
@@ -107,13 +171,13 @@ export function titreDeBut(o: {
 /** Le post complet d'un but. */
 export function captionBut(o: {
   buteur: string; passeur?: string; adversaire?: string; minute?: string; penalty?: boolean; csc?: boolean
-  changeLeVainqueur?: boolean; equipes?: string; competitionAr?: string; lien: string
+  changeLeVainqueur?: boolean; equipes?: string; competitionAr?: string
 }, index = 0): string {
   const lignes = [`⚽ ${titreDeBut(o, index)}`, '']
   if (o.equipes) lignes.push(`🆚 ${o.equipes}${o.minute ? ` · ${o.minute}` : ''}`)
   if (o.passeur) lignes.push(`🅰️ صناعة ${o.passeur}`)
   if (o.competitionAr) lignes.push(`🏆 ${o.competitionAr}`)
-  lignes.push('', 'هدف اليوم؟ قل رأيك 👇', `👉 شاهده على ${o.lien}`, '')
+  lignes.push('', 'هدف اليوم؟ قل رأيك 👇', EN_COMMENTAIRE, '')
   lignes.push([o.competitionAr ? tag(o.competitionAr) : '#هدف', '#هدف', '#كرة_القدم', '#Pressing90']
     .filter((v, i, a) => a.indexOf(v) === i).join(' '))
   return lignes.filter((l, i, a) => !(l === '' && a[i - 1] === '')).join('\n')

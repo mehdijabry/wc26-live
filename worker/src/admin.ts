@@ -2309,20 +2309,17 @@ async function composerAccrocheBut(env: AdminEnv, o: {
 }): Promise<string> {
   const { captionBut } = await import('./accroches')
   const n = Number((await env.CACHE.get('but:rotation')) ?? '0')
-  return captionBut({ ...o, lien: lienAccroche(o.videoId) }, n)
+  return captionBut(o, n)
 }
 
 /**
- * « Regarde-le sur … » doit mener AU BUT, pas à la liste du jour.
+ * L'ADRESSE DU BUT — celle qui part EN COMMENTAIRE, jamais en description.
  *
- * Depuis le passage au post de lien, l'aperçu Facebook pointe sur
- * /v/<id> ; laisser la légende renvoyer vers /buts enverrait le lecteur
- * à deux endroits différents selon qu'il clique l'image ou le texte.
- * Tant que l'identifiant n'est pas connu (la toute première composition),
- * la liste reste le repli.
+ * Mehdi, 18/10/2026 : « toujours les liens en commentaire, jamais en
+ * description ». La légende ne porte plus que « الرابط في التعليقات » ;
+ * c'est ici qu'est fabriqué le lien que le premier commentaire portera.
  */
-const lienAccroche = (videoId?: string): string =>
-  videoId ? `pressing90.live/v/${videoId}` : 'pressing90.live/buts'
+const lienDuBut = (videoId: string): string => `https://pressing90.live/v/${videoId}`
 
 async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response> {
   const b = await readBoundedJson(req, 4_000) as {
@@ -2361,7 +2358,6 @@ async function handleButAccroche(env: AdminEnv, req: Request): Promise<Response>
       equipes: (safeString(b?.equipes ?? '', 160) ?? ''),
       competitionAr: auto.leagueAr((safeString(b?.competition ?? '', 80) ?? '')),
       penalty: !!b?.penalty, csc: !!b?.csc,
-      lien: lienAccroche(safeString(b?.videoId ?? '', 40) ?? ''),
     }, n),
   })
 }
@@ -2467,34 +2463,52 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
   let fb: { ok: boolean; note?: string } = { ok: false, note: 'non demandé' }
   if (b?.fb) {
     const auto = await import('./automation')
-    const { lienPartage, ogDeVideo } = await import('./videopage')
-    // ── UN POST DE LIEN, PAS UNE PHOTO (17/10/2026) ────────────────────
-    // Le but partait en post photo avec notre carte « but-clip » : joli,
-    // mais sans destination — Facebook ouvre l'image en grand et le lecteur
-    // reste chez lui. Depuis, on publie le lien de /v/<id>, dont l'aperçu
-    // Open Graph montre la vignette de la vidéo sous un bouton de lecture.
-    // Le visuel promet une vidéo, et le clic l'ouvre vraiment, sur le site.
+    // ── RETOUR AU POST PHOTO, AVEC LA CARTE « BUT DANS LE FILET » ──────
+    // Mehdi, 18/10/2026 : « pour les deux nouveaux formats "but" et
+    // "highlights" on ne publie plus les liens en description, on revient
+    // sur une image générée ». Le post de lien du 17/10 convertissait
+    // mieux, mais il mettait un lien dans la description à chaque but —
+    // et c'est précisément ce que Facebook a sanctionné, sur ces posts
+    // comme sur les autres. Le lien part donc en PREMIER COMMENTAIRE, et
+    // l'image redevient notre carte.
     //
-    // L'image est rendue AVANT la publication : elle entre dans le cache et
-    // c'est elle que Facebook trouvera en lisant la page, une seconde plus
-    // tard. Rendue après, l'aperçu serait capturé sans image.
-    const lien = lienPartage(videoId)
-    const og = await ogDeVideo(env as unknown as Parameters<typeof ogDeVideo>[0], {
-      video_id: videoId, source: ligne.source, kind: 'but', titre: ligne.titre,
-      competition: ligne.competition, equipe_dom: ligne.equipe_dom, equipe_ext: ligne.equipe_ext,
-      buteur: ligne.buteur, minute: ligne.minute, score_dom: null, score_ext: null,
-      vignette: ligne.vignette,
-    })
-    const image = og
-      ?? (b?.vignette
-        ? `https://wc26-api.nameless-violet-5dc1.workers.dev/fb-img?u=${encodeURIComponent(String(b.vignette))}`
-        : `${SITE_URL}/icon-512.png`)
-    fb = await auto.fbLinkPost(env as unknown as Parameters<typeof auto.fbLinkPost>[0], {
+    // La carte `but-filet` choisit elle-même sa plaque d'après la forme
+    // réelle de la vignette : 1080×1350 pour un clip vertical de X,
+    // 1200×675 pour un 16:9 de YouTube. Rien n'est dessiné sur la plaque,
+    // tout est calculé au rendu — la leçon des trois plaques d'OG.
+    const { logoCompetition } = await import('./competitions')
+    const vignetteX = (safeString(b?.vignette ?? '', 500) ?? '')
+    let image = ''
+    try {
+      image = await auto.renderImage(env as unknown as Parameters<typeof auto.renderImage>[0], 'but-filet', {
+        lang: 'ar',
+        competitionLogo: logoCompetition(ligne.competition) ?? '',
+        competition: auto.leagueAr(ligne.competition ?? ''),
+        buteur: ligne.buteur ?? '',
+        minute: ligne.minute ?? '',
+        home: ligne.equipe_dom ?? '', away: ligne.equipe_ext ?? '',
+        // Pour YouTube, `maxresdefault` d'abord — c'est la seule en pleine
+        // définition, et elle n'existe pas pour toutes les vidéos.
+        vignettes: vignetteX
+          ? [vignetteX]
+          : [`https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+             `https://i.ytimg.com/vi/${videoId}/oardefault.jpg`,
+             `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`],
+      })
+    } catch (e) {
+      fb = { ok: false, note: `rendu de la carte échoué: ${String(e).slice(0, 140)}` }
+    }
+    if (image) fb = await auto.fbPost(env as unknown as Parameters<typeof auto.fbPost>[0], {
       message: (safeString(b?.caption ?? '', 1800) ?? '') || (safeString(b?.titre ?? '', 300) ?? ''),
-      link: lien,
+      // `link` n'est lu que par le scénario Make, qui n'en fait rien dans
+      // un post photo. Il ne part PAS dans la description.
+      link: lienDuBut(videoId),
       image_url: image,
       title: (safeString(b?.titre ?? '', 300) ?? ''),
-      comment: `▶️ ${source === 'x' ? `https://x.com/i/status/${videoId}` : `https://www.youtube.com/watch?v=${videoId}`}`,
+      // LE LIEN, ET LUI SEUL, EST EN COMMENTAIRE. Notre page d'abord —
+      // c'est elle qui embarque le lecteur de l'ayant droit, donc la vue
+      // lui revient de toute façon.
+      comment: `▶️ ${lienDuBut(videoId)}`,
     })
     if (fb.ok) {
       await fetch(`${e.SUPABASE_URL}/rest/v1/videos_matchs?video_id=eq.${encodeURIComponent(videoId)}`, {

@@ -1,13 +1,24 @@
 /**
  * LES RÉSUMÉS DE MATCH — détection, rattachement, publication.
  *
- * ── LES DEUX RÈGLES DE MEHDI (17/10/2026) ─────────────────────────────────
- * 1. Le résumé COURT part dès qu'il est disponible. L'EXTENDED attend la fin
- *    de la journée, et seul celui du MEILLEUR match de chaque championnat
- *    est publié — le meilleur au nombre de vues. Les autres extendeds
- *    rejoignent leur propre post en commentaire : un match = un seul post.
- * 2. SAUF la Ligue des champions, où tout passe : court pour tous les
- *    matchs, puis extended pour tous.
+ * ── UN SEUL POST PAR JOUR (18/10/2026) ────────────────────────────────────
+ * Mehdi : « pour les posts automatisés highlight on ne publie plus chaque
+ * match seul, on publie un post une fois qu'on a les highlights du jour au
+ * complet ; on publie l'image avec la description correspondante sans
+ * liens, et le lien qu'on va publier c'est le lien de la section highlight ».
+ *
+ * La détection, elle, n'a pas changé de rythme : chaque résumé arrive sur
+ * le SITE dès qu'il est vu, une passe toutes les cinq minutes. Seule la
+ * publication Facebook attend la fin de la journée. Les deux règles du
+ * 17/10 — le court tout de suite, l'extended du meilleur match le soir —
+ * n'ont plus d'objet : il n'y a plus de post par match à arbitrer, et tout
+ * ce qui est détecté entre dans la playlist du jour.
+ *
+ * ── POURQUOI CE CHANGEMENT N'EST PAS COSMÉTIQUE ───────────────────────────
+ * Un soir de Ligue des champions, l'ancien fonctionnement sortait dix posts
+ * en rafale, chacun avec un lien dans sa description. Facebook pénalise ce
+ * qui fait quitter son fil, et la sanction ne reste pas sur le post fautif :
+ * « ces posts ont bloqué l'avancement d'autres posts qui avançaient bien ».
  *
  * ── POURQUOI LA PLAYLIST QUAND IL Y EN A UNE ──────────────────────────────
  * beIN déborde largement du football — padel, futsal, MMA, Libertadores.
@@ -23,10 +34,10 @@
  */
 import type { Env } from './index'
 import type { AutoMatch } from './automation'
-import { bigMatchesToday, fbComment, fbLinkPost, leagueAr, log, sbHeaders } from './automation'
-import { lienPartage, ogDeVideo } from './videopage'
+import { bigMatchesToday, fbPost, labelAr, leagueAr, log, renderImage, sbHeaders } from './automation'
+import { logoCompetition } from './competitions'
 import { clesDAppariement, clipsDePlaylist, derniersClips, type Clip } from './youtube'
-import { captionResume } from './accroches'
+import { captionJourneeResumes } from './accroches'
 
 
 export type Source = {
@@ -75,6 +86,9 @@ export type Source = {
   /** La Ligue des champions publie TOUS ses extendeds, pas seulement un. */
   extendedPourTous?: boolean
 }
+
+/** L'adresse publique du site — elle ne sert qu'aux liens de COMMENTAIRE. */
+const SITE_PUBLIC = 'https://pressing90.live'
 
 export const SOURCES: Source[] = [
   { cle: 'ligue1', nom: 'beIN SPORTS', competition: 'Ligue 1', slug: 'fra.1',
@@ -185,6 +199,8 @@ type Ligne = {
   publie_site: boolean; publie_fb?: boolean; fb_post_id?: string | null
   /** null tant qu'on n'a pas mesuré : « inconnu » n'est pas « ça marche ». */
   embarquable?: boolean | null
+  /** Secondes. null pour une vidéo X, que YouTube ne mesure pas. */
+  duree_s?: number | null
 }
 
 async function ecrire(env: Env, lignes: Ligne[]): Promise<void> {
@@ -196,23 +212,18 @@ async function ecrire(env: Env, lignes: Ligne[]): Promise<void> {
   })
   const r = await envoyer(lignes)
   // L'ORDRE DES DÉPLOIEMENTS NE DOIT RIEN CASSER. `embarquable` arrive
-  // avec la migration 037, appliquée à la main : un worker déployé avant
-  // elle refuserait toute écriture. On retente sans la colonne, une fois.
-  if (!r.ok && /embarquable/i.test(await r.text())) {
-    await envoyer(lignes.map(({ embarquable: _o, ...reste }) => reste))
+  // avec la migration 037 et `duree_s` avec la 039, toutes deux appliquées
+  // à la main : un worker déployé avant elles refuserait toute écriture, et
+  // c'est une soirée entière de résumés qui manquerait au site. On retente
+  // donc une fois sans les deux colonnes — le rattrapage de la passe
+  // suivante les remplira quand la migration sera passée.
+  if (!r.ok) {
+    const t = await r.text()
+    if (/embarquable|duree_s/i.test(t)) {
+      await envoyer(lignes.map(({ embarquable: _o, duree_s: _d, ...reste }) => reste))
+    }
   }
 }
-
-/** Les vidéos déjà en base pour ce match, pour ne pas doubler un post. */
-async function dejaLa(env: Env, matchId: string): Promise<Array<{ kind: string; fb_post_id: string | null; publie_fb: boolean }>> {
-  const r = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/videos_matchs?match_id=eq.${encodeURIComponent(matchId)}&select=kind,fb_post_id,publie_fb`,
-    { headers: sbHeaders(env) },
-  )
-  return (await r.json().catch(() => [])) as Array<{ kind: string; fb_post_id: string | null; publie_fb: boolean }>
-}
-
-const lienYt = (id: string) => `https://www.youtube.com/watch?v=${id}`
 
 /**
  * EST-CE QUE CETTE VIDÉO ACCEPTERA D'ÊTRE EMBARQUÉE ?
@@ -226,20 +237,49 @@ const lienYt = (id: string) => `https://www.youtube.com/watch?v=${id}`
  * identifiants pour UNE unité de quota : négligeable à côté des 1 728
  * unités que consomme déjà la détection quotidienne.
  */
-async function embarquables(cle: string, ids: string[]): Promise<Map<string, boolean>> {
-  const sortie = new Map<string, boolean>()
+/**
+ * LA DURÉE, EN SECONDES, À PARTIR DE L'ISO 8601 DE YOUTUBE.
+ *
+ * « PT9M48S » → 588. YouTube peut rendre des heures sur un match entier,
+ * et omettre une unité quand elle vaut zéro (« PT2M » ou « PT45S ») : les
+ * trois groupes sont donc facultatifs. Ce qui ne s'analyse pas rend `null`
+ * — on n'écrit pas zéro, qui se lirait « 0:00 » sur la carte.
+ */
+export function dureeEnSecondes(iso: string | undefined): number | null {
+  const m = /^P(?:\d+D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(String(iso ?? ''))
+  if (!m) return null
+  const n = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0)
+  return n > 0 ? n : null
+}
+
+type MesureVideo = { embarquable: boolean; dureeS: number | null }
+
+/**
+ * CE QUE YOUTUBE SAIT D'UN LOT DE VIDÉOS, EN UN SEUL APPEL.
+ *
+ * `status` dit si l'ayant droit autorise la lecture hors de YouTube ;
+ * `contentDetails` donne la durée. Les demander ENSEMBLE ne coûte pas plus
+ * cher : le quota se compte par appel (une unité par cinquante vidéos), pas
+ * par partie demandée. Les séparer aurait doublé la facture pour rien.
+ */
+async function mesurerVideos(cle: string, ids: string[]): Promise<Map<string, MesureVideo>> {
+  const sortie = new Map<string, MesureVideo>()
   for (let i = 0; i < ids.length; i += 50) {
     const lot = ids.slice(i, i + 50)
     try {
       const r = await fetch(
-        `https://www.googleapis.com/youtube/v3/videos?part=status&id=${lot.join(',')}&key=${cle}`,
+        `https://www.googleapis.com/youtube/v3/videos?part=status,contentDetails&id=${lot.join(',')}&key=${cle}`,
         { signal: AbortSignal.timeout(20_000) },
       )
       const j = await r.json().catch(() => ({})) as {
-        items?: Array<{ id?: string; status?: { embeddable?: boolean } }>
+        items?: Array<{ id?: string; status?: { embeddable?: boolean }; contentDetails?: { duration?: string } }>
       }
       for (const it of j.items ?? []) {
-        if (it.id) sortie.set(it.id, it.status?.embeddable !== false)
+        if (!it.id) continue
+        sortie.set(it.id, {
+          embarquable: it.status?.embeddable !== false,
+          dureeS: dureeEnSecondes(it.contentDetails?.duration),
+        })
       }
     } catch { /* on laisse inconnu : mieux que de déclarer à tort */ }
   }
@@ -303,22 +343,25 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
         score_dom: k.score ? k.score[0] : (m ? Number(m.homeScore) : null),
         score_ext: k.score ? k.score[1] : (m ? Number(m.awayScore) : null),
         publie_site: true,
-        // Rempli juste après, en un appel pour tout le lot.
+        // Remplis juste après, en un appel pour tout le lot.
         embarquable: null as boolean | null,
+        duree_s: null as number | null,
       })
     }
 
     if (nouvelles.length) {
-      const drapeaux = await embarquables(
+      const mesures = await mesurerVideos(
         (env as unknown as { YOUTUBE_API_KEY: string }).YOUTUBE_API_KEY,
         nouvelles.map((n) => n.video_id),
       )
       for (const n of nouvelles) {
+        const v = mesures.get(n.video_id)
+        if (v) n.duree_s = v.dureeS
         // Une source bloquée l'emporte sur l'API, qui ne voit pas la
-        // restriction du propriétaire du contenu.
+        // restriction du propriétaire du contenu. La durée, elle, reste
+        // juste : ce n'est pas elle qui est bloquée.
         if (s.embedBloque) { n.embarquable = false; continue }
-        const v = drapeaux.get(n.video_id)
-        if (v !== undefined) n.embarquable = v
+        if (v) n.embarquable = v.embarquable
       }
     }
     await ecrire(env, nouvelles)
@@ -341,24 +384,39 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
     }
     const bloquees = new Set(SOURCES.filter((o) => o.embedBloque).map((o) => o.cle))
     const cleYt = (env as unknown as { YOUTUBE_API_KEY: string }).YOUTUBE_API_KEY
+    // UNE LIGNE À RATTRAPER, C'EST : pas d'autorisation connue, OU pas de
+    // durée connue. La durée arrive avec la 039 et manque donc sur tout
+    // l'historique — sans ce `or`, les anciennes lignes resteraient sans
+    // durée pour toujours, et la playlist d'hier n'aurait pas ses deux
+    // sections lisibles.
     const r = await fetch(
-      `${env.SUPABASE_URL}/rest/v1/videos_matchs?embarquable=is.null&source=not.like.x*`
+      `${env.SUPABASE_URL}/rest/v1/videos_matchs?or=(embarquable.is.null,duree_s.is.null)&source=not.like.x*`
       + '&select=video_id,source&order=publie_at.desc&limit=50',
       { headers: sbHeaders(env) },
     )
     if (r.ok) {
       const manquants = (await r.json().catch(() => [])) as Array<{ video_id: string; source: string }>
-      const aMesurer = manquants.filter((x) => !bloquees.has(x.source))
-      if (aMesurer.length) {
-        const drapeaux = await embarquables(cleYt, aMesurer.map((x) => x.video_id))
-        for (const [id, v] of drapeaux) await marquer(env, id, { embarquable: v })
-        notes.push(`${drapeaux.size} mesurées`)
+      if (manquants.length) {
+        const mesures = await mesurerVideos(cleYt, manquants.map((x) => x.video_id))
+        for (const [id, v] of mesures) {
+          const bloquee = bloquees.has(manquants.find((x) => x.video_id === id)?.source ?? '')
+          await marquer(env, id, {
+            // La source bloquée garde son `false` : l'API ne voit pas la
+            // restriction de l'ayant droit et dirait `true`.
+            embarquable: bloquee ? false : v.embarquable,
+            duree_s: v.dureeS,
+          })
+        }
+        notes.push(`${mesures.size} mesurées`)
       }
     }
   } catch { /* le rattrapage n'est pas critique */ }
 
-  // ── PUIS ON PUBLIE, UN SEUL À LA FOIS ─────────────────────────────────
-  const poste = await publierUnCourt(env, pool)
+  // ── PUIS ON REGARDE SI UNE JOURNÉE EST BOUCLÉE ────────────────────────
+  // Rien ne part par match : la passe cherche une journée complète, et ne
+  // publie qu'elle. Sans forcer — c'est la passe de 23 h 50 qui tranche
+  // quand la journée ne s'est jamais bouclée d'elle-même.
+  const poste = await publierJourneeResumes(env, date, false).catch((e) => `journée: ÉCHEC ${String(e).slice(0, 80)}`)
   if (poste) notes.push(poste)
 
   const note = notes.join(' | ') || 'rien de neuf'
@@ -367,155 +425,170 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
 }
 
 /**
- * PUBLIE AU PLUS UN RÉSUMÉ COURT PAR PASSE.
+ * LE POST UNIQUE DE LA JOURNÉE.
  *
- * Deux raisons, et aucune n'est cosmétique :
+ * Mehdi, 18/10/2026 : « on publie un post une fois qu'on a les highlights
+ * du jour au complet ».
  *
- *   · LE PREMIER TOUR. Au tout premier passage, le témoin KV est vide et
- *     une journée entière de résumés serait vue d'un coup — dix posts en
- *     rafale sur la page. Un par passe, toutes les cinq minutes, donne le
- *     rythme d'une publication humaine.
- *   · LA REPRISE. Ce qui n'est pas publié reste en base avec `publie_fb`
- *     à faux : si le worker tombe, la passe suivante reprend là où elle en
- *     était. Rien ne dépend d'un drapeau perdu dans le KV.
+ * ── QUAND UNE JOURNÉE EST-ELLE « AU COMPLET » ? ───────────────────────────
+ * Ce n'est pas une question de montre, c'est une question d'état : la
+ * journée est bouclée quand plus aucune rencontre de nos six sources n'est
+ * en cours, et que chacune de celles qui sont terminées a son résumé. On le
+ * mesure sur la liste ESPN du jour, pas sur une heure fixe — un soir de
+ * Ligue des champions, le dernier résumé peut tomber à 23 h 40, et un
+ * dimanche à 17 h.
  *
- * Et on ne publie QUE du frais : au-delà de trois heures, le match est
- * oublié et le post ferait vieux.
+ * `force` est le filet : à 23 h 50 locales, la journée est finie qu'elle
+ * soit complète ou non, et un résumé qui n'est jamais venu ne doit pas
+ * retenir le post. La note dit toujours laquelle des deux raisons a
+ * déclenché la publication, parce que « complet » et « on n'attend plus »
+ * ne veulent pas dire la même chose quand on relit le journal.
+ *
+ * ── UNE JOURNÉE = UNE DATE UTC ────────────────────────────────────────────
+ * Le même découpage que la base (migration 038) et que la page
+ * `/resumes/<date>` : c'est cette date qui fait le lien publié en
+ * commentaire, et il doit désigner la journée que le post montre.
+ *
+ * ── LE VERROU EST PAR DATE, PAS PAR PASSE ─────────────────────────────────
+ * Un seul post par journée, même si le worker redémarre, même si Mehdi
+ * appuie sur le bouton après coup. Il est posé AVANT la publication : une
+ * publication qui échoue ne doit pas pouvoir être retentée en boucle toutes
+ * les cinq minutes avec un commentaire à chaque fois.
  */
-async function publierUnCourt(env: Env, pool: AutoMatch[]): Promise<string | null> {
-  const depuis = new Date(Date.now() - 3 * 3600_000).toISOString()
+export async function publierJourneeResumes(env: Env, date: string, force: boolean): Promise<string | null> {
+  type Attente = {
+    video_id: string; kind: string; source: string; titre: string; match_id: string
+    publie_at: string; competition: string | null
+    equipe_dom: string | null; equipe_ext: string | null
+    score_dom: number | null; score_ext: number | null
+  }
+  // On regarde large : trente heures couvrent la journée en cours et la
+  // précédente, de sorte qu'une journée jamais publiée (worker tombé, studio
+  // en panne) ne reste pas orpheline.
+  const depuis = new Date(Date.now() - 30 * 3600_000).toISOString()
   const r = await fetch(
     `${env.SUPABASE_URL}/rest/v1/videos_matchs?publie_fb=eq.false&match_id=not.is.null`
-    + `&kind=in.(resume,resume_court)&publie_at=gte.${encodeURIComponent(depuis)}`
-    + `&select=video_id,source,kind,titre,match_id,competition,equipe_dom,equipe_ext,score_dom,score_ext`
-    + `&order=publie_at.asc&limit=5`,
+    + `&kind=in.(resume,resume_court,resume_long)&publie_at=gte.${encodeURIComponent(depuis)}`
+    + `&select=video_id,kind,source,titre,match_id,publie_at,competition,equipe_dom,equipe_ext,score_dom,score_ext`
+    + `&order=publie_at.asc&limit=200`,
     { headers: sbHeaders(env) },
   )
-  const attente = (await r.json().catch(() => [])) as Array<{
-    video_id: string; source: string; kind: string; titre: string; match_id: string
-    competition: string | null; equipe_dom: string | null; equipe_ext: string | null
-    score_dom: number | null; score_ext: number | null
-  }>
+  const attente = (await r.json().catch(() => [])) as Attente[]
   if (!attente.length) return null
 
+  // ── ON GROUPE PAR JOURNÉE UTC, ET ON TRAITE LA PLUS ANCIENNE ──────────
+  const parJour = new Map<string, Attente[]>()
   for (const x of attente) {
-    // Un match = un seul post. Si le court est déjà sorti sous une autre
-    // version (QUICK puis HIGHLIGHTS), on marque celle-ci comme traitée et
-    // on passe : elle rejoindra le post en commentaire si besoin.
-    const freres = await dejaLa(env, x.match_id)
-    if (freres.some((f) => f.publie_fb && (f.kind === 'resume' || f.kind === 'resume_court'))) {
-      await marquer(env, x.video_id, { publie_fb: true })
-      continue
+    const j = String(x.publie_at ?? '').slice(0, 10)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(j)) continue
+    const l = parJour.get(j); if (l) l.push(x); else parJour.set(j, [x])
+  }
+  const aujourdhui = new Date().toISOString().slice(0, 10)
+
+  for (const jour of [...parJour.keys()].sort()) {
+    const verrou = `fb:journee-resumes:${jour}`
+    if (await env.CACHE.get(verrou)) continue
+    const lignes = parJour.get(jour)!
+
+    // ── UN SEUL RÉSUMÉ PAR MATCH DANS LA LÉGENDE ──────────────────────
+    // La playlist du site montre tout — court, long, les deux. La légende,
+    // elle, liste des RENCONTRES : « Barcelona 2-1 Girona » deux fois de
+    // suite ferait croire à une erreur.
+    const parMatch = new Map<string, Attente>()
+    for (const x of lignes) {
+      const vu = parMatch.get(x.match_id)
+      // Le court l'emporte sur l'extended : c'est lui qui porte le score
+      // relevé dans le titre, et il est sorti pour tout le monde.
+      if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(x.match_id, x)
     }
-    const s = SOURCES.find((o) => o.cle === x.source)
-    if (!s) { await marquer(env, x.video_id, { publie_fb: true }); continue }
-    const m = pool.find((o) => o.id === x.match_id) ?? null
-    const dom = x.equipe_dom ?? m?.home ?? ''
-    const ext = x.equipe_ext ?? m?.away ?? ''
-    const sd = x.score_dom ?? (m ? Number(m.homeScore) : null)
-    const se = x.score_ext ?? (m ? Number(m.awayScore) : null)
-    // ── UN POST DE LIEN, PAS UNE PHOTO (17/10/2026) ──────────────────
-    // L'image est rendue AVANT de publier, pour deux raisons : elle entre
-    // dans le cache KV, et c'est elle que Facebook trouvera quand il ira
-    // lire la page une seconde plus tard. Rendue après, l'aperçu serait
-    // capturé sans image et le post resterait nu — le cache de Facebook
-    // est tenace.
-    const lien = lienPartage(x.video_id)
-    const og = await ogDeVideo(env, x, m)
-    const p = await fbLinkPost(env, {
-      message: captionResume({
-        dom, ext, scoreDom: sd, scoreExt: se,
-        competitionAr: leagueAr(m?.league ?? s.competition), lien,
+    const matchs = [...parMatch.values()]
+
+    // ── LA JOURNÉE EST-ELLE BOUCLÉE ? ─────────────────────────────────
+    let raison = force ? 'journée close' : ''
+    if (!raison) {
+      if (jour < aujourdhui) {
+        // Une journée passée est finie par construction : on ne l'attend
+        // plus, quoi qu'il manque.
+        raison = 'journée écoulée'
+      } else {
+        const pool = await bigMatchesToday(env, jour.replace(/-/g, '')).catch(() => [] as AutoMatch[])
+        const nos = new Set(SOURCES.map((o) => o.slug))
+        const suivis = pool.filter((m) => nos.has(m.slug))
+        const enCours = suivis.filter((m) => !m.completed)
+        const couverts = new Set(matchs.map((m) => m.match_id))
+        const manquants = suivis.filter((m) => m.completed && !couverts.has(m.id))
+        // `suivis.length === 0` : ESPN n'a rien rendu (proxy en panne) ou
+        // aucun de nos championnats ne jouait. Dans les deux cas on ne sait
+        // PAS que la journée est complète — on attend la passe de 23 h 50
+        // plutôt que de l'affirmer. C'est la même règle que « donnée
+        // absente n'est pas échec de chargement ».
+        if (suivis.length && !enCours.length && !manquants.length) raison = 'journée complète'
+        else continue
+      }
+    }
+
+    await env.CACHE.put(verrou, '1', { expirationTtl: 4 * 86400 })
+
+    // ── L'IMAGE : LA DATE ET LES ÉCUSSONS DES CHAMPIONNATS DU JOUR ─────
+    // Mehdi : « l'image qu'on publiera pour highlights sera une image
+    // unique, la seule chose qui change dessus d'un post à l'autre c'est
+    // la date et les logos de championnats qui ont joué ce jour ».
+    const vues = new Set<string>()
+    const competitions: Array<{ logo: string; label: string }> = []
+    for (const m of matchs) {
+      const nom = m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''
+      if (!nom || vues.has(nom)) continue
+      vues.add(nom)
+      const logo = logoCompetition(nom)
+      // PAS D'ÉCUSSON PAR DÉFAUT : une compétition sans logo connu ne
+      // figure pas sur l'image. Trois reels sont déjà sortis estampillés
+      // Champions League à cause d'un repli.
+      if (logo) competitions.push({ logo, label: leagueAr(nom) })
+    }
+
+    let image = ''
+    try {
+      image = await renderImage(env, 'resumes-du-jour', {
+        lang: 'ar',
+        titre: 'ملخصات اليوم',
+        date: labelAr(jour),
+        competitions,
+        accroche: 'كل ملخصات المباريات في مكان واحد',
+      })
+    } catch (e) {
+      await log(env, date, 'yt-journee', false, `rendu échoué (${jour}): ${String(e).slice(0, 180)}`)
+      return `journée ${jour}: rendu échoué`
+    }
+
+    // ── LE LIEN DE LA JOURNÉE PART EN COMMENTAIRE, PAS EN DESCRIPTION ──
+    const lien = `${SITE_PUBLIC}/resumes/${jour}`
+    const p = await fbPost(env, {
+      message: captionJourneeResumes({
+        dateAr: labelAr(jour),
+        matchs: matchs.map((m) => ({
+          dom: m.equipe_dom ?? '', ext: m.equipe_ext ?? '',
+          scoreDom: m.score_dom, scoreExt: m.score_ext,
+          competitionAr: leagueAr(m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''),
+        })),
       }),
-      link: lien, image_url: og ?? undefined, title: x.titre.slice(0, 100),
-      comment: `▶️ ${lienYt(x.video_id)}`,
+      // Make ne lit `link` que pour son propre module ; rien n'en arrive
+      // dans la description.
+      link: lien,
+      image_url: image,
+      title: `ملخصات اليوم — ${jour}`,
+      comment: `🎬 ${lien}`,
     })
-    await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })
-    return `${x.source}: ${p.ok ? 'posté' : 'échec'} ${dom}-${ext}`
+
+    // Tout ce que la journée contenait est marqué, y compris les extendeds
+    // qui n'apparaissent pas dans la légende : ils sont dans la playlist,
+    // et ils ne doivent pas déclencher un second post demain.
+    for (const x of lignes) await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })
+
+    const note = `journée ${jour} (${raison}) : ${p.ok ? 'postée' : 'échec'} — ${matchs.length} matchs, ${competitions.length} écussons${p.note ? ` · ${p.note}` : ''}`
+    await log(env, date, 'yt-journee', p.ok, note.slice(0, 600))
+    return note
   }
   return null
-}
-
-/**
- * LA PASSE DE FIN DE JOURNÉE — les EXTENDED.
- *
- * Ligue des champions : tous. Ailleurs : seulement le match le plus vu, et
- * les autres extendeds rejoignent leur propre post en commentaire — un
- * match reste un seul post, c'est la règle posée le 17/10.
- *
- * « Le plus vu » se mesure sur YouTube, sur la vidéo courte du match : elle
- * est sortie en même temps pour tout le monde, donc comparable. Une unité
- * de quota pour cinquante vidéos.
- */
-export async function extendedDuJour(env: Env, date: string): Promise<string> {
-  const cle = (env as unknown as { YOUTUBE_API_KEY?: string }).YOUTUBE_API_KEY
-  if (!cle) return 'pas de clé YouTube'
-  const depuis = new Date(Date.now() - 20 * 3600_000).toISOString()
-  const r = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/videos_matchs?publie_at=gte.${encodeURIComponent(depuis)}&select=video_id,source,kind,titre,match_id,competition,equipe_dom,equipe_ext,score_dom,score_ext,publie_fb,fb_post_id&order=publie_at.desc&limit=200`,
-    { headers: sbHeaders(env) },
-  )
-  const rows = (await r.json().catch(() => [])) as Array<{
-    video_id: string; source: string; kind: string; titre: string; match_id: string | null
-    competition: string | null; equipe_dom: string | null; equipe_ext: string | null
-    score_dom: number | null; score_ext: number | null; publie_fb: boolean; fb_post_id: string | null
-  }>
-
-  const notes: string[] = []
-  for (const s of SOURCES) {
-    const longs = rows.filter((x) => x.source === s.cle && x.kind === 'resume_long' && !x.publie_fb && x.match_id)
-    if (!longs.length) continue
-
-    let aPublier = longs
-    if (!s.extendedPourTous) {
-      // Les vues de la vidéo COURTE de chaque match : c'est elle qui mesure
-      // l'intérêt, pas l'extended que personne n'a encore vu.
-      const courts = rows.filter((x) => x.source === s.cle && (x.kind === 'resume' || x.kind === 'resume_court') && x.match_id)
-      const ids = courts.map((x) => x.video_id).slice(0, 50)
-      const vues = new Map<string, number>()
-      if (ids.length) {
-        const st = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=statistics&id=${ids.join(',')}&key=${cle}`, { signal: AbortSignal.timeout(20_000) })
-        const sj = await st.json().catch(() => ({})) as { items?: Array<{ id?: string; statistics?: { viewCount?: string } }> }
-        for (const it of sj.items ?? []) {
-          const court = courts.find((x) => x.video_id === it.id)
-          if (court?.match_id) vues.set(court.match_id, Number(it.statistics?.viewCount ?? 0))
-        }
-      }
-      const meilleur = [...longs].sort((a, b) => (vues.get(b.match_id!) ?? 0) - (vues.get(a.match_id!) ?? 0))[0]
-      aPublier = meilleur ? [meilleur] : []
-      // Les autres rejoignent leur post en commentaire.
-      for (const x of longs) {
-        if (meilleur && x.video_id === meilleur.video_id) continue
-        const freres = rows.filter((y) => y.match_id === x.match_id && y.fb_post_id)
-        const post = freres[0]?.fb_post_id
-        if (post) {
-          await fbComment(env, post, `🎬 Résumé long : ${lienYt(x.video_id)}`)
-          notes.push(`${s.cle}: extended en commentaire (${x.equipe_dom}-${x.equipe_ext})`)
-        }
-        await marquer(env, x.video_id, { publie_fb: true })
-      }
-    }
-
-    for (const x of aPublier) {
-      const lien = lienPartage(x.video_id)
-      const og = await ogDeVideo(env, x)
-      const p = await fbLinkPost(env, {
-        message: captionResume({
-          dom: x.equipe_dom ?? '', ext: x.equipe_ext ?? '',
-          scoreDom: x.score_dom, scoreExt: x.score_ext,
-          competitionAr: leagueAr(s.competition), lien,
-        }),
-        link: lien, image_url: og ?? undefined, title: x.titre.slice(0, 100),
-        comment: `▶️ ${lienYt(x.video_id)}`,
-      })
-      await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })
-      notes.push(`${s.cle}: extended ${p.ok ? 'posté' : 'échec'} (${x.equipe_dom}-${x.equipe_ext})`)
-    }
-  }
-
-  const note = notes.join(' | ') || 'aucun extended à publier'
-  await log(env, date, 'yt-extended', true, note.slice(0, 700))
-  return note
 }
 
 async function marquer(env: Env, videoId: string, champs: Record<string, unknown>): Promise<void> {
@@ -595,23 +668,15 @@ async function playlistDeLaJournee(env: Env, s: Source): Promise<string | null> 
 }
 
 /**
- * Publie D'UN COUP les résumés en attente — ce que la passe automatique
- * fait un par un. Sert quand une soirée entière est déjà jouée et que
- * Mehdi veut tout sortir sans attendre une heure de passes.
+ * FORCE LE POST DE LA JOURNÉE, sans attendre qu'elle se boucle.
+ *
+ * Sert deux cas : la passe de 23 h 50, quand un résumé n'est jamais venu
+ * et retiendrait le post indéfiniment ; et le bouton de l'admin, quand
+ * Mehdi veut sortir la journée tout de suite. Le verrou par date tient
+ * dans les deux cas — appuyer deux fois ne republie rien.
  */
-export async function publierEnAttente(env: Env, date: string, combien: number): Promise<string> {
-  const pool = await bigMatchesToday(env).catch(() => [] as AutoMatch[])
-  const faits: string[] = []
-  for (let i = 0; i < Math.min(12, Math.max(1, combien)); i++) {
-    const r = await publierUnCourt(env, pool)
-    if (!r) break
-    faits.push(r)
-    // PAS DE PAUSE ENTRE DEUX POSTS. J'en avais mis de vingt secondes pour
-    // éviter la rafale : le worker a dépassé son temps alloué et la réponse
-    // est revenue vide (17/10/2026). Un worker n'attend pas — la cadence se
-    // tient par la passe de cinq minutes, pas par un sommeil.
-  }
-  const note = faits.length ? faits.join(' | ') : 'rien en attente'
+export async function publierEnAttente(env: Env, date: string): Promise<string> {
+  const note = (await publierJourneeResumes(env, date, true)) ?? 'aucune journée en attente'
   await log(env, date, 'yt-publier', true, note.slice(0, 600))
   return note
 }

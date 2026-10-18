@@ -322,14 +322,26 @@ async function hook(url: string | undefined, payload: unknown): Promise<{ ok: bo
  * (`/{page}/photos` → post_id) so the link can be commented right away
  * (Mehdi, 2026-09-07: "automatise les commentaires sur tous les posts")
  * — and Make's operations are no longer consumed. Make stays as fallback.
+ *
+ * ── `link` N'EST PLUS ENVOYÉ À MAKE (18/10/2026) ──────────────────────────
+ * Mehdi : « tous les posts images vont avec un lien directement dans la
+ * description, et Facebook pénalise pour ça — ils n'aiment pas qu'on quitte
+ * la page ». C'était LA source : le scénario Make est un « Create a Post »
+ * dont le champ Link était alimenté par ce `link`, et Facebook le posait
+ * dans la description. Le paramètre reste accepté — une quinzaine
+ * d'appelants le passent, et il sert encore à fabriquer le commentaire —
+ * mais il ne part plus dans la charge utile. La voie Graph, elle, n'a
+ * jamais envoyé que `message` + `attached_media`.
+ *
+ * Le lien va EN COMMENTAIRE, et nulle part ailleurs : c'est `comment`.
  */
-export async function fbPost(env: Env, p: { message: string; link: string; image_url: string; title: string; comment?: string }): Promise<{ ok: boolean; status?: number; id?: string; note?: string }> {
+export async function fbPost(env: Env, p: { message: string; link?: string; image_url: string; title: string; comment?: string }): Promise<{ ok: boolean; status?: number; id?: string; note?: string }> {
   p = { ...p, message: await playbookGate(env, 'post', p.title, p.message) }   // playbook (2026-09-18): ≤ 5 hashtags, CTA — warnings in the log
   // Mehdi, 2026-09-08: photo posts go through MAKE (that rendering is the
   // one the mobile app shows reliably); the worker then finds the new post
   // in the Page feed and comments the link. Graph API only as fallback.
   if (env.MAKE_FB_WEBHOOK_URL) {
-    const r = await hook(env.MAKE_FB_WEBHOOK_URL, { kind: 'post', message: p.message, link: p.link, image_url: p.image_url, title: p.title })
+    const r = await hook(env.MAKE_FB_WEBHOOK_URL, { kind: 'post', message: p.message, image_url: p.image_url, title: p.title })
     if (r.ok) {
       if (!p.comment || !env.FB_PAGE_TOKEN) return { ok: true, status: r.status, note: 'make post' }
       const id = await findRecentPost(env, p.message, 6)
@@ -357,7 +369,19 @@ export async function fbPost(env: Env, p: { message: string; link: string; image
 }
 
 /**
- * POST DE LIEN — celui qui ramène du trafic.
+ * POST DE LIEN — HORS SERVICE DEPUIS LE 18/10/2026.
+ *
+ * Plus aucun appelant, et c'est volontaire : Mehdi, 18/10/2026 — « plus
+ * aucun lien en description pour aucun type de format ». Un post de lien
+ * EST un lien en description ; la règle le met donc au placard entier.
+ * Buts et résumés sont repassés en post photo, lien en premier commentaire.
+ *
+ * On le garde parce qu'il porte deux choses qu'on ne veut pas réapprendre :
+ * la publication par le Graph (Make ne sait faire que des posts photo) et
+ * le `rafraichirOpenGraph` sans lequel Facebook ressort son aperçu en
+ * cache. À NE RALLUMER que si Mehdi lève la règle.
+ *
+ * Ce qui suit décrit pourquoi il avait été écrit, la veille :
  *
  * Un post PHOTO ouvre l'image en grand et s'arrête là ; un post de LIEN
  * affiche l'aperçu Open Graph de la page visée et le clic y atterrit. C'est
@@ -379,7 +403,9 @@ export async function fbLinkPost(env: Env, p: { message: string; link: string; t
   if (!env.FB_PAGE_TOKEN) {
     // `fbPost` passe lui-même la légende au playbook : on lui donne donc le
     // texte brut, sinon il serait filtré deux fois et journalisé deux fois.
-    const r = await fbPost(env, { message: p.message, link: p.link, image_url: p.image_url ?? `${SITE}/icon-512.png`, title: p.title, comment: p.comment })
+    // Le lien ne peut pas entrer dans un post photo : il part en
+    // commentaire, comme partout ailleurs depuis le 18/10.
+    const r = await fbPost(env, { message: p.message, image_url: p.image_url ?? `${SITE}/icon-512.png`, title: p.title, comment: p.comment ?? `🔗 ${p.link}` })
     return { ok: r.ok, id: r.id, note: `pas de jeton de page → repli post photo (${r.note ?? ''})` }
   }
   const message = await playbookGate(env, 'post', p.title, p.message)
@@ -479,7 +505,7 @@ export async function processRepublishQueue(env: Env, date: string, label: strin
       let card: string | null = null
       try { card = await renderImage(env, 'article-post', { title: row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE }) } catch { /* raw image */ }
       const image = card ?? (row.image_url ? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url)}` : `${SITE}/icon-512.png`)
-      r = await fbPost(env, { message: `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article on pressing90.live (link in the comments)`, link, image_url: image, title: row.title, comment: `📰 Read the full article: ${link}` })
+      r = await fbPost(env, { message: `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article — link in the comments 👇`, link, image_url: image, title: row.title, comment: `📰 Read the full article: ${link}` })
     }
     if (r.ok) {
       const { token } = await pageAuth(env)
@@ -1051,7 +1077,7 @@ function matchdayMessageAr(pool: AutoMatch[], label: string): string {
     lines.push(`🕒 ${localTime(m.kickoff)} · ${m.home} 🆚 ${m.away}`)
   }
   if (pool.length > 12) lines.push(`…و${pool.length - 12} مباريات أخرى`)
-  lines.push('', '⏰ بتوقيت المغرب', predictionAr(pool), '👉 النتائج المباشرة والتشكيلات على pressing90.live (الرابط في التعليقات)', '', `⚽ Today's matches — ${label}`, '', `${AR_TAGS} #مباريات_اليوم #football`)
+  lines.push('', '⏰ بتوقيت المغرب', predictionAr(pool), '👉 النتائج المباشرة والتشكيلات — الرابط في التعليقات 👇', '', `⚽ Today's matches — ${label}`, '', `${AR_TAGS} #مباريات_اليوم #football`)
   return lines.join('\n')
 }
 function matchdayScriptAr(pool: AutoMatch[]): string {
@@ -1062,11 +1088,11 @@ function matchdayScriptAr(pool: AutoMatch[]): string {
 }
 function reelCaptionAr(pool: AutoMatch[], label: string): string {
   const top = pool.slice(0, 5).map((m) => `${m.home} 🆚 ${m.away}`).join(' · ')
-  return `⚽ مباريات اليوم — ${labelAr()}\n${barcaDayLine(pool) ? barcaDayLine(pool) + '\n' : ''}${top}\n\n${predictionAr(pool)}\n👉 النتائج المباشرة على pressing90.live (الرابط في التعليقات)\n\n⚽ Today's matches — ${label}\n\n${AR_TAGS} #مباريات_اليوم #football`
+  return `⚽ مباريات اليوم — ${labelAr()}\n${barcaDayLine(pool) ? barcaDayLine(pool) + '\n' : ''}${top}\n\n${predictionAr(pool)}\n👉 النتائج المباشرة — الرابط في التعليقات 👇\n\n⚽ Today's matches — ${label}\n\n${AR_TAGS} #مباريات_اليوم #football`
 }
 function ftMessageAr(m: AutoMatch): string {
   const pens = m.homePens && m.awayPens ? ` (${m.homePens}–${m.awayPens} بركلات الترجيح)` : ''
-  return `⏱ نهاية المباراة\n\n${m.home} ${m.homeScore}–${m.awayScore} ${m.away}${pens}\n🏆 ${leagueAr(m.league)}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل نتائج اليوم على pressing90.live (الرابط في التعليقات)\n\n⏱ FULL TIME · ${m.home} ${m.homeScore}–${m.awayScore} ${m.away}\n\n${AR_TAGS} #نهاية_المباراة #football`
+  return `⏱ نهاية المباراة\n\n${m.home} ${m.homeScore}–${m.awayScore} ${m.away}${pens}\n🏆 ${leagueAr(m.league)}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل نتائج اليوم — الرابط في التعليقات 👇\n\n⏱ FULL TIME · ${m.home} ${m.homeScore}–${m.awayScore} ${m.away}\n\n${AR_TAGS} #نهاية_المباراة #football`
 }
 /** Arabic voice-over: full tashkeel first, then the Arabic narrator (Jamal, free) or Fahad (ElevenLabs). */
 async function arabicVoice(env: Env, text: string, key: string): Promise<string | undefined> {
@@ -1081,7 +1107,7 @@ function matchdayMessage(pool: AutoMatch[], label: string): string {
     lines.push(`🕒 ${localTime(m.kickoff)} · ${m.home} vs ${m.away}`)
   }
   if (pool.length > 12) lines.push(`…and ${pool.length - 12} more`)
-  lines.push('', '⏰ Morocco time', '👉 Live scores, odds & line-ups on pressing90.live (link in the comments)', '', '#football #livescores #Pressing90')
+  lines.push('', '⏰ Morocco time', '👉 Live scores, odds & line-ups — link in the comments 👇', '', '#football #livescores #Pressing90')
   return lines.join('\n')
 }
 function matchdayScript(pool: AutoMatch[], label: string): string {
@@ -1092,11 +1118,11 @@ function matchdayScript(pool: AutoMatch[], label: string): string {
 }
 function reelCaption(pool: AutoMatch[], label: string): string {
   const top = pool.slice(0, 5).map((m) => `${m.home} vs ${m.away}`).join(' · ')
-  return `⚽ Today's matches — ${label}\n${top}\n\n👉 Live scores on pressing90.live (link in bio)\n\n#football #livescores #matchday #Pressing90 #soccer`
+  return `⚽ Today's matches — ${label}\n${top}\n\n👉 Live scores — link in the comments 👇\n\n#football #livescores #matchday #Pressing90 #soccer`
 }
 function ftMessage(m: AutoMatch): string {
   const pens = m.homePens && m.awayPens ? ` (${m.homePens}–${m.awayPens} on penalties)` : ''
-  return `⏱ FULL TIME: ${m.home} ${m.homeScore}–${m.awayScore} ${m.away}${pens}\n🏆 ${m.league}\n\n👉 All today's results on pressing90.live (link in the comments)\n\n#football #fulltime #Pressing90`
+  return `⏱ FULL TIME: ${m.home} ${m.homeScore}–${m.awayScore} ${m.away}${pens}\n🏆 ${m.league}\n\n👉 All today's results — link in the comments 👇\n\n#football #fulltime #Pressing90`
 }
 function ftStatus(m: AutoMatch): 'FT' | 'AET' | 'PEN' {
   if (/PEN/i.test(m.statusName)) return 'PEN'
@@ -1215,7 +1241,7 @@ function articlesReelScript(list: QueuedArticle[]): string {
 }
 function articlesReelCaption(list: QueuedArticle[]): string {
   const lines = list.map((x) => `📰 ${x.title}`)
-  return `${lines.join('\n')}\n\n👉 Full stories on pressing90.live (link in bio)\n\n#football #news #Pressing90 #soccer`
+  return `${lines.join('\n')}\n\n👉 Full stories — link in the comments 👇\n\n#football #news #Pressing90 #soccer`
 }
 export async function enqueueArticleForReel(env: Env, date: string, art: QueuedArticle): Promise<void> {
   const raw = await env.CACHE.get('auto:reelqueue')
@@ -1840,7 +1866,7 @@ function ftGroupMessageAr(list: FtPending[], label: string): string {
   for (const m of list) { const k = leagueAr(m.league); byLeague.set(k, [...(byLeague.get(k) ?? []), m]) }
   const lines: string[] = [`⏱ نتائج المباريات — ${label}`, '']
   for (const [lg, ms] of byLeague) { lines.push(`🏆 ${lg}`); for (const m of ms) lines.push(`${m.home} ${m.homeScore}–${m.awayScore} ${m.away}${m.homePens && m.awayPens ? ` (${m.homePens}–${m.awayPens} بركلات الترجيح)` : ''}`); lines.push('') }
-  lines.push('أي نتيجة فاجأتك أكثر؟ 👇', '👉 كل النتائج والتفاصيل على pressing90.live (الرابط في التعليقات)', '', '#كرة_القدم #نتائج #Pressing90')
+  lines.push('أي نتيجة فاجأتك أكثر؟ 👇', '👉 كل النتائج والتفاصيل — الرابط في التعليقات 👇', '', '#كرة_القدم #نتائج #Pressing90')
   return lines.join('\n')
 }
 /**
@@ -2041,8 +2067,8 @@ export async function maybeAutoPublishArticle(env: Env, articleId: string): Prom
   try { card = await renderImage(env, 'article-post', { title: ar ? arCols.title_ar : row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE, lang: ar ? 'ar' : 'en' }) } catch (e) { await log(env, date, 'article-card', false, String(e)) }
   const image = card ?? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url!)}`
   const message = ar
-    ? `${arCols.title_ar}${arCols.excerpt_ar ? '\n\n' + arCols.excerpt_ar : ''}\n\nما رأيك؟ 👇\n👉 المقال كاملاً على pressing90.live (الرابط في التعليقات)\n\n${row.title}\n\n#كرة_القدم #أخبار #Pressing90`
-    : `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article on pressing90.live (link in the comments)`
+    ? `${arCols.title_ar}${arCols.excerpt_ar ? '\n\n' + arCols.excerpt_ar : ''}\n\nما رأيك؟ 👇\n👉 المقال كاملاً — الرابط في التعليقات 👇\n\n${row.title}\n\n#كرة_القدم #أخبار #Pressing90`
+    : `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article — link in the comments 👇`
   const p = await fbPost(env, { message, link, image_url: image, title: ar ? arCols.title_ar! : row.title, comment: ar ? `📰 اقرأ المقال كاملاً: ${link}` : `📰 Read the full article: ${link}` })
   if (p.ok) await bump(env, date, 'post')
   await log(env, date, 'article-post', p.ok, p.ok ? `${row.slug} · ${p.note ?? ''} · ${image}` : `${p.note ?? p.status ?? 'error'}`)
@@ -2161,7 +2187,7 @@ async function queueGoalReel(env: Env, date: string, m: AutoMatch, g: GoalInfo, 
   const line = `⚽ GOAL! ${g.scorer || (g.side === 'home' ? m.home : m.away)}${g.minute ? ` ${g.minute}` : ''} — ${m.home} ${m.homeScore}-${m.awayScore} ${m.away}`
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({
     kind: 'reel', label: 'goal-reel', date, title: line.slice(0, 100),
-    description: `⚽ هدف! ${g.scorer || (g.side === 'home' ? m.home : m.away)}${g.minute ? ` (${g.minute})` : ''} — ${m.home} ${m.homeScore}-${m.awayScore} ${m.away}\n🏆 ${leagueAr(m.league)}\n\nهدف عالمي أم عادي؟ 👇\n👉 النتائج المباشرة على pressing90.live (الرابط في التعليقات)\n\n${line}\n\n#كرة_القدم #هدف #Pressing90 #football`,
+    description: `⚽ هدف! ${g.scorer || (g.side === 'home' ? m.home : m.away)}${g.minute ? ` (${g.minute})` : ''} — ${m.home} ${m.homeScore}-${m.awayScore} ${m.away}\n🏆 ${leagueAr(m.league)}\n\nهدف عالمي أم عادي؟ 👇\n👉 النتائج المباشرة — الرابط في التعليقات 👇\n\n${line}\n\n#كرة_القدم #هدف #Pressing90 #football`,
     comment: `⚽ تابع المباراة مباشرة: ${SITE}/today?lang=ar&ref=fb-reel`,
   }), { expirationTtl: 6 * 3600 })
   // Barça goal (Mehdi, 2026-09-14): special card on a confetti video with the stadium roar — only when Barça scores.
@@ -2264,8 +2290,8 @@ async function queueBarcaFtPoster(env: Env, date: string, m: AutoMatch, preview 
   if (preview) return img
   const sc = scorersBySide(m, sum.goals)
   const line = `${m.home} ${m.homeScore}–${m.awayScore} ${m.away}`
-  const message = `⏱ نهاية المباراة: ${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل الإحصائيات على pressing90.live (الرابط في التعليقات)\n\n#برشلونة #Barça ${AR_TAGS}`
-  const r = await fbPost(env, { message, link: `${SITE}/today?lang=ar&ref=fb`, image_url: img, title: `FT: ${line}`.slice(0, 100), comment: '⏱ كل النتائج والتفاصيل على pressing90.live' })
+  const message = `⏱ نهاية المباراة: ${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل الإحصائيات — الرابط في التعليقات 👇\n\n#برشلونة #Barça ${AR_TAGS}`
+  const r = await fbPost(env, { message, link: `${SITE}/today?lang=ar&ref=fb`, image_url: img, title: `FT: ${line}`.slice(0, 100), comment: `⏱ كل النتائج والتفاصيل: ${SITE}/today?lang=ar&ref=fb` })
   if (r.ok) await bump(env, date, 'ft')
   await log(env, date, 'barca-ft', r.ok, r.ok ? `${line} · poster · ${r.note ?? ''} · ${img}` : `${r.note ?? r.status ?? 'error'}`)
   return img
@@ -2290,7 +2316,7 @@ export async function runBarcaLineups(env: Env, s: AutomationSettings, date: str
     if ((await fbPostsToday(env, date)) >= s.maxPostsPerDay) return `daily budget ${s.maxPostsPerDay} posts reached`
     await env.CACHE.put(key, '1', { expirationTtl: 2 * 86400 })
     const img = await renderImage(env, 'lineup-post', lineupData(m, side, xi, predicted, venue))
-    const r = await fbPost(env, { message: lineupMessage(m, side, xi, predicted), link: `${SITE}/today?lang=ar&ref=fb`, image_url: img, title: `${predicted ? 'Predicted' : 'Confirmed'} XI: ${m.home} v ${m.away}`.slice(0, 100), comment: '📋 التشكيلات والنتيجة مباشرة على pressing90.live' })
+    const r = await fbPost(env, { message: lineupMessage(m, side, xi, predicted), link: `${SITE}/today?lang=ar&ref=fb`, image_url: img, title: `${predicted ? 'Predicted' : 'Confirmed'} XI: ${m.home} v ${m.away}`.slice(0, 100), comment: `📋 التشكيلات والنتيجة مباشرة: ${SITE}/today?lang=ar&ref=fb` })
     if (r.ok) await bump(env, date, 'post')
     await log(env, date, 'barca-lineup', r.ok, r.ok ? `${predicted ? 'predicted' : 'confirmed'} XI (${xi.formation}) · ${r.note ?? ''} · ${img}` : `${r.note ?? r.status ?? 'error'}`)
     return `${predicted ? 'predicted' : 'confirmed'} XI posted`
@@ -2330,7 +2356,7 @@ async function queueBarcaFtReel(env: Env, date: string, m: AutoMatch, preview = 
   const data = { cover, special: barcaWon ? 'barca' : undefined, sfx: false, home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo, homeScore: m.homeScore, awayScore: m.awayScore, league: m.league, scorer: sc.home || (goals.length ? '–' : 'No goals'), assist: sc.away || '', assistLabel: '', minute: 'FT', scoringSide: winner, title: 'نهاية المباراة', titleLang: 'ar', footer: 'Full time · pressing90.live' }
   const jobId = `barcaft-${date}-${Math.random().toString(36).slice(2, 7)}`
   const line = `${m.home} ${m.homeScore}–${m.awayScore} ${m.away}`
-  const description = `⏱ نهاية المباراة: ${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل الإحصائيات على pressing90.live (الرابط في التعليقات)\n\n⏱ FULL TIME · ${line}\n\n#برشلونة #Barça #FCBarcelona ${AR_TAGS} #نهاية_المباراة`
+  const description = `⏱ نهاية المباراة: ${line}\n🏆 ${leagueAr(m.league)}${sc.home ? `\n⚽ ${m.home}: ${sc.home}` : ''}${sc.away ? `\n⚽ ${m.away}: ${sc.away}` : ''}\n\nنتيجة منطقية أم مفاجأة؟ 👇\n👉 كل الإحصائيات — الرابط في التعليقات 👇\n\n⏱ FULL TIME · ${line}\n\n#برشلونة #Barça #FCBarcelona ${AR_TAGS} #نهاية_المباراة`
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify(preview ? { kind: 'preview', label: 'preview-barca-ft', date } : { kind: 'reel', label: 'barca-ft', date, title: `FT: ${line}`.slice(0, 100), description, comment: `⏱ كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb-reel` }), { expirationTtl: 6 * 3600 })
   await studio(env, '/render/reel', { type: 'goal', data, seconds: 10, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
   await log(env, date, preview ? 'preview-barca-ft' : 'barca-ft', true, `rendering ${line} (job ${jobId})${goals.length ? ` — ${goals.length} goals` : ''}`)
@@ -2443,7 +2469,7 @@ export async function runBarcaDigest(env: Env, s: AutomationSettings, date: stri
   try { voiceUrl = await arabicVoice(env, script, `voice-barca-${date}-${Math.random().toString(36).slice(2, 6)}.mp3`) } catch (e) { await log(env, date, 'barca-digest', false, `voice failed (${String(e).slice(0, 80)}) — reel without voice`) }
   const jobId = `barca-${date}-${Math.random().toString(36).slice(2, 7)}`
   const question = items.length >= 2 ? 'أي خبر يهمك أكثر: 1 أم 2؟ 👇' : 'ما رأيك؟ 👇'
-  const description = `🔵🔴 برشلونة اليوم — ${labelAr(date)}\n\n${items.map((a, i) => `${i + 1}. ${a.title}`).join('\n')}\n\n${question}\n👉 التفاصيل على pressing90.live (الرابط في التعليقات)\n\n#برشلونة #Barça #FCBarcelona ${AR_TAGS} #أخبار`
+  const description = `🔵🔴 برشلونة اليوم — ${labelAr(date)}\n\n${items.map((a, i) => `${i + 1}. ${a.title}`).join('\n')}\n\n${question}\n👉 التفاصيل — الرابط في التعليقات 👇\n\n#برشلونة #Barça #FCBarcelona ${AR_TAGS} #أخبار`
   await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify(preview ? { kind: 'preview', label: 'preview-barca', date } : { kind: 'reel', label: 'barca-digest', date, title: `برشلونة اليوم — ${labelAr(date)}`, description, comment: `📰 أخبار برشلونة كاملة: ${SITE}/news/${items[0].slug}?lang=ar&ref=fb-reel` }), { expirationTtl: 6 * 3600 })
   await studio(env, '/render/reel', { type: 'articles', data: { articles: items, heading: 'برشلونة اليوم', lang: 'ar' }, seconds: 10 * items.length, voiceUrl, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
   await log(env, date, preview ? 'preview-barca' : 'barca-digest', true, `rendering ${items.length} headlines${voiceUrl ? ' with Arabic voice' : ''} (job ${jobId}): ${items.map((a) => a.title).join(' · ').slice(0, 160)}`)
@@ -2470,7 +2496,7 @@ function resultsCaption(list: AutoMatch[], label: string, date: string, matchDat
   // Closed question on the two most spectacular scores (audit 2026-09-13).
   const fmt = (m: AutoMatch) => `${m.home} ${m.homeScore}–${m.awayScore} ${m.away}`
   const top = [...list].sort((a, b) => (Number(b.homeScore) + Number(b.awayScore)) - (Number(a.homeScore) + Number(a.awayScore))).slice(0, 2)
-  lines.push('', top.length === 2 ? `أكبر مفاجأة: ${fmt(top[0])} أم ${fmt(top[1])}؟ 👇` : 'نتيجة منطقية أم مفاجأة؟ 👇', `👉 الإحصائيات والترتيب على pressing90.live (الرابط في التعليقات)`, '', `⏱ Full-time results — ${label}`, '', `${AR_TAGS} #نتائج #football`)
+  lines.push('', top.length === 2 ? `أكبر مفاجأة: ${fmt(top[0])} أم ${fmt(top[1])}؟ 👇` : 'نتيجة منطقية أم مفاجأة؟ 👇', `👉 الإحصائيات والترتيب — الرابط في التعليقات 👇`, '', `⏱ Full-time results — ${label}`, '', `${AR_TAGS} #نتائج #football`)
   return lines.join('\n')
 }
 async function queueResultsReel(env: Env, date: string, label: string, finished: AutoMatch[], jobLabel = 'results-reel', matchDate = date): Promise<string> {
@@ -3166,15 +3192,18 @@ export async function runAutomationTick(env: Env): Promise<void> {
     try { const v = await import('./videos'); await v.scanResumes(env, date) }
     catch (e) { await log(env, date, 'yt-scan', false, String(e).slice(0, 200)) }
   }
-  // Fin de journée : 23 h 50 locales, quand la dernière rencontre
-  // européenne est finie depuis longtemps et que les vues ont eu le temps
-  // de se faire.
+  // ── LE FILET DE LA JOURNÉE : 23 h 50 LOCALES ──────────────────────────
+  // La passe de cinq minutes publie la journée dès qu'elle se boucle
+  // d'elle-même — plus aucune rencontre en cours, et un résumé pour chacune
+  // de celles qui sont terminées. Il arrive qu'elle ne se boucle jamais :
+  // un diffuseur qui ne sort pas son résumé retiendrait le post pour
+  // toujours. À 23 h 50 la journée est finie, on publie ce qu'on a.
   if (s.resumesVideo !== false && hour === 23 && minute >= 50) {
-    const verrou = `auto:extended:${date}`
+    const verrou = `auto:journee-resumes:${date}`
     if (!(await env.CACHE.get(verrou))) {
       await env.CACHE.put(verrou, '1', { expirationTtl: 36 * 3600 })
-      try { const v = await import('./videos'); await v.extendedDuJour(env, date) }
-      catch (e) { await log(env, date, 'yt-extended', false, String(e).slice(0, 200)) }
+      try { const v = await import('./videos'); await v.publierJourneeResumes(env, date, true) }
+      catch (e) { await log(env, date, 'yt-journee', false, String(e).slice(0, 200)) }
     }
   }
   if (hour === 7 && minute >= 30 && minute <= 44) {
@@ -3833,8 +3862,9 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       return { ok: true, note: clips.map((c) => `${c.publie.slice(5, 16)} ${c.titre.replace(/\s*\|\s*/g, ' ~ ').slice(0, 110)}`).join(' @@ ') }
     }
     if (job === 'yt-publier') {
+      // Sort la journée tout de suite, sans attendre qu'elle se boucle.
       const v = await import('./videos')
-      return { ok: true, note: await v.publierEnAttente(env, date, Number((extra as { n?: number }).n ?? 3)) }
+      return { ok: true, note: await v.publierEnAttente(env, date) }
     }
     if (job === 'yt-rattacher') {
       // RATTRAPAGE : réessaie l'appariement des clips restés orphelins.
@@ -3848,9 +3878,12 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       const v = await import('./videos')
       return { ok: true, note: await v.scanResumes(env, date) }
     }
-    if (job === 'yt-extended') {
+    if (job === 'yt-journee' || job === 'yt-extended') {
+      // `yt-extended` reste accepté : c'était le nom du bouton avant le
+      // passage au post unique du 18/10, et il mène désormais au même
+      // endroit plutôt qu'à une erreur.
       const v = await import('./videos')
-      return { ok: true, note: await v.extendedDuJour(env, date) }
+      return { ok: true, note: await v.publierEnAttente(env, date) }
     }
     if (job === 'yt-playlist') {
       // Lire une PLAYLIST plutôt qu'une chaîne : beIN range la Ligue 1 dans
