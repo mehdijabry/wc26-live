@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Ecusson from './Ecusson'
 import { Link } from 'react-router-dom'
 import { api, eventTeams, liveClock, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
 import { Cotes1X2 } from './Cotes1X2'
@@ -306,11 +307,10 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
 function MobileSide({ n, logo }: { n: string; logo: string }) {
   return (
     <div className="sm:hidden flex flex-col items-center gap-1.5 w-[5.5rem] shrink-0 min-w-0">
-      <img
+      <Ecusson
         src={logo}
-        alt=""
+        repli={monogramBadge(n)}
         className="w-16 h-16 object-contain drop-shadow-[0_8px_20px_rgba(0,0,0,0.5)]"
-        onError={(e) => { e.currentTarget.src = monogramBadge(n) }}
       />
       <div className="w-full text-center text-[13px] font-display tracking-wide text-slate-900 truncate leading-tight">
         {n}
@@ -322,11 +322,10 @@ function MobileSide({ n, logo }: { n: string; logo: string }) {
 function TeamSide({ n, logo }: { n: string; logo: string }) {
   return (
     <div className="hidden sm:flex sm:flex-col items-center justify-center gap-3 sm:gap-4 text-center">
-      <img
+      <Ecusson
         src={logo}
-        alt=""
+        repli={monogramBadge(n)}
         className="w-14 h-14 sm:w-20 sm:h-20 object-contain drop-shadow-[0_10px_24px_rgba(0,0,0,0.45)] group-hover:scale-105 transition-transform"
-        onError={(e) => { e.currentTarget.src = monogramBadge(n) }}
       />
       <div>
         <div className="font-display text-xl sm:text-2xl tracking-wide text-slate-900">{n}</div>

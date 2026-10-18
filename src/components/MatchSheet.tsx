@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import FicheStade from './FicheStade'
 import { SectionFiche } from './SectionFiche'
+import Ecusson from './Ecusson'
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { monogramBadge, teamBadgeFallback } from '../lib/utils'
@@ -454,7 +455,7 @@ export function MatchSheet({
                     {rosters.map((r) => (
                       <div key={r.team?.id}>
                         <div className="text-[10px] uppercase tracking-widest font-mono text-slate-500 mb-2 flex items-center gap-2">
-                          {r.team?.logo && <img src={r.team.logo} alt="" className="w-4 h-4 object-contain" />}
+                          {r.team?.logo && <Ecusson src={r.team.logo} className="w-4 h-4 object-contain" />}
                           {r.team?.displayName}
                         </div>
                         <ul className="space-y-1">
@@ -530,7 +531,7 @@ function TeamColumn({ c, align }: { c: Competitor | undefined; align: 'left' | '
   return (
     <div className={'flex flex-col items-center gap-2 ' + (align === 'right' ? 'sm:items-end' : 'sm:items-start')}>
       {logo ? (
-        <img src={logo} alt="" className="w-14 h-14 sm:w-16 sm:h-16 object-contain" />
+        <Ecusson src={logo} className="w-14 h-14 sm:w-16 sm:h-16 object-contain" />
       ) : (
         <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-slate-100" />
       )}

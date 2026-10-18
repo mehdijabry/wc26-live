@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import Ecusson from './Ecusson'
 import {
   api,
   competitionSlugFromEvent,
@@ -173,7 +174,7 @@ function TeamLine({ logo, name, score, show }: { logo?: string; name: string; sc
   return (
     <div className="flex items-center gap-1.5">
       {logo ? (
-        <img src={logo} alt="" loading="lazy" className="w-4 h-4 object-contain shrink-0" onError={(e) => (e.currentTarget.style.display = 'none')} />
+        <Ecusson src={logo} className="w-4 h-4 object-contain shrink-0" />
       ) : (
         <span className="w-4 h-4 inline-flex items-center justify-center text-[10px]">⚽</span>
       )}

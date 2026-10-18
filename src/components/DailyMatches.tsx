@@ -1,4 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import Ecusson from './Ecusson'
 import { Icone } from './Icone'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { api, competitionLogo, eventTeams, liveClock, roundContext, statusLabel, ymdLocal, type DailyResponse, type EspnEvent } from '../lib/api'
@@ -756,14 +757,10 @@ function TeamRow({
   return (
     <div className="flex items-center gap-2.5">
       {logo ? (
-        <img
+        <Ecusson
           src={logo}
-          alt=""
-          loading="lazy"
+          repli={monogramBadge(teamName ?? comp.team?.abbreviation ?? '?')}
           className="w-5 h-5 object-contain"
-          // Broken crest URL → swap to the generated monogram instead of
-          // vanishing (data URIs can't themselves fail, no loop risk).
-          onError={(e) => { e.currentTarget.src = monogramBadge(teamName ?? comp.team?.abbreviation ?? '?') }}
         />
       ) : (
         <span className="w-5 h-5 inline-flex items-center justify-center text-xs">⚽</span>

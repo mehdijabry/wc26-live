@@ -141,6 +141,7 @@ const estLogo = (url: string) => /\.svg|logo|crest|badge|escudo|wappen|\u0634\u0
 type PageWiki = {
   index?: number
   title?: string
+  description?: string
   extract?: string
   thumbnail?: { source?: string }
   coordinates?: Array<{ lat?: number; lon?: number }>
@@ -164,38 +165,71 @@ type PageWiki = {
  * mêmes coordonnées servent ensuite à la météo, donc le filtre qui
  * garantit le bon article garantit aussi la bonne météo.
  */
-/** Les mots qui désignent un lieu de match, dans les langues qu'on sert. */
-const TITRE_DE_LIEU = /stadi|stade|estadio|arena|\bpark\b|\bfield\b|ground|\u0645\u0644\u0639\u0628/i
 /** Une page de saison ou une liste n'est jamais le stade qu'on cherche. */
 const PAS_UN_LIEU = /\b(?:19|20)\d{2}[–\-/]\d{2}\b|\bseason\b|saison|list of|liste de|\u0642\u0627\u0626\u0645\u0629/i
+/** Ce qu'une description de stade contient… */
+const DESC_STADE = /stadium|stade|stadio|stadion|estadio|arena|ground|\u0645\u0644\u0639\u0628/i
+/** …et ce qu'elle ne doit PAS contenir. */
+const DESC_HORS_SUJET = /cricket|rugby|baseball|basket|hockey|planned|projet|futur|station|m[ée]tro|\barea\b|borough|district|quartier|\bclub\b|footballeur|football player|joueur|\bgare\b/i
+/** Repli quand l'article n'a pas de description courte. */
+const TITRE_DE_LIEU = /stadi|stade|estadio|arena|\bpark\b|\bfield\b|ground|\u0645\u0644\u0639\u0628/i
 
-async function interrogerWiki(dom: string, nom: string): Promise<PageWiki | null> {
+async function pagesWiki(dom: string, requete: string): Promise<PageWiki[]> {
   const mot = MOT_STADE[dom] ?? MOT_STADE.en
   const url = `https://${dom}.wikipedia.org/w/api.php?action=query&generator=search`
-    + `&gsrsearch=${encodeURIComponent(`${mot} ${nom}`)}&gsrlimit=5`
-    + '&prop=pageimages%7Cextracts%7Ccoordinates&exintro=1&explaintext=1&exsentences=2'
+    + `&gsrsearch=${encodeURIComponent(`${mot} ${requete}`)}&gsrlimit=6`
+    + '&prop=description%7Cpageimages%7Cextracts%7Ccoordinates'
+    + '&exintro=1&explaintext=1&exsentences=2'
     + '&piprop=thumbnail&pithumbsize=640&format=json&origin=*'
   const r = await fetch(url, { signal: AbortSignal.timeout(9000) })
-  if (!r.ok) return null
+  if (!r.ok) return []
   const j = await r.json() as { query?: { pages?: Record<string, PageWiki> } }
-  const pages = Object.values(j.query?.pages ?? {})
+  return Object.values(j.query?.pages ?? {})
     .sort((a, b) => (a.index ?? 99) - (b.index ?? 99))
     .filter((p) => p.title && !PAS_UN_LIEU.test(p.title))
+}
 
-  // LES COORDONNÉES SONT UN INDICE, PAS UNE CONDITION. Première version :
-  // on exigeait des coordonnées, parce qu'une biographie n'en a pas. Mais
-  // « El Sadar Stadium » n'en publie pas non plus sur la Wikipédia
-  // ANGLAISE — son infobox n'alimente pas l'index géographique — et la
-  // fiche d'Osasuna - Racing est sortie avec un intitulé « VENUE » et rien
-  // dessous (Mehdi, 17/10/2026 : « c'est inacceptable »).
-  //
-  // Donc : d'abord celui qui porte des coordonnées, sinon le premier dont
-  // le TITRE nomme un lieu de match. Santiago Bernabéu l'homme n'a ni
-  // l'un ni l'autre et reste écarté ; le stade passe par l'une ou l'autre
-  // porte selon le wiki.
-  return pages.find((p) => p.coordinates?.length)
-    ?? pages.find((p) => TITRE_DE_LIEU.test(p.title as string))
-    ?? null
+/**
+ * LA DESCRIPTION COURTE TRANCHE, LE RESTE N'EST QUE DU REPLI.
+ *
+ * Deux impasses avant d'arriver ici, toutes deux vues en production :
+ *   · exiger des COORDONNÉES écartait « El Sadar Stadium », dont la
+ *     Wikipédia anglaise n'alimente pas l'index géographique ;
+ *   · noter les candidats sur un faisceau d'indices (coordonnées, mots du
+ *     titre, ville citée) faisait gagner la station de métro Santiago
+ *     Bernabéu, le quartier de San Siro et la gare d'Olympiastadion.
+ *
+ * Wikipédia publie pourtant la réponse en toutes lettres : `description`
+ * dit « Football stadium in Turin, Italy » pour l'Allianz Stadium de la
+ * Juve, « station du métro de Madrid » pour l'autre Bernabéu, « Cricket
+ * stadium in England » pour l'autre Old Trafford et « Planned football
+ * stadium » pour celui que United n'a pas encore bâti. On lit donc CE
+ * champ, et le reste ne sert que lorsqu'il est absent.
+ *
+ * DEUX PASSES, et l'ordre compte. Avec la ville d'abord : « Allianz
+ * Stadium » seul ramène celui de SYDNEY, qui porte le même nom (Mehdi,
+ * 17/10/2026 — la fiche Juventus - Lazio annonçait un stade de rugby
+ * australien). Sans la ville ensuite : « Santiago Bernabéu Madrid » fait
+ * remonter la station de métro, et seul « stade Santiago Bernabéu »
+ * trouve l'enceinte.
+ *
+ * Mesuré sur 24 cas — douze stades dans les deux langues — tous justes.
+ */
+const estUnStade = (p: PageWiki) =>
+  !!p.description && DESC_STADE.test(p.description) && !DESC_HORS_SUJET.test(p.description)
+
+async function interrogerWiki(dom: string, venue: string, ville?: string | null): Promise<PageWiki | null> {
+  const listes: PageWiki[][] = []
+  if (ville) listes.push(await pagesWiki(dom, `${venue} ${ville}`))
+  listes.push(await pagesWiki(dom, venue))
+  for (const l of listes) { const h = l.find(estUnStade); if (h) return h }
+  // Sans description courte : les coordonnées, puis un titre qui nomme un
+  // lieu de match. C'est moins sûr, mais c'est mieux que rien.
+  for (const l of listes) {
+    const h = l.find((p) => p.coordinates?.length) ?? l.find((p) => TITRE_DE_LIEU.test(p.title as string))
+    if (h) return h
+  }
+  return null
 }
 
 /**
@@ -216,7 +250,6 @@ function nettoyerNotice(t: string): string {
     .replace(/\s+([,;.])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim()
-  // Parenthèses orphelines, retirées de la fin vers le début.
   for (let garde = 0; garde < 4; garde++) {
     const o = (x.match(/\(/g) ?? []).length
     const f = (x.match(/\)/g) ?? []).length
@@ -228,20 +261,25 @@ function nettoyerNotice(t: string): string {
   return x
 }
 
-async function chercherStade(nom: string, lang: string): Promise<Stade | null> {
+/**
+ * Le stade complet : la bonne page, sa notice, sa photo, ses coordonnées.
+ *
+ * La NOTICE sort de la Wikipédia du lecteur ; la PHOTO peut venir de
+ * l'anglaise quand la locale n'en a pas ou qu'elle met un logo à la place
+ * (le Bernabéu, dont fr.wikipedia affiche l'écusson 2025 en SVG).
+ */
+async function chercherStade(nom: string, lang: string, ville?: string | null): Promise<Stade | null> {
   const dom = wikiDe(lang)
-  const p = await interrogerWiki(dom, nom)
+  const p = await interrogerWiki(dom, nom, ville)
   // Rien dans la langue du site : la Wikipédia anglaise couvre des stades
   // que les autres ignorent, et mieux vaut une notice en anglais que pas
   // de stade du tout.
-  const page = p ?? (dom === 'en' ? null : await interrogerWiki('en', nom).catch(() => null))
+  const page = p ?? (dom === 'en' ? null : await interrogerWiki('en', nom, ville).catch(() => null))
   if (!page?.title) return null
 
   let image = page.thumbnail?.source ?? null
-  // Pas de photo, ou un logo à la place : on ne garde que la PHOTO de la
-  // version anglaise, le texte reste dans la langue du lecteur.
   if (dom !== 'en' && (!image || estLogo(image))) {
-    const en = await interrogerWiki('en', nom).catch(() => null)
+    const en = await interrogerWiki('en', nom, ville).catch(() => null)
     const autre = en?.thumbnail?.source
     if (autre && !estLogo(autre)) image = autre
   }
@@ -303,19 +341,15 @@ export default function FicheStade({ titre, venue, ville, coupDEnvoi }: {
   const [stade, setStade] = useState<Stade | null | undefined>(undefined)
   const [meteo, setMeteo] = useState<Meteo | null>(null)
 
-  // LA VILLE NE VA PAS DANS LA RECHERCHE. « Santiago Bernabéu Madrid »
-  // fait remonter la station de métro du même nom (mesuré le 17/10) ;
-  // le nom du stade seul, préfixé du mot « stade », tombe juste. Elle
-  // reste affichée sous le nom, elle vient d'ESPN.
   const requete = venue ?? ''
 
   useEffect(() => {
     if (!requete) { setStade(null); return }
-    const cle = `${lang}:${requete}`
+    const cle = `${lang}:${requete}:${ville ?? ''}`
     if (cache.has(cle)) { setStade(cache.get(cle) ?? null); return }
     let vivant = true
     setStade(undefined)
-    void chercherStade(requete, lang)
+    void chercherStade(requete, lang, ville)
       .catch(() => null)
       .then((s) => {
         if (!vivant) return
@@ -323,7 +357,7 @@ export default function FicheStade({ titre, venue, ville, coupDEnvoi }: {
         setStade(s)
       })
     return () => { vivant = false }
-  }, [requete, lang])
+  }, [requete, ville, lang])
 
   useEffect(() => {
     setMeteo(null)

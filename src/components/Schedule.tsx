@@ -1,4 +1,5 @@
 import { motion } from 'framer-motion'
+import Ecusson from './Ecusson'
 import { useEffect, useMemo, useState } from 'react'
 import { userTimezone, cn, teamBadgeFallback } from '../lib/utils'
 import { SectionHeader } from './Groups'
@@ -182,7 +183,7 @@ function MatchRow({ ev }: { ev: EspnEvent }) {
           {(() => {
             const logo = teamBadgeFallback(home?.team?.logo, home?.team?.abbreviation, home?.team?.shortDisplayName ?? home?.team?.displayName)
             return logo ? (
-              <img src={logo} alt="" loading="lazy" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
+              <Ecusson src={logo} className="w-5 h-5 object-contain" />
             ) : null
           })()}
           {s.finished && <span className="font-display font-bold text-lg tabular-nums w-6">{home?.score ?? '0'}</span>}
@@ -198,7 +199,7 @@ function MatchRow({ ev }: { ev: EspnEvent }) {
           {(() => {
             const logo = teamBadgeFallback(away?.team?.logo, away?.team?.abbreviation, away?.team?.shortDisplayName ?? away?.team?.displayName)
             return logo ? (
-              <img src={logo} alt="" loading="lazy" className="w-5 h-5 object-contain" onError={(e) => (e.currentTarget.style.display = 'none')} />
+              <Ecusson src={logo} className="w-5 h-5 object-contain" />
             ) : null
           })()}
           <span className="truncate text-sm">{away?.team?.shortDisplayName ?? away?.team?.displayName ?? '—'}</span>
