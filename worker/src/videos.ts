@@ -484,11 +484,32 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     const l = parJour.get(j); if (l) l.push(x); else parJour.set(j, [x])
   }
   const aujourdhui = new Date().toISOString().slice(0, 10)
+  const notesPerimees: string[] = []
 
   for (const jour of [...parJour.keys()].sort()) {
     const verrou = `fb:journee-resumes:${jour}`
     if (await env.CACHE.get(verrou)) continue
     const lignes = parJour.get(jour)!
+
+    // ── UNE JOURNÉE PÉRIMÉE NE SE PUBLIE PLUS ─────────────────────────
+    // La file est triée du plus ancien au plus récent, et elle contenait
+    // au passage à ce fonctionnement tout l'arriéré de l'ancien régime —
+    // qui ne sortait qu'un résumé par passe et laissait donc des dizaines
+    // de lignes à `publie_fb = false`. Sans ce garde, la toute première
+    // passe publiait le récap de LA VEILLE avant celui du jour : un post
+    // périmé, en tête de page, à minuit.
+    //
+    // La limite : six heures après le filet de 23 h 50 de cette
+    // journée-là, soit ~05 h 50 le lendemain. Assez large pour rattraper
+    // un worker tombé une nuit, assez serré pour qu'aucun récap de
+    // l'avant-veille ne ressorte. Au-delà, les lignes sont marquées sans
+    // rien publier — sinon elles bloqueraient la file pour toujours.
+    const limite = Date.parse(`${jour}T22:50:00Z`) + 6 * 3600_000
+    if (Date.now() > limite) {
+      for (const x of lignes) await marquer(env, x.video_id, { publie_fb: true })
+      notesPerimees.push(`${jour} périmée (${lignes.length} classées sans post)`)
+      continue
+    }
 
     // ── UN SEUL RÉSUMÉ PAR MATCH DANS LA LÉGENDE ──────────────────────
     // La playlist du site montre tout — court, long, les deux. La légende,
@@ -584,8 +605,17 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     // et ils ne doivent pas déclencher un second post demain.
     for (const x of lignes) await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })
 
-    const note = `journée ${jour} (${raison}) : ${p.ok ? 'postée' : 'échec'} — ${matchs.length} matchs, ${competitions.length} écussons${p.note ? ` · ${p.note}` : ''}`
+    const note = [...notesPerimees,
+      `journée ${jour} (${raison}) : ${p.ok ? 'postée' : 'échec'} — ${matchs.length} matchs, ${competitions.length} écussons${p.note ? ` · ${p.note}` : ''}`,
+    ].join(' | ')
     await log(env, date, 'yt-journee', p.ok, note.slice(0, 600))
+    return note
+  }
+  // Rien n'a été publié, mais du ménage a pu être fait : il doit se lire
+  // dans le journal, sinon « aucune journée en attente » mentirait.
+  if (notesPerimees.length) {
+    const note = notesPerimees.join(' | ')
+    await log(env, date, 'yt-journee', true, note.slice(0, 600))
     return note
   }
   return null
