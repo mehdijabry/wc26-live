@@ -326,6 +326,16 @@ export default {
           titre: await vp.titreEditorial(v, lg),
           recit, source,
           lecteur: vp.lecteurDe(v),
+          // false = l'ayant droit refuse la lecture hors de YouTube. La
+          // page montre alors sa propre carte plutôt que le message
+          // d'erreur de YouTube (LaLiga, 18/10/2026).
+          embarquable: v.embarquable ?? null,
+          vignette: v.vignette ?? (v.source.startsWith('x')
+            ? null
+            : `https://i.ytimg.com/vi/${v.video_id}/maxresdefault.jpg`),
+          lienSource: v.source.startsWith('x')
+            ? `https://x.com/i/status/${v.video_id}`
+            : `https://www.youtube.com/watch?v=${v.video_id}`,
           // Le format du cadre : une valeur de départ ici, que la page
           // affine en mesurant l'affiche — les deux lecteurs recadrent,
           // donc un cadre faux rogne la vidéo.

@@ -39,6 +39,8 @@ export type LigneVideo = {
   titre: string
   /** Rangée en base quand elle ne se déduit pas de l'identifiant (X). */
   vignette?: string | null
+  /** false = l'ayant droit refuse la lecture hors de YouTube. null = inconnu. */
+  embarquable?: boolean | null
   description?: string | null
   publie_at?: string | null
   match_id?: string | null
@@ -205,7 +207,7 @@ export async function lireVideo(env: Env, id: string): Promise<LigneVideo | null
     // existait, elle était remplie, et personne ne la lisait. Une
     // sélection explicite ne pardonne pas l'ajout d'une colonne.
     + '&select=video_id,source,kind,titre,description,publie_at,match_id,competition'
-    + ',equipe_dom,equipe_ext,score_dom,score_ext,buteur,minute,vignette&limit=1',
+    + ',equipe_dom,equipe_ext,score_dom,score_ext,buteur,minute,vignette,embarquable&limit=1',
     { headers: sbHeaders(env) },
   )
   if (!r.ok) return null

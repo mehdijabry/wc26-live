@@ -43,6 +43,10 @@ type Charge = {
   lecteur: string
   rapport: number
   lien: string
+  /** false = l'ayant droit refuse la lecture hors de YouTube. */
+  embarquable: boolean | null
+  vignette: string | null
+  lienSource: string
 }
 
 export default function VideoPage() {
@@ -141,21 +145,57 @@ export default function VideoPage() {
               sur un téléphone, et il faudrait défiler pour voir le but. */}
           <div className="mt-5 flex justify-center">
             <div
-              className="w-full rounded-2xl overflow-hidden border border-accent-gold/35 bg-ink-900"
+              className="w-full rounded-2xl overflow-hidden border border-accent-gold/35 bg-ink-900 relative"
               style={{
                 aspectRatio: String(rapport ?? d.rapport),
                 maxWidth: `calc(72vh * ${rapport ?? d.rapport})`,
               }}
             >
-              <iframe
-                src={d.lecteur}
-                title={d.titre}
-                className="w-full h-full"
-                style={{ border: 0 }}
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
-                allowFullScreen
-                loading="eager"
-              />
+              {d.embarquable === false ? (
+                /* ── L'AYANT DROIT REFUSE LA LECTURE HORS DE YOUTUBE ──
+                   LaLiga bloque ses propres résumés : le cadre affichait
+                   le message d'erreur de YouTube, avec sa balise <a>
+                   recrachée en texte brut (Mehdi, 18/10/2026). On ne
+                   contourne pas une décision d'ayant droit — mais on
+                   cesse de promettre une lecture qui n'aura pas lieu :
+                   notre affiche, notre bouton, et le clic part chez lui.
+                   Le drapeau est MESURÉ (status.embeddable), pas deviné
+                   sur une liste de diffuseurs à tenir à jour. */
+                <a
+                  href={d.lienSource}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="absolute inset-0 group"
+                >
+                  {d.vignette && (
+                    <img src={d.vignette} alt="" className="w-full h-full object-cover opacity-60" />
+                  )}
+                  <span className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+                    <span className="w-16 h-16 rounded-full bg-ink-900/85 ring-2 ring-accent-gold flex items-center justify-center
+                                     group-hover:scale-105 transition-transform">
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" className="text-accent-gold ms-1">
+                        <path d="M8 5.5v13l11-6.5-11-6.5Z" />
+                      </svg>
+                    </span>
+                    <span className="text-[13px] leading-snug text-cream/90 max-w-xs">
+                      {t('The rights holder only allows playback on YouTube.')}
+                    </span>
+                    <span className="px-4 py-2 rounded-xl bg-accent-gold text-ink-900 text-sm font-bold">
+                      {t('Watch on YouTube')}
+                    </span>
+                  </span>
+                </a>
+              ) : (
+                <iframe
+                  src={d.lecteur}
+                  title={d.titre}
+                  className="w-full h-full"
+                  style={{ border: 0 }}
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; picture-in-picture; web-share"
+                  allowFullScreen
+                  loading="eager"
+                />
+              )}
             </div>
           </div>
 

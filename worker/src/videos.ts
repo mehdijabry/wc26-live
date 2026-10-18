@@ -164,15 +164,24 @@ type Ligne = {
   equipe_dom: string | null; equipe_ext: string | null
   score_dom: number | null; score_ext: number | null
   publie_site: boolean; publie_fb?: boolean; fb_post_id?: string | null
+  /** null tant qu'on n'a pas mesuré : « inconnu » n'est pas « ça marche ». */
+  embarquable?: boolean | null
 }
 
 async function ecrire(env: Env, lignes: Ligne[]): Promise<void> {
   if (!lignes.length) return
-  await fetch(`${env.SUPABASE_URL}/rest/v1/videos_matchs?on_conflict=video_id`, {
+  const envoyer = (corps: unknown) => fetch(`${env.SUPABASE_URL}/rest/v1/videos_matchs?on_conflict=video_id`, {
     method: 'POST',
     headers: sbHeaders(env, { 'content-type': 'application/json', prefer: 'resolution=ignore-duplicates,return=minimal' }),
-    body: JSON.stringify(lignes),
+    body: JSON.stringify(corps),
   })
+  const r = await envoyer(lignes)
+  // L'ORDRE DES DÉPLOIEMENTS NE DOIT RIEN CASSER. `embarquable` arrive
+  // avec la migration 037, appliquée à la main : un worker déployé avant
+  // elle refuserait toute écriture. On retente sans la colonne, une fois.
+  if (!r.ok && /embarquable/i.test(await r.text())) {
+    await envoyer(lignes.map(({ embarquable: _o, ...reste }) => reste))
+  }
 }
 
 /** Les vidéos déjà en base pour ce match, pour ne pas doubler un post. */
@@ -185,6 +194,38 @@ async function dejaLa(env: Env, matchId: string): Promise<Array<{ kind: string; 
 }
 
 const lienYt = (id: string) => `https://www.youtube.com/watch?v=${id}`
+
+/**
+ * EST-CE QUE CETTE VIDÉO ACCEPTERA D'ÊTRE EMBARQUÉE ?
+ *
+ * LaLiga interdit la lecture de ses résumés hors de YouTube, et notre page
+ * affichait son message d'erreur à la place du lecteur (Mehdi,
+ * 18/10/2026). On ne peut pas contourner la décision d'un ayant droit —
+ * on peut seulement cesser de promettre une lecture qui n'aura pas lieu.
+ *
+ * `status.embeddable` le dit, et `videos.list` accepte cinquante
+ * identifiants pour UNE unité de quota : négligeable à côté des 1 728
+ * unités que consomme déjà la détection quotidienne.
+ */
+async function embarquables(cle: string, ids: string[]): Promise<Map<string, boolean>> {
+  const sortie = new Map<string, boolean>()
+  for (let i = 0; i < ids.length; i += 50) {
+    const lot = ids.slice(i, i + 50)
+    try {
+      const r = await fetch(
+        `https://www.googleapis.com/youtube/v3/videos?part=status&id=${lot.join(',')}&key=${cle}`,
+        { signal: AbortSignal.timeout(20_000) },
+      )
+      const j = await r.json().catch(() => ({})) as {
+        items?: Array<{ id?: string; status?: { embeddable?: boolean } }>
+      }
+      for (const it of j.items ?? []) {
+        if (it.id) sortie.set(it.id, it.status?.embeddable !== false)
+      }
+    } catch { /* on laisse inconnu : mieux que de déclarer à tort */ }
+  }
+  return sortie
+}
 
 /**
  * LA PASSE DE DÉTECTION. Une unité de quota par source, soit six par tour.
@@ -243,12 +284,45 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
         score_dom: k.score ? k.score[0] : (m ? Number(m.homeScore) : null),
         score_ext: k.score ? k.score[1] : (m ? Number(m.awayScore) : null),
         publie_site: true,
+        // Rempli juste après, en un appel pour tout le lot.
+        embarquable: null as boolean | null,
       })
     }
 
+    if (nouvelles.length) {
+      const drapeaux = await embarquables(
+        (env as unknown as { YOUTUBE_API_KEY: string }).YOUTUBE_API_KEY,
+        nouvelles.map((n) => n.video_id),
+      )
+      for (const n of nouvelles) {
+        const v = drapeaux.get(n.video_id)
+        if (v !== undefined) n.embarquable = v
+      }
+    }
     await ecrire(env, nouvelles)
     if (nouvelles.length) notes.push(`${s.cle}: ${nouvelles.length} nouvelles`)
   }
+
+  // ── ON RATTRAPE CE QUI N'A JAMAIS ÉTÉ MESURÉ ──────────────────────────
+  // Les lignes d'avant la 037 ont `embarquable` à null, et une page qui
+  // ne sait pas affiche le lecteur — donc, pour LaLiga, le message
+  // d'erreur de YouTube. Cinquante par passe, une unité de quota.
+  try {
+    const cleYt = (env as unknown as { YOUTUBE_API_KEY: string }).YOUTUBE_API_KEY
+    const r = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/videos_matchs?embarquable=is.null&source=not.like.x*`
+      + '&select=video_id&order=publie_at.desc&limit=50',
+      { headers: sbHeaders(env) },
+    )
+    if (r.ok) {
+      const manquants = (await r.json().catch(() => [])) as Array<{ video_id: string }>
+      if (manquants.length) {
+        const drapeaux = await embarquables(cleYt, manquants.map((x) => x.video_id))
+        for (const [id, v] of drapeaux) await marquer(env, id, { embarquable: v })
+        notes.push(`${drapeaux.size} mesurées`)
+      }
+    }
+  } catch { /* le rattrapage n'est pas critique */ }
 
   // ── PUIS ON PUBLIE, UN SEUL À LA FOIS ─────────────────────────────────
   const poste = await publierUnCourt(env, pool)
