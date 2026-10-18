@@ -285,8 +285,10 @@ const LEAGUE_META: Record<string, { label: string; tier: number; slug: string }>
  *    5       Club World Cup · Intercontinental Cup
  *    6       Champions League + its qualifying + UEFA Super Cup
  *    7       Europa League + qualifying · Libertadores
- *    8       Conference League + qualifying · Sudamericana · CAF/AFC/Concacaf CL
- *    9       Big-5 domestic leagues — PL · LaLiga · Serie A · Bundesliga · Ligue 1\n *   10       Big-5 domestic cups · super cups · Carabao Cup
+ *    8       Conference League + qualifying · Sudamericana
+ *    9       Big-5 domestic leagues — PL · LaLiga · Serie A · Bundesliga · Ligue 1
+ *    9.5     Continental CLs outside Europe — CAF · AFC · Concacaf
+ *   10       Big-5 domestic cups · super cups · Carabao Cup
  *   11       National-team friendlies · minor regional national tournaments
  *   11       Strong European leagues — Eredivisie · Primeira · Belgian · Süper Lig · Scottish
  *   12       Big Americas + Saudi — Brasileirão · Argentina · MLS · Liga MX · Saudi Pro League
@@ -354,10 +356,25 @@ const LEAGUE_BY_ID: Record<string, { label: string; tier: number; slug: string }
   // ── 9 · Conference League · Sudamericana · other continental club · super cups · League Cup ──
   '20296': { label: 'Conference League',                 tier: 8, slug: 'uefa.europa.conf' },
   '5454':  { label: 'Copa Sudamericana',                 tier: 8, slug: 'conmebol.sudamericana' },
-  '2391':  { label: 'CAF Champions League',              tier: 8, slug: 'caf.champions' },
-  '3902':  { label: 'AFC Champions League Elite',        tier: 8, slug: 'afc.champions' },
-  '5699':  { label: 'Concacaf Champions Cup',            tier: 8, slug: 'concacaf.champions' },
-  '5692':  { label: 'Concacaf Champions Cup',            tier: 8, slug: 'concacaf.champions_cup' },
+  // ── LES LIGUES DES CHAMPIONS HORS EUROPE PASSENT SOUS LES 5 GRANDS ──
+  // Mehdi, 17/10/2026 : « CAF Champions League toujours en dessous des 5
+  // grands championnats — pas le cas de l'UEFA CL, qui elle est toujours
+  // en haut de l'affiche ». Elles étaient au palier 8, donc AU-DESSUS de
+  // la Premier League un soir de Premier League.
+  //
+  // 9,5 et non 10 : le palier 10 est celui des coupes nationales des 5
+  // grands, et une finale de Ligue des champions africaine n'a rien à
+  // faire sous un 32e de finale de Coupe de France. Un palier décimal
+  // évite de renuméroter toute l'échelle pour insérer un cran ; rien ne
+  // suppose un entier (les seuils du code sont `> 13`), et les majorations
+  // des jeunes (+30) et du féminin (+50) restent dans leurs plages.
+  //
+  // La CONMEBOL n'est pas touchée : Libertadores (7) et Sudamericana (8)
+  // gardent leur rang, Mehdi n'a parlé que des trois autres confédérations.
+  '2391':  { label: 'CAF Champions League',              tier: 9.5, slug: 'caf.champions' },
+  '3902':  { label: 'AFC Champions League Elite',        tier: 9.5, slug: 'afc.champions' },
+  '5699':  { label: 'Concacaf Champions Cup',            tier: 9.5, slug: 'concacaf.champions' },
+  '5692':  { label: 'Concacaf Champions Cup',            tier: 9.5, slug: 'concacaf.champions_cup' },
   '5462':  { label: 'UEFA Super Cup',                    tier: 6, slug: 'uefa.super_cup' },
   '5329':  { label: 'Community Shield',                  tier: 10, slug: 'eng.charity' },
   '8102':  { label: 'Supercopa de España',               tier: 10, slug: 'esp.super_cup' },
@@ -508,11 +525,12 @@ const SLUG_RANK: Record<string, number> = {
   'uefa.champions': 1, 'uefa.champions_qual': 2, 'uefa.super_cup': 3,
   // Tier 7: UEL → its qualifying → Libertadores
   'uefa.europa': 1, 'uefa.europa_qual': 2, 'conmebol.libertadores': 3,
-  // Tier 8: Conference → its qualifying → Sudamericana → continental CLs
+  // Tier 8: Conference → its qualifying → Sudamericana
   'uefa.europa.conf': 1, 'uefa.europa.conf_qual': 2, 'conmebol.sudamericana': 3,
-  'caf.champions': 4, 'afc.champions': 5, 'concacaf.champions': 6, 'concacaf.champions_cup': 6,
   // Tier 9: the Big 5, conventional order
   'eng.1': 1, 'esp.1': 2, 'ita.1': 3, 'ger.1': 4, 'fra.1': 5,
+  // Tier 9.5: the continental CLs outside Europe (see LEAGUE_BY_ID)
+  'caf.champions': 1, 'afc.champions': 2, 'concacaf.champions': 3, 'concacaf.champions_cup': 3,
   // Tier 10: domestic cups then super cups then Carabao
   'eng.fa': 1, 'esp.copa_del_rey': 2, 'ita.coppa_italia': 3, 'ger.dfb_pokal': 4, 'fra.coupe_de_france': 5,
   'eng.league_cup': 6, 'eng.charity': 7, 'esp.super_cup': 8, 'ita.super_cup': 9, 'ger.super_cup': 10, 'fra.super_cup': 11,

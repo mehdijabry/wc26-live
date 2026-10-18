@@ -926,7 +926,13 @@ const AUTO_LEAGUES: Record<string, { rank: number; label: string }> = {
   'fifa.worldq.concacaf': { rank: 2, label: 'World Cup Qualifiers · CONCACAF' },
   'club.world.cup': { rank: 3, label: 'FIFA Club World Cup' }, 'uefa.super_cup': { rank: 3, label: 'UEFA Super Cup' },
   'uefa.champions': { rank: 4, label: 'UEFA Champions League' }, 'uefa.europa': { rank: 5, label: 'UEFA Europa League' }, 'uefa.europa.conf': { rank: 6, label: 'UEFA Conference League' },
-  'conmebol.libertadores': { rank: 6, label: 'Copa Libertadores' }, 'caf.champions_league': { rank: 6, label: 'CAF Champions League' },
+  'conmebol.libertadores': { rank: 6, label: 'Copa Libertadores' },
+  // LA CAF PASSE SOUS LES 5 GRANDS (Mehdi, 17/10/2026). Au rang 6 elle
+  // sortait avant la Premier League dans les posts de la journée, alors
+  // que l'UEFA CL, elle, doit rester en tête — 8,5 la place juste après
+  // la Ligue 1 (8) et avant les coupes nationales (9). Le même correctif
+  // existe côté site, dans SLUG_RANK et LEAGUE_BY_ID de src/lib/api.ts.
+  'caf.champions_league': { rank: 8.5, label: 'CAF Champions League' },
   'eng.1': { rank: 7, label: 'Premier League' }, 'esp.1': { rank: 7, label: 'LaLiga' }, 'ita.1': { rank: 8, label: 'Serie A' }, 'ger.1': { rank: 8, label: 'Bundesliga' }, 'fra.1': { rank: 8, label: 'Ligue 1' },
   'eng.fa': { rank: 9, label: 'FA Cup' }, 'eng.league_cup': { rank: 9, label: 'Carabao Cup' }, 'esp.copa_del_rey': { rank: 9, label: 'Copa del Rey' },
   'ita.coppa_italia': { rank: 9, label: 'Coppa Italia' }, 'fra.coupe_de_france': { rank: 9, label: 'Coupe de France' }, 'ger.dfb_pokal': { rank: 9, label: 'DFB-Pokal' },
