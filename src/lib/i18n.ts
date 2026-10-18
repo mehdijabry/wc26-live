@@ -475,7 +475,8 @@ const AR: Record<string, string> = {
   // Daily board
   'football today': 'كرة اليوم',
   'Every match, everywhere': 'كل المباريات، في مكان واحد',
-  'Missed it? Watch it in ten seconds.': 'فاتك الهدف؟ شاهده في عشر ثوان.',
+  'Missed it? You can still catch it.': 'فاتتك المباراة؟ ما زال بإمكانك اللحاق بها.',
+  'Goal of the day': 'هدف اليوم',
   'Highlights': 'ملخصات',
   'Watch on YouTube': 'شاهد على يوتيوب',
   'The rights holder only allows playback on YouTube.': 'صاحب الحقوق يسمح بالمشاهدة على يوتيوب فقط.',
@@ -1213,7 +1214,8 @@ const FR: Record<string, string> = {
   // Daily board
   'football today': 'le foot aujourd’hui',
   'Every match, everywhere': 'Tous les matchs, au même endroit',
-  'Missed it? Watch it in ten seconds.': 'Tu l’as raté ? Regarde-le en dix secondes.',
+  'Missed it? You can still catch it.': 'Tu l’as manqué ? Tu peux encore le rattraper.',
+  'Goal of the day': 'Le but du jour',
   'Highlights': 'Résumés',
   'Watch on YouTube': 'Regarder sur YouTube',
   'The rights holder only allows playback on YouTube.': 'Le diffuseur n’autorise la lecture que sur YouTube.',

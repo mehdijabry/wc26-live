@@ -1,4 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import IconeMasque from './IconeMasque'
+import { ButDuJour } from './ButDuJour'
 import Ecusson from './Ecusson'
 import { Icone } from './Icone'
 import { useEffect, useMemo, useRef, useState } from 'react'
@@ -255,8 +257,11 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
     setOffset(days)
   }
 
+  // La phrase doit tomber JUSTE sous le tableau des scores : les 80 px de
+  // marge haute l'en détachaient complètement (Mehdi, 18/10/2026). La marge
+  // basse ne bouge pas, elle sépare des matchs du jour.
   return (
-    <section id="today" className="py-20 sm:py-28 border-t border-slate-200/70">
+    <section id="today" className="pt-7 sm:pt-9 pb-20 sm:pb-28 border-t border-slate-200/70">
       <div className="container max-w-6xl mx-auto px-6">
         {/* ── LES DEUX PORTES DU JOUR ──────────────────────────────────
             Mehdi, 17/10/2026 : le titre « Every match, everywhere » laisse
@@ -269,35 +274,53 @@ export function DailyMatches({ vitrine = false }: { vitrine?: boolean } = {}) {
             regarde assis. L'or va aux buts, qui sont la raison d'être du
             bloc ; le résumé prend le verre, en retrait d'un cran. */}
         <div className="text-center">
-          <p className="font-mono text-[11px] uppercase tracking-widest text-slate-500">
-            {t('football today')}
-          </p>
-          <h2 className="mt-2 font-display text-2xl sm:text-3xl leading-tight">
-            {t('Missed it? Watch it in ten seconds.')}
+          {/* L'ŒIL DU JOUR, DANS L'ORDRE OÙ ON LE LIT (Mehdi, 18/10/2026).
+              La phrase vient D'ABORD, collée sous le tableau des scores :
+              elle annonce ce qui suit au lieu de le légender après coup.
+              Le surtitre « FOOTBALL TODAY » a sauté — il répétait en gris
+              ce que la phrase dit en grand. */}
+          <h2 className="font-display text-2xl sm:text-3xl leading-tight">
+            {t('Missed it? You can still catch it.')}
           </h2>
 
-          <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+          {vitrine && <ButDuJour />}
+
+          {/* ── DEUX PASTILLES, PAS DEUX PAVÉS ────────────────────────
+              « Subtil et pas trop encombrant, mais visible et facilement
+              repérable » : l'ancienne paire de gros boutons pleins
+              écrasait tout ce qui suivait. Ici le poids tient à la
+              COULEUR et à l'icône, pas à la surface — un filet, un fond
+              à peine teinté, et chaque section garde sa teinte (l'or aux
+              buts, le vert aux résumés), ce qui les rend reconnaissables
+              d'un coup d'œil sans occuper la moitié de l'écran.
+
+              Les deux glyphes sont ceux que Mehdi a déposés : le retourné
+              acrobatique et le symbole de relecture, servis en MASQUE
+              pour prendre la teinte de leur pastille. */}
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-2.5">
             <Link
               to="/buts"
-              className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl bg-accent-gold text-ink-900
-                         font-semibold active:scale-[0.98] transition-transform"
+              className="group inline-flex items-center gap-2 ps-1.5 pe-4 py-1.5 rounded-full
+                         border border-accent-gold/35 bg-accent-gold/[0.07]
+                         hover:bg-accent-gold/[0.14] hover:border-accent-gold/60
+                         active:scale-[0.98] transition-all"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
-                <circle cx="12" cy="12" r="9" />
-                <path d="m12 7.5 2.6 1.9-1 3.1h-3.2l-1-3.1L12 7.5Z" fill="currentColor" stroke="none" />
-              </svg>
-              {t('Today’s goals')}
+              <span className="w-7 h-7 rounded-full bg-accent-gold/15 flex items-center justify-center shrink-0">
+                <IconeMasque nom="but-du-jour" taille={16} className="text-accent-gold" />
+              </span>
+              <span className="text-[13px] font-semibold text-accent-gold">{t('Today’s goals')}</span>
             </Link>
             <Link
               to="/resumes"
-              className="inline-flex items-center gap-2.5 px-5 py-3 rounded-2xl glass glass-hover
-                         font-semibold text-slate-800 active:scale-[0.98] transition-transform"
+              className="group inline-flex items-center gap-2 ps-1.5 pe-4 py-1.5 rounded-full
+                         border border-accent-green/30 bg-accent-green/[0.06]
+                         hover:bg-accent-green/[0.12] hover:border-accent-green/55
+                         active:scale-[0.98] transition-all"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
-                <rect x="3" y="5" width="18" height="14" rx="2.5" />
-                <path d="M10 9.5v5l4-2.5-4-2.5Z" fill="currentColor" stroke="none" />
-              </svg>
-              {t('Today’s highlights')}
+              <span className="w-7 h-7 rounded-full bg-accent-green/15 flex items-center justify-center shrink-0">
+                <IconeMasque nom="highlights" taille={16} className="text-accent-green" />
+              </span>
+              <span className="text-[13px] font-semibold text-accent-green">{t('Today’s highlights')}</span>
             </Link>
           </div>
         </div>

@@ -301,6 +301,30 @@ export default {
       // Elle est servie sous pressing90.live/p/<id> par une fonction Pages
       // qui proxyfie ici : un lien vers *.workers.dev se fait rogner par
       // les apercus et les filtres de courrier.
+      // LE BUT DU JOUR — l'emplacement éditorial de l'accueil.
+      // L'identifiant est choisi à la main dans l'admin et vit en KV ; la
+      // carte, elle, se lit dans `videos_matchs` comme tout le reste.
+      if (url.pathname === '/but-du-jour') {
+        const id = await env.CACHE.get('but:du_jour')
+        if (!id) return cors(json({ ok: true, but: null }), req)
+        if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return cors(json({ ok: true, but: null }), req)
+        const vp = await import('./videopage')
+        const v = await vp.lireVideo(env, id)
+        if (!v) return cors(json({ ok: true, but: null }), req)
+        return cors(json({
+          ok: true,
+          but: {
+            video_id: v.video_id, source: v.source, titre: v.titre,
+            buteur: v.buteur ?? null, minute: v.minute ?? null,
+            competition: v.competition ?? null,
+            equipe_dom: v.equipe_dom ?? null, equipe_ext: v.equipe_ext ?? null,
+            vignette: v.vignette ?? (v.source.startsWith('x')
+              ? null : `https://i.ytimg.com/vi/${v.video_id}/maxresdefault.jpg`),
+            lien: vp.lienPartage(v.video_id),
+          },
+        }, 200, { 'cache-control': 'public, max-age=120' }), req)
+      }
+
       // TOUT CE QU'IL FAUT POUR LA PAGE D'UNE VIDÉO, en JSON.
       //
       // Deux appelants, une seule source : le SITE, qui rend la page

@@ -123,6 +123,47 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
     return () => clearInterval(id)
   }, [])
 
+  // ── LE GESTE : BALAYER OU MOLETTER ──────────────────────────────────
+  // `suivant(+1 | -1)` relaie `go()` en circulaire. Deux garde-fous que
+  // l'absence de flèches rend nécessaires :
+  //   · un VERROU de 350 ms, sinon une molette inertielle (le trackpad
+  //     d'un Mac en envoie une centaine d'événements) traverse vingt
+  //     affiches d'un seul coup de doigt ;
+  //   · le balayage n'est pris que s'il est franchement HORIZONTAL —
+  //     40 px et deux fois plus large que haut — sans quoi un simple
+  //     défilement de la page ferait sauter l'affiche.
+  const feuille = useRef(0)
+  const suivant = (pas: number) => {
+    const n = featsRef.current.length
+    if (n < 2) return
+    const t = Date.now()
+    if (t - feuille.current < 350) return
+    feuille.current = t
+    go(((curRef.current + pas) % n + n) % n)
+  }
+  const depart = useRef<{ x: number; y: number } | null>(null)
+  const auToucher = {
+    onTouchStart: (e: React.TouchEvent) => {
+      depart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+    },
+    onTouchEnd: (e: React.TouchEvent) => {
+      const d = depart.current; depart.current = null
+      if (!d) return
+      const dx = e.changedTouches[0].clientX - d.x
+      const dy = e.changedTouches[0].clientY - d.y
+      if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 2) return
+      suivant(dx < 0 ? 1 : -1)
+    },
+    onWheel: (e: React.WheelEvent) => {
+      // La molette VERTICALE compte aussi : c'est elle qu'on a sous le
+      // doigt sur une souris, et le bandeau n'a rien d'autre à faire
+      // défiler. On ne retient que le mouvement dominant.
+      const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY
+      if (Math.abs(d) < 8) return
+      suivant(d > 0 ? 1 : -1)
+    },
+  }
+
   // 1s ticker so a live minute advances between polls.
   useEffect(() => {
     const id = window.setInterval(() => tick((t) => t + 1), 1000)
@@ -174,7 +215,14 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
     'transition-all duration-300 ' + (flipping ? 'opacity-0 -translate-y-3 scale-90' : '')
 
   return (
-    <section id="hero" className="relative overflow-hidden py-10 sm:py-14 border-b border-slate-200/60">
+    <section
+      id="hero"
+      {...auToucher}
+      // `touch-pan-y` laisse la page défiler verticalement pendant qu'on
+      // balaie ; sans elle, le navigateur arbitre et le geste horizontal
+      // passe une fois sur deux.
+      className="relative overflow-hidden py-6 sm:py-9 border-b border-slate-200/60 touch-pan-y select-none"
+    >
       {/* pitch geometry backdrop */}
       <div aria-hidden className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[420px] h-[420px] sm:w-[540px] sm:h-[540px] rounded-full border border-slate-200/50 opacity-60" />
       <div aria-hidden className="pointer-events-none absolute left-1/2 top-0 bottom-0 w-px bg-gradient-to-b from-transparent via-slate-200/50 to-transparent" />
@@ -240,39 +288,16 @@ export function HeroScoreboard({ home = false }: { home?: boolean }) {
               <TeamSide n={view.a.n} logo={view.a.l} />
             </button>
 
-            {feats.length > 1 && feats.length <= 8 && (
-              <div className="mt-7 flex justify-center gap-2">
-                {feats.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => go(i)}
-                    aria-label={`Featured match ${i + 1}`}
-                    className={'h-1 w-7 rounded-full transition-colors ' + (i === cur ? 'bg-accent-gold' : 'bg-slate-400 hover:bg-slate-500')}
-                  />
-                ))}
-              </div>
-            )}
-            {feats.length > 8 && (
-              <div className="mt-7 flex items-center justify-center gap-4">
-                <button
-                  onClick={() => go((cur - 1 + feats.length) % feats.length)}
-                  aria-label={t('Previous featured match')}
-                  className="w-11 h-11 flex items-center justify-center text-2xl leading-none text-slate-500 hover:text-accent-gold transition-colors"
-                >
-                  ‹
-                </button>
-                <span className="font-mono text-[11px] tracking-[0.2em] text-slate-500 tabular-nums">
-                  {cur + 1} / {feats.length}
-                </span>
-                <button
-                  onClick={() => go((cur + 1) % feats.length)}
-                  aria-label={t('Next featured match')}
-                  className="w-11 h-11 flex items-center justify-center text-2xl leading-none text-slate-500 hover:text-accent-gold transition-colors"
-                >
-                  ›
-                </button>
-              </div>
-            )}
+            {/* ── PLUS DE PAGINATION ─────────────────────────────────
+                « 5 / 48 » et ses deux flèches disaient surtout qu'il
+                restait quarante-trois affiches à cliquer. Mehdi,
+                18/10/2026 : on passe au suivant en BALAYANT sur
+                téléphone, à la MOLETTE sur ordinateur, et le défilement
+                automatique reste le fonctionnement de base.
+
+                Rien ne remplace les flèches à l'écran : un geste qui a
+                besoin d'être expliqué est un geste raté, et l'affiche
+                tourne toute seule de toute façon. */}
           </>
         ) : (
           <div className="h-[220px] sm:h-[260px] rounded-2xl glass animate-pulse" />

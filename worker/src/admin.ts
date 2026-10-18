@@ -441,6 +441,12 @@ export async function handleAdmin(
   if (pathname === '/admin/but/liste' && req.method === 'GET') {
     return handleButListe(env)
   }
+  if (pathname === '/admin/but/du-jour' && req.method === 'GET') {
+    return handleButDuJourLire(env)
+  }
+  if (pathname === '/admin/but/du-jour' && req.method === 'POST') {
+    return handleButDuJourPoser(env, req)
+  }
 
   if (pathname === '/admin/social/generate' && req.method === 'POST') {
     return handleSocialGenerate(env, req)
@@ -2499,6 +2505,107 @@ async function handleButPublier(env: AdminEnv, req: Request): Promise<Response> 
     }
   }
   return jsonResp({ ok: true, videoId, fb, push })
+}
+
+/**
+ * LE BUT DU JOUR — l'emplacement de l'accueil.
+ *
+ * Mehdi, 18/10/2026 : « un aperçu comme celui de goals avec comme titre
+ * but du jour, et dans le panel admin un endroit où je mets l'url du but
+ * pour cet emplacement spécifique ».
+ *
+ * C'est un CHOIX ÉDITORIAL, pas un classement : le plus beau but du jour
+ * ne se calcule pas. L'identifiant choisi vit donc dans le KV, pas dans
+ * une colonne — il change plusieurs fois par jour, il ne vaut que pour la
+ * journée, et le ranger en base demanderait une migration pour une donnée
+ * qui n'a pas d'histoire.
+ *
+ * La vidéo rejoint quand même `videos_matchs` : elle a sa page /v/<id>,
+ * elle apparaît dans la liste des buts, et l'aperçu de l'accueil lit la
+ * même ligne que tout le reste. Un seul chemin, pas deux.
+ */
+const CLE_BUT_DU_JOUR = 'but:du_jour'
+
+async function handleButDuJourLire(env: AdminEnv): Promise<Response> {
+  const kv = (env as unknown as { CACHE?: KVNamespace }).CACHE
+  const id = kv ? await kv.get(CLE_BUT_DU_JOUR) : null
+  if (!id) return jsonResp({ ok: true, but: null })
+  const e = env as unknown as { SUPABASE_URL?: string; SUPABASE_SERVICE_KEY?: string }
+  if (!e.SUPABASE_URL || !e.SUPABASE_SERVICE_KEY) return jsonResp({ ok: true, but: { video_id: id } })
+  const r = await fetch(
+    `${e.SUPABASE_URL}/rest/v1/videos_matchs?video_id=eq.${encodeURIComponent(id)}`
+    + '&select=video_id,source,titre,buteur,minute,competition,equipe_dom,equipe_ext,vignette&limit=1',
+    { headers: { apikey: e.SUPABASE_SERVICE_KEY, authorization: `Bearer ${e.SUPABASE_SERVICE_KEY}` } },
+  )
+  const l = (await r.json().catch(() => [])) as unknown[]
+  return jsonResp({ ok: true, but: (Array.isArray(l) && l[0]) || { video_id: id } })
+}
+
+async function handleButDuJourPoser(env: AdminEnv, req: Request): Promise<Response> {
+  const b = await readBoundedJson(req, 2_000) as { url?: string; effacer?: boolean } | null
+  const kv = (env as unknown as { CACHE?: KVNamespace }).CACHE
+  if (!kv) return jsonResp({ error: 'cache indisponible' }, 503)
+
+  if (b?.effacer) {
+    await kv.delete(CLE_BUT_DU_JOUR)
+    return jsonResp({ ok: true, but: null })
+  }
+
+  const ref = idDeVideo((safeString(b?.url ?? '', 400) ?? ''))
+  if (!ref) return jsonResp({ error: 'adresse non reconnue (YouTube ou X)' }, 400)
+
+  const e = env as unknown as { SUPABASE_URL?: string; SUPABASE_SERVICE_KEY?: string }
+  if (!e.SUPABASE_URL || !e.SUPABASE_SERVICE_KEY) return jsonResp({ error: 'base indisponible' }, 503)
+
+  // La ligne existe déjà ? On ne la réécrit pas : elle porte peut-être un
+  // buteur et une minute saisis à la main, qu'une réinsertion effacerait.
+  const dejaLa = await fetch(
+    `${e.SUPABASE_URL}/rest/v1/videos_matchs?video_id=eq.${encodeURIComponent(ref.id)}&select=video_id&limit=1`,
+    { headers: { apikey: e.SUPABASE_SERVICE_KEY, authorization: `Bearer ${e.SUPABASE_SERVICE_KEY}` } },
+  )
+  const existe = ((await dejaLa.json().catch(() => [])) as unknown[]).length > 0
+
+  if (!existe) {
+    // On va chercher de quoi remplir la carte, exactement comme l'aperçu
+    // du formulaire de publication.
+    const apercu = await handleButApercu(env, new Request('https://x/admin/but/apercu', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: b?.url ?? '' }),
+    }))
+    const a = await apercu.json().catch(() => ({})) as {
+      titre?: string; description?: string; competition?: string; equipes?: string
+      minute?: string; vignette?: string | null
+    }
+    const eq = String(a.equipes ?? '').split(/\s*[–-]\s*|\s+vs\.?\s+/i)
+    const ligne = {
+      video_id: ref.id,
+      source: ref.source === 'x' ? 'x-manuel' : 'yt-manuel',
+      kind: 'but',
+      titre: (a.titre ?? '').slice(0, 300),
+      description: (a.description ?? '').slice(0, 2000),
+      publie_at: new Date().toISOString(),
+      competition: a.competition || null,
+      equipe_dom: eq[0] || null,
+      equipe_ext: eq[1] || null,
+      minute: a.minute || null,
+      vignette: a.vignette || null,
+      publie_site: true,
+    }
+    const ins = await fetch(`${e.SUPABASE_URL}/rest/v1/videos_matchs?on_conflict=video_id`, {
+      method: 'POST',
+      headers: {
+        apikey: e.SUPABASE_SERVICE_KEY, authorization: `Bearer ${e.SUPABASE_SERVICE_KEY}`,
+        'content-type': 'application/json', prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify(ligne),
+    })
+    if (!ins.ok) return jsonResp({ error: `base ${ins.status}: ${(await ins.text()).slice(0, 200)}` }, 502)
+  }
+
+  // Deux jours de garde : un but du jour oublié s'efface tout seul plutôt
+  // que de rester en tête de l'accueil toute la semaine.
+  await kv.put(CLE_BUT_DU_JOUR, ref.id, { expirationTtl: 2 * 86400 })
+  return handleButDuJourLire(env)
 }
 
 async function handleButListe(env: AdminEnv): Promise<Response> {

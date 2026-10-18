@@ -33,6 +33,87 @@ type Tab =
 // 8h-old session sitting on a shared machine.
 const TOKEN_KEY = 'wc26.admin.token'
 function getToken(): string | null { try { return sessionStorage.getItem(TOKEN_KEY) } catch { return null } }
+/**
+ * L'EMPLACEMENT « BUT DU JOUR » DE L'ACCUEIL.
+ *
+ * Mehdi, 18/10/2026 : « dans le panel admin un endroit où je mets l'url du
+ * but pour cet emplacement spécifique ».
+ *
+ * Séparé de « Publier un but » et posé AU-DESSUS, parce que ce n'est pas
+ * la même décision : publier, c'est ajouter à la liste ; choisir le but du
+ * jour, c'est en élire un seul pour la tête de l'accueil. Les confondre
+ * dans un formulaire ferait du choix éditorial une case à cocher qu'on
+ * oublie.
+ *
+ * Coller une adresse suffit : si la vidéo n'est pas encore en base, elle y
+ * entre avec ce que l'aperçu sait d'elle, exactement comme une publication
+ * normale. Elle a donc sa page /v/<id> et rejoint la liste des buts — un
+ * seul chemin, pas deux.
+ */
+function ButDuJourAdmin({ champ }: { champ: string }) {
+  const [url, setUrl] = useState('')
+  const [but, setBut] = useState<{ video_id?: string; titre?: string; buteur?: string | null; competition?: string | null } | null | undefined>(undefined)
+  const [occupe, setOccupe] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+
+  const charger = useCallback(async () => {
+    try {
+      const d = await adminGet('/admin/but/du-jour') as { but?: typeof but }
+      setBut(d.but ?? null)
+    } catch { setBut(null) }
+  }, [])
+  useEffect(() => { void charger() }, [charger])
+
+  async function poser(effacer = false) {
+    setOccupe(true); setMsg(null)
+    try {
+      const d = await adminPost('/admin/but/du-jour', effacer ? { effacer: true } : { url: url.trim() }) as
+        { but?: typeof but; error?: string }
+      if (d.error) { setMsg(d.error); return }
+      setBut(d.but ?? null); setUrl('')
+      setMsg(effacer ? 'Emplacement vidé.' : 'But du jour posé sur l’accueil.')
+    } catch (e) { setMsg(String(e)) } finally { setOccupe(false) }
+  }
+
+  return (
+    <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
+      <h2 className="font-semibold mb-1">But du jour · accueil</h2>
+      <p className="text-[13px] text-slate-500 mb-3">
+        Le but mis en avant en tête de l’accueil. Il s’efface tout seul au bout de deux jours.
+      </p>
+
+      {but === undefined ? (
+        <div className="h-9 w-56 rounded bg-slate-100 animate-pulse" />
+      ) : but ? (
+        <div className="mb-3 flex items-center gap-3 text-sm">
+          <span className="font-mono text-[11px] text-slate-400">{but.video_id}</span>
+          <span className="truncate">{but.buteur || but.titre || '—'}</span>
+          {but.competition && <span className="text-slate-500 shrink-0">{but.competition}</span>}
+          <button
+            onClick={() => void poser(true)} disabled={occupe}
+            className="ms-auto shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-xs disabled:opacity-40"
+          >Retirer</button>
+        </div>
+      ) : (
+        <p className="mb-3 text-sm text-slate-500">Aucun but mis en avant pour le moment.</p>
+      )}
+
+      <div className="flex gap-2">
+        <input
+          value={url} onChange={(e) => setUrl(e.target.value)}
+          placeholder="Adresse YouTube ou X du but"
+          className={champ}
+        />
+        <button
+          onClick={() => void poser()} disabled={occupe || !url.trim()}
+          className="shrink-0 px-4 py-2 rounded-lg bg-accent-gold text-ink-900 text-sm font-semibold disabled:opacity-40"
+        >{occupe ? '…' : 'Mettre en avant'}</button>
+      </div>
+      {msg && <p className="mt-2 text-[13px] text-slate-700">{msg}</p>}
+    </section>
+  )
+}
+
 function setToken(t: string | null) { try { t ? sessionStorage.setItem(TOKEN_KEY, t) : sessionStorage.removeItem(TOKEN_KEY) } catch {} }
 
 export function AdminPanel() {
@@ -4045,6 +4126,8 @@ function Buts() {
 
   return (
     <div className="space-y-5">
+      <ButDuJourAdmin champ={champ} />
+
       <section className="bg-white rounded-2xl border border-slate-200 p-4 sm:p-5">
         <h2 className="font-semibold mb-1">Publier un but</h2>
         <p className="text-[13px] text-slate-500 mb-3">
