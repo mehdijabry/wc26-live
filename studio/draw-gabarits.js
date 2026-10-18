@@ -1826,6 +1826,47 @@ const E45 = 1080 / 1664
 const e45 = (n) => Math.round(n * E45)
 
 /**
+ * LA PHRASE DE SIGNATURE, IDENTIQUE SUR TOUTES LES CARTES.
+ *
+ * Mehdi, 18/10/2026 : « laisse une phrase signature figée sur tous les
+ * posts… regarde ce que font les pages qui ont le plus de vues et
+ * inspire-t'en ».
+ *
+ * Relevé : les grandes pages arabes ferment toutes par « تابعنا ليصلك كل
+ * جديد » — yalla shoot, عشاق كرة القدم et les autres. La mécanique est
+ * juste (impératif + bénéfice), mais la formule est si répandue qu'elle
+ * ne se lit plus. On garde la mécanique et on nomme ce qu'on apporte
+ * vraiment : chaque but, chaque résumé. Elle ne change jamais — c'est ce
+ * qui en fait une signature et non un slogan.
+ */
+const SIGNATURE = {
+  // AUCUN EMOJI. Ni Tajawal ni Archivo n'en portent le glyphe : le ballon
+  // sortait en rond plein au bas de la carte (18/10). Les emoji vont dans
+  // la légende du post, où c'est le système qui les dessine.
+  ar: 'تابعنا ليصلك كل هدف وكل ملخص أول بأول',
+  fr: 'Suivez-nous : chaque but et chaque résumé, dès qu’il sort',
+  en: 'Follow us — every goal and every highlight, the moment it drops',
+}
+function signature(ctx, lang, cx, y, taille, largeur) {
+  // UN VOILE SOUS LA PHRASE. Posée telle quelle au bas des cartes, elle
+  // tombait sur l'herbe éclairée ou sur les mailles et devenait illisible.
+  // Le dégradé s'ouvre et se referme sur du transparent : on y lit une
+  // pénombre, pas un bandeau collé.
+  const h = taille * 2.6
+  const g = ctx.createLinearGradient(0, y - h / 2, 0, y + h / 2)
+  g.addColorStop(0, 'rgba(5,8,15,0)')
+  g.addColorStop(0.35, 'rgba(5,8,15,0.78)')
+  g.addColorStop(0.65, 'rgba(5,8,15,0.78)')
+  g.addColorStop(1, 'rgba(5,8,15,0)')
+  ctx.save(); ctx.fillStyle = g; ctx.fillRect(0, y - h / 2, cx * 2, h); ctx.restore()
+  // `ligneTenue` parce que la version française est deux fois plus longue
+  // que l'arabe : une signature qui déborde est pire qu'une signature
+  // courte.
+  ligneTenue(ctx, SIGNATURE[lang] ?? SIGNATURE.en, cx, y, largeur,
+             { size: taille, min: 16, color: 'rgba(217,181,74,0.95)', rtl: lang === 'ar' })
+}
+
+/**
  * LA CARTE DE LA JOURNÉE — une seule par jour.
  *
  * Mehdi : « une image unique, la seule chose qui change dessus d'un post à
@@ -1871,9 +1912,15 @@ export async function gabaritResumesDuJour(d = {}) {
     // plus.
     const parRangee = ecussons.length <= 3 ? ecussons.length : Math.ceil(ecussons.length / 2)
     const rangees = Math.ceil(ecussons.length / parRangee)
-    const T = Math.min(Math.round((pw - 60) / parRangee) - 40, Math.round((ph - 70) / rangees) - 46, 210)
-    const hRangee = T + 46
+    // Plus de libellé sous l'écusson : la rangée n'a plus besoin de sa
+    // ligne de texte, l'écusson peut donc grossir d'autant.
+    const T = Math.min(Math.round((pw - 60) / parRangee) - 36, Math.round((ph - 60) / rangees) - 28, 240)
+    const hRangee = T + 28
     const yDebut = py + (ph - rangees * hRangee) / 2
+    // LE LOGO SEUL, JAMAIS SON NOM (Mehdi, 18/10/2026). Un écusson de
+    // championnat se reconnaît en un dixième de seconde ; son nom écrit
+    // dessous prend une ligne, se lit en arabe ou en français selon le
+    // lecteur, et n'apprend rien à personne.
     for (let i = 0; i < ecussons.length; i++) {
       const r = Math.floor(i / parRangee)
       const dansRangee = Math.min(parRangee, ecussons.length - r * parRangee)
@@ -1881,16 +1928,13 @@ export async function gabaritResumesDuJour(d = {}) {
       const cx = px + pas * ((i % parRangee) + 0.5)
       const cy = yDebut + r * hRangee
       ctx.drawImage(ecussons[i].im, cx - T / 2, cy, T, T)
-      if (ecussons[i].label) {
-        ligneTenue(ctx, ecussons[i].label, cx, cy + T + 24, pas - 18,
-                   { size: 22, min: 15, color: 'rgba(244,243,238,0.72)', rtl })
-      }
     }
   }
 
   // ── LE PIED : ce qu'on vient chercher, et où ─────────────────────────
-  if (d.accroche) ligne(d.accroche, W / 2, py + ph + 86, { size: 34, color: CREME })
-  blocInscription(ctx, W / 2, 1108, 104, W, { compact: true, lang })
+  if (d.accroche) ligne(d.accroche, W / 2, py + ph + 74, { size: 34, color: CREME })
+  blocInscription(ctx, W / 2, 1082, 96, W, { compact: true, lang })
+  signature(ctx, lang, W / 2, H - 38, 28, W - 90)
   return c
 }
 
@@ -1931,7 +1975,22 @@ export async function gabaritButFilet(d = {}) {
 
   // ── L'EN-TÊTE ────────────────────────────────────────────────────────
   paintLogo(ctx, large ? 34 : 40, large ? 30 : 40, large ? 84 : 104)
-  if (d.competition) {
+  // L'ÉCUSSON DE LA COMPÉTITION, PAS SON NOM (Mehdi, 18/10/2026). Il se
+  // reconnaît sans être lu, et il ne dépend d'aucune langue. Le nom ne
+  // sert plus que de secours, quand on n'a pas d'écusson.
+  const ecuComp = await crest(d.competitionLogo)
+  if (ecuComp) {
+    // Un peu plus grand, et posé sur un disque sombre : au milieu des
+    // mailles éclairées du haut, un écusson clair se perdait.
+    const T = large ? 82 : 104
+    const cx = W / 2, cy = (large ? 18 : 42) + T / 2
+    ctx.save()
+    const halo = ctx.createRadialGradient(cx, cy, T * 0.3, cx, cy, T * 0.92)
+    halo.addColorStop(0, 'rgba(5,8,15,0.72)'); halo.addColorStop(1, 'rgba(5,8,15,0)')
+    ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(cx, cy, T * 0.92, 0, Math.PI * 2); ctx.fill()
+    ctx.restore()
+    ctx.drawImage(ecuComp, cx - T / 2, cy - T / 2, T, T)
+  } else if (d.competition) {
     ligne(d.competition, W / 2, large ? 46 : 104, { size: large ? 28 : 34, color: OR })
   }
 
@@ -1997,8 +2056,7 @@ export async function gabaritButFilet(d = {}) {
                { size: large ? 26 : 32, min: 18, color: 'rgba(244,243,238,0.78)', rtl })
   }
 
-  txt(ctx, 'pressing90.live', W / 2, H - (large ? 28 : 46),
-      { size: large ? 22 : 26, font: 'Archivo', color: 'rgba(244,243,238,0.5)' })
+  signature(ctx, lang, W / 2, large ? H - 34 : 1232, large ? 23 : 27, W - (large ? 170 : 110))
   return c
 }
 
