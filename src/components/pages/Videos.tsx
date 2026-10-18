@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { usePageHead } from '../../lib/head'
 import { SectionHeader } from '../Groups'
 import { localeOf, useLang, useT } from '../../lib/i18n'
-import { lienVideo, videosRecentes, vignetteDe, type VideoMatch } from '../../lib/videos'
+import { videosRecentes, vignetteDe, type VideoMatch } from '../../lib/videos'
 
 /**
  * LES BUTS DU JOUR et LES RÉSUMÉS DU JOUR.
@@ -11,11 +12,13 @@ import { lienVideo, videosRecentes, vignetteDe, type VideoMatch } from '../../li
  * filtrent et par leur titre. En faire deux fichiers aurait garanti qu'ils
  * divergent à la première retouche.
  *
- * ── ON N'HÉBERGE RIEN ─────────────────────────────────────────────────────
- * La vignette et le lecteur viennent de la source. Cliquer ouvre la vidéo
- * chez l'ayant droit, qui garde ses vues — c'est ce qui rend l'opération
- * légitime, et c'est la même règle que sur la page Facebook, où l'on ne
- * reverse jamais le fichier.
+ * ── ON N'HÉBERGE RIEN, ET ON NE SORT PLUS DU SITE ─────────────────────────
+ * La vignette et le lecteur viennent de la source, mais cliquer mène
+ * désormais à /v/<id> — notre page — où le lecteur de l'ayant droit est
+ * embarqué. Il garde ses vues, c'est ce qui rend l'opération légitime ;
+ * nous gardons le visiteur. Avant le 17/10 la carte ouvrait X ou YouTube
+ * dans un autre onglet, et le trafic s'arrêtait là (Mehdi : « la vidéo
+ * publiée sur le site ne se joue pas dans le site, elle redirige vers X »).
  *
  * ── TROIS ÉTATS, PAS DEUX ─────────────────────────────────────────────────
  * `null` = on ne sait pas encore (ou la lecture a échoué) ; liste vide =
@@ -60,6 +63,28 @@ export default function Videos({ kind }: { kind: 'but' | 'resume' }) {
         title={buts ? t('Today’s goals') : t('Today’s highlights')}
       />
 
+      {/* ── LE SÉLECTEUR ─────────────────────────────────────────────
+          La barre du bas n'a qu'UNE place pour les vidéos : « Goals /
+          highlights » ne tient pas en 8 px dans une colonne de 47. Elle
+          mène donc aux buts, et c'est ce sélecteur qui ouvre l'autre
+          moitié — un appui, sans repasser par l'accueil. */}
+      <div className="mt-5 inline-flex rounded-xl border border-slate-700/60 p-1 gap-1">
+        {([['/buts', t('Goals'), buts], ['/resumes', t('Highlights'), !buts]] as const).map(
+          ([vers, libelle, actif]) => (
+            <Link
+              key={vers}
+              to={vers}
+              className={
+                'px-4 py-1.5 rounded-lg text-sm font-semibold transition-colors ' +
+                (actif ? 'bg-accent-gold text-ink-900' : 'text-slate-400 hover:text-cream')
+              }
+            >
+              {libelle}
+            </Link>
+          ),
+        )}
+      </div>
+
       {echec ? (
         <p className="mt-10 text-center text-sm text-slate-500">{t('Could not load. Try again in a moment.')}</p>
       ) : liste === null ? (
@@ -75,11 +100,9 @@ export default function Videos({ kind }: { kind: 'but' | 'resume' }) {
           {liste.map((v) => {
             const vign = vignetteDe(v)
             return (
-              <a
+              <Link
                 key={v.video_id}
-                href={lienVideo(v)}
-                target="_blank"
-                rel="noopener noreferrer"
+                to={`/v/${v.video_id}`}
                 className="group glass rounded-2xl overflow-hidden block"
               >
                 <div className="relative aspect-video bg-ink-900">
@@ -112,7 +135,7 @@ export default function Videos({ kind }: { kind: 'but' | 'resume' }) {
                     </div>
                   )}
                 </div>
-              </a>
+              </Link>
             )
           })}
         </div>

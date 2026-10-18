@@ -78,6 +78,28 @@ function vignettes(v: LigneVideo): { principale: string | null; repli: string | 
 
 const estBut = (kind: string): boolean => kind === 'but'
 
+/**
+ * L'ADRESSE DU LECTEUR — celui de l'ayant droit, dans notre page.
+ *
+ * Mehdi, 17/10/2026 : « la vidéo publiée sur le site ne se joue pas dans
+ * le site, elle redirige vers X ». Les cartes pointaient vers la source ;
+ * elles pointent maintenant vers /v/<id>, et c'est ICI que le lecteur est
+ * embarqué. On n'héberge toujours rien : l'iframe est la leur, les vues
+ * leur reviennent.
+ *
+ * L'embed de X rend la carte du post AVEC son lecteur, et il joue en
+ * place — vérifié le 17/10 sur le but de Fermín. Il ne demande ni script
+ * ni jeton.
+ */
+export function lecteurDe(v: LigneVideo): string {
+  return estX(v.source)
+    ? `https://platform.twitter.com/embed/Tweet.html?id=${encodeURIComponent(v.video_id)}&theme=dark&dnt=true`
+    : `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.video_id)}?rel=0&modestbranding=1`
+}
+
+/** Le format du lecteur : la carte de X est haute, YouTube est en 16:9. */
+export const lecteurEstCarte = (v: LigneVideo): boolean => estX(v.source)
+
 /** Ce que l'étiquette annonce, dans la langue de la page. */
 function etiquetteDe(kind: string, lang: string): string {
   if (estBut(kind)) return lang === 'fr' ? 'Le but' : lang === 'en' ? 'The goal' : 'الهدف'
@@ -102,7 +124,12 @@ export async function ogDeVideo(
   m: AutoMatch | null = null,
   lang = 'ar',
 ): Promise<string | null> {
-  const cle = `og:vid:${v.video_id}:${lang}`
+  // LE NUMÉRO DE VERSION DANS LA CLÉ. Le cache tient trente jours : une
+  // image rendue avec un défaut y resterait un mois, et rien dans
+  // l'interface ne permet de la jeter. L'incrémenter abandonne d'un coup
+  // tout ce qui a été rendu avant — c'est le seul bouton d'effacement
+  // qu'on ait, et il a servi dès le premier jour (fenêtre vide, 17/10).
+  const cle = `og:vid:2:${v.video_id}:${lang}`
   // ── LE CACHE SE LIT, SAUF AU MOMENT DE PUBLIER ──────────────────────
   // `m` n'est fourni que par la chaîne de publication, et c'est la seule
   // fois où les écussons sont disponibles. Sans cette exception, une page
@@ -150,8 +177,12 @@ export async function lireVideo(env: Env, id: string): Promise<LigneVideo | null
   if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return null
   const r = await fetch(
     `${env.SUPABASE_URL}/rest/v1/videos_matchs?video_id=eq.${encodeURIComponent(id)}`
+    // `vignette` EN FAIT PARTIE. Oubliée dans cette liste le 17/10, elle
+    // rendait la fenêtre du gabarit noire pour toute vidéo X : la colonne
+    // existait, elle était remplie, et personne ne la lisait. Une
+    // sélection explicite ne pardonne pas l'ajout d'une colonne.
     + '&select=video_id,source,kind,titre,description,publie_at,match_id,competition'
-    + ',equipe_dom,equipe_ext,score_dom,score_ext,buteur,minute&limit=1',
+    + ',equipe_dom,equipe_ext,score_dom,score_ext,buteur,minute,vignette&limit=1',
     { headers: sbHeaders(env) },
   )
   if (!r.ok) return null
@@ -159,100 +190,112 @@ export async function lireVideo(env: Env, id: string): Promise<LigneVideo | null
   return Array.isArray(l) && l[0] ? l[0] : null
 }
 
-const esc = (x: string): string =>
-  String(x ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch] as string))
-
 /**
- * LA PAGE. Les balises d'abord — c'est pour elles qu'elle existe — puis un
- * lecteur, la ligne du match, et deux portes vers le reste du site.
+ * LE RÉCIT D'UNE VIDÉO — le « petit article » de sa page.
  *
- * `noindex` : ces pages sont minces par construction (un cadre embarqué et
- * trois lignes) et il en naît des dizaines par jour. Les laisser indexer
- * diluerait /buts et /resumes, qui sont les pages de fond. Le trafic visé
- * vient de Facebook, et un post de lien se moque bien de `robots`.
+ * Mehdi, 17/10/2026 : « je ne veux pas d'article dans le vrai sens du
+ * terme, on prend juste la description on enjolive un peu ». Donc deux
+ * blocs, et aucun des deux n'invente :
+ *
+ *   · `recit` — une ou deux phrases composées à partir de ce qu'on SAIT :
+ *     qui, contre qui, quelle minute, quelle compétition, qui a fait la
+ *     passe. Rien d'autre n'y entre. Pas de « le plus beau but de la
+ *     saison » : on n'a pas regardé le but.
+ *   · `source` — la description d'origine, nettoyée et plafonnée, créditée
+ *     à son auteur. On ne la réécrit pas : c'est son texte.
+ *
+ * La langue suit la page. Un paragraphe arabe sur un site affiché en
+ * anglais ne se lit pas, et l'i18n du site ne sait traduire que des clés
+ * connues — une phrase composée n'en est pas une.
  */
-export async function pageVideo(env: Env, id: string, langDemandee: string | null): Promise<Response> {
-  const v = await lireVideo(env, id)
-  if (!v) return new Response('introuvable', { status: 404 })
-  const lang = ['fr', 'en', 'ar'].includes(langDemandee ?? '') ? (langDemandee as string) : 'ar'
-  const rtl = lang === 'ar'
-  const og = await ogDeVideo(env, v, null, lang)
-
-  const affiche = [v.equipe_dom, v.equipe_ext].filter(Boolean).join(' — ')
-  const score = v.score_dom !== null && v.score_dom !== undefined && v.score_ext !== null && v.score_ext !== undefined
-    ? `${v.score_dom} – ${v.score_ext}` : ''
-  const titre = estBut(v.kind)
-    ? [v.buteur, affiche].filter(Boolean).join(' · ')
-    : [affiche, score].filter(Boolean).join(' ') || v.titre
-  const etiquette = etiquetteDe(v.kind, lang)
+export function recitDeVideo(v: LigneVideo, lang: string): { recit: string; source: string } {
+  const affiche = [v.equipe_dom, v.equipe_ext].filter(Boolean).join(lang === 'ar' ? ' و' : ' — ')
+  const min = String(v.minute || '').replace(/\D/g, '')
   const comp = lang === 'ar' ? leagueAr(v.competition ?? '') : (v.competition ?? '')
-  const desc = [etiquette, comp, titre].filter(Boolean).join(' · ')
+  const phrases: string[] = []
 
-  // Le lecteur de l'ayant droit, jamais un fichier à nous.
-  const lecteur = estX(v.source)
-    ? `https://platform.twitter.com/embed/Tweet.html?id=${encodeURIComponent(v.video_id)}`
-    : `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.video_id)}?rel=0&modestbranding=1`
+  if (estBut(v.kind)) {
+    const qui = (v.buteur || '').trim()
+    // LA PRÉPOSITION DÉPEND DE CE QU'ON A. Écrite pour suivre la minute
+    // (« à la 41e minute DE Betis — Barcelona »), elle produisait
+    // « a marqué de Galatasaray — Barcelona » dès que la minute manquait
+    // — et elle manque souvent, le champ étant facultatif. Chaque cas a
+    // donc sa tournure, au lieu d'un assemblage de morceaux.
+    if (lang === 'fr') {
+      const ou = affiche ? (min ? ` à la ${min}e minute de ${affiche}` : ` lors de ${affiche}`)
+        : (min ? ` à la ${min}e minute` : '')
+      phrases.push(`${qui ? `${qui} a marqué` : 'Le but est tombé'}${ou}${comp ? `, en ${comp}` : ''}.`)
+      phrases.push('La vidéo est celle de l’ayant droit : elle se joue ici, ses vues lui reviennent.')
+    } else if (lang === 'en') {
+      const ou = affiche ? (min ? ` in the ${min}th minute of ${affiche}` : ` in ${affiche}`)
+        : (min ? ` in the ${min}th minute` : '')
+      phrases.push(`${qui ? `${qui} scored` : 'The goal came'}${ou}${comp ? `, in the ${comp}` : ''}.`)
+      phrases.push('The clip is the rights holder’s own: it plays here, and the views stay with them.')
+    } else {
+      // Le nombre est PRÉCÉDÉ d'un mot arabe (« الدقيقة 41 ») : l'algorithme
+      // bidirectionnel le laisse alors en place. Seul en tête de phrase, il
+      // part à l'autre bout de la ligne.
+      const ou = affiche ? (min ? ` في الدقيقة ${min} من مباراة ${affiche}` : ` في مباراة ${affiche}`)
+        : (min ? ` في الدقيقة ${min}` : '')
+      phrases.push(`${qui ? `سجّل ${qui}` : 'جاء الهدف'}${ou}${comp ? ` ضمن ${comp}` : ''}.`)
+      phrases.push('المقطع من مصدره الرسمي، ويُعرض هنا عبر مشغّله — المشاهدات تبقى له.')
+    }
+  } else {
+    const score = v.score_dom !== null && v.score_dom !== undefined
+      && v.score_ext !== null && v.score_ext !== undefined
+      ? `${v.score_dom} – ${v.score_ext}` : ''
+    if (lang === 'fr') {
+      phrases.push([
+        affiche ? `${affiche}` : 'La rencontre',
+        score ? ` s’est terminé ${score}` : ' est résumée ici',
+        comp ? `${score ? ', en' : ', en'} ${comp}` : '',
+        '.',
+      ].join(''))
+      phrases.push('Le résumé complet se joue ci-dessus, chez son diffuseur.')
+    } else if (lang === 'en') {
+      phrases.push([
+        affiche ? `${affiche}` : 'The match',
+        score ? ` finished ${score}` : ' is summed up here',
+        comp ? `, in the ${comp}` : '',
+        '.',
+      ].join(''))
+      phrases.push('The full highlights play above, on the broadcaster’s own player.')
+    } else {
+      phrases.push([
+        affiche ? `${affiche}` : 'المباراة',
+        score ? ` انتهت ${score}` : ' ملخصها هنا',
+        comp ? ` في ${comp}` : '',
+        '.',
+      ].join(''))
+      phrases.push('الملخص الكامل يُعرض أعلاه عبر مشغّل الناقل الرسمي.')
+    }
+  }
 
-  const L = lang === 'fr'
-    ? { buts: 'Les buts du jour', resumes: 'Les résumés du jour', accueil: 'Pressing 90’' }
-    : lang === 'en'
-      ? { buts: 'Today’s goals', resumes: 'Today’s highlights', accueil: 'Pressing 90’' }
-      : { buts: 'أهداف اليوم', resumes: 'ملخصات اليوم', accueil: 'Pressing 90’' }
+  // La description d'origine : on retire les adresses et le bruit de pied
+  // de chaîne, on plafonne, on ne réécrit rien.
+  const source = String(v.description ?? '')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/\b(?:pic\.twitter\.com|pic\.x\.com|t\.co)\/\S+/g, ' ')
+    .replace(/#\S+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .trim()
+    .slice(0, 420)
 
-  const html = `<!doctype html><html lang="${lang}"${rtl ? ' dir="rtl"' : ''}><head><meta charset="utf-8">
-<title>${esc(titre)} — Pressing 90’</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="${esc(desc)}">
-<meta property="og:type" content="video.other">
-<meta property="og:title" content="${esc(titre)}">
-<meta property="og:description" content="${esc(desc)}">
-<meta property="og:url" content="${esc(lienPartage(v.video_id))}">
-<meta property="og:site_name" content="Pressing 90’">
-${og ? `<meta property="og:image" content="${esc(og)}">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:alt" content="${esc(titre)}">` : ''}
-<meta name="twitter:card" content="summary_large_image">
-<meta name="robots" content="noindex,follow">
-<link rel="canonical" href="${esc(lienPartage(v.video_id))}">
-<style>
-:root{color-scheme:dark}
-*{box-sizing:border-box}
-body{margin:0;background:#0B0F0D;color:#ECEFE8;
-  font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:860px;margin:0 auto;padding:22px 18px 46px}
-.marque{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.02em;
-  color:#ECEFE8;text-decoration:none;font-size:15px}
-.marque span{color:#D9B54A}
-.chip{display:inline-block;margin:18px 0 8px;padding:5px 14px;border:1px solid #41C97C;
-  border-radius:999px;color:#41C97C;font-size:13px;font-weight:600}
-h1{margin:4px 0 2px;font-size:clamp(21px,4.4vw,31px);line-height:1.2}
-.sous{margin:0 0 16px;color:#8d978f;font-size:14px}
-.cadre{position:relative;aspect-ratio:16/9;border:1px solid rgba(217,181,74,.45);
-  border-radius:12px;overflow:hidden;background:#05080F}
-.cadre iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
-.portes{display:flex;flex-wrap:wrap;gap:12px;margin-top:22px}
-.portes a{flex:1 1 200px;text-align:center;padding:14px 16px;border-radius:12px;
-  text-decoration:none;font-weight:700;font-size:15px}
-.or{background:#D9B54A;color:#0B0F0D}
-.vert{background:transparent;color:#41C97C;border:1px solid rgba(65,201,124,.5)}
-footer{margin-top:28px;font-size:13px;color:#6f7a72}
-footer a{color:#D9B54A;text-decoration:none}
-</style></head><body><main>
-<a class="marque" href="${SITE}/?ref=fb-video">Pressing <span>90’</span></a>
-<div class="chip">${esc(etiquette)}</div>
-<h1>${esc(titre)}</h1>
-<p class="sous">${esc([comp, score].filter(Boolean).join(' · '))}</p>
-<div class="cadre"><iframe src="${esc(lecteur)}" title="${esc(titre)}" allowfullscreen
-  allow="accelerometer;autoplay;clipboard-write;encrypted-media;picture-in-picture" loading="eager"></iframe></div>
-<nav class="portes">
-  <a class="or" href="${SITE}/resumes?ref=fb-video">${esc(L.resumes)}</a>
-  <a class="vert" href="${SITE}/buts?ref=fb-video">${esc(L.buts)}</a>
-</nav>
-<footer><a href="${SITE}/?ref=fb-video">${esc(L.accueil)}</a></footer>
-</main></body></html>`
+  return { recit: phrases.filter(Boolean).join(' '), source }
+}
 
-  return new Response(html, {
-    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=600' },
-  })
+/** Le titre éditorial d'une vidéo — l'accroche, pas le titre de la source. */
+export async function titreEditorial(v: LigneVideo, lang: string): Promise<string> {
+  const { titreDeBut, accrocheResume } = await import('./accroches')
+  if (estBut(v.kind)) {
+    if (lang === 'ar') return titreDeBut({ buteur: v.buteur ?? '', minute: v.minute ?? '' }, 0)
+    const qui = (v.buteur || '').trim()
+    const adv = [v.equipe_dom, v.equipe_ext].filter(Boolean).join(' — ')
+    if (lang === 'fr') return qui ? `Regardez ce qu’a fait ${qui}` : `Le but — ${adv}`
+    return qui ? `Watch what ${qui} just did` : `The goal — ${adv}`
+  }
+  if (lang === 'ar') return accrocheResume(v.score_dom ?? null, v.score_ext ?? null)
+  const affiche = [v.equipe_dom, v.equipe_ext].filter(Boolean).join(' — ')
+  return affiche || v.titre
 }

@@ -301,15 +301,37 @@ export default {
       // Elle est servie sous pressing90.live/p/<id> par une fonction Pages
       // qui proxyfie ici : un lien vers *.workers.dev se fait rogner par
       // les apercus et les filtres de courrier.
-      // LA PAGE D'UNE VIDÉO, servie sous pressing90.live/v/<id> par la
-      // fonction Pages qui proxyfie ici. Elle porte les balises Open Graph
-      // que Facebook lit sous un post de LIEN — voir videopage.ts.
-      if (url.pathname === '/video-card') {
+      // TOUT CE QU'IL FAUT POUR LA PAGE D'UNE VIDÉO, en JSON.
+      //
+      // Deux appelants, une seule source : le SITE, qui rend la page
+      // /v/<id> avec le lecteur et le récit ; et la fonction Pages, qui
+      // injecte les balises Open Graph dans la coquille avant de la
+      // servir — Facebook ne lit pas le JavaScript.
+      //
+      // C'est le worker qui répond parce que lui seul a la clé de service
+      // et peut demander un rendu au studio.
+      if (url.pathname === '/video-public') {
         const id = (url.searchParams.get('v') || '').trim()
-        if (!id || !/^[A-Za-z0-9_-]{5,40}$/.test(id)) return new Response('vidéo requise', { status: 400 })
-        if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return new Response('indisponible', { status: 503 })
-        const { pageVideo } = await import('./videopage')
-        return pageVideo(env, id, url.searchParams.get('lang'))
+        if (!id || !/^[A-Za-z0-9_-]{5,40}$/.test(id)) return cors(json({ error: 'vidéo requise' }, 400), req)
+        if (!env.SUPABASE_URL || !env.SUPABASE_SERVICE_KEY) return cors(json({ error: 'indisponible' }, 503), req)
+        const lg = ['fr', 'en', 'ar'].includes(url.searchParams.get('lang') ?? '')
+          ? (url.searchParams.get('lang') as string) : 'en'
+        const vp = await import('./videopage')
+        const v = await vp.lireVideo(env, id)
+        if (!v) return cors(json({ error: 'introuvable' }, 404), req)
+        const { recit, source } = vp.recitDeVideo(v, lg)
+        return cors(json({
+          ok: true, lang: lg,
+          video: v,
+          titre: await vp.titreEditorial(v, lg),
+          recit, source,
+          lecteur: vp.lecteurDe(v),
+          carte: vp.lecteurEstCarte(v),
+          lien: vp.lienPartage(v.video_id),
+          // L'image de partage : rendue ici, parce que la fonction Pages
+          // n'a pas de quoi la demander au studio.
+          og: await vp.ogDeVideo(env, v, null, lg === 'ar' ? 'ar' : lg),
+        }, 200), req)
       }
 
       if (url.pathname === '/post-card') {

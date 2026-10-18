@@ -1,5 +1,5 @@
 import { type ReactElement, useEffect } from 'react'
-import { NavLink } from 'react-router-dom'
+import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useSiteSettings } from '../store/siteSettings'
 import { useT } from '../lib/i18n'
@@ -16,6 +16,15 @@ type Tab = {
   to: string
   label: string
   icon: (active: boolean) => ReactElement
+  /**
+   * Les autres chemins que cet onglet représente.
+   *
+   * `NavLink` n'allume que son propre `to`. L'onglet des vidéos en couvre
+   * trois — les buts, les résumés et la page d'une vidéo — et sans ceci la
+   * barre n'aurait AUCUN onglet actif sur deux d'entre eux, ce qui se lit
+   * comme un bug.
+   */
+  actifAussi?: (chemin: string) => boolean
 }
 
 const tabs: Tab[] = [
@@ -92,11 +101,28 @@ const tabs: Tab[] = [
       // variante épaissie ici.
       icon: () => <IconeMasque nom="growth-analysis" taille={22} />,
     },
-  // ── « NEWS » QUITTE LA BARRE DU BAS (Mehdi, 17/10/2026) ───────────────
-  // Elle reste atteignable par deux chemins qui ne bougent pas : la section
-  // en bas de l'accueil, et le menu de l'avatar. La barre, elle, n'a que
-  // sept places et les buts du jour comptent davantage — ils sont désormais
-  // en tête de l'accueil, dans leur propre bloc.
+  // ── « NEWS » EST REMPLACÉE, PAS SUPPRIMÉE (Mehdi, 17/10/2026) ─────────
+  // Première lecture de sa demande : j'avais seulement retiré News. Il
+  // voulait un ÉCHANGE — « tu n'as pas remplacé le bouton NEWS par
+  // Goals/highlights, tu as juste supprimé News ». News reste atteignable
+  // par deux chemins qui ne bougent pas, la section en bas de l'accueil et
+  // le menu de l'avatar ; sa place dans la barre revient aux vidéos.
+  //
+  // UN SEUL ONGLET POUR LES DEUX. « Goals/highlights » ne tient pas en
+  // 8 px dans une colonne de 47, qui est ce que donne un écran de 375
+  // quand l'archive du Mondial est allumée. L'onglet mène donc aux buts,
+  // et les deux pages portent en tête un sélecteur Buts | Résumés : un
+  // appui suffit pour passer de l'un à l'autre.
+  {
+    to: '/buts', label: 'Goals',
+    actifAussi: (c) => c.startsWith('/resumes') || c.startsWith('/v/'),
+    // Le glyphe est celui que Mehdi a déposé (video.svg), servi en MASQUE
+    // comme le coureur et l'analyse : le fichier reste hors du paquet et
+    // prend quand même la couleur de l'onglet actif, ce qu'une <img> ne
+    // sait pas faire. L'état actif se lit à la couleur, donc pas de
+    // variante épaissie.
+    icon: () => <IconeMasque nom="video" taille={22} />,
+  },
   {
     // WC26 archive — trophy stays, the tournament is history now.
     to: '/wc26', label: 'WC26',
@@ -110,6 +136,7 @@ const tabs: Tab[] = [
 
 export function BottomNav() {
   const t2 = useT()
+  const chemin = useLocation().pathname
   const user = useAuth((s) => s.user)
   void user // (reserved for future auth-aware tab swap)
   // WC26 tab is admin-toggled; the grid adapts to 4 or 5 columns.
@@ -188,10 +215,12 @@ export function BottomNav() {
             end={t.to === '/'}
             className={({ isActive }) =>
               'relative flex flex-col items-center justify-center gap-1 py-2.5 transition-colors ' +
-              (isActive ? 'text-accent-gold' : 'text-slate-500')
+              (isActive || t.actifAussi?.(chemin) ? 'text-accent-gold' : 'text-slate-500')
             }
           >
-            {({ isActive }) => (
+            {({ isActive: brut }) => {
+              const isActive = brut || !!t.actifAussi?.(chemin)
+              return (
               <>
                 {t.icon(isActive)}
                 <span
@@ -210,7 +239,8 @@ export function BottomNav() {
                   <span className="absolute -top-px left-1/2 -translate-x-1/2 w-8 h-0.5 bg-accent-gold" />
                 )}
               </>
-            )}
+              )
+            }}
           </NavLink>
         ))}
       </div>

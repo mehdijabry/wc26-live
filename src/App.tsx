@@ -36,6 +36,11 @@ const Clubs = lazy(() => import('./components/pages/Clubs').then((m) => ({ defau
 // 17/10/2026 — deux boutons en tête de l'accueil y mènent, et « News » a
 // quitté la barre du bas pour leur laisser la place.
 const Videos = lazy(() => import('./components/pages/Videos'))
+// La page d'UNE vidéo : son lecteur embarqué et son récit. Mehdi,
+// 17/10/2026 — « chaque vidéo publiée sur le site a sa propre page ».
+// Ses balises de partage sont posées par functions/v/[id].ts, avant
+// React : Facebook ne lit pas le JavaScript.
+const VideoPage = lazy(() => import('./components/pages/VideoPage'))
 const ClubsLeague = lazy(() => import('./components/pages/ClubsLeague').then((m) => ({ default: m.ClubsLeague })))
 const ClubPage = lazy(() => import('./components/pages/ClubPage').then((m) => ({ default: m.ClubPage })))
 const Classement = lazy(() => import('./components/pages/Classement').then((m) => ({ default: m.Classement })))
@@ -350,6 +355,14 @@ function App() {
             element={
               <Suspense fallback={<PageSkeleton caption="Loading the highlights…" />}>
                 <Videos kind="resume" />
+              </Suspense>
+            }
+          />
+          <Route
+            path="/v/:id"
+            element={
+              <Suspense fallback={<PageSkeleton caption="Loading the video…" />}>
+                <VideoPage />
               </Suspense>
             }
           />
