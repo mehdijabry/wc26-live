@@ -483,9 +483,25 @@ type LigneJour = {
  * est-elle complète ? » — question à laquelle la file répondait toujours
  * non dès qu'une ligne avait été publiée ailleurs.
  */
-/** La clé d'une rencontre : son identifiant ESPN, ou la paire d'équipes. */
-const cleRencontre = (x: { match_id: string | null; equipe_dom: string | null; equipe_ext: string | null }): string =>
-  x.match_id ?? `${x.equipe_dom ?? ''}|${x.equipe_ext ?? ''}`
+/**
+ * LA CLÉ D'UNE RENCONTRE — la PAIRE D'ÉQUIPES d'abord, pas l'identifiant.
+ *
+ * Contre-intuitif, et c'est pourtant le seul choix juste. Un même match
+ * sort souvent en deux ou trois vidéos — QUICK, HIGHLIGHTS, EXTENDED — et
+ * l'appariement ESPN ne réussit pas forcément sur toutes : l'une repart
+ * avec un `match_id`, l'autre avec `null`. Les classer par identifiant
+ * donnait donc DEUX rencontres pour un seul match, et le post du 18/10 a
+ * annoncé dix-neuf matchs là où la page en montre onze.
+ *
+ * Les noms d'équipes, eux, sont présents sur toutes les versions. Ils sont
+ * normalisés par `cleClub` — « Paris Saint-Germain » et « PSG » tombent
+ * sur la même clé, c'est précisément son métier. L'identifiant ne sert
+ * plus que de secours, quand les équipes manquent.
+ */
+const cleRencontre = (x: { match_id: string | null; equipe_dom: string | null; equipe_ext: string | null; video_id: string }): string =>
+  (x.equipe_dom && x.equipe_ext)
+    ? `${cleClub(x.equipe_dom)}|${cleClub(x.equipe_ext)}`
+    : (x.match_id ?? x.video_id)
 
 async function lignesDuJour(env: Env, jour: string): Promise<LigneJour[]> {
   const debut = `${jour}T00:00:00Z`, fin = `${jour}T23:59:59.999Z`
