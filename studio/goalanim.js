@@ -445,7 +445,29 @@ export async function renderGoalRecreation({ spec, voices, music, roar, confetti
     if (ci >= 0) { const st = CAPS[ci][0]; const p = eo((t - st) / 0.25); const s = 1.12 - 0.12 * p; ctx.save(); ctx.globalAlpha = c01((t - st) / 0.12); ctx.translate(W / 2, 1690); ctx.scale(s, s); ctx.drawImage(capC[ci], -500, -120); ctx.restore() }
     fs.writeFileSync(path.join(framesDir, `f-${String(f).padStart(5, '0')}.jpg`), c.toBuffer('image/jpeg', { quality: 0.92 }))
     await new Promise((r) => setImmediate(r))
-    if (f % 250 === 0) console.log('[goal-anim] frame', f, '/', N, ((Date.now() - t0) / 1000).toFixed(1) + 's')
+    // ── LE RAMASSE-MIETTES, PENDANT LA BOUCLE ET PAS SEULEMENT APRÈS ──
+    //
+    // Mesuré le 19/10/2026 sur le conteneur (cgroup, pas `process.rss` —
+    // voir server.js) : 43 Mo au repos, puis 204 → 354 → 482 → 512 en
+    // quatre-vingt-dix secondes dès qu'un rendu démarre, et Render coupe.
+    // Soit environ 150 Mo par tranche de trente secondes, pour une
+    // trentaine d'images : cinq mégaoctets par image, l'ordre de grandeur
+    // d'une surface 1080×1920 en RGBA (8,3 Mo).
+    //
+    // La cause : `toBuffer('image/jpeg')` encode dans de la mémoire
+    // NATIVE, que V8 ne compte pas. Le tas JS reste donc minuscule, V8
+    // n'a aucune raison de déclencher un cycle majeur, et les surfaces
+    // temporaires de Cairo s'accumulent jusqu'au plafond. C'est le piège
+    // classique de node-canvas, et `--max-old-space-size=256` n'y change
+    // rien : il borne le tas JS, pas le natif.
+    //
+    // Le code libérait déjà tout en SORTIE de boucle (voir plus bas) —
+    // mais la boucle, elle, n'y arrivait jamais. Toutes les douze images
+    // borne l'encours à une centaine de mégaoctets ; sur 0,1 CPU un cycle
+    // majeur sur un tas de cette taille coûte quelques millisecondes,
+    // contre plusieurs minutes de boucle.
+    if (global.gc && f % 12 === 11) global.gc()
+    if (f % 250 === 0) console.log('[goal-anim] frame', f, '/', N, ((Date.now() - t0) / 1000).toFixed(1) + 's', 'rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
   }
   console.log('[goal-anim] frames written, rss', Math.round(process.memoryUsage().rss / 1048576) + ' MB')
   // Free every drawing surface before the closing card (Render OOM, 2026-09-19): the main loop keeps ~10 full-size
