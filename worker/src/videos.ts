@@ -895,12 +895,31 @@ export async function rattacherOrphelins(env: Env, date: string): Promise<string
 }
 
 /**
- * La playlist de la JOURNÉE en cours d'un championnat qui range ses
- * résumés ainsi. On garde le numéro le plus haut — la journée 10 remplace
- * la 9 dès qu'elle apparaît — et on met en cache douze heures : la liste
- * ne change qu'une fois par semaine, inutile d'y revenir toutes les cinq
- * minutes.
+ * LA SAISON D'ABORD, LA JOURNÉE ENSUITE.
+ *
+ * Une chaîne garde ses playlists d'archive : celle de LaLiga porte
+ * « RESÚMENES J38 | LALIGA EA SPORTS 2025/26 » à côté de « J7 | …
+ * 2026/27 ». La règle d'origine — « on garde le numéro le plus haut, la
+ * journée 10 remplace la 9 » — était juste À L'INTÉRIEUR d'une saison et
+ * fausse entre deux : J38 de l'an dernier battait J7 de cette année, et
+ * l'a battue tous les jours depuis la reprise. Résultat, aucun résumé de
+ * LaLiga détecté de toute la saison, jusqu'à ce que Mehdi remarque
+ * l'absence du Real Madrid du dimanche 18 octobre.
+ *
+ * On lit donc la saison dans le titre et on écarte ce qui n'est pas celle
+ * en cours. Un titre sans saison reste éligible — toutes les chaînes n'en
+ * mettent pas — mais il passe APRÈS, pour qu'une archive datée ne reprenne
+ * jamais la main sur une playlist de l'année.
  */
+const SAISON = /(20\d{2})\s*\/\s*(\d{2})/
+
+/** « 2026/27 » pour octobre 2026 : une saison bascule en juillet. */
+function saisonEnCours(d = new Date()): string {
+  const y = d.getUTCFullYear()
+  const debut = d.getUTCMonth() + 1 >= 7 ? y : y - 1
+  return `${debut}/${String(debut + 1).slice(2)}`
+}
+
 async function playlistDeLaJournee(env: Env, s: Source): Promise<string | null> {
   if (!s.channelId || !s.motifPlaylist) return null
   const cle = `yt:journee:${s.cle}`
@@ -908,17 +927,41 @@ async function playlistDeLaJournee(env: Env, s: Source): Promise<string | null> 
   if (connu) return connu
   const k = (env as unknown as { YOUTUBE_API_KEY?: string }).YOUTUBE_API_KEY
   if (!k) return null
-  const r = await fetch(
-    `https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${s.channelId}&maxResults=50&key=${k}`,
-    { signal: AbortSignal.timeout(20_000) },
-  )
-  const j = await r.json().catch(() => ({})) as { items?: Array<{ id?: string; snippet?: { title?: string } }> }
-  let meilleur: { id: string; n: number } | null = null
-  for (const it of j.items ?? []) {
-    const m = String(it.snippet?.title ?? '').match(s.motifPlaylist)
-    if (!m || !it.id) continue
+
+  // DEUX PAGES, PAS UNE. Trente-huit journées d'archive plus celles de
+  // l'année en cours dépassent les cinquante d'une page : la playlist
+  // qu'on cherche peut tomber sur la seconde. Une unité de quota de plus.
+  const titres: Array<{ id: string; titre: string }> = []
+  let page = ''
+  for (let i = 0; i < 2; i++) {
+    const r = await fetch(
+      `https://www.googleapis.com/youtube/v3/playlists?part=snippet&channelId=${s.channelId}&maxResults=50`
+      + `${page ? `&pageToken=${page}` : ''}&key=${k}`,
+      { signal: AbortSignal.timeout(20_000) },
+    )
+    const j = await r.json().catch(() => ({})) as {
+      items?: Array<{ id?: string; snippet?: { title?: string } }>; nextPageToken?: string
+    }
+    for (const it of j.items ?? []) if (it.id) titres.push({ id: it.id, titre: String(it.snippet?.title ?? '') })
+    if (!j.nextPageToken) break
+    page = j.nextPageToken
+  }
+
+  const voulue = saisonEnCours()
+  // Rang : d'abord la saison en cours, puis le titre sans saison, et
+  // jamais une autre saison. À rang égal, le numéro le plus haut.
+  let meilleur: { id: string; rang: number; n: number } | null = null
+  for (const { id, titre } of titres) {
+    const m = titre.match(s.motifPlaylist)
+    if (!m) continue
+    const sa = titre.match(SAISON)
+    const saison = sa ? `${sa[1]}/${sa[2]}` : null
+    if (saison && saison !== voulue) continue
+    const rang = saison === voulue ? 2 : 1
     const n = Number(m[1] ?? 0)
-    if (!meilleur || n > meilleur.n) meilleur = { id: it.id, n }
+    if (!meilleur || rang > meilleur.rang || (rang === meilleur.rang && n > meilleur.n)) {
+      meilleur = { id, rang, n }
+    }
   }
   if (!meilleur) return null
   await env.CACHE.put(cle, meilleur.id, { expirationTtl: 12 * 3600 })

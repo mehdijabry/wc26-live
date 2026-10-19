@@ -2,55 +2,117 @@ import { useId } from 'react'
 import { JETON, POINT } from '../lib/jeu'
 
 /**
- * Les deux jetons du jeu, dessinés.
+ * Les deux jetons du jeu.
  *
- * Avant, le portefeuille affichait « ⚽ 1 » puis un chiffre doré : l'emoji
- * disait « football », pas « ce que je mise », et les pressings n'avaient
- * aucun signe à eux. Deux pastilles distinctes se reconnaissent d'un coup
- * d'œil, même à 14 pixels dans l'en-tête, et sans lire l'étiquette.
+ *   crampon  → ce qu'on mise
+ *   pressing → ce qu'on gagne
  *
- *   crampon  → noir   : ce qu'on mise
- *   pressing → mauve  : ce qu'on gagne
+ * ── DEUX ÉTATS, ET ILS NE DISENT PAS LA MÊME CHOSE (19/10/2026) ──────────
+ * Mehdi a fourni quatre visuels : une PILE et un JETON SEUL pour chaque
+ * monnaie. « Les piles, mets-les partout dans le site ; les icônes jeton
+ * seul dans les boutons de réclamation de récompenses. »
  *
- * POURQUOI DU SVG ET PAS UNE IMAGE. Deux fichiers PNG, c'est deux requêtes,
- * un flou sur les écrans à forte densité et un contour à refaire à chaque
- * changement de fond. Ici tout est vectoriel, inséré dans le document, et
- * la bordure claire est pensée pour que le jeton NOIR reste visible sur le
- * marine sombre du site — un disque noir sans cerne y disparaîtrait.
+ * La distinction porte du sens, et c'est ce qui la rend tenable : une pile
+ * dit un AVOIR — un solde, un classement, un prix à gagner. Un jeton seul
+ * dit un GESTE — on en prend un, là, maintenant. D'où `variante="seul"`
+ * sur les boutons qui encaissent, et la pile partout ailleurs.
  *
- * Les dégradés portent un identifiant unique par instance (`useId`) : sans
- * ça, deux jetons sur la même page partagent la première définition
- * rencontrée, et l'un des deux prend la couleur de l'autre.
+ * ── POURQUOI DES IMAGES, ALORS QUE C'ÉTAIT DU SVG DESSINÉ ────────────────
+ * Les fichiers livrés sont des rendus 3D vectorisés : 1 343 à 3 481
+ * chemins, de 0,8 à 1,8 Mo pièce — cinq mégaoctets à eux quatre, pour un
+ * site dont tout le JavaScript pèse 348 Ko. Un tracé automatique de photo
+ * n'est pas un dessin vectoriel, c'est une photo dans un emballage coûteux.
+ * Ils sont donc rendus une fois à 96 px, rognés sur leur encre et
+ * recentrés : 52 Ko pour les trois, et net jusqu'à 48 px d'affichage.
+ *
+ * ── LE JETON CRAMPON SEUL MANQUE ENCORE ──────────────────────────────────
+ * Son fichier est le seul des quatre à n'avoir pas été détouré : le décor
+ * (un tableau de bord, un socle) y est cuit, opaque sur toute la surface,
+ * et il n'est pas isolable automatiquement — l'arrière-plan y est aussi
+ * clair que le cerne du jeton. En attendant la version détourée, cette
+ * case retombe sur le jeton DESSINÉ d'origine, conservé plus bas. Il est
+ * lisible et à la bonne couleur ; il ne lui manque que la matière.
+ *
+ * ── CE QUE LA PILE PERD EN PETIT ─────────────────────────────────────────
+ * Le dessin d'origine avait été fait pour rester lisible à 14 px dans
+ * l'en-tête. Une pile de trente pièces à cette taille redevient une tache.
+ * La consigne est suivie — la pile est partout — mais les emplacements
+ * concernés sont listés dans la réponse, pour que ça se tranche à l'œil.
  */
 
 type Type = 'crampon' | 'pressing'
+type Variante = 'pile' | 'seul'
 
-const PALETTE: Record<Type, {
-  clair: string; sombre: string; cerne: string; cerneOpacite: number; eclat: number
-}> = {
-  // Noir profond, légèrement bleuté pour ne pas faire tache sur le marine.
-  // Le cerne est plus marqué que celui du mauve, et c'est volontaire : à
-  // 14 pixels dans l'en-tête, un disque noir sans contour franc n'est plus
-  // qu'une tache. C'est le contour qui porte la forme, pas le remplissage.
-  crampon: { clair: '#5C636F', sombre: '#07080A', cerne: '#B4C4D4', cerneOpacite: 0.64, eclat: 0.26 },
-  // Mauve franc : il doit se distinguer du doré de la marque au premier regard.
-  pressing: { clair: '#C3AEFF', sombre: '#6A46E0', cerne: '#D9CCFF', cerneOpacite: 0.55, eclat: 0.32 },
+/** Les fichiers livrés, rendus dans `public/jetons/`. */
+const IMAGES: Partial<Record<`${Type}-${Variante}`, string>> = {
+  'crampon-pile': '/jetons/crampons-pile.png',
+  'pressing-pile': '/jetons/pressings-pile.png',
+  'pressing-seul': '/jetons/pressings-jeton.png',
+  // 'crampon-seul' : en attente du fichier détouré (voir l'en-tête).
 }
 
 export function Jeton({
   type,
   taille = 14,
+  variante = 'pile',
   className = '',
 }: {
   type: Type
   /** Côté du jeton en pixels. 14 dans l'en-tête, 18 dans le portefeuille. */
   taille?: number
+  /** `pile` pour un avoir, `seul` pour le geste d'encaisser. */
+  variante?: Variante
   className?: string
+}) {
+  const nom = type === 'crampon' ? JETON.plusieurs : POINT.plusieurs
+  const src = IMAGES[`${type}-${variante}`]
+
+  if (src) {
+    return (
+      <img
+        src={src}
+        width={taille}
+        height={taille}
+        alt=""
+        aria-hidden
+        /* Ces icônes accompagnent un chiffre : elles ne doivent jamais
+           retenir le rendu de la page, ni bloquer le fil principal. */
+        decoding="async"
+        loading="lazy"
+        draggable={false}
+        className={'inline-block shrink-0 align-[-0.18em] select-none ' + className}
+        style={{ width: taille, height: taille }}
+        title={nom}
+      />
+    )
+  }
+  return <JetonDessine type={type} taille={taille} className={className} nom={nom} />
+}
+
+/**
+ * LE JETON DESSINÉ — le dessin d'origine, gardé comme secours.
+ *
+ * Il sert tant que le crampon seul n'a pas de fichier détouré, et il
+ * resterait utile le jour où l'on voudrait une version lisible en très
+ * petit : tout y est vectoriel, le cerne est pensé pour que le jeton
+ * sombre reste visible sur le sol noir-vert du site, et rien ne pèse.
+ *
+ * Les dégradés portent un identifiant unique par instance (`useId`) : sans
+ * ça, deux jetons sur la même page partagent la première définition
+ * rencontrée, et l'un des deux prend la couleur de l'autre.
+ */
+const PALETTE: Record<Type, {
+  clair: string; sombre: string; cerne: string; cerneOpacite: number; eclat: number
+}> = {
+  crampon: { clair: '#5C636F', sombre: '#07080A', cerne: '#B4C4D4', cerneOpacite: 0.64, eclat: 0.26 },
+  pressing: { clair: '#C3AEFF', sombre: '#6A46E0', cerne: '#D9CCFF', cerneOpacite: 0.55, eclat: 0.32 },
+}
+
+function JetonDessine({ type, taille, className, nom }: {
+  type: Type; taille: number; className: string; nom: string
 }) {
   const id = useId()
   const c = PALETTE[type]
-  const nom = type === 'crampon' ? JETON.plusieurs : POINT.plusieurs
-
   return (
     <svg
       width={taille}
@@ -70,7 +132,7 @@ export function Jeton({
       </defs>
 
       <circle cx="12" cy="12" r="10.4" fill={`url(#${id}-f)`} />
-      {/* Le cerne. C'est lui qui détache le jeton noir du fond marine. */}
+      {/* Le cerne. C'est lui qui détache le jeton sombre du fond. */}
       <circle
         cx="12" cy="12" r="10.4"
         fill="none" stroke={c.cerne} strokeOpacity={c.cerneOpacite} strokeWidth="1.5"

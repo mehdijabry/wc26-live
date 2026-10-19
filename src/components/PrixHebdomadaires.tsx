@@ -99,7 +99,7 @@ export default function PrixHebdomadaires({
                         onClick={() => onReclamer(p.id, 'crampons')}
                         className="px-3.5 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98] transition-transform"
                       >
-                        <Jeton type="crampon" taille={13} />
+                        <Jeton type="crampon" taille={13} variante="seul" />
                         {p.crampons}
                       </button>
                       <button
@@ -108,7 +108,7 @@ export default function PrixHebdomadaires({
                         onClick={() => onReclamer(p.id, 'pressings')}
                         className="px-3.5 py-2 rounded-xl border border-accent-violet text-accent-violet font-semibold text-sm disabled:opacity-40 inline-flex items-center gap-1.5 active:scale-[0.98] transition-transform"
                       >
-                        <Jeton type="pressing" taille={13} />
+                        <Jeton type="pressing" taille={13} variante="seul" />
                         {p.pressings}
                       </button>
                     </div>

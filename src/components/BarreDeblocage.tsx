@@ -2,6 +2,7 @@ import { useT } from '../lib/i18n'
 import { Icone } from './Icone'
 import JaugeCoureur from './JaugeCoureur'
 import type { EtatDuGroupe } from '../lib/leagues'
+import { Jeton } from './Jeton'
 
 /**
  * L'état de déblocage d'un groupe, et le bouton pour encaisser.
@@ -88,8 +89,11 @@ export default function BarreDeblocage({
                   type="button"
                   disabled={occupe || etat.bonusJour === 0}
                   onClick={onReclamer}
-                  className="px-4 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm disabled:opacity-40 active:scale-[0.98] transition-transform"
+                  className="px-4 py-2 rounded-xl bg-accent-gold text-ink-900 font-semibold text-sm disabled:opacity-40 active:scale-[0.98] transition-transform inline-flex items-center gap-1.5"
                 >
+                  {/* Le jeton SEUL : ce bouton encaisse, il ne montre pas
+                      un avoir (règle du 19/10 — voir Jeton.tsx). */}
+                  <Jeton type="crampon" taille={14} variante="seul" />
                   {avecN(t('Claim {n} crampons here'), etat.bonusJour)}
                 </button>
                 <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-slate-500">
