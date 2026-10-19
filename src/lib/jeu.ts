@@ -263,8 +263,22 @@ export function pariOuvert(c: Cote | null | undefined, maintenant = Date.now()):
 
 export type Choix = 'home' | 'draw' | 'away'
 
-/** Les marchés ouverts. */
-export type Marche = '1x2' | 'exact' | 'scorer'
+/**
+ * Les marchés ouverts.
+ *
+ * Les trois premiers viennent de données distinctes — le score, la grille,
+ * la liste des buteurs. Les suivants sont des MARCHÉS DÉRIVÉS : ils ne sont
+ * qu'une fonction des deux nombres de buts, se cotent sur la même loi de
+ * Poisson que le score exact, et se règlent sur la seule donnée toujours
+ * disponible. Voir `grilleMarches` dans le worker et la migration 040.
+ */
+export type Marche = '1x2' | 'exact' | 'scorer' | 'ou25'
+
+/**
+ * Les marchés dérivés d'un match : `{ ou25: { plus: 2.36, moins: 1.53 } }`.
+ * Vide tant que le worker n'a pas coté le match.
+ */
+export type Marches = Record<string, Record<string, number>>
 
 /**
  * Un joueur pariable sur un match, avec sa cote.
@@ -454,6 +468,24 @@ export async function grilleDuMatch(matchId: string): Promise<Record<string, num
     .eq('match_id', matchId)
     .maybeSingle()
   return ((data as { exact?: Record<string, number> | null } | null)?.exact ?? {})
+}
+
+/**
+ * Les marchés dérivés d'UN match, à la demande.
+ *
+ * Même traitement que la grille des scores, et pour la même raison : ils ne
+ * voyagent pas avec les cotes 1X2 de tous les matchs. Quinze nombres par
+ * match paraissent peu — multipliés par les 374 lignes de la fenêtre, ils
+ * alourdiraient de 75 Ko le chargement dont dépend l'affichage des cartes.
+ */
+export async function marchesDuMatch(matchId: string): Promise<Marches> {
+  if (!supabase) return {}
+  const { data } = await supabase
+    .from('match_odds')
+    .select('marches')
+    .eq('match_id', matchId)
+    .maybeSingle()
+  return ((data as { marches?: Marches | null } | null)?.marches ?? {})
 }
 
 /**

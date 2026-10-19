@@ -32,6 +32,8 @@ import {
   cotesEnDirect,
   buteursDuMatch,
   grilleDuMatch,
+  marchesDuMatch,
+  type Marches,
   jambesParMatch,
   mesBulletins,
   poserBulletin,
@@ -150,6 +152,15 @@ function CarteMatch({
   // `null` tant qu'on n'a rien demandé, [] quand le match n'a pas de marché.
   const [buteurs, setButeurs] = useState<Buteur[] | null>(null)
   const [grille, setGrille] = useState<Array<[string, number]> | null>(null)
+  // LES MARCHÉS DÉRIVÉS, chargés au dépliage de LEUR section.
+  //
+  // J'ai d'abord voulu les poser d'office sous le 1X2 : deux boutons, ça ne
+  // gêne personne. Mais il aurait fallu les charger pour chaque carte de la
+  // page — 374 requêtes — ou les faire voyager avec les cotes, ce qui aurait
+  // doublé le chargement dont dépend l'affichage même des cartes. C'est la
+  // bataille déjà menée pour la grille des scores ; on ne la refait pas.
+  const [marchesOuverts, setMarchesOuverts] = useState(false)
+  const [marches, setMarches] = useState<Marches | null>(null)
   const id0 = idDePronostic(ev)
 
   // La grille des scores et la liste des buteurs se chargent AU DÉPLIAGE,
@@ -168,6 +179,13 @@ function CarteMatch({
     })
     return () => { vivant = false }
   }, [scoresOuverts, grille, id0])
+
+  useEffect(() => {
+    if (!marchesOuverts || marches !== null) return
+    let vivant = true
+    void marchesDuMatch(id0).then((m) => { if (vivant) setMarches(m) })
+    return () => { vivant = false }
+  }, [marchesOuverts, marches, id0])
 
   useEffect(() => {
     if (!buteursOuverts || buteurs !== null) return
@@ -292,6 +310,77 @@ function CarteMatch({
         <p className="mt-2 font-mono text-[10px] uppercase tracking-wider text-accent-red">
           {t('Odds updating — a goal just went in')}
         </p>
+      )}
+
+      {/* ── PLUS / MOINS 2,5 BUTS ──────────────────────────────────────
+          Le marché le plus joué au monde après le 1X2, et le seul qui
+          permette de parier sur un match sans avoir d'avis sur son
+          vainqueur — « ça va s'ouvrir », « ça va être fermé ». Il ne coûte
+          aucune donnée nouvelle : la même loi de Poisson qui price le score
+          exact donne la probabilité que le total dépasse deux buts et demi.
+          Voir `grilleMarches` dans le worker et la migration 040. */}
+      {ouvert && (
+        <div className="mt-2">
+          <button
+            type="button"
+            onClick={() => setMarchesOuverts((v) => !v)}
+            className={cn(
+              'w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-[11px] transition-colors',
+              selection?.marche === 'ou25'
+                ? 'bg-accent-gold/15 text-accent-gold'
+                : 'text-slate-500 hover:bg-slate-50',
+            )}
+          >
+            <span className="uppercase tracking-wider">
+              {t('Total goals')}
+              {selection?.marche === 'ou25' && (
+                <span className="ms-2 font-semibold normal-case tracking-normal">
+                  {selection.libelle} @ {selection.cote.toFixed(2)}
+                </span>
+              )}
+            </span>
+            <span className="text-slate-400">{marchesOuverts ? '−' : '+'}</span>
+          </button>
+
+          {marchesOuverts && marches === null && (
+            <p className="px-3 py-2 font-mono text-[11px] text-slate-500">{t('Loading…')}</p>
+          )}
+          {marchesOuverts && marches !== null && !marches.ou25 && (
+            <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
+              {t('No total-goals market on this match.')}
+            </p>
+          )}
+          {marchesOuverts && marches?.ou25 && (
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+              {([['plus', t('Over 2.5')], ['moins', t('Under 2.5')]] as const).map(([pick, libelle]) => {
+                const c2 = marches.ou25[pick]
+                if (!c2) return null
+                const actif = selection?.marche === 'ou25' && selection.pick === pick
+                return (
+                  <button
+                    key={pick}
+                    type="button"
+                    disabled={!ouvert}
+                    onClick={() => choisir('ou25', pick, c2, libelle)}
+                    className={cn(
+                      'rounded-xl py-2 flex flex-col items-center justify-center gap-0.5 transition-all border',
+                      actif
+                        ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
+                        : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50 hover:bg-slate-100',
+                      !ouvert && !actif && 'opacity-35',
+                      ouvert && 'active:scale-[0.97]',
+                    )}
+                  >
+                    <span className={cn('font-mono text-[10px] tracking-wider', actif ? 'text-ink-700' : 'text-slate-500')}>
+                      {libelle}
+                    </span>
+                    <span className="font-display text-lg leading-none tabular-nums">{c2.toFixed(2)}</span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Le score exact, replié. Déplié d'office, vingt-cinq boutons par
@@ -587,7 +676,10 @@ function Bulletin({
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] leading-tight">{s.titre}</div>
                 <div className="font-mono text-[10px] text-slate-500 truncate">
-                  {s.marche === 'exact' ? t('Exact score') : s.marche === 'scorer' ? t('Goalscorer') : t('Winner')} · {s.libelle}
+                  {s.marche === 'exact' ? t('Exact score')
+                    : s.marche === 'scorer' ? t('Goalscorer')
+                    : s.marche === 'ou25' ? t('Total goals')
+                    : t('Winner')} · {s.libelle}
                 </div>
               </div>
               <span className="font-mono text-[12px] tabular-nums text-accent-gold shrink-0">

@@ -30,6 +30,7 @@ import {
   fermetureLive,
   suspensionJusqua,
   CARTON_ROUGE_FERME,
+  esperancesRestantes,
 } from './cotes-live'
 
 export interface Env {
@@ -2945,6 +2946,118 @@ export function esperancesDeButs(
   return { dom: mh, ext: ma }
 }
 
+/**
+ * LES MARCHÉS DÉRIVÉS — tout ce qui n'est qu'une fonction des deux scores.
+ *
+ * Mehdi, 19/10/2026 : « donne-moi cinq autres types de pari qu'on pourrait
+ * ajouter avec les infos qu'on a », puis « ajoute-les un par un ».
+ *
+ * ── POURQUOI ILS NE COÛTENT RIEN ─────────────────────────────────────────
+ * `esperancesDeButs()` tire déjà les deux espérances de buts de la cote
+ * 1X2. À partir de là, la loi de Poisson donne la probabilité de CHAQUE
+ * score, donc celle de n'importe quel événement qui s'exprime en fonction
+ * des deux nombres de buts. Le plus/moins, les deux marquent, la double
+ * chance, l'écart, le total d'une équipe : tous se lisent sur la même
+ * grille, sans une donnée de plus et sans un appel de plus.
+ *
+ * ── LA SEULE DONNÉE TOUJOURS LÀ, C'EST LE SCORE ──────────────────────────
+ * Mesuré le 19/10 sur les 295 matchs terminés d'une journée : les corners,
+ * tirs et possession ne sont publiés que sur 156, les scores de mi-temps
+ * sur ZÉRO, et le détail des buts sur 62 %. Le score final, lui, est sur
+ * 100 %. Ces cinq marchés sont donc réglables partout où l'on prend des
+ * paris — ce qui n'aurait pas été vrai d'un marché corners.
+ *
+ * ── LA MARGE ─────────────────────────────────────────────────────────────
+ * Sept pour cent, contre douze sur le score exact. Un marché binaire se
+ * compare d'un coup d'œil à ce que propose n'importe quel bookmaker ; une
+ * grille de score exact, non. Prendre la même marge sur les deux se
+ * verrait tout de suite sur le premier.
+ */
+const MARGE_SIMPLE = 0.07
+
+/** Prix d'une probabilité, marge comprise. `null` si injouable. */
+function prix(p: number): number | null {
+  if (!(p > 0) || p >= 1) return null
+  const c = Math.round(((1 - MARGE_SIMPLE) / p) * 100) / 100
+  return c >= 1.01 && c <= 1000 ? c : null
+}
+
+/** Range une cote si elle existe — une entrée nulle n'a rien à faire en base. */
+function poser(o: Record<string, number>, cle: string, p: number): void {
+  const c = prix(p)
+  if (c !== null) o[cle] = c
+}
+
+/**
+ * La grille de TOUS les marchés dérivés, pour un match.
+ *
+ * Elle voyage avec les cotes 1X2, sur la même ligne et au même instant :
+ * jamais une grille qui décrirait un marché différent de celui affiché.
+ * Même règle que `exact`, et pour la même raison.
+ */
+export function grilleMarches(
+  home: number,
+  draw: number,
+  away: number,
+): Record<string, Record<string, number>> | null {
+  const lam = esperancesDeButs(home, draw, away)
+  if (!lam) return null
+  return grilleMarchesDeLambda(lam.dom, lam.ext)
+}
+
+/**
+ * La même grille, mais à partir des espérances directement.
+ *
+ * C'est cette porte qu'emprunte le calcul EN DIRECT : il part des
+ * espérances figées à l'ouverture, réduites au temps restant, et doit
+ * donner des prix cohérents avec ceux d'avant-match — c'est-à-dire sortis
+ * du même code, pas d'une seconde implémentation qui dériverait.
+ */
+export function grilleMarchesDeLambda(
+  lh: number,
+  la: number,
+  /** Buts déjà marqués, pour le calcul en direct. */
+  dejaDom = 0,
+  dejaExt = 0,
+): Record<string, Record<string, number>> | null {
+  if (!(lh > 0) || !(la > 0)) return null
+
+  // La grille complète des scores À VENIR, puis on ajoute ce qui est déjà
+  // au tableau. En avant-match les deux « déjà » valent zéro et c'est la
+  // grille ordinaire.
+  const N = 10
+  let plus25 = 0, lesDeux = 0
+  let pDom = 0, pNul = 0, pExt = 0
+  for (let i = 0; i <= N; i++) {
+    for (let j = 0; j <= N; j++) {
+      const p = poisson(lh, i) * poisson(la, j)
+      if (p < 1e-9) continue
+      const d = dejaDom + i, e = dejaExt + j
+      if (d + e > 2.5) plus25 += p
+      if (d > 0 && e > 0) lesDeux += p
+      if (d > e) pDom += p; else if (d === e) pNul += p; else pExt += p
+    }
+  }
+
+  const m: Record<string, Record<string, number>> = {}
+
+  // ── 1. PLUS / MOINS 2,5 BUTS ──────────────────────────────────────────
+  // Le marché le plus joué au monde après le 1X2, et le seul qui permette
+  // de parier sur un match sans avoir d'avis sur son vainqueur.
+  const ou: Record<string, number> = {}
+  poser(ou, 'plus', plus25)
+  poser(ou, 'moins', 1 - plus25)
+  // UN SEUL CÔTÉ SUFFIT À FAIRE UN MARCHÉ. En direct, un côté devient vite
+  // injouable — à la 60ᵉ sur 0-0, « moins de 2,5 » vaudrait 0,97, donc rien
+  // — mais l'autre reste un vrai prix. Exiger les deux faisait disparaître
+  // le marché entier à l'heure de jeu, alors qu'il avait encore un sens.
+  // Les deux côtés tombent ensemble quand l'affaire est pliée : à la 85ᵉ sur
+  // 2-1, « plus » dépasse le plafond de 1 000 et « moins » passe sous 1,01.
+  if (Object.keys(ou).length) m['ou25'] = ou
+
+  return Object.keys(m).length ? m : null
+}
+
 export function grilleScoresExacts(
   home: number,
   draw: number,
@@ -3325,6 +3438,8 @@ async function syncCotes(env: Env): Promise<void> {
         // ligne, même instant, donc jamais une grille qui décrirait un
         // marché différent de celui affiché.
         exact: grilleScoresExacts(home, draw, away),
+        // Les marchés dérivés voyagent avec elles, pour la même raison.
+        marches: grilleMarches(home, draw, away),
         kickoff: ev.date ?? null,
         lam_home: lam?.dom ?? null,
         lam_away: lam?.ext ?? null,
@@ -3491,6 +3606,18 @@ async function syncCotesLive(env: Env): Promise<boolean> {
         { minute: etat.minute, butsDom: etat.dom, butsExt: etat.ext },
         MARGE_EXACT, BUTS_MAX,
       ),
+      // LES MARCHÉS DÉRIVÉS SUIVENT LE MATCH, EUX AUSSI.
+      //
+      // Les laisser au prix d'avant-match les rendrait exploitables, et pas
+      // qu'un peu : à la 85ᵉ minute sur 0-0, « moins de 2,5 buts » est
+      // presque acquis mais afficherait encore 1,53. Ils repartent donc des
+      // mêmes espérances réduites au temps restant que le 1X2 et le score
+      // exact — même source, même instant, trois marchés qui racontent la
+      // même rencontre.
+      marches: (() => {
+        const r = esperancesRestantes(row.lam_home, row.lam_away, etat.minute)
+        return grilleMarchesDeLambda(r.dom, r.ext, etat.dom, etat.ext)
+      })(),
       live: true,
       minute: etat.minute,
       home_score: etat.dom,
