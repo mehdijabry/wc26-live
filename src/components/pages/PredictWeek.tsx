@@ -141,6 +141,11 @@ const MARCHES_DERIVES: Array<{
   // paraphraser ici (« domicile ou nul ») aurait rompu la lecture au
   // moment précis où le joueur compare les deux lignes.
   { cle: 'dc', titre: 'Double chance', choix: [['1x', '1X'], ['12', '12'], ['x2', 'X2']] },
+  {
+    cle: 'marge',
+    titre: 'Winning margin',
+    choix: [['e1', '1 goal'], ['e2', '2 goals'], ['e3', '3+ goals'], ['nul', 'Draw']],
+  },
 ]
 
 function CarteMatch({

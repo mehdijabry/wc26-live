@@ -3028,6 +3028,7 @@ export function grilleMarchesDeLambda(
   const N = 10
   let plus25 = 0, lesDeux = 0
   let pDom = 0, pNul = 0, pExt = 0
+  let ecart1 = 0, ecart2 = 0, ecart3 = 0
   for (let i = 0; i <= N; i++) {
     for (let j = 0; j <= N; j++) {
       const p = poisson(lh, i) * poisson(la, j)
@@ -3036,6 +3037,10 @@ export function grilleMarchesDeLambda(
       if (d + e > 2.5) plus25 += p
       if (d > 0 && e > 0) lesDeux += p
       if (d > e) pDom += p; else if (d === e) pNul += p; else pExt += p
+      const ecart = Math.abs(d - e)
+      if (ecart === 1) ecart1 += p
+      else if (ecart === 2) ecart2 += p
+      else if (ecart >= 3) ecart3 += p
     }
   }
 
@@ -3085,6 +3090,29 @@ export function grilleMarchesDeLambda(
   poser(dc, '12', pDom + pExt)
   poser(dc, 'x2', pNul + pExt)
   if (Object.keys(dc).length) m['dc'] = dc
+
+  // ── 4. ÉCART DE VICTOIRE ──────────────────────────────────────────────
+  // Le chaînon manquant entre le 1X2 et le score exact. « Le Real gagne »
+  // paie 1,35 et n'apprend rien ; « 2-0 » paie 9 et relève de la loterie.
+  // « Le Real gagne, mais pas de trois buts » paie 3 à 4 et demande un
+  // vrai avis de football — c'est le pari d'un amateur, pas d'un joueur.
+  //
+  // L'ÉCART NE DIT PAS QUI GAGNE, et c'est volontaire : le dire doublerait
+  // le nombre de boutons pour un marché qui se combine très bien avec le
+  // 1X2 — « Real vainqueur » + « écart de deux buts » dit déjà tout, et
+  // paie le produit des deux.
+  //
+  // Le nul y figure parce qu'un marché doit couvrir tout ce qui peut
+  // arriver : sans lui, les trois autres choix perdraient ensemble sur un
+  // 1-1 sans que personne ait pu parier dessus. Il recoupe le X du 1X2, à
+  // la marge près — c'est le cas chez tous les bookmakers, et un joueur y
+  // prend simplement le meilleur des deux prix.
+  const marge: Record<string, number> = {}
+  poser(marge, 'e1', ecart1)
+  poser(marge, 'e2', ecart2)
+  poser(marge, 'e3', ecart3)
+  poser(marge, 'nul', pNul)
+  if (Object.keys(marge).length) m['marge'] = marge
 
   return Object.keys(m).length ? m : null
 }
