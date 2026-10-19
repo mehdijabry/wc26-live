@@ -22,8 +22,9 @@ import { JETON, POINT } from '../lib/jeu'
  * chemins, de 0,8 à 1,8 Mo pièce — cinq mégaoctets à eux quatre, pour un
  * site dont tout le JavaScript pèse 348 Ko. Un tracé automatique de photo
  * n'est pas un dessin vectoriel, c'est une photo dans un emballage coûteux.
- * Ils sont donc rendus une fois à 96 px, rognés sur leur encre et
- * recentrés : 52 Ko pour les trois, et net jusqu'à 48 px d'affichage.
+ * Ils sont donc rendus une fois à 128 px de haut, rognés au plus juste sur
+ * leur encre — aucune marge, l'image touche ses quatre bords : 100 Ko pour
+ * les trois, nets jusqu'à 64 px d'affichage.
  *
  * ── LE JETON CRAMPON SEUL MANQUE ENCORE ──────────────────────────────────
  * Son fichier est le seul des quatre à n'avoir pas été détouré : le décor
@@ -36,18 +37,33 @@ import { JETON, POINT } from '../lib/jeu'
  * ── CE QUE LA PILE PERD EN PETIT ─────────────────────────────────────────
  * Le dessin d'origine avait été fait pour rester lisible à 14 px dans
  * l'en-tête. Une pile de trente pièces à cette taille redevient une tache.
- * La consigne est suivie — la pile est partout — mais les emplacements
- * concernés sont listés dans la réponse, pour que ça se tranche à l'œil.
+ * Deux mesures l'ont rattrapée — les proportions réelles au lieu du carré,
+ * puis un facteur d'agrandissement — et les trois traitements ont été
+ * comparés côte à côte aux tailles réelles du site avant de trancher.
  */
 
 type Type = 'crampon' | 'pressing'
 type Variante = 'pile' | 'seul'
 
-/** Les fichiers livrés, rendus dans `public/jetons/`. */
-const IMAGES: Partial<Record<`${Type}-${Variante}`, string>> = {
-  'crampon-pile': '/jetons/crampons-pile.png',
-  'pressing-pile': '/jetons/pressings-pile.png',
-  'pressing-seul': '/jetons/pressings-jeton.png',
+/**
+ * Les fichiers livrés, rendus dans `public/jetons/`.
+ *
+ * `rapport` est la largeur sur la hauteur, mesurée sur l'encre : une pile
+ * de pièces est plus LARGE que haute. L'enfermer dans un carré lui faisait
+ * perdre un tiers de sa hauteur à l'affichage, et Mehdi l'a vu tout de
+ * suite — « jeton trop petit, on ne les voit presque pas » (19/10/2026).
+ * Chaque visuel garde donc ses proportions : c'est la HAUTEUR qu'on
+ * commande, et la largeur suit.
+ *
+ * `facteur` rattrape le reste. À 13 px de haut une pile de trente pièces
+ * n'est qu'une bavure ; à dix-huit elle se lit. Le jeton seul, lui, tient
+ * déjà à onze — il ne prend qu'un rattrapage de politesse pour ne pas
+ * paraître chétif à côté d'une pile.
+ */
+const IMAGES: Partial<Record<`${Type}-${Variante}`, { src: string; rapport: number; facteur: number }>> = {
+  'crampon-pile': { src: '/jetons/crampons-pile.png', rapport: 1.321, facteur: 1.4 },
+  'pressing-pile': { src: '/jetons/pressings-pile.png', rapport: 1.247, facteur: 1.4 },
+  'pressing-seul': { src: '/jetons/pressings-jeton.png', rapport: 0.944, facteur: 1.15 },
   // 'crampon-seul' : en attente du fichier détouré (voir l'en-tête).
 }
 
@@ -65,14 +81,19 @@ export function Jeton({
   className?: string
 }) {
   const nom = type === 'crampon' ? JETON.plusieurs : POINT.plusieurs
-  const src = IMAGES[`${type}-${variante}`]
+  const img = IMAGES[`${type}-${variante}`]
 
-  if (src) {
+  if (img) {
+    const h = Math.round(taille * img.facteur)
+    const w = Math.round(h * img.rapport)
     return (
       <img
-        src={src}
-        width={taille}
-        height={taille}
+        src={img.src}
+        /* Les dimensions sont données AUSSI en attributs : sans elles le
+           navigateur ne connaît pas la place à réserver et la ligne saute
+           quand l'image arrive. */
+        width={w}
+        height={h}
         alt=""
         aria-hidden
         /* Ces icônes accompagnent un chiffre : elles ne doivent jamais
@@ -80,8 +101,8 @@ export function Jeton({
         decoding="async"
         loading="lazy"
         draggable={false}
-        className={'inline-block shrink-0 align-[-0.18em] select-none ' + className}
-        style={{ width: taille, height: taille }}
+        className={'inline-block shrink-0 align-[-0.25em] select-none ' + className}
+        style={{ width: w, height: h }}
         title={nom}
       />
     )
