@@ -3208,11 +3208,22 @@ export function grilleScoresExacts(
   for (let i = 0; i <= BUTS_MAX; i++) {
     for (let j = 0; j <= BUTS_MAX; j++) {
       const p = poisson(mh, i) * poisson(ma, j)
-      // Sous ce seuil la cote dépasse 600 : un prix que personne ne joue et
-      // qui ne ferait qu'encombrer la grille.
-      if (p < 0.0015) continue
-      const c = Math.round(((1 - MARGE_EXACT) / p) * 100) / 100
-      if (c >= 1.01 && c <= 1000) grille[`${i}-${j}`] = c
+      // ── PLUS DE SEUIL DE PROBABILITÉ (19/10/2026) ────────────────────
+      // Il coupait à 0,0015, soit une cote de 600 : « un prix que personne
+      // ne joue et qui ne ferait qu'encombrer la grille ». C'était vrai
+      // d'une grille de vingt-sept boutons ; ça ne l'est plus d'un
+      // scoreboard où l'on compose son score. Mehdi : « on calcule
+      // nous-mêmes les cotes manquantes à partir de la cote de base » —
+      // et on les calculait déjà, on les jetait.
+      //
+      // Le PLAFOND, lui, reste. Mesuré : vingt-neuf des trente-six scores
+      // tiennent sous 1 000 ; les sept autres valent entre 2 500 et 48 000
+      // et sortent donc à 1 000, c'est-à-dire BIEN EN DESSOUS de leur prix
+      // juste. On n'ouvre aucune exposition — on en ferme. Et la queue de
+      // Poisson est la partie du modèle à laquelle on croit le moins :
+      // plafonner y est une prudence, pas une avarice.
+      const c = Math.min(Math.round(((1 - MARGE_EXACT) / p) * 100) / 100, 1000)
+      if (c >= 1.01) grille[`${i}-${j}`] = c
     }
   }
   return Object.keys(grille).length ? grille : null

@@ -220,6 +220,160 @@ const TABLEAUX: Tableau[] = [
  * par équipe » puis replie la section, la rouvrir le ramène là, pas sur le
  * premier onglet — sinon il croit son pari perdu.
  */
+/** Le plus haut score composable, des deux côtés. */
+const SCORE_MAX = 5
+
+/**
+ * LE SCOREBOARD DU SCORE EXACT.
+ *
+ * Mehdi, 19/10/2026 : « un genre de score qui affiche 0-0 de base avec un
+ * +− à gauche et un +− à droite, et l'utilisateur peut ajuster lui-même son
+ * score de 0-0 à 5-5 ».
+ *
+ * ── CE QU'IL REMPLACE, ET POURQUOI ───────────────────────────────────────
+ * Une grille de vingt-sept boutons en médiane. Mesuré sur 172 grilles :
+ * les quatre premiers scores portent 44 % de la probabilité, les six
+ * premiers 60 %. Le reste — « 2-4 » à 198, « 3-4 » à 583 — n'était joué par
+ * personne et noyait les sept qui comptent.
+ *
+ * ── TROIS APPUIS POUR SE REPÉRER ─────────────────────────────────────────
+ * Le scoreboard seul laisserait le joueur à l'aveugle : il composerait un
+ * score sans savoir s'il est raisonnable. D'où les quatre raccourcis — les
+ * scores les plus probables du match, là où atterriront la plupart des
+ * paris — et le rang affiché sous la cote, qui dit en un mot où l'on se
+ * situe. Un score hors grille se dit « trop improbable » plutôt que par un
+ * tiret : ça explique au lieu de frustrer.
+ *
+ * ── LE CHIFFRE EST GROS, ET C'EST VOULU ──────────────────────────────────
+ * Police d'affichage, chiffres tabulaires : on règle un tableau de stade,
+ * pas un formulaire. C'est la seule chose qui fasse comprendre en une
+ * seconde qu'on compose un score plutôt qu'on choisisse dans une liste.
+ */
+function Scoreboard({ grille, selection, ouvert, nomDom, nomExt, onChoisir }: {
+  /** La grille, déjà triée par cote croissante — donc par probabilité. */
+  grille: Array<[string, number]>
+  selection: Selection | null
+  ouvert: boolean
+  nomDom: string
+  nomExt: string
+  onChoisir: (marche: Marche, pick: string, cote: number, libelle: string) => void
+}) {
+  const t = useT()
+  const prix = useMemo(() => new Map(grille), [grille])
+  const rang = useMemo(() => new Map(grille.map(([k], i) => [k, i + 1])), [grille])
+
+  // On repart du pari déjà posé, pas de 0-0 : sinon le joueur qui rouvre
+  // la section croit l'avoir perdu.
+  const depart = selection?.marche === 'exact' ? selection.pick.split('-').map(Number) : [0, 0]
+  const [dom, setDom] = useState(Number.isFinite(depart[0]) ? depart[0] : 0)
+  const [ext, setExt] = useState(Number.isFinite(depart[1]) ? depart[1] : 0)
+
+  const score = `${dom}-${ext}`
+  const cote = prix.get(score)
+  const position = rang.get(score)
+  const actif = selection?.marche === 'exact' && selection.pick === score
+
+  const Bouton = ({ signe, sur, valeur }: { signe: -1 | 1; sur: 'dom' | 'ext'; valeur: number }) => {
+    const bloque = signe === -1 ? valeur === 0 : valeur === SCORE_MAX
+    return (
+      <button
+        type="button"
+        disabled={bloque}
+        aria-label={`${signe === 1 ? t('More') : t('Less')} · ${sur === 'dom' ? nomDom : nomExt}`}
+        onClick={() => {
+          const n = Math.max(0, Math.min(SCORE_MAX, valeur + signe))
+          if (sur === 'dom') setDom(n); else setExt(n)
+        }}
+        className={cn(
+          'w-7 h-7 rounded-lg border font-mono text-sm leading-none transition-all',
+          bloque
+            ? 'border-slate-200 text-slate-300'
+            : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-accent-gold/60 active:scale-95',
+        )}
+      >
+        {signe === 1 ? '+' : '−'}
+      </button>
+    )
+  }
+
+  return (
+    <div className="mt-2">
+      {/* Le tableau d'affichage : équipe, −, chiffre, +, de chaque côté. */}
+      <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+        <div className="flex items-center justify-center gap-2 sm:gap-3">
+          <span className="hidden sm:block flex-1 text-end text-[11px] text-slate-500 truncate">{nomDom}</span>
+          <Bouton signe={-1} sur="dom" valeur={dom} />
+          <span className="font-display text-3xl leading-none tabular-nums w-7 text-center">{dom}</span>
+          <Bouton signe={1} sur="dom" valeur={dom} />
+          <span className="font-display text-2xl leading-none text-slate-400">–</span>
+          <Bouton signe={-1} sur="ext" valeur={ext} />
+          <span className="font-display text-3xl leading-none tabular-nums w-7 text-center">{ext}</span>
+          <Bouton signe={1} sur="ext" valeur={ext} />
+          <span className="hidden sm:block flex-1 text-[11px] text-slate-500 truncate">{nomExt}</span>
+        </div>
+
+        {/* La cote du score composé — et c'est elle qu'on touche pour miser. */}
+        <div className="mt-2.5">
+          {cote ? (
+            <button
+              type="button"
+              disabled={!ouvert}
+              onClick={() => onChoisir('exact', score, cote, score)}
+              className={cn(
+                'w-full rounded-lg py-2 flex items-center justify-center gap-2 border transition-all',
+                actif
+                  ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
+                  : 'bg-white border-slate-200 text-slate-900 hover:border-accent-gold/60',
+                ouvert && 'active:scale-[0.98]',
+              )}
+            >
+              <span className="font-mono text-[10px] uppercase tracking-wider opacity-70">{score}</span>
+              <span className="font-display text-xl leading-none tabular-nums">{cote.toFixed(2)}</span>
+            </button>
+          ) : (
+            <p className="py-2 text-center font-mono text-[11px] text-slate-500">
+              {t('Too unlikely — no price on this score.')}
+            </p>
+          )}
+          {cote && position && (
+            <p className="mt-1 text-center font-mono text-[10px] text-slate-500">
+              {/* Les chiffres restent LATINS, même en arabe : c'est un rang,
+                  pas un mot (règle du 13/10). */}
+              {t('{n}th most likely score').replace('{n}', String(position))}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* LES QUATRE RACCOURCIS. Ils portent 44 % de la probabilité du match :
+          c'est là qu'atterrira la plupart des paris, et les atteindre ne
+          doit pas demander huit appuis sur les flèches. */}
+      <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+        {grille.slice(0, 4).map(([s, c]) => {
+          const [a, b] = s.split('-').map(Number)
+          const vise = a === dom && b === ext
+          return (
+            <button
+              key={s}
+              type="button"
+              onClick={() => { setDom(a); setExt(b) }}
+              className={cn(
+                'rounded-lg py-1.5 flex flex-col items-center gap-0.5 border transition-all',
+                vise
+                  ? 'border-accent-gold bg-accent-gold/10'
+                  : 'bg-slate-50 border-slate-200 hover:border-accent-gold/50',
+              )}
+            >
+              <span className="font-mono text-[11px] tabular-nums text-slate-900">{s}</span>
+              <span className="font-mono text-[10px] tabular-nums text-slate-500">{c.toFixed(2)}</span>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 /** Le choix, écrit comme on le dit — voir `ordre` sur `Tableau`. */
 function libelleDe(d: Tableau, label: string, col: number, t: (s: string) => string): string {
   const c = t(d.colonnes[col] ?? '')
@@ -261,8 +415,22 @@ function TableauDesMarches({ marches, selection, ouvert, onChoisir }: {
       {/* LES ONGLETS. Ils défilent horizontalement plutôt que de passer à
           la ligne : six titres sur un téléphone feraient trois rangées, et
           la carte entière se mettrait à sauter d'une hauteur à l'autre en
-          changeant d'onglet. */}
-      <div className="flex gap-1.5 overflow-x-auto pb-1.5 -mx-0.5 px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          changeant d'onglet.
+
+          ── POURQUOI `RangeeDefilante` ET PAS UN SIMPLE `overflow-x-auto` ──
+          Mehdi, 19/10/2026 : « la barre des paris ne défile pas sur l'app
+          Mac ; sur le téléphone ça bouge ». C'est exact, et ce n'était pas
+          un bogue de rendu : un `overflow-x-auto` ne se parcourt, à la
+          souris, qu'avec un axe horizontal que la plupart des souris n'ont
+          pas. Le doigt glisse, la molette non. Et rien à l'écran ne disait
+          qu'il restait deux onglets derrière le bord.
+
+          `RangeeDefilante` est la réponse déjà en place sur les rangées du
+          dessus (les jours, les compétitions) : un fondu du côté où il
+          reste quelque chose, et APPUYER sur un onglet coupé le ramène en
+          entier. Le geste que tout le monde fait d'instinct devient le
+          geste qui défile — y compris à la souris. */}
+      <RangeeDefilante className="gap-1.5 pb-1.5 -mx-0.5 px-0.5" fond="#121916">
         {dispo.map((d) => {
           const choisi = d.cle === actif.cle
           const porteLePari = selection?.marche === d.cle
@@ -285,7 +453,7 @@ function TableauDesMarches({ marches, selection, ouvert, onChoisir }: {
             </button>
           )
         })}
-      </div>
+      </RangeeDefilante>
 
       {/* LA GRILLE. Une colonne pour les libellés de lignes — vide quand le
           marché n'en a pas — puis une par colonne de choix. */}
@@ -441,7 +609,8 @@ function CarteMatch({
     <li
       id={`m-${id}`}
       className={cn(
-        'glass rounded-2xl p-3.5 transition-all',
+        // `min-w-0` : voir le commentaire sur le <ul> qui porte ces cartes.
+        'glass rounded-2xl p-3.5 min-w-0 transition-all',
         selection && 'ring-glow border-accent-gold/50',
       )}
     >
@@ -581,9 +750,22 @@ function CarteMatch({
         </div>
       )}
 
-      {/* Le score exact, replié. Déplié d'office, vingt-cinq boutons par
-          match rendraient la liste illisible — c'est le marché d'un joueur
-          qui le cherche, pas celui qu'on met en travers du chemin. */}
+      {/* ── LE SCORE EXACT, EN SCOREBOARD ──────────────────────────────
+          Il s'affichait en grille : vingt-sept boutons par match en
+          médiane. Mehdi, 19/10/2026 : « ça encombre beaucoup de boutons et
+          on n'arrive pas à se retrouver dedans ».
+
+          Mesuré sur 172 grilles réelles : les QUATRE scores les plus
+          probables portent 44 % de la probabilité, les six premiers 60 %.
+          Vingt boutons sur vingt-sept ne servaient donc presque à rien — et
+          c'est eux qui noyaient les sept qui comptent, parce qu'une grille
+          traite « 1-1 » et « 3-4 » comme deux options équivalentes alors
+          que l'une est cent fois plus probable que l'autre.
+
+          Le scoreboard règle les deux à la fois : on compose SON score, et
+          quatre raccourcis donnent les plus probables. Il permet en prime
+          ce que la grille ne pouvait pas — atteindre les scores que le
+          modèle n'avait jamais listés. */}
       {ouvert && (
         <div className="mt-2">
           <button
@@ -617,35 +799,14 @@ function CarteMatch({
             </p>
           )}
           {scoresOuverts && grille !== null && grille.length > 0 && (
-            <div className="mt-2 grid grid-cols-4 sm:grid-cols-6 gap-1.5">
-              {grille.map(([score, c2]) => {
-                const actif = selection?.marche === 'exact' && selection.pick === score
-                return (
-                  <button
-                    key={score}
-                    type="button"
-                    aria-pressed={actif}
-                    onClick={() => choisir('exact', score, c2, score)}
-                    className={cn(
-                      'rounded-lg py-1.5 flex flex-col items-center gap-0.5 border transition-all active:scale-[0.97]',
-                      actif
-                        ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50',
-                    )}
-                  >
-                    <span className="font-mono text-[12px] tabular-nums leading-none">{score}</span>
-                    <span
-                      className={cn(
-                        'font-mono text-[10px] tabular-nums leading-none',
-                        actif ? 'text-ink-700' : 'text-slate-500',
-                      )}
-                    >
-                      ×{c2.toFixed(2)}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
+            <Scoreboard
+              grille={grille}
+              selection={selection ?? null}
+              ouvert={ouvert}
+              nomDom={c.dom.nom}
+              nomExt={c.ext.nom}
+              onChoisir={choisir}
+            />
           )}
         </div>
       )}
@@ -1687,7 +1848,21 @@ export function PredictWeek() {
             </h2>
             <span className="h-px flex-1 bg-slate-200" />
           </div>
-          <ul className="mt-3 grid gap-2.5">
+          {/* `grid-cols-[minmax(0,1fr)]` N'EST PAS DÉCORATIF.
+              Une colonne `auto` se dimensionne sur le CONTENU de la carte,
+              et la carte contient une rangée d'onglets qui défile. Or un
+              conteneur flex dont les éléments portent `shrink-0` a une
+              taille min-content égale à LEUR SOMME — 433 px pour six
+              onglets — que `overflow-x:auto` ne ramène PAS à zéro. La
+              colonne passait donc à 458 px sur un écran de 375, la page
+              devenait plus large que l'écran, et le téléphone la dézoomait
+              pour la faire tenir : « dès que je sélectionne more markets ça
+              zoome » (Mehdi, 19/10/2026).
+              Mesuré : page 474 px sur un écran de 375. Avec la colonne
+              bornée, 375. Le `min-w-0` sur la carte ferme l'autre moitié du
+              même piège (la taille minimale automatique d'un élément de
+              grille) ; l'un ou l'autre suffirait, les deux tiennent. */}
+          <ul className="mt-3 grid grid-cols-[minmax(0,1fr)] gap-2.5">
             {c.events.map((ev) => (
               <CarteMatch
                 key={ev.id}

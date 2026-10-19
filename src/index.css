@@ -21,6 +21,15 @@ section[id] {
   html {
     scroll-behavior: smooth;
   }
+  /* PAS DE ZOOM AU DOUBLE-APPUI SUR CE QUI SE CLIQUE.
+     Sur téléphone, deux appuis rapprochés sur un bouton sont lus comme un
+     double-appui et grossissent la page. Sur une grille de cotes, où l'on
+     change d'avis en tapant deux fois de suite, ça arrive tout le temps.
+     `manipulation` garde le défilement et le pincement — seuls le
+     double-appui-zoom et son délai de 300 ms partent. */
+  button, a, [role='button'], summary, label, input, select, textarea {
+    touch-action: manipulation;
+  }
   body {
     @apply bg-paper text-slate-900 font-sans antialiased;
     /* Sol PLAT. Les deux halos dorés de la version marine tiraient au brun

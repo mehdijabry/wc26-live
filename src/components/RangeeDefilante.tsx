@@ -23,9 +23,19 @@ import { cn } from '../lib/utils'
 export default function RangeeDefilante({
   children,
   className,
+  fond = '#0B0F0D',
 }: {
   children: ReactNode
   className?: string
+  /**
+   * La couleur DERRIERE la rangee, vers laquelle le fondu s'eteint.
+   *
+   * Par defaut le sol de la page. Une rangee posee sur une carte doit
+   * passer la sienne (`#121916`), sinon le fondu tire vers le noir du sol
+   * au milieu d'une surface plus claire : une ombre franche au bord de la
+   * carte, qui se lit comme une salissure.
+   */
+  fond?: string
 }) {
   const piste = useRef<HTMLDivElement>(null)
   const [reste, setReste] = useState({ gauche: false, droite: false })
@@ -64,18 +74,40 @@ export default function RangeeDefilante({
         ref={piste}
         onClick={(e) => revelerEnEntier(e.target as HTMLElement, piste.current)}
         className={cn('flex overflow-x-auto no-scrollbar', className)}
+        /*
+         * CE `contain` EMPÊCHE LA RANGÉE D'ÉLARGIR LA PAGE.
+         *
+         * Un conteneur flex dont les éléments portent `shrink-0` a une
+         * taille min-content égale à LEUR SOMME, et `overflow-x: auto` ne la
+         * ramène pas à zéro — contrairement à ce qu'on croit. Posée dans un
+         * élément de grille, la rangée imposait donc sa largeur entière :
+         * 433 px d'onglets dans une carte de 343, page à 474 sur un écran de
+         * 375, et le téléphone dézoomait tout pour la faire tenir (Mehdi,
+         * 19/10/2026 : « dès que je sélectionne more markets ça zoome »).
+         *
+         * `inline-size` rend la largeur de la piste indépendante de son
+         * contenu : elle prend ce que son parent lui donne, et le reste
+         * défile. Mesuré sur la page réelle : 474 px → 375.
+         *
+         * Safari 15 l'ignore (arrivé en 16). Les appelants posés dans une
+         * grille gardent donc leur propre garde-fou — colonne bornée à
+         * `minmax(0,1fr)` et `min-w-0` sur la carte — et celle-ci suffit
+         * seule. Les deux ferment la même porte, par deux côtés.
+         */
+        style={{ contain: 'inline-size' }}
       >
         {children}
       </div>
       {/* `pointer-events-none` : le fondu ne doit jamais avaler un clic sur
           l'élément qu'il recouvre à moitié. */}
-      <Fondu cote="start" visible={reste.gauche} />
-      <Fondu cote="end" visible={reste.droite} />
+      <Fondu cote="start" visible={reste.gauche} fond={fond} />
+      <Fondu cote="end" visible={reste.droite} fond={fond} />
     </div>
   )
 }
 
-function Fondu({ cote, visible }: { cote: 'start' | 'end'; visible: boolean }) {
+function Fondu({ cote, visible, fond }: { cote: 'start' | 'end'; visible: boolean; fond: string }) {
+  const rvb = enRvb(fond)
   return (
     <div
       aria-hidden="true"
@@ -85,10 +117,6 @@ function Fondu({ cote, visible }: { cote: 'start' | 'end'; visible: boolean }) {
         visible ? 'opacity-100' : 'opacity-0',
       )}
       style={{
-        // Le sol de la page. Ces rangées y sont toutes posées ; si l'une
-        // passait un jour sur une carte (#121916), il faudrait le passer en
-        // paramètre plutôt que de laisser un fondu vers la mauvaise couleur.
-        //
         // TROIS ARRÊTS, PAS DEUX. Un dégradé linéaire de l'opaque au
         // transparent sur toute la largeur assombrit la pastille qu'il
         // recouvre — « Serie A · 5 » arrivait avec son chiffre grisé, et ça
@@ -97,7 +125,7 @@ function Fondu({ cote, visible }: { cote: 'start' | 'end'; visible: boolean }) {
         // déjà presque transparent.
         background:
           `linear-gradient(to ${cote === 'start' ? 'right' : 'left'},` +
-          ' #0B0F0D 0%, rgba(11,15,13,0.72) 34%, rgba(11,15,13,0) 100%)',
+          ` ${fond} 0%, rgba(${rvb},0.72) 34%, rgba(${rvb},0) 100%)`,
       }}
     />
   )
@@ -137,4 +165,11 @@ function revelerEnEntier(cible: HTMLElement | null, piste: HTMLDivElement | null
 
   const doux = !window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
   piste.scrollTo({ left: Math.max(0, piste.scrollLeft + delta), behavior: doux ? 'smooth' : 'auto' })
+}
+
+/** `#121916` → `18,25,22`, pour les arrêts intermédiaires en rgba(). */
+function enRvb(hex: string): string {
+  const h = hex.replace('#', '')
+  const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16)
+  return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`
 }

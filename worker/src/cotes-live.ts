@@ -185,9 +185,10 @@ export function grilleLive(
   for (let i = etat.butsDom; i <= butsMax; i++) {
     for (let j = etat.butsExt; j <= butsMax; j++) {
       const p = poisson(dom, i - etat.butsDom) * poisson(ext, j - etat.butsExt)
-      if (p < 0.0015) continue
-      const c = Math.round(((1 - margeExact) / p) * 100) / 100
-      if (c < 1.01 || c > 1000) continue
+      // Même règle qu'en avant-match : aucun seuil de probabilité, mais un
+      // plafond à 1 000. Voir `grilleScoresExacts` dans index.ts.
+      const c = Math.min(Math.round(((1 - margeExact) / p) * 100) / 100, 1000)
+      if (c < 1.01) continue
       grille[`${i}-${j}`] = c
     }
   }
