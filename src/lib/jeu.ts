@@ -272,7 +272,11 @@ export type Choix = 'home' | 'draw' | 'away'
  * Poisson que le score exact, et se règlent sur la seule donnée toujours
  * disponible. Voir `grilleMarches` dans le worker et la migration 040.
  */
-export type Marche = '1x2' | 'exact' | 'scorer' | 'ou25' | 'btts' | 'dc' | 'marge' | 'equipe'
+export type Marche =
+  | '1x2' | 'exact' | 'scorer'
+  | 'ou' | 'btts' | 'dc' | 'vm' | 'equipe' | 'rbtts'
+  /** Remplacés le 19/10 par `ou` et `vm` : plus proposés, encore réglables. */
+  | 'ou25' | 'marge'
 
 /**
  * Les marchés dérivés d'un match : `{ ou25: { plus: 2.36, moins: 1.53 } }`.

@@ -3042,26 +3042,45 @@ export function grilleMarchesDeLambda(
   // au tableau. En avant-match les deux « déjà » valent zéro et c'est la
   // grille ordinaire.
   const N = 10
-  let plus25 = 0, lesDeux = 0
+  // LES SEUILS DU TOTAL. Un seul — 2,5 — ne faisait pas un marché : sur un
+  // match fermé il n'y a rien à dire, sur un match ouvert non plus.
+  // Mehdi, 19/10/2026 : « tu donnes un choix par type, 2,5 ou rien ».
+  const SEUILS = [0.5, 1.5, 2.5, 3.5, 4.5, 5.5]
+  const auDessus = SEUILS.map(() => 0)
+  let lesDeux = 0
   let pDom = 0, pNul = 0, pExt = 0
-  let ecart1 = 0, ecart2 = 0, ecart3 = 0
-  let dom1 = 0, dom2 = 0, ext1 = 0, ext2 = 0
+  // L'écart AVEC son vainqueur : « le Real gagne de deux buts » dit deux
+  // fois plus que « l'écart est de deux », et c'est le marché que tous les
+  // bookmakers appellent « winning margin ».
+  const domPar = [0, 0, 0]  // gagne de 1, de 2, de 3 ou plus
+  const extPar = [0, 0, 0]
+  const domAu = [0, 0, 0, 0]  // marque au moins 1, 2, 3, 4 buts
+  const extAu = [0, 0, 0, 0]
+  // Résultat ET les deux marquent : six cases, et des cotes de 3 à 15 —
+  // la tranche qui manquait encore entre l'écart et le score exact.
+  const rb: Record<string, number> = {
+    'dom-oui': 0, 'dom-non': 0, 'nul-oui': 0, 'nul-non': 0, 'ext-oui': 0, 'ext-non': 0,
+  }
   for (let i = 0; i <= N; i++) {
     for (let j = 0; j <= N; j++) {
       const p = poisson(lh, i) * poisson(la, j)
       if (p < 1e-9) continue
       const d = dejaDom + i, e = dejaExt + j
-      if (d + e > 2.5) plus25 += p
-      if (d > 0 && e > 0) lesDeux += p
-      if (d > e) pDom += p; else if (d === e) pNul += p; else pExt += p
+      for (let k = 0; k < SEUILS.length; k++) if (d + e > SEUILS[k]) auDessus[k] += p
+      const deux = d > 0 && e > 0
+      if (deux) lesDeux += p
+      const issue = d > e ? 'dom' : d === e ? 'nul' : 'ext'
+      if (issue === 'dom') pDom += p; else if (issue === 'nul') pNul += p; else pExt += p
+      rb[`${issue}-${deux ? 'oui' : 'non'}`] += p
       const ecart = Math.abs(d - e)
-      if (ecart === 1) ecart1 += p
-      else if (ecart === 2) ecart2 += p
-      else if (ecart >= 3) ecart3 += p
-      if (d >= 1) dom1 += p
-      if (d >= 2) dom2 += p
-      if (e >= 1) ext1 += p
-      if (e >= 2) ext2 += p
+      if (ecart >= 1) {
+        const rang = Math.min(ecart, 3) - 1
+        if (issue === 'dom') domPar[rang] += p; else extPar[rang] += p
+      }
+      for (let k = 0; k < 4; k++) {
+        if (d >= k + 1) domAu[k] += p
+        if (e >= k + 1) extAu[k] += p
+      }
     }
   }
 
@@ -3070,16 +3089,22 @@ export function grilleMarchesDeLambda(
   // ── 1. PLUS / MOINS 2,5 BUTS ──────────────────────────────────────────
   // Le marché le plus joué au monde après le 1X2, et le seul qui permette
   // de parier sur un match sans avoir d'avis sur son vainqueur.
+  // Les clés portent le seuil : `p25` / `m25` pour « plus de 2,5 » et
+  // « moins de 2,5 ». L'ancien marché `ou25` reste réglable pour les paris
+  // déjà pris, mais il n'est plus proposé.
   const ou: Record<string, number> = {}
-  poser(ou, 'plus', plus25)
-  poser(ou, 'moins', 1 - plus25)
+  for (let k = 0; k < SEUILS.length; k++) {
+    const suffixe = String(SEUILS[k]).replace('.', '')   // 0.5 → « 05 »
+    poser(ou, `p${suffixe}`, auDessus[k])
+    poser(ou, `m${suffixe}`, 1 - auDessus[k])
+  }
   // UN SEUL CÔTÉ SUFFIT À FAIRE UN MARCHÉ. En direct, un côté devient vite
   // injouable — à la 60ᵉ sur 0-0, « moins de 2,5 » vaudrait 0,97, donc rien
   // — mais l'autre reste un vrai prix. Exiger les deux faisait disparaître
   // le marché entier à l'heure de jeu, alors qu'il avait encore un sens.
   // Les deux côtés tombent ensemble quand l'affaire est pliée : à la 85ᵉ sur
   // 2-1, « plus » dépasse le plafond de 1 000 et « moins » passe sous 1,01.
-  if (Object.keys(ou).length) m['ou25'] = ou
+  if (Object.keys(ou).length) m['ou'] = ou
 
   // ── 2. LES DEUX ÉQUIPES MARQUENT ──────────────────────────────────────
   // Le deuxième marché le plus joué au monde, et celui qui se combine le
@@ -3128,12 +3153,21 @@ export function grilleMarchesDeLambda(
   // 1-1 sans que personne ait pu parier dessus. Il recoupe le X du 1X2, à
   // la marge près — c'est le cas chez tous les bookmakers, et un joueur y
   // prend simplement le meilleur des deux prix.
-  const marge: Record<string, number> = {}
-  poser(marge, 'e1', ecart1)
-  poser(marge, 'e2', ecart2)
-  poser(marge, 'e3', ecart3)
-  poser(marge, 'nul', pNul)
-  if (Object.keys(marge).length) m['marge'] = marge
+  const vm: Record<string, number> = {}
+  poser(vm, 'nul', pNul)
+  for (let k = 0; k < 3; k++) {
+    poser(vm, `d${k + 1}`, domPar[k])
+    poser(vm, `x${k + 1}`, extPar[k])
+  }
+  if (Object.keys(vm).length) m['vm'] = vm
+
+  // ── 6. RÉSULTAT ET LES DEUX MARQUENT ──────────────────────────────────
+  // Deux questions en une, donc six cases et des cotes de 3 à 15. C'est la
+  // tranche qui manquait encore entre l'écart et le score exact : assez
+  // riche pour payer, assez lisible pour qu'on sache ce qu'on joue.
+  const resBtts: Record<string, number> = {}
+  for (const [cle, prob] of Object.entries(rb)) poser(resBtts, cle, prob)
+  if (Object.keys(resBtts).length) m['rbtts'] = resBtts
 
   // ── 5. TOTAL PAR ÉQUIPE ───────────────────────────────────────────────
   // Le seul des cinq qui porte sur UNE équipe. C'est le marché de celui qui
@@ -3149,10 +3183,10 @@ export function grilleMarchesDeLambda(
   // jouable une fois sur deux, et quatre boutons par équipe rendraient la
   // carte illisible pour un marché qui en dit déjà assez avec deux.
   const equipes: Record<string, number> = {}
-  poser(equipes, 'dom1', dom1)
-  poser(equipes, 'dom2', dom2)
-  poser(equipes, 'ext1', ext1)
-  poser(equipes, 'ext2', ext2)
+  for (let k = 0; k < 4; k++) {
+    poser(equipes, `dom${k + 1}`, domAu[k])
+    poser(equipes, `ext${k + 1}`, extAu[k])
+  }
   if (Object.keys(equipes).length) m['equipe'] = equipes
 
   return Object.keys(m).length ? m : null

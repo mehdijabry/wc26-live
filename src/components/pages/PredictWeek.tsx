@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api, ymdLocal, type DailyComp, type EspnEvent } from '../../lib/api'
 import { useAuth } from '../../store/auth'
@@ -120,38 +120,226 @@ function Equipe({ camp, cote }: { camp: Camp; cote: boolean }) {
 }
 
 /**
- * LES MARCHÉS DÉRIVÉS, et l'ordre dans lequel ils s'affichent.
+ * LES MARCHÉS DÉRIVÉS, décrits comme des TABLEAUX.
  *
- * Une table plutôt que du JSX répété : un marché de plus, c'est trois
- * lignes ici et rien ailleurs. Les libellés passent par `t()` au rendu,
- * donc ce sont des clés, pas du texte.
+ * Mehdi, 19/10/2026 : « un genre de tableau dynamique : quand tu appuies sur
+ * le type de pari, le tableau change et affiche les choix pour ce type ».
  *
- * L'ordre est celui du joueur, pas le nôtre : d'abord les deux marchés que
- * tout le monde connaît, puis ceux qui demandent un avis plus précis.
+ * Un seul modèle les décrit tous — des colonnes, des lignes, une case par
+ * croisement — et un seul rendu les dessine. C'est ce qui permet d'avoir
+ * douze choix sur le total et deux sur « les deux marquent » sans écrire
+ * deux composants : le premier a six lignes et deux colonnes, le second une
+ * ligne et deux colonnes.
+ *
+ * UNE LIGNE À UNE SEULE CASE OCCUPE TOUTE LA LARGEUR. C'est ce qui permet au
+ * nul de tenir sous les écarts, là où il appartient, au lieu d'inventer une
+ * troisième colonne qui serait vide partout ailleurs.
+ *
+ * Les libellés sont des CLÉS de traduction, jamais du texte : ils passent
+ * par `t()` au rendu.
  */
-const MARCHES_DERIVES: Array<{
+type Tableau = {
   cle: Marche
+  /** L'onglet. */
   titre: string
-  choix: Array<[string, string]>
-}> = [
-  { cle: 'ou25', titre: 'Total goals', choix: [['plus', 'Over 2.5'], ['moins', 'Under 2.5']] },
-  { cle: 'btts', titre: 'Both teams to score', choix: [['oui', 'Yes'], ['non', 'No']] },
-  // Les trois choix s'écrivent « 1X », « 12 », « X2 » partout dans le
-  // football, et le 1X2 juste au-dessus affiche déjà 1 / X / 2 : les
-  // paraphraser ici (« domicile ou nul ») aurait rompu la lecture au
-  // moment précis où le joueur compare les deux lignes.
-  { cle: 'dc', titre: 'Double chance', choix: [['1x', '1X'], ['12', '12'], ['x2', 'X2']] },
+  /** Les en-têtes de colonnes. Deux ou trois, jamais plus — au-delà, la
+   *  case devient trop étroite pour afficher une cote sur un téléphone. */
+  colonnes: string[]
+  lignes: Array<{ label: string; picks: Array<string | null> }>
+  /**
+   * L'ordre des mots dans le bulletin. « Plus de 2,5 » se lit, « 2,5 · Plus
+   * de » non — et pour le résultat c'est l'inverse : « Dom. · Les deux »
+   * se lit, « Les deux Dom. » non. Deux marchés, deux grammaires.
+   */
+  ordre?: 'colonne-ligne' | 'ligne-colonne'
+}
+
+const TABLEAUX: Tableau[] = [
   {
-    cle: 'marge',
-    titre: 'Winning margin',
-    choix: [['e1', '1 goal'], ['e2', '2 goals'], ['e3', '3+ goals'], ['nul', 'Draw']],
+    cle: 'ou', titre: 'Total goals', colonnes: ['Over', 'Under'],
+    lignes: [
+      { label: '0.5', picks: ['p05', 'm05'] },
+      { label: '1.5', picks: ['p15', 'm15'] },
+      { label: '2.5', picks: ['p25', 'm25'] },
+      { label: '3.5', picks: ['p35', 'm35'] },
+      { label: '4.5', picks: ['p45', 'm45'] },
+      { label: '5.5', picks: ['p55', 'm55'] },
+    ],
   },
   {
-    cle: 'equipe',
-    titre: 'Team goals',
-    choix: [['dom1', 'Home 1+'], ['dom2', 'Home 2+'], ['ext1', 'Away 1+'], ['ext2', 'Away 2+']],
+    cle: 'equipe', titre: 'Team goals', colonnes: ['Home', 'Away'],
+    lignes: [
+      { label: '1+', picks: ['dom1', 'ext1'] },
+      { label: '2+', picks: ['dom2', 'ext2'] },
+      { label: '3+', picks: ['dom3', 'ext3'] },
+      { label: '4+', picks: ['dom4', 'ext4'] },
+    ],
+  },
+  {
+    cle: 'vm', titre: 'Winning margin', colonnes: ['Home', 'Away'],
+    lignes: [
+      { label: '1 goal', picks: ['d1', 'x1'] },
+      { label: '2 goals', picks: ['d2', 'x2'] },
+      { label: '3+ goals', picks: ['d3', 'x3'] },
+      // Une seule case : elle prend toute la largeur.
+      { label: 'Draw', picks: ['nul'] },
+    ],
+  },
+  {
+    cle: 'rbtts', titre: 'Result & both score', colonnes: ['Both score', 'Not both'],
+    ordre: 'ligne-colonne',
+    lignes: [
+      { label: 'Home', picks: ['dom-oui', 'dom-non'] },
+      { label: 'Draw', picks: ['nul-oui', 'nul-non'] },
+      { label: 'Away', picks: ['ext-oui', 'ext-non'] },
+    ],
+  },
+  // LES DEUX SUIVANTS NE PEUVENT PAS S'ÉLARGIR, et c'est l'exception que
+  // Mehdi prévoit : « les deux marquent » n'a pas de troisième réponse, et
+  // un match à trois issues n'a que trois paires. Une ligne sans libellé,
+  // les choix nommés par les colonnes.
+  {
+    cle: 'dc', titre: 'Double chance', colonnes: ['1X', '12', 'X2'],
+    lignes: [{ label: '', picks: ['1x', '12', 'x2'] }],
+  },
+  {
+    cle: 'btts', titre: 'Both teams to score', colonnes: ['Yes', 'No'],
+    lignes: [{ label: '', picks: ['oui', 'non'] }],
   },
 ]
+
+/**
+ * LE TABLEAU DYNAMIQUE — onglets en haut, cases dessous.
+ *
+ * Il vit à part du reste de la carte parce qu'il a son propre état : quel
+ * onglet est ouvert. Le garder dans la carte aurait obligé chaque match à
+ * porter ce choix même replié, et à le perdre au moindre rafraîchissement
+ * des cotes en direct.
+ *
+ * L'ONGLET OUVERT SUIT LE PARI DÉJÀ POSÉ. Si le joueur a misé sur « buts
+ * par équipe » puis replie la section, la rouvrir le ramène là, pas sur le
+ * premier onglet — sinon il croit son pari perdu.
+ */
+/** Le choix, écrit comme on le dit — voir `ordre` sur `Tableau`. */
+function libelleDe(d: Tableau, label: string, col: number, t: (s: string) => string): string {
+  const c = t(d.colonnes[col] ?? '')
+  if (!label) return c
+  return d.ordre === 'ligne-colonne' ? `${t(label)} · ${c}` : `${c} ${t(label)}`
+}
+
+function TableauDesMarches({ marches, selection, ouvert, onChoisir }: {
+  marches: Marches
+  selection: Selection | null
+  ouvert: boolean
+  onChoisir: (marche: Marche, pick: string, cote: number, libelle: string) => void
+}) {
+  const t = useT()
+  // On ne garde que les marchés réellement cotés, et dans chacun les lignes
+  // qui ont au moins une case : en direct, un côté passe vite sous 1,01.
+  const dispo = TABLEAUX
+    .map((d) => ({
+      ...d,
+      lignes: d.lignes.filter((l) => l.picks.some((p) => p && marches[d.cle]?.[p])),
+    }))
+    .filter((d) => marches[d.cle] && d.lignes.length)
+
+  const [onglet, setOnglet] = useState<Marche | null>(null)
+  const actif = dispo.find((d) => d.cle === onglet)
+    ?? dispo.find((d) => d.cle === selection?.marche)
+    ?? dispo[0]
+
+  if (!dispo.length) {
+    return (
+      <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
+        {t('No extra market on this match.')}
+      </p>
+    )
+  }
+
+  return (
+    <div className="mt-2">
+      {/* LES ONGLETS. Ils défilent horizontalement plutôt que de passer à
+          la ligne : six titres sur un téléphone feraient trois rangées, et
+          la carte entière se mettrait à sauter d'une hauteur à l'autre en
+          changeant d'onglet. */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1.5 -mx-0.5 px-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {dispo.map((d) => {
+          const choisi = d.cle === actif.cle
+          const porteLePari = selection?.marche === d.cle
+          return (
+            <button
+              key={d.cle}
+              type="button"
+              onClick={() => setOnglet(d.cle)}
+              className={cn(
+                'shrink-0 px-2.5 py-1 rounded-lg font-mono text-[10px] uppercase tracking-wider transition-colors border',
+                choisi
+                  ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
+                  : 'bg-slate-50 border-slate-200 text-slate-500 hover:border-accent-gold/50',
+              )}
+            >
+              {t(d.titre)}
+              {/* Le point d'or : le pari posé reste repérable même quand on
+                  regarde un autre onglet. */}
+              {porteLePari && !choisi && <span className="ms-1 text-accent-gold">•</span>}
+            </button>
+          )
+        })}
+      </div>
+
+      {/* LA GRILLE. Une colonne pour les libellés de lignes — vide quand le
+          marché n'en a pas — puis une par colonne de choix. */}
+      <div
+        className="grid gap-1"
+        style={{ gridTemplateColumns: `minmax(2.6rem, auto) repeat(${actif.colonnes.length}, minmax(0, 1fr))` }}
+      >
+        <span />
+        {actif.colonnes.map((c) => (
+          <span key={c} className="px-1 pb-0.5 font-mono text-[9px] uppercase tracking-wider text-slate-500 text-center">
+            {t(c)}
+          </span>
+        ))}
+
+        {actif.lignes.map((ligne) => (
+          <Fragment key={ligne.label || 'seule'}>
+            <span className="flex items-center font-mono text-[11px] tabular-nums text-slate-500 ps-1">
+              {ligne.label ? t(ligne.label) : ''}
+            </span>
+            {ligne.picks.map((pick, i) => {
+              const cote = pick ? marches[actif.cle]?.[pick] : undefined
+              if (!pick || !cote) {
+                return <span key={i} className="rounded-lg border border-dashed border-slate-200/70" />
+              }
+              const estActif = selection?.marche === actif.cle && selection.pick === pick
+              // Une ligne à une seule case occupe toute la largeur : c'est
+              // ainsi que le nul tient sous les écarts.
+              const pleineLargeur = ligne.picks.length === 1 && actif.colonnes.length > 1
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  disabled={!ouvert}
+                  onClick={() => onChoisir(actif.cle, pick, cote, libelleDe(actif, ligne.label, i, t))}
+                  style={pleineLargeur ? { gridColumn: `span ${actif.colonnes.length}` } : undefined}
+                  className={cn(
+                    'rounded-lg py-1.5 font-display text-base leading-none tabular-nums transition-all border',
+                    estActif
+                      ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
+                      : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50 hover:bg-slate-100',
+                    !ouvert && !estActif && 'opacity-35',
+                    ouvert && 'active:scale-[0.97]',
+                  )}
+                >
+                  {cote.toFixed(2)}
+                </button>
+              )
+            })}
+          </Fragment>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function CarteMatch({
   ev,
@@ -347,15 +535,15 @@ function CarteMatch({
         </p>
       )}
 
-      {/* ── LES MARCHÉS DÉRIVÉS ────────────────────────────────────────
-          Tous dans UNE section, et pilotés par la table `MARCHES_DERIVES`
-          plus haut. Un marché de plus y est trois lignes de données, pas
-          soixante de JSX — c'est ce qui permet d'en ajouter cinq sans que
-          la carte devienne illisible, pour nous comme pour le joueur.
+      {/* ── LE TABLEAU DES MARCHÉS ─────────────────────────────────────
+          Un onglet par type de pari, un tableau dessous. Appuyer sur un
+          onglet change le tableau — c'est la forme que Mehdi a demandée, et
+          c'est surtout la seule qui tienne : trente-sept cotes empilées en
+          grilles successives auraient fait trois écrans de boutons.
 
-          Ils ne coûtent aucune donnée nouvelle : la même loi de Poisson qui
-          price le score exact donne la probabilité de chacun. Voir
-          `grilleMarches` dans le worker et la migration 040. */}
+          Les onglets ne montrent QUE les marchés réellement cotés pour ce
+          match : en direct, un marché dont les deux côtés sont passés sous
+          1,01 disparaît, et son onglet avec lui. */}
       {ouvert && (
         <div className="mt-2">
           <button
@@ -363,14 +551,14 @@ function CarteMatch({
             onClick={() => setMarchesOuverts((v) => !v)}
             className={cn(
               'w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-[11px] transition-colors',
-              selection && MARCHES_DERIVES.some((d) => d.cle === selection.marche)
+              selection && TABLEAUX.some((d) => d.cle === selection.marche)
                 ? 'bg-accent-gold/15 text-accent-gold'
                 : 'text-slate-500 hover:bg-slate-50',
             )}
           >
             <span className="uppercase tracking-wider">
               {t('More markets')}
-              {selection && MARCHES_DERIVES.some((d) => d.cle === selection.marche) && (
+              {selection && TABLEAUX.some((d) => d.cle === selection.marche) && (
                 <span className="ms-2 font-semibold normal-case tracking-normal">
                   {selection.libelle} @ {selection.cote.toFixed(2)}
                 </span>
@@ -382,57 +570,14 @@ function CarteMatch({
           {marchesOuverts && marches === null && (
             <p className="px-3 py-2 font-mono text-[11px] text-slate-500">{t('Loading…')}</p>
           )}
-          {marchesOuverts && marches !== null
-            && !MARCHES_DERIVES.some((d) => marches[d.cle]) && (
-            <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
-              {t('No extra market on this match.')}
-            </p>
+          {marchesOuverts && marches !== null && (
+            <TableauDesMarches
+              marches={marches}
+              selection={selection ?? null}
+              ouvert={ouvert}
+              onChoisir={choisir}
+            />
           )}
-          {marchesOuverts && marches !== null && MARCHES_DERIVES.map((d) => {
-            const prix = marches[d.cle]
-            if (!prix) return null
-            // UNE SEULE OPTION RESTE UNE OPTION. En direct, un côté passe
-            // vite sous 1,01 et disparaît ; l'autre garde un vrai prix.
-            const choix = d.choix.filter(([pick]) => prix[pick])
-            if (!choix.length) return null
-            return (
-              <div key={d.cle} className="mt-2">
-                <p className="px-3 font-mono text-[10px] uppercase tracking-wider text-slate-500">
-                  {t(d.titre)}
-                </p>
-                <div
-                  className="mt-1 grid gap-1.5"
-                  style={{ gridTemplateColumns: `repeat(${Math.min(choix.length, 4)}, minmax(0, 1fr))` }}
-                >
-                  {choix.map(([pick, libelle]) => {
-                    const c2 = prix[pick]
-                    const actif = selection?.marche === d.cle && selection.pick === pick
-                    return (
-                      <button
-                        key={pick}
-                        type="button"
-                        disabled={!ouvert}
-                        onClick={() => choisir(d.cle, pick, c2, t(libelle))}
-                        className={cn(
-                          'rounded-xl py-2 flex flex-col items-center justify-center gap-0.5 transition-all border',
-                          actif
-                            ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
-                            : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50 hover:bg-slate-100',
-                          !ouvert && !actif && 'opacity-35',
-                          ouvert && 'active:scale-[0.97]',
-                        )}
-                      >
-                        <span className={cn('font-mono text-[10px] tracking-wider', actif ? 'text-ink-700' : 'text-slate-500')}>
-                          {t(libelle)}
-                        </span>
-                        <span className="font-display text-lg leading-none tabular-nums">{c2.toFixed(2)}</span>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
         </div>
       )}
 
@@ -731,7 +876,7 @@ function Bulletin({
                 <div className="font-mono text-[10px] text-slate-500 truncate">
                   {s.marche === 'exact' ? t('Exact score')
                     : s.marche === 'scorer' ? t('Goalscorer')
-                    : t(MARCHES_DERIVES.find((d) => d.cle === s.marche)?.titre ?? 'Winner')} · {s.libelle}
+                    : t(TABLEAUX.find((d) => d.cle === s.marche)?.titre ?? 'Winner')} · {s.libelle}
                 </div>
               </div>
               <span className="font-mono text-[12px] tabular-nums text-accent-gold shrink-0">
