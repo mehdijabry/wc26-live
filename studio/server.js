@@ -147,10 +147,30 @@ function memoireConteneur() {
   if (max === null) max = lireNombre('/sys/fs/cgroup/memory/memory.limit_in_bytes')
   if (oom === null) souspression = lireNombre('/sys/fs/cgroup/memory/memory.failcnt') ?? souspression
 
+  // ── DE QUOI CETTE MÉMOIRE EST-ELLE FAITE ? ──────────────────────────
+  // La distinction décide du correctif, et les deux chiffres ne se
+  // soignent pas pareil :
+  //   `anon` = mémoire vraie (canevas, tampons) — il faut en allouer moins ;
+  //   `file` = cache de pages, c'est-à-dire les images écrites sur le
+  //            disque et gardées en RAM par le noyau. Sur Render le disque
+  //            est en mémoire : écrire quatre cents JPEG, c'est les garder.
+  // `oom_kill` à zéro alors que le plafond est atteint penche vers le
+  // second — le noyau ne tue personne, c'est la plateforme qui redémarre.
+  let anon = null, fichier = null
+  const st = lireFichier('/sys/fs/cgroup/memory.stat')
+  if (st) {
+    const a = /^anon (\d+)$/m.exec(st); if (a) anon = Number(a[1])
+    const f = /^file (\d+)$/m.exec(st); if (f) fichier = Number(f[1])
+  }
+
   const enMo = (v) => (v === null ? null : Math.round(v / MO))
   // Un `memory.max` absurde (le cgroup racine rend 2^63) ne veut rien dire.
   const plafond = max !== null && max < 64 * 1024 * MO ? enMo(max) : null
-  return { courant: enMo(courant), pic: enMo(pic), plafond, oomKills: oom, sousPression: souspression }
+  return {
+    courant: enMo(courant), pic: enMo(pic), plafond,
+    anon: enMo(anon), fichier: enMo(fichier),
+    oomKills: oom, sousPression: souspression,
+  }
 }
 
 // ── LE GUETTEUR : le pic du CONTENEUR, échantillonné en continu ───────
