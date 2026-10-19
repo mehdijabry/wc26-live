@@ -425,6 +425,28 @@ export async function fbLinkPost(env: Env, p: { message: string; link: string; t
   }
 }
 
+/**
+ * SUPPRIME UNE PUBLICATION DE LA PAGE.
+ *
+ * Irréversible, donc jamais appelé par l'automatisation : seul un bouton
+ * de l'admin y mène, et seulement sur un identifiant qu'on a nous-mêmes
+ * enregistré en publiant. Mehdi, 19/10/2026, sur le résumé du jour sorti
+ * amputé : « supprime-le et relance une version complète ».
+ */
+export async function fbSupprimer(env: Env, postId: string): Promise<{ ok: boolean; note: string }> {
+  // Un identifiant de publication s'écrit `<page>_<post>`. Refuser tout le
+  // reste évite qu'une valeur égarée parte en suppression.
+  if (!/^\d{5,}_\d{5,}$/.test(postId)) return { ok: false, note: `identifiant refusé : ${postId.slice(0, 40)}` }
+  if (!env.FB_PAGE_TOKEN) return { ok: false, note: 'FB_PAGE_TOKEN absent' }
+  try {
+    const { token } = await pageAuth(env)
+    await graph(env, token, 'DELETE', `/${postId}`, {})
+    return { ok: true, note: `publication ${postId} supprimée` }
+  } catch (e) {
+    return { ok: false, note: `suppression échouée : ${String(e).slice(0, 150)}` }
+  }
+}
+
 /** Multi-photo post through the Graph API (Mehdi, 2026-09-14: full-time scores = one photo per match, one grouped post). */
 export async function fbAlbumPost(env: Env, p: { message: string; photos: string[]; comment?: string }): Promise<{ ok: boolean; id?: string; note?: string }> {
   if (!env.FB_PAGE_TOKEN) return { ok: false, note: 'FB_PAGE_TOKEN missing' }
@@ -534,7 +556,7 @@ export async function processPendingComments(env: Env, date: string): Promise<vo
 
 const GRAPH = 'https://graph.facebook.com/v21.0'
 type GraphJson = Record<string, unknown> & { id?: string | number; error?: { message?: string; code?: number } }
-export async function graph(env: Env, token: string, method: 'GET' | 'POST', path: string, params: Record<string, string>): Promise<GraphJson> {
+export async function graph(env: Env, token: string, method: 'GET' | 'POST' | 'DELETE', path: string, params: Record<string, string>): Promise<GraphJson> {
   const url = new URL(`${GRAPH}${path}`)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   url.searchParams.set('access_token', token)
@@ -3857,6 +3879,13 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       if (!ch) return { ok: false, note: `cle inconnue (${yt.CHAINES.map((c) => c.cle).join(', ')})` }
       const clips = await yt.derniersClips(env as unknown as { YOUTUBE_API_KEY?: string }, ch.id, Number(x.n ?? 40))
       return { ok: true, note: clips.map((c) => `${c.publie.slice(5, 16)} ${c.titre.replace(/\s*\|\s*/g, ' ~ ').slice(0, 110)}`).join(' @@ ') }
+    }
+    if (job === 'yt-rejouer') {
+      // SUPPRIME le post de la journée et le refait, complet. Ne sert
+      // qu'à réparer : la passe automatique n'y touche jamais.
+      const v = await import('./videos')
+      const jour = String((extra as { jour?: string }).jour ?? '')
+      return { ok: true, note: await v.republierJournee(env, date, jour || undefined) }
     }
     if (job === 'yt-publier') {
       // Sort la journée tout de suite, sans attendre qu'elle se boucle.

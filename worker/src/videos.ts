@@ -464,6 +464,7 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
  */
 type LigneJour = {
   video_id: string; kind: string; source: string; match_id: string; publie_at: string
+  fb_post_id: string | null
   competition: string | null
   equipe_dom: string | null; equipe_ext: string | null
   score_dom: number | null; score_ext: number | null
@@ -486,7 +487,7 @@ async function lignesDuJour(env: Env, jour: string): Promise<LigneJour[]> {
     `${env.SUPABASE_URL}/rest/v1/videos_matchs?match_id=not.is.null`
     + `&kind=in.(resume,resume_court,resume_long)`
     + `&publie_at=gte.${encodeURIComponent(debut)}&publie_at=lte.${encodeURIComponent(fin)}`
-    + `&select=video_id,kind,source,match_id,publie_at,competition,equipe_dom,equipe_ext,score_dom,score_ext`
+    + `&select=video_id,kind,source,match_id,publie_at,fb_post_id,competition,equipe_dom,equipe_ext,score_dom,score_ext`
     + `&order=publie_at.asc&limit=300`,
     { headers: sbHeaders(env) },
   )
@@ -508,10 +509,123 @@ async function relacher(env: Env, verrou: string, essais: number): Promise<void>
   await env.CACHE.delete(verrou)
 }
 
+/**
+ * FABRIQUE LA CARTE DE LA JOURNÉE ET LA PUBLIE.
+ *
+ * Partagée par la publication automatique et par la republication à la
+ * main : les deux doivent sortir EXACTEMENT la même carte, sinon la
+ * seconde deviendrait un deuxième format à maintenir.
+ */
+async function sortirLaJournee(env: Env, jour: string, matchs: LigneJour[]): Promise<{
+  p: Awaited<ReturnType<typeof fbPost>>
+  competitions: Array<{ logo: string; label: string }>
+}> {
+  const vues = new Set<string>()
+  const competitions: Array<{ logo: string; label: string }> = []
+  for (const m of matchs) {
+    const nom = m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''
+    if (!nom || vues.has(nom)) continue
+    vues.add(nom)
+    const logo = logoCompetition(nom)
+    // PAS D'ÉCUSSON PAR DÉFAUT : une compétition sans logo connu ne figure
+    // pas sur l'image. Trois reels sont déjà sortis estampillés Champions
+    // League à cause d'un repli.
+    if (logo) competitions.push({ logo, label: leagueAr(nom) })
+  }
+
+  const image = await renderImage(env, 'resumes-du-jour', {
+    lang: 'ar',
+    titre: 'ملخصات اليوم',
+    date: labelAr(jour),
+    competitions,
+    accroche: 'كل ملخصات المباريات في مكان واحد',
+  })
+
+  // ── LE LIEN DE LA JOURNÉE PART EN COMMENTAIRE, PAS EN DESCRIPTION ────
+  const lien = `${SITE_PUBLIC}/resumes/${jour}`
+  const p = await fbPost(env, {
+    message: captionJourneeResumes({
+      dateAr: labelAr(jour),
+      matchs: matchs.map((m) => ({
+        dom: m.equipe_dom ?? '', ext: m.equipe_ext ?? '',
+        scoreDom: m.score_dom, scoreExt: m.score_ext,
+        competitionAr: leagueAr(m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''),
+      })),
+    }),
+    // Make ne lit `link` que pour son propre module ; rien n'en arrive
+    // dans la description.
+    link: lien,
+    image_url: image,
+    title: `ملخصات اليوم — ${jour}`,
+    comment: `🎬 ${lien}`,
+  })
+  return { p, competitions }
+}
+
+/**
+ * SUPPRIME LE POST D'UNE JOURNÉE ET LE REFAIT, COMPLET.
+ *
+ * Mehdi, 19/10/2026 : le premier post du 18 est sorti amputé — quatre
+ * matchs et deux écussons là où la journée en comptait dix-huit et cinq,
+ * parce que la carte était bâtie sur la file d'attente et non sur la
+ * journée. « Supprime-le et relance une version complète. »
+ *
+ * Ne s'appelle QUE depuis l'admin. Il ignore le verrou du jour et l'état
+ * `publie_fb` — c'est tout son objet — et il supprime d'abord l'ancienne
+ * publication, dont l'identifiant a été enregistré sur les lignes de la
+ * journée au moment de publier. Sans date, il reprend la journée la plus
+ * récente qui ait des résumés.
+ */
+export async function republierJournee(env: Env, date: string, jourDemande?: string): Promise<string> {
+  const jour = /^\d{4}-\d{2}-\d{2}$/.test(jourDemande ?? '')
+    ? jourDemande!
+    : new Date(Date.now() - 24 * 3600_000).toISOString().slice(0, 10)
+
+  const matchsDuJour = await lignesDuJour(env, jour)
+  if (!matchsDuJour.length) {
+    const note = `republication ${jour} : aucun résumé ce jour-là`
+    await log(env, date, 'yt-rejouer', false, note)
+    return note
+  }
+
+  // Un seul résumé par match dans la légende : la playlist du site montre
+  // tout, la légende liste des RENCONTRES.
+  const parMatch = new Map<string, LigneJour>()
+  for (const x of matchsDuJour) {
+    const vu = parMatch.get(x.match_id)
+    if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(x.match_id, x)
+  }
+  const matchs = [...parMatch.values()]
+
+  // ── D'ABORD ON EFFACE L'ANCIEN ────────────────────────────────────
+  // Son identifiant vit sur les lignes de la journée. On ne supprime que
+  // ce qu'on a nous-même publié, et `fbSupprimer` refuse tout ce qui n'a
+  // pas la forme d'un identifiant de publication.
+  const auto = await import('./automation')
+  const anciens = [...new Set(matchsDuJour.map((x) => x.fb_post_id).filter(Boolean) as string[])]
+  const effacements: string[] = []
+  for (const id of anciens) {
+    const r = await auto.fbSupprimer(env, id)
+    effacements.push(r.ok ? `supprimé ${id}` : r.note)
+  }
+
+  const { p, competitions } = await sortirLaJournee(env, jour, matchs)
+  for (const x of matchsDuJour) await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })
+  // Le verrou repart dans son état « publié » pour que la passe
+  // automatique ne reparte pas dessus cinq minutes plus tard.
+  await env.CACHE.put(`fb:journee-resumes:${jour}`, p.ok ? '1' : 'abandon', { expirationTtl: 4 * 86400 })
+
+  const note = `republication ${jour} : ${p.ok ? 'postée' : 'échec'} — ${matchs.length} matchs, ${competitions.length} écussons`
+    + (effacements.length ? ` · ${effacements.join(', ')}` : ' · aucun ancien post à supprimer')
+    + (p.note ? ` · ${p.note}` : '')
+  await log(env, date, 'yt-rejouer', p.ok, note.slice(0, 700))
+  return note
+}
+
 export async function publierJourneeResumes(env: Env, date: string, force: boolean): Promise<string | null> {
   type Attente = {
     video_id: string; kind: string; source: string; titre: string; match_id: string
-    publie_at: string; competition: string | null
+    publie_at: string; fb_post_id: string | null; competition: string | null
     equipe_dom: string | null; equipe_ext: string | null
     score_dom: number | null; score_ext: number | null
   }
@@ -522,7 +636,7 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
   const r = await fetch(
     `${env.SUPABASE_URL}/rest/v1/videos_matchs?publie_fb=eq.false&match_id=not.is.null`
     + `&kind=in.(resume,resume_court,resume_long)&publie_at=gte.${encodeURIComponent(depuis)}`
-    + `&select=video_id,kind,source,titre,match_id,publie_at,competition,equipe_dom,equipe_ext,score_dom,score_ext`
+    + `&select=video_id,kind,source,titre,match_id,publie_at,fb_post_id,competition,equipe_dom,equipe_ext,score_dom,score_ext`
     + `&order=publie_at.asc&limit=200`,
     { headers: sbHeaders(env) },
   )
@@ -637,52 +751,15 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     // Mehdi : « l'image qu'on publiera pour highlights sera une image
     // unique, la seule chose qui change dessus d'un post à l'autre c'est
     // la date et les logos de championnats qui ont joué ce jour ».
-    const vues = new Set<string>()
-    const competitions: Array<{ logo: string; label: string }> = []
-    for (const m of matchs) {
-      const nom = m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''
-      if (!nom || vues.has(nom)) continue
-      vues.add(nom)
-      const logo = logoCompetition(nom)
-      // PAS D'ÉCUSSON PAR DÉFAUT : une compétition sans logo connu ne
-      // figure pas sur l'image. Trois reels sont déjà sortis estampillés
-      // Champions League à cause d'un repli.
-      if (logo) competitions.push({ logo, label: leagueAr(nom) })
-    }
-
-    let image = ''
+    let sortie
     try {
-      image = await renderImage(env, 'resumes-du-jour', {
-        lang: 'ar',
-        titre: 'ملخصات اليوم',
-        date: labelAr(jour),
-        competitions,
-        accroche: 'كل ملخصات المباريات في مكان واحد',
-      })
+      sortie = await sortirLaJournee(env, jour, matchs)
     } catch (e) {
       await relacher(env, verrou, essais)
       await log(env, date, 'yt-journee', false, `rendu échoué (${jour}), essai ${essais}/3 : ${String(e).slice(0, 160)}`)
       return `journée ${jour}: rendu échoué (essai ${essais}/3)`
     }
-
-    // ── LE LIEN DE LA JOURNÉE PART EN COMMENTAIRE, PAS EN DESCRIPTION ──
-    const lien = `${SITE_PUBLIC}/resumes/${jour}`
-    const p = await fbPost(env, {
-      message: captionJourneeResumes({
-        dateAr: labelAr(jour),
-        matchs: matchs.map((m) => ({
-          dom: m.equipe_dom ?? '', ext: m.equipe_ext ?? '',
-          scoreDom: m.score_dom, scoreExt: m.score_ext,
-          competitionAr: leagueAr(m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''),
-        })),
-      }),
-      // Make ne lit `link` que pour son propre module ; rien n'en arrive
-      // dans la description.
-      link: lien,
-      image_url: image,
-      title: `ملخصات اليوم — ${jour}`,
-      comment: `🎬 ${lien}`,
-    })
+    const { p, competitions } = sortie
 
     if (p.ok) {
       // Publié : le verrou devient définitif.
