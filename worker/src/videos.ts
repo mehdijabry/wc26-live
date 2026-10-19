@@ -463,7 +463,9 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
  * publiée par ailleurs, ce qui était le cas de tout l'arriéré du 18/10.
  */
 type LigneJour = {
-  video_id: string; kind: string; source: string; match_id: string; publie_at: string
+  video_id: string; kind: string; source: string; publie_at: string
+  /** null quand l'appariement ESPN n'a pas abouti — la rencontre existe quand même. */
+  match_id: string | null
   fb_post_id: string | null
   competition: string | null
   equipe_dom: string | null; equipe_ext: string | null
@@ -481,10 +483,20 @@ type LigneJour = {
  * est-elle complète ? » — question à laquelle la file répondait toujours
  * non dès qu'une ligne avait été publiée ailleurs.
  */
+/** La clé d'une rencontre : son identifiant ESPN, ou la paire d'équipes. */
+const cleRencontre = (x: { match_id: string | null; equipe_dom: string | null; equipe_ext: string | null }): string =>
+  x.match_id ?? `${x.equipe_dom ?? ''}|${x.equipe_ext ?? ''}`
+
 async function lignesDuJour(env: Env, jour: string): Promise<LigneJour[]> {
   const debut = `${jour}T00:00:00Z`, fin = `${jour}T23:59:59.999Z`
+  // UN RÉSUMÉ NON APPARIÉ RESTE UN RÉSUMÉ. Exiger `match_id` écartait tout
+  // ce que l'appariement ESPN n'avait pas reconnu — onze rencontres au lieu
+  // de quinze dans le post du 18/10, alors que la page du site les montre
+  // toutes. On demande donc : rattaché à un match OU portant une équipe. Ce
+  // qui n'a ni l'un ni l'autre est une compilation de journée (« EVERY
+  // Weekend Goal »), et n'a rien à faire dans la liste.
   const r = await fetch(
-    `${env.SUPABASE_URL}/rest/v1/videos_matchs?match_id=not.is.null`
+    `${env.SUPABASE_URL}/rest/v1/videos_matchs?or=(match_id.not.is.null,equipe_dom.not.is.null)`
     + `&kind=in.(resume,resume_court,resume_long)`
     + `&publie_at=gte.${encodeURIComponent(debut)}&publie_at=lte.${encodeURIComponent(fin)}`
     + `&select=video_id,kind,source,match_id,publie_at,fb_post_id,competition,equipe_dom,equipe_ext,score_dom,score_ext`
@@ -559,6 +571,12 @@ async function sortirLaJournee(env: Env, jour: string, matchs: LigneJour[]): Pro
     title: `ملخصات اليوم — ${jour}`,
     comment: `🎬 ${lien}`,
   })
+  // ── ON RETIENT L'IDENTIFIANT DU POST DE JOURNÉE, À PART ───────────
+  // Pas sur les lignes : elles portent AUSSI les identifiants des anciens
+  // posts par match, et s'y fier a fait supprimer une publication qui
+  // n'avait rien demandé (19/10/2026). Une clé par journée, et elle ne
+  // désigne qu'une chose.
+  if (p.ok && p.id) await env.CACHE.put(`fb:journee-post:${jour}`, p.id, { expirationTtl: 30 * 86400 })
   return { p, competitions }
 }
 
@@ -592,21 +610,44 @@ export async function republierJournee(env: Env, date: string, jourDemande?: str
   // tout, la légende liste des RENCONTRES.
   const parMatch = new Map<string, LigneJour>()
   for (const x of matchsDuJour) {
-    const vu = parMatch.get(x.match_id)
-    if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(x.match_id, x)
+    const cle = cleRencontre(x)
+    const vu = parMatch.get(cle)
+    if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(cle, x)
   }
   const matchs = [...parMatch.values()]
 
-  // ── D'ABORD ON EFFACE L'ANCIEN ────────────────────────────────────
-  // Son identifiant vit sur les lignes de la journée. On ne supprime que
-  // ce qu'on a nous-même publié, et `fbSupprimer` refuse tout ce qui n'a
-  // pas la forme d'un identifiant de publication.
+  // ── D'ABORD ON EFFACE L'ANCIEN — ET LUI SEUL ──────────────────────
+  // UNE SEULE SOURCE, ET ELLE NE DÉSIGNE QU'UNE CHOSE. La première
+  // version lisait `fb_post_id` sur les lignes de la journée : elles en
+  // portent plusieurs, hérités de l'époque où chaque match avait son
+  // propre post, et la republication du 18/10 a effacé une publication
+  // qui n'avait rien à voir. On ne suit plus que la clé posée au moment
+  // de publier la journée. Absente, on ne supprime RIEN et on le dit —
+  // mieux vaut deux posts qu'un effacement au jugé.
   const auto = await import('./automation')
-  const anciens = [...new Set(matchsDuJour.map((x) => x.fb_post_id).filter(Boolean) as string[])]
-  const effacements: string[] = []
-  for (const id of anciens) {
-    const r = await auto.fbSupprimer(env, id)
-    effacements.push(r.ok ? `supprimé ${id}` : r.note)
+  const cleAncien = `fb:journee-post:${jour}`
+  let ancien = await env.CACHE.get(cleAncien)
+
+  // ── LE REPLI, POUR LES JOURNÉES D'AVANT LA CLÉ ────────────────────
+  // Elle n'existe que depuis le 19/10 au soir : sans repli, une journée
+  // publiée avant resterait indélogeable. On le déduit alors d'un fait de
+  // structure plutôt que d'une devinette — un post de JOURNÉE est écrit
+  // sur TOUTES les lignes du jour, un ancien post par match sur une
+  // seule. On ne retient donc que l'identifiant porté par la majorité
+  // absolue des lignes ; en cas d'égalité ou de doute, on ne supprime
+  // rien. C'est ce qui manquait quand la première republication a effacé
+  // un post de résumé qui n'avait rien demandé.
+  if (!ancien) {
+    const compte = new Map<string, number>()
+    for (const x of matchsDuJour) if (x.fb_post_id) compte.set(x.fb_post_id, (compte.get(x.fb_post_id) ?? 0) + 1)
+    const [tete, n] = [...compte.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['', 0]
+    if (tete && n > matchsDuJour.length / 2) ancien = tete
+  }
+
+  let effacement = 'aucun post de journée identifié — rien supprimé'
+  if (ancien) {
+    const r = await auto.fbSupprimer(env, ancien)
+    effacement = r.ok ? `supprimé ${ancien}` : r.note
   }
 
   const { p, competitions } = await sortirLaJournee(env, jour, matchs)
@@ -616,7 +657,7 @@ export async function republierJournee(env: Env, date: string, jourDemande?: str
   await env.CACHE.put(`fb:journee-resumes:${jour}`, p.ok ? '1' : 'abandon', { expirationTtl: 4 * 86400 })
 
   const note = `republication ${jour} : ${p.ok ? 'postée' : 'échec'} — ${matchs.length} matchs, ${competitions.length} écussons`
-    + (effacements.length ? ` · ${effacements.join(', ')}` : ' · aucun ancien post à supprimer')
+    + ` · ${effacement}`
     + (p.note ? ` · ${p.note}` : '')
   await log(env, date, 'yt-rejouer', p.ok, note.slice(0, 700))
   return note
@@ -689,10 +730,11 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     // un post amputé qu'aucun post. `Attente` porte tous les champs de
     // `LigneJour`, plus le titre.
     for (const x of (toutes.length ? toutes : lignes)) {
-      const vu = parMatch.get(x.match_id)
+      const cle = cleRencontre(x)
+      const vu = parMatch.get(cle)
       // Le court l'emporte sur l'extended : c'est lui qui porte le score
       // relevé dans le titre, et il est sorti pour tout le monde.
-      if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(x.match_id, x)
+      if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(cle, x)
     }
     const matchs = [...parMatch.values()]
 
@@ -724,7 +766,9 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
         // dans `matchs`, et les compter comme manquantes rendait
         // « complète » INATTEIGNABLE : la journée n'était jamais bouclée,
         // et seul le filet pouvait encore la sortir.
-        const couverts = new Set(toutes.map((x) => x.match_id))
+        // Ici, et seulement ici, on reste sur l'identifiant ESPN : on le
+        // compare à la liste des matchs d'ESPN, pas à des noms d'équipes.
+        const couverts = new Set(toutes.map((x) => x.match_id).filter(Boolean) as string[])
         const manquants = suivis.filter((m) => m.completed && !couverts.has(m.id))
         // `suivis.length === 0` : ESPN n'a rien rendu (proxy en panne) ou
         // aucun de nos championnats ne jouait. Dans les deux cas on ne sait
