@@ -22,9 +22,10 @@ import { JETON, POINT } from '../lib/jeu'
  * chemins, de 0,8 à 1,8 Mo pièce — cinq mégaoctets à eux quatre, pour un
  * site dont tout le JavaScript pèse 348 Ko. Un tracé automatique de photo
  * n'est pas un dessin vectoriel, c'est une photo dans un emballage coûteux.
- * Ils sont donc rendus une fois à 128 px de haut, rognés au plus juste sur
- * leur encre — aucune marge, l'image touche ses quatre bords : 100 Ko pour
- * les trois, nets jusqu'à 64 px d'affichage.
+ * Ils sont donc rendus une fois à 160 px de haut, rognés au plus juste sur
+ * leur encre — aucune marge, l'image touche ses quatre bords : 140 Ko pour
+ * les trois, nets jusqu'à 80 px d'affichage, ce qui couvre l'emplacement le
+ * plus grand du site (56 px majorés, soit 98).
  *
  * ── LE JETON CRAMPON SEUL MANQUE ENCORE ──────────────────────────────────
  * Son fichier est le seul des quatre à n'avoir pas été détouré : le décor
@@ -56,14 +57,15 @@ type Variante = 'pile' | 'seul'
  * commande, et la largeur suit.
  *
  * `facteur` rattrape le reste. À 13 px de haut une pile de trente pièces
- * n'est qu'une bavure ; à dix-huit elle se lit. Le jeton seul, lui, tient
- * déjà à onze — il ne prend qu'un rattrapage de politesse pour ne pas
- * paraître chétif à côté d'une pile.
+ * n'est qu'une bavure ; il lui faut plus du double pour exister à côté
+ * d'un chiffre. Relevé deux fois à l'œil de Mehdi — 1,4 ne suffisait pas
+ * encore — et arrêté à 1,75 pour les piles, 1,45 pour le jeton seul, qui
+ * part d'un visuel déjà lisible à onze pixels.
  */
 const IMAGES: Partial<Record<`${Type}-${Variante}`, { src: string; rapport: number; facteur: number }>> = {
-  'crampon-pile': { src: '/jetons/crampons-pile.png', rapport: 1.321, facteur: 1.4 },
-  'pressing-pile': { src: '/jetons/pressings-pile.png', rapport: 1.247, facteur: 1.4 },
-  'pressing-seul': { src: '/jetons/pressings-jeton.png', rapport: 0.944, facteur: 1.15 },
+  'crampon-pile': { src: '/jetons/crampons-pile.png', rapport: 1.321, facteur: 1.75 },
+  'pressing-pile': { src: '/jetons/pressings-pile.png', rapport: 1.247, facteur: 1.75 },
+  'pressing-seul': { src: '/jetons/pressings-jeton.png', rapport: 0.944, facteur: 1.45 },
   // 'crampon-seul' : en attente du fichier détouré (voir l'en-tête).
 }
 
