@@ -146,6 +146,11 @@ const MARCHES_DERIVES: Array<{
     titre: 'Winning margin',
     choix: [['e1', '1 goal'], ['e2', '2 goals'], ['e3', '3+ goals'], ['nul', 'Draw']],
   },
+  {
+    cle: 'equipe',
+    titre: 'Team goals',
+    choix: [['dom1', 'Home 1+'], ['dom2', 'Home 2+'], ['ext1', 'Away 1+'], ['ext2', 'Away 2+']],
+  },
 ]
 
 function CarteMatch({

@@ -2878,10 +2878,26 @@ function mlVersDecimal(ml: number | string | undefined | null): number | null {
 const MARGE_EXACT = 0.12
 /** On publie les scores jusqu'à 5-5. Au-delà, personne ne parie. */
 const BUTS_MAX = 5
-const FACT = [1, 1, 2, 6, 24, 120, 720, 5040, 40320]
+// ── LA TABLE DES FACTORIELLES, ET LE PIÈGE QU'ELLE A TENDU ───────────────
+// Elle s'arrêtait à l'indice 8, parce que toutes les boucles d'alors
+// s'arrêtaient à huit buts. Le 19/10 j'ai écrit une boucle qui va à dix :
+// `FACT[9]` valait `undefined`, la division rendait NaN, et NaN s'est
+// propagé jusqu'à `prix()` qui rend `null` sur tout ce qui n'est pas
+// strictement positif — tous les marchés dérivés sortaient donc vides, sans
+// une erreur nulle part. Le score exact, lui, marchait : il ne dépasse pas
+// cinq buts.
+//
+// Deux corrections, pas une. La table va jusqu'à douze, ET `poisson` rend
+// zéro au-delà plutôt que NaN : au-dessus de douze buts la probabilité est
+// inférieure à 10⁻⁹ pour toute espérance réaliste, donc zéro est la bonne
+// réponse — et surtout, un appelant distrait n'empoisonnera plus en
+// silence tout un calcul.
+const FACT = [1, 1, 2, 6, 24, 120, 720, 5040, 40320, 362880, 3628800, 39916800, 479001600]
 
 function poisson(l: number, k: number): number {
-  return (Math.exp(-l) * Math.pow(l, k)) / FACT[k]
+  const f = FACT[k]
+  if (f === undefined) return 0
+  return (Math.exp(-l) * Math.pow(l, k)) / f
 }
 
 /** Les probabilités 1X2 qu'impliquent deux espérances de buts. */
@@ -3029,6 +3045,7 @@ export function grilleMarchesDeLambda(
   let plus25 = 0, lesDeux = 0
   let pDom = 0, pNul = 0, pExt = 0
   let ecart1 = 0, ecart2 = 0, ecart3 = 0
+  let dom1 = 0, dom2 = 0, ext1 = 0, ext2 = 0
   for (let i = 0; i <= N; i++) {
     for (let j = 0; j <= N; j++) {
       const p = poisson(lh, i) * poisson(la, j)
@@ -3041,6 +3058,10 @@ export function grilleMarchesDeLambda(
       if (ecart === 1) ecart1 += p
       else if (ecart === 2) ecart2 += p
       else if (ecart >= 3) ecart3 += p
+      if (d >= 1) dom1 += p
+      if (d >= 2) dom2 += p
+      if (e >= 1) ext1 += p
+      if (e >= 2) ext2 += p
     }
   }
 
@@ -3113,6 +3134,26 @@ export function grilleMarchesDeLambda(
   poser(marge, 'e3', ecart3)
   poser(marge, 'nul', pNul)
   if (Object.keys(marge).length) m['marge'] = marge
+
+  // ── 5. TOTAL PAR ÉQUIPE ───────────────────────────────────────────────
+  // Le seul des cinq qui porte sur UNE équipe. C'est le marché de celui qui
+  // suit un club et pas un championnat : il n'a pas d'avis sur Getafe, mais
+  // il sait que le Barça marque toujours. « Le Barça marque deux buts »
+  // paie 1,50 sans qu'il ait à parier sur un résultat dont il ne sait rien.
+  //
+  // Il se combine avec tous les autres sans jamais les contredire, parce
+  // qu'il regarde un seul côté de la grille là où les quatre premiers
+  // regardent la somme ou la différence.
+  //
+  // Deux seuils, pas cinq. « Trois buts et plus » tombe sous la barre du
+  // jouable une fois sur deux, et quatre boutons par équipe rendraient la
+  // carte illisible pour un marché qui en dit déjà assez avec deux.
+  const equipes: Record<string, number> = {}
+  poser(equipes, 'dom1', dom1)
+  poser(equipes, 'dom2', dom2)
+  poser(equipes, 'ext1', ext1)
+  poser(equipes, 'ext2', ext2)
+  if (Object.keys(equipes).length) m['equipe'] = equipes
 
   return Object.keys(m).length ? m : null
 }
