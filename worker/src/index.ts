@@ -3055,6 +3055,21 @@ export function grilleMarchesDeLambda(
   // 2-1, « plus » dépasse le plafond de 1 000 et « moins » passe sous 1,01.
   if (Object.keys(ou).length) m['ou25'] = ou
 
+  // ── 2. LES DEUX ÉQUIPES MARQUENT ──────────────────────────────────────
+  // Le deuxième marché le plus joué au monde, et celui qui se combine le
+  // mieux avec le 1X2 : « le Real gagne ET les deux marquent » double la
+  // cote sans rien ajouter au moteur.
+  //
+  // Il n'est PAS redondant avec le plus/moins, contrairement à ce qu'on
+  // croit souvent : 3-0 fait plus de 2,5 sans que les deux marquent, et
+  // 1-1 fait l'inverse. Les deux marchés découpent la même grille selon
+  // deux axes différents, ce qui est exactement ce qui les rend jouables
+  // ensemble.
+  const btts: Record<string, number> = {}
+  poser(btts, 'oui', lesDeux)
+  poser(btts, 'non', 1 - lesDeux)
+  if (Object.keys(btts).length) m['btts'] = btts
+
   return Object.keys(m).length ? m : null
 }
 

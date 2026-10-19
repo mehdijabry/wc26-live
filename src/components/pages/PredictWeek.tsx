@@ -33,6 +33,7 @@ import {
   buteursDuMatch,
   grilleDuMatch,
   marchesDuMatch,
+  type Marche,
   type Marches,
   jambesParMatch,
   mesBulletins,
@@ -117,6 +118,25 @@ function Equipe({ camp, cote }: { camp: Camp; cote: boolean }) {
     </div>
   )
 }
+
+/**
+ * LES MARCHÉS DÉRIVÉS, et l'ordre dans lequel ils s'affichent.
+ *
+ * Une table plutôt que du JSX répété : un marché de plus, c'est trois
+ * lignes ici et rien ailleurs. Les libellés passent par `t()` au rendu,
+ * donc ce sont des clés, pas du texte.
+ *
+ * L'ordre est celui du joueur, pas le nôtre : d'abord les deux marchés que
+ * tout le monde connaît, puis ceux qui demandent un avis plus précis.
+ */
+const MARCHES_DERIVES: Array<{
+  cle: Marche
+  titre: string
+  choix: Array<[string, string]>
+}> = [
+  { cle: 'ou25', titre: 'Total goals', choix: [['plus', 'Over 2.5'], ['moins', 'Under 2.5']] },
+  { cle: 'btts', titre: 'Both teams to score', choix: [['oui', 'Yes'], ['non', 'No']] },
+]
 
 function CarteMatch({
   ev,
@@ -312,13 +332,15 @@ function CarteMatch({
         </p>
       )}
 
-      {/* ── PLUS / MOINS 2,5 BUTS ──────────────────────────────────────
-          Le marché le plus joué au monde après le 1X2, et le seul qui
-          permette de parier sur un match sans avoir d'avis sur son
-          vainqueur — « ça va s'ouvrir », « ça va être fermé ». Il ne coûte
-          aucune donnée nouvelle : la même loi de Poisson qui price le score
-          exact donne la probabilité que le total dépasse deux buts et demi.
-          Voir `grilleMarches` dans le worker et la migration 040. */}
+      {/* ── LES MARCHÉS DÉRIVÉS ────────────────────────────────────────
+          Tous dans UNE section, et pilotés par la table `MARCHES_DERIVES`
+          plus haut. Un marché de plus y est trois lignes de données, pas
+          soixante de JSX — c'est ce qui permet d'en ajouter cinq sans que
+          la carte devienne illisible, pour nous comme pour le joueur.
+
+          Ils ne coûtent aucune donnée nouvelle : la même loi de Poisson qui
+          price le score exact donne la probabilité de chacun. Voir
+          `grilleMarches` dans le worker et la migration 040. */}
       {ouvert && (
         <div className="mt-2">
           <button
@@ -326,14 +348,14 @@ function CarteMatch({
             onClick={() => setMarchesOuverts((v) => !v)}
             className={cn(
               'w-full flex items-center justify-between px-3 py-1.5 rounded-lg font-mono text-[11px] transition-colors',
-              selection?.marche === 'ou25'
+              selection && MARCHES_DERIVES.some((d) => d.cle === selection.marche)
                 ? 'bg-accent-gold/15 text-accent-gold'
                 : 'text-slate-500 hover:bg-slate-50',
             )}
           >
             <span className="uppercase tracking-wider">
-              {t('Total goals')}
-              {selection?.marche === 'ou25' && (
+              {t('More markets')}
+              {selection && MARCHES_DERIVES.some((d) => d.cle === selection.marche) && (
                 <span className="ms-2 font-semibold normal-case tracking-normal">
                   {selection.libelle} @ {selection.cote.toFixed(2)}
                 </span>
@@ -345,41 +367,57 @@ function CarteMatch({
           {marchesOuverts && marches === null && (
             <p className="px-3 py-2 font-mono text-[11px] text-slate-500">{t('Loading…')}</p>
           )}
-          {marchesOuverts && marches !== null && !marches.ou25 && (
+          {marchesOuverts && marches !== null
+            && !MARCHES_DERIVES.some((d) => marches[d.cle]) && (
             <p className="px-3 py-2 font-mono text-[11px] text-slate-500">
-              {t('No total-goals market on this match.')}
+              {t('No extra market on this match.')}
             </p>
           )}
-          {marchesOuverts && marches?.ou25 && (
-            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-              {([['plus', t('Over 2.5')], ['moins', t('Under 2.5')]] as const).map(([pick, libelle]) => {
-                const c2 = marches.ou25[pick]
-                if (!c2) return null
-                const actif = selection?.marche === 'ou25' && selection.pick === pick
-                return (
-                  <button
-                    key={pick}
-                    type="button"
-                    disabled={!ouvert}
-                    onClick={() => choisir('ou25', pick, c2, libelle)}
-                    className={cn(
-                      'rounded-xl py-2 flex flex-col items-center justify-center gap-0.5 transition-all border',
-                      actif
-                        ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
-                        : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50 hover:bg-slate-100',
-                      !ouvert && !actif && 'opacity-35',
-                      ouvert && 'active:scale-[0.97]',
-                    )}
-                  >
-                    <span className={cn('font-mono text-[10px] tracking-wider', actif ? 'text-ink-700' : 'text-slate-500')}>
-                      {libelle}
-                    </span>
-                    <span className="font-display text-lg leading-none tabular-nums">{c2.toFixed(2)}</span>
-                  </button>
-                )
-              })}
-            </div>
-          )}
+          {marchesOuverts && marches !== null && MARCHES_DERIVES.map((d) => {
+            const prix = marches[d.cle]
+            if (!prix) return null
+            // UNE SEULE OPTION RESTE UNE OPTION. En direct, un côté passe
+            // vite sous 1,01 et disparaît ; l'autre garde un vrai prix.
+            const choix = d.choix.filter(([pick]) => prix[pick])
+            if (!choix.length) return null
+            return (
+              <div key={d.cle} className="mt-2">
+                <p className="px-3 font-mono text-[10px] uppercase tracking-wider text-slate-500">
+                  {t(d.titre)}
+                </p>
+                <div
+                  className="mt-1 grid gap-1.5"
+                  style={{ gridTemplateColumns: `repeat(${Math.min(choix.length, 4)}, minmax(0, 1fr))` }}
+                >
+                  {choix.map(([pick, libelle]) => {
+                    const c2 = prix[pick]
+                    const actif = selection?.marche === d.cle && selection.pick === pick
+                    return (
+                      <button
+                        key={pick}
+                        type="button"
+                        disabled={!ouvert}
+                        onClick={() => choisir(d.cle, pick, c2, t(libelle))}
+                        className={cn(
+                          'rounded-xl py-2 flex flex-col items-center justify-center gap-0.5 transition-all border',
+                          actif
+                            ? 'bg-accent-gold text-ink-900 border-accent-gold font-semibold'
+                            : 'bg-slate-50 border-slate-200 text-slate-900 hover:border-accent-gold/50 hover:bg-slate-100',
+                          !ouvert && !actif && 'opacity-35',
+                          ouvert && 'active:scale-[0.97]',
+                        )}
+                      >
+                        <span className={cn('font-mono text-[10px] tracking-wider', actif ? 'text-ink-700' : 'text-slate-500')}>
+                          {t(libelle)}
+                        </span>
+                        <span className="font-display text-lg leading-none tabular-nums">{c2.toFixed(2)}</span>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -678,8 +716,7 @@ function Bulletin({
                 <div className="font-mono text-[10px] text-slate-500 truncate">
                   {s.marche === 'exact' ? t('Exact score')
                     : s.marche === 'scorer' ? t('Goalscorer')
-                    : s.marche === 'ou25' ? t('Total goals')
-                    : t('Winner')} · {s.libelle}
+                    : t(MARCHES_DERIVES.find((d) => d.cle === s.marche)?.titre ?? 'Winner')} · {s.libelle}
                 </div>
               </div>
               <span className="font-mono text-[12px] tabular-nums text-accent-gold shrink-0">
