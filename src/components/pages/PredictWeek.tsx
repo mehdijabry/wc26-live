@@ -136,6 +136,11 @@ const MARCHES_DERIVES: Array<{
 }> = [
   { cle: 'ou25', titre: 'Total goals', choix: [['plus', 'Over 2.5'], ['moins', 'Under 2.5']] },
   { cle: 'btts', titre: 'Both teams to score', choix: [['oui', 'Yes'], ['non', 'No']] },
+  // Les trois choix s'écrivent « 1X », « 12 », « X2 » partout dans le
+  // football, et le 1X2 juste au-dessus affiche déjà 1 / X / 2 : les
+  // paraphraser ici (« domicile ou nul ») aurait rompu la lecture au
+  // moment précis où le joueur compare les deux lignes.
+  { cle: 'dc', titre: 'Double chance', choix: [['1x', '1X'], ['12', '12'], ['x2', 'X2']] },
 ]
 
 function CarteMatch({

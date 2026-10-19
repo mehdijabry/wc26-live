@@ -3070,6 +3070,22 @@ export function grilleMarchesDeLambda(
   poser(btts, 'non', 1 - lesDeux)
   if (Object.keys(btts).length) m['btts'] = btts
 
+  // ── 3. DOUBLE CHANCE ──────────────────────────────────────────────────
+  // La marche BASSE qui manquait à l'échelle. Le 1X2 paie 2 à 3, le score
+  // exact 8 à 15, et rien entre zéro et deux : un joueur prudent n'avait
+  // aucun moyen de rester en vie, alors même que ce jeu PUNIT les pertes
+  // par le palier. La double chance paie 1,05 à 1,55 — peu, mais elle
+  // transforme un pari en décision raisonnable, et c'est ce qui élargit
+  // l'audience au-delà des joueurs qui aiment le risque.
+  //
+  // Elle se lit sur les mêmes trois probabilités que le 1X2, additionnées
+  // deux à deux. Aucun calcul de plus.
+  const dc: Record<string, number> = {}
+  poser(dc, '1x', pDom + pNul)
+  poser(dc, '12', pDom + pExt)
+  poser(dc, 'x2', pNul + pExt)
+  if (Object.keys(dc).length) m['dc'] = dc
+
   return Object.keys(m).length ? m : null
 }
 
