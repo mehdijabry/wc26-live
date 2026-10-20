@@ -425,17 +425,29 @@ export async function fbPost(env: Env, p: { message: string; link?: string; imag
 }
 
 /**
- * POST DE LIEN — REMIS EN SERVICE LE 20/10/2026, POUR LES ARTICLES SEULS.
+ * POST DE LIEN — RÉSERVÉ AUX BUTS ET AUX RÉSUMÉS. SANS APPELANT AUJOURD'HUI.
  *
- * Il avait été mis au placard le 18/10 par la règle « plus aucun lien en
- * description pour aucun type de format ». Mehdi l'a levée pour ce
- * format-ci le 20/10 : « tout passe en reel ou lien direct ». Les
- * articles sont le seul contenu du fil dont le but EST le clic — un
- * résumé se regarde, un article se lit ailleurs.
+ * Mehdi, 20/10/2026 : « les posts articles, je sais qu'ils fonctionnent ;
+ * les liens c'est réservé aux buts et highlights PARCE QUE LEUR OG EST
+ * DYNAMIQUE. »
  *
- * LA RÈGLE TIENT TOUJOURS PARTOUT AILLEURS. Buts, résumés, scores,
- * matchs du jour : lien en premier commentaire, jamais en description.
- * N'élargis pas cet appelant sans que Mehdi le demande.
+ * C'est le critère, et il est juste : la carte d'aperçu d'un post de lien
+ * ne vaut que si la page visée en rend une qui porte quelque chose. Une
+ * vidéo de but a `/v/<id>` et son image OG 1200×630 calculée au rendu
+ * (voir `og-video` dans le studio) — la carte montre alors la scène. Un
+ * article, lui, a déjà sa carte éditoriale dessinée, et le post photo
+ * marche. Ce format avait été mis sur les articles le matin du 20/10 sur
+ * « tout passe en reel ou lien direct » ; Mehdi a tranché autrement en
+ * voyant le premier partir.
+ *
+ * Buts et résumés sortent aujourd'hui en REELS, donc plus personne
+ * n'appelle cette fonction. On la garde pour le jour où l'on reposera un
+ * lien sur `/v/<id>` — elle porte deux choses qu'on ne veut pas
+ * réapprendre : la publication par le Graph, et le `rafraichirOpenGraph`
+ * sans lequel Facebook ressort son aperçu en cache.
+ *
+ * LA RÈGLE DU 18/10 TIENT PARTOUT AILLEURS. Articles, scores, matchs du
+ * jour : lien en premier commentaire, jamais en description.
  *
  * Et noter ce que le post de lien n'est PAS : le lien ne va pas dans le
  * texte, il va dans le champ `link` de l'appel Graph. Facebook en tire
@@ -588,8 +600,7 @@ export async function processRepublishQueue(env: Env, date: string, label: strin
       let card: string | null = null
       try { card = await renderImage(env, 'article-post', { title: row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE }) } catch { /* raw image */ }
       const image = card ?? (row.image_url ? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url)}` : `${SITE}/icon-512.png`)
-      // Post de lien, comme le publicateur d'articles depuis le 20/10.
-      r = await fbLinkPost(env, { message: `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}`, link, image_url: image, title: row.title })
+      r = await fbPost(env, { message: `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article — link in the comments 👇`, link, image_url: image, title: row.title, comment: `📰 Read the full article: ${link}` })
     }
     if (r.ok) {
       const { token } = await pageAuth(env)
@@ -2220,23 +2231,23 @@ export async function maybeAutoPublishArticle(env: Env, articleId: string): Prom
   let card: string | null = null
   try { card = await renderImage(env, 'article-post', { title: ar ? arCols.title_ar : row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE, lang: ar ? 'ar' : 'en' }) } catch (e) { await log(env, date, 'article-card', false, String(e)) }
   const image = card ?? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url!)}`
-  // ── L'ARTICLE PART EN POST DE LIEN (Mehdi, 20/10/2026) ──────────────
-  // « Tout passe en reel ou lien direct. » L'article est le seul format du
-  // fil dont le but est le CLIC : un but se regarde sur place, un article
-  // se lit ailleurs. Un post photo ouvrait l'image en grand et s'arrêtait
-  // là — mesuré à zéro clic vers le site sur dix publications.
+  // ── L'ARTICLE RESTE UN POST PHOTO (Mehdi, 20/10/2026, le soir) ──────
+  // Il était passé en post de lien le matin même, sur « tout passe en reel
+  // ou lien direct ». Mehdi a tranché autrement en voyant le premier
+  // partir : « les posts articles, je sais qu'ils fonctionnent ; les liens
+  // c'est réservé aux buts et highlights parce que leur OG est dynamique ».
   //
-  // Plus de « الرابط في التعليقات » ni de commentaire portant l'adresse :
-  // la carte d'aperçu EST le lien, et la répéter en commentaire ne ferait
-  // que doubler. `image_url` ne sert plus qu'au repli sans jeton de page,
-  // où l'on retombe sur un post photo avec le lien en commentaire.
+  // C'est la bonne lecture, et elle m'avait échappé : la carte d'aperçu
+  // d'un post de lien ne vaut que si la page visée en rend une qui porte
+  // quelque chose — l'image OG 1200×630 d'une vidéo de but, calculée au
+  // rendu. Un article n'a pas ce besoin, son visuel est déjà la carte
+  // éditoriale qu'on dessine, et ce format-là marche.
   const message = ar
-    ? `${arCols.title_ar}${arCols.excerpt_ar ? '\n\n' + arCols.excerpt_ar : ''}\n\nما رأيك؟ 👇\n\n${row.title}\n\n#كرة_القدم #أخبار #Pressing90`
-    : `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}`
-  const p = await fbLinkPost(env, { message, link, image_url: image, title: ar ? arCols.title_ar! : row.title })
+    ? `${arCols.title_ar}${arCols.excerpt_ar ? '\n\n' + arCols.excerpt_ar : ''}\n\nما رأيك؟ 👇\n👉 المقال كاملاً — الرابط في التعليقات 👇\n\n${row.title}\n\n#كرة_القدم #أخبار #Pressing90`
+    : `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article — link in the comments 👇`
+  const p = await fbPost(env, { message, link, image_url: image, title: ar ? arCols.title_ar! : row.title, comment: ar ? `📰 اقرأ المقال كاملاً: ${link}` : `📰 Read the full article: ${link}` })
   if (p.ok) await bump(env, date, 'post')
-  // `fbLinkPost` ne rend pas de `status` : son échec est tout entier dans `note`.
-  await log(env, date, 'article-post', p.ok, p.ok ? `${row.slug} · ${p.note ?? ''} · ${link}` : `${p.note ?? 'error'}`)
+  await log(env, date, 'article-post', p.ok, p.ok ? `${row.slug} · ${p.note ?? ''} · ${image}` : `${p.note ?? p.status ?? 'error'}`)
   // Story (QR + "visit our profile")
   // Article stories are semi-automatic (link sticker is manual on Meta):
   // the video is rendered and Mehdi receives the story kit by e-mail.
