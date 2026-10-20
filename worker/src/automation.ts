@@ -314,12 +314,30 @@ export async function renderImage(env: Env, type: string, data: unknown): Promis
 //          present the worker also publishes REAL reels through the
 //          Reels API instead of the Make video post.
 // Make's free plan allows 2 active scenarios — hence one per output.
-async function hook(url: string | undefined, payload: unknown): Promise<{ ok: boolean; status?: number }> {
+/**
+ * Un appel de webhook Make — ET SA RÉPONSE.
+ *
+ * Le corps était jeté. La chaîne photo est tombée le 18/10/2026 et tout
+ * ce qu'on a pu en dire après coup, c'est « ça a basculé sur le Graph » :
+ * ni le code HTTP, ni le message de Make, parce que le seul endroit où le
+ * statut partait était un `console.log` que personne ne lit. Un webhook de
+ * Make dit POURQUOI il refuse — « scenario is not active », « queue is
+ * full », opérations épuisées — et cette phrase vaut une journée de
+ * suppositions. Elle remonte désormais jusqu'au journal.
+ *
+ * Le corps est tronqué à 200 caractères : les erreurs de Make tiennent en
+ * une ligne, et un webhook qui répondrait une page entière n'a rien à
+ * faire dans un journal qu'on lit à l'œil.
+ */
+async function hook(url: string | undefined, payload: unknown): Promise<{ ok: boolean; status?: number; corps?: string }> {
   if (!url) return { ok: false, status: 0 }
   try {
     const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(payload) })
-    return { ok: r.ok, status: r.status }
-  } catch { return { ok: false } }
+    // On ne lit le corps QUE sur refus : sur succès Make répond « Accepted »
+    // et consommer le flux pour ça ne servirait à rien.
+    const corps = r.ok ? undefined : await r.text().then((t) => t.slice(0, 200)).catch(() => undefined)
+    return { ok: r.ok, status: r.status, corps }
+  } catch (e) { return { ok: false, corps: `fetch échoué: ${String(e).slice(0, 160)}` } }
 }
 /**
  * Photo post. With a Page token we publish through the Graph API
@@ -344,6 +362,8 @@ export async function fbPost(env: Env, p: { message: string; link?: string; imag
   // Mehdi, 2026-09-08: photo posts go through MAKE (that rendering is the
   // one the mobile app shows reliably); the worker then finds the new post
   // in the Page feed and comments the link. Graph API only as fallback.
+  // Pourquoi Make a refusé, s'il a refusé. Voyage jusqu'au journal.
+  let raisonMake = 'make non configuré'
   if (env.MAKE_FB_WEBHOOK_URL) {
     const r = await hook(env.MAKE_FB_WEBHOOK_URL, { kind: 'post', message: p.message, image_url: p.image_url, title: p.title })
     if (r.ok) {
@@ -356,7 +376,8 @@ export async function fbPost(env: Env, p: { message: string; link?: string; imag
       await enqueuePendingComment(env, p.message, p.comment)
       return { ok: true, status: r.status, note: 'make post · comment pending (post not visible yet, retry every minute)' }
     }
-    console.log('[fb] make webhook failed', r.status, '→ graph fallback')
+    console.log('[fb] make webhook failed', r.status, r.corps ?? '', '→ graph fallback')
+    raisonMake = `make ${r.status ?? 'sans réponse'}${r.corps ? ` « ${r.corps} »` : ''}`
   }
   if (env.FB_PAGE_TOKEN) {
     try {
@@ -364,10 +385,10 @@ export async function fbPost(env: Env, p: { message: string; link?: string; imag
       const ph = await graph(env, token, 'POST', `/${pid}/photos`, { url: p.image_url, published: 'false', temporary: 'true' })
       const j = await graph(env, token, 'POST', `/${pid}/feed`, { message: p.message, attached_media: JSON.stringify([{ media_fbid: String(ph.id) }]) })
       const postId = String(j.id ?? '')
-      let note = `graph post ${postId} (make fallback)`
+      let note = `graph post ${postId} (repli — ${raisonMake})`
       if (postId && p.comment) { const c = await fbComment(env, postId, p.comment); note += c.ok ? ' · link commented' : ` · comment failed: ${c.note ?? ''}` }
       return { ok: true, status: 200, id: postId, note }
-    } catch (e) { return { ok: false, note: `make failed and graph failed: ${String(e).slice(0, 120)}` } }
+    } catch (e) { return { ok: false, note: `${raisonMake}, puis graph échoué: ${String(e).slice(0, 120)}` } }
   }
   return { ok: false, note: 'no publishing channel (MAKE_FB_WEBHOOK_URL / FB_PAGE_TOKEN missing)' }
 }
@@ -3629,6 +3650,30 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     }
     if (job === 'barca-article') { const { hour, minute } = localParts(); return { ok: true, note: await runBarcaArticle(env, s, date, hour, minute, true) } }
     if (job === 'barca-digest') { const { hour, minute } = localParts(); return { ok: true, note: await runBarcaDigest(env, s, date, hour, minute, true, false) } }
+    if (job === 'make-ping') {
+      // ── INTERROGER MAKE SANS RIEN PUBLIER ─────────────────────────────
+      // La chaîne photo est tombée entre le 17/10 18:42 UTC et le 18/10
+      // 16:01 UTC, sans qu'aucun déploiement n'ait eu lieu dans cette
+      // fenêtre : la cause est chez Make, et un webhook de Make DIT
+      // pourquoi il refuse. Encore faut-il le lui demander.
+      //
+      // La charge utile est volontairement vide. Un webhook mort répond
+      // son erreur et rien n'est mis en file ; un webhook vivant met en
+      // file une charge sans image, et le module « Create a Post with
+      // Photos » échoue faute de photo — il ne peut pas publier un post
+      // sans l'image qui le définit.
+      //
+      // LE RISQUE RÉSIDUEL, puisqu'il y en a un : si le scénario est
+      // DÉSACTIVÉ et que Make met en file au lieu de refuser, cette
+      // charge vide partira au moment où le scénario sera rallumé. Vider
+      // la file du scénario dans Make avant de le réactiver.
+      const url = (env as unknown as { MAKE_FB_WEBHOOK_URL?: string }).MAKE_FB_WEBHOOK_URL
+      if (!url) return { ok: false, note: 'MAKE_FB_WEBHOOK_URL absent' }
+      const r = await hook(url, { kind: 'ping' })
+      const note = `scénario photo Make → HTTP ${r.status ?? 'sans réponse'}${r.corps ? ` · « ${r.corps} »` : ''}`
+      await log(env, date, 'make-ping', r.ok, note)
+      return { ok: true, note }
+    }
     if (job === 'preview' && String((extra as { type?: string }).type) === 'resumes') {
       // { type:'resumes', jour:'YYYY-MM-DD' } → rend le reel de la journée
       // sans rien publier ; l'adresse arrive dans le journal sous
