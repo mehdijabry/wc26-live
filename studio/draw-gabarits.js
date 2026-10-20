@@ -729,6 +729,25 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
   ]
   layers.home = PNG(ecusson(dom)); layers.away = PNG(ecusson(ext))
   if (m.etat) { layers.etat = PNG(etat); anims.push({ layer: 'etat', x: 360, y: 1050, fade: { st: 0.65, d: 0.3 } }) }
+  // ── « LE LIEN EST EN COMMENTAIRE », ET CA CLIGNOTE (Mehdi, 20/10/2026)
+  // Les reels de resumes portent le lien de la journee en commentaire —
+  // une description de reel n'est pas cliquable sur Facebook. Encore
+  // faut-il que le spectateur le SACHE : sur une vidéo de cinq secondes
+  // il n'ira pas chercher. Le bandeau clignote pour attirer l'oeil sans
+  // occuper le centre de la carte, et il n'apparait que si on le demande
+  // (`m.lienCommentaire`) : les reels de resultats n'en ont pas besoin,
+  // leur commentaire n'est pas la raison d'etre du post.
+  if (m.lienCommentaire) {
+    const lw = W - 160
+    const lc = createCanvas(lw, 110); const ctx = ctx2d(lc)
+    couvrir(ctx, [0, 0, lw, 110], '#070B16', 20)
+    ar(ctx, 'الرابط في التعليقات 👇', lw / 2, 55, { size: 40, color: OR })
+    layers.lien = PNG(lc)
+    // Debut a 1,2 s : la carte a le temps de se poser avant qu'un element
+    // ne se mette a bouger. Cycle de 0,9 s dont 0,55 visible — un rythme
+    // qui accroche sans faire stroboscope.
+    anims.push({ layer: 'lien', x: 80, y: 1440, blink: { st: 1.2, period: 0.9, on: 0.55 } })
+  }
   if (idx === 0 && m.cover) {
     const cv = createCanvas(W - 80, 150); const ctx = ctx2d(cv)
     couvrir(ctx, [0, 0, W - 80, 150], '#070B16', 18)

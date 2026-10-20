@@ -578,6 +578,19 @@ async function relacher(env: Env, verrou: string, essais: number): Promise<void>
  * et c'est la raison pour laquelle la clé de journée est devenue la
  * seule source de vérité pour la suppression.
  */
+/**
+ * Plafond de reels de resume par journee, et l'ecart entre deux.
+ *
+ * Mehdi veut TOUS les matchs annonces. Douze est la limite haute observee
+ * d'une journee reelle (dix-neuf une fois, mais avec les doublons court /
+ * extended que `cleRencontre` fusionne). A douze minutes d'ecart, une
+ * journee pleine s'etale sur deux heures vingt — assez pour ne pas
+ * saturer le fil, assez court pour que tout sorte dans la matinee.
+ */
+const RESUMES_MAX_REELS = 12
+const RESUMES_ECART_MIN = 12
+const AR_TAGS_RESUMES = '#كرة_القدم #اهداف #Pressing90'
+
 async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[], apercu = false): Promise<{
   p: { ok: boolean; id?: string; note?: string }
   competitions: Array<{ logo: string; label: string }>
@@ -596,57 +609,89 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
   const pool = await bigMatchesToday(env, jour.replace(/-/g, '')).catch(() => [] as AutoMatch[])
   const parId = new Map(pool.map((m) => [String(m.id), m]))
   const parPaire = new Map(pool.map((m) => [`${cleClub(m.home)}|${cleClub(m.away)}`, m]))
-  const cartes: Array<ReturnType<typeof toDraw> & { score?: string; time: string; live: false; leagueLogo?: string; cover?: unknown }> = []
+  type Carte = ReturnType<typeof toDraw> & {
+    score?: string; time: string; live: false; leagueLogo?: string
+    cover?: unknown; lienCommentaire?: boolean
+  }
+  const rencontres: Array<{ carte: Carte; ligne: LigneJour }> = []
   for (const x of matchs) {
-    if (cartes.length >= 3) break
+    if (rencontres.length >= RESUMES_MAX_REELS) break
     const e = (x.match_id ? parId.get(String(x.match_id)) : undefined)
       ?? (x.equipe_dom && x.equipe_ext ? parPaire.get(`${cleClub(x.equipe_dom)}|${cleClub(x.equipe_ext)}`) : undefined)
     if (!e) continue
     const logo = logoCompetition(x.competition ?? e.league ?? '')
-    cartes.push({
-      ...toDraw(e),
-      live: false,
-      score: `${x.score_dom ?? e.homeScore}–${x.score_ext ?? e.awayScore}`,
-      time: 'FT',
-      ...(logo ? { leagueLogo: logo } : {}),
+    rencontres.push({
+      ligne: x,
+      carte: {
+        ...toDraw(e),
+        live: false,
+        score: `${x.score_dom ?? e.homeScore}–${x.score_ext ?? e.awayScore}`,
+        time: 'FT',
+        ...(logo ? { leagueLogo: logo } : {}),
+        // Le bandeau clignotant : sur cinq secondes, personne ne devine
+        // tout seul que l'adresse est sous la vidéo.
+        lienCommentaire: true,
+      },
     })
   }
   // Aucune carte : le studio n'a rien à dessiner. On laisse l'appelant
   // retomber sur le post photo plutôt que de publier un reel vide.
-  if (!cartes.length) return { p: { ok: false, note: 'aucune rencontre appariée à ESPN — pas de carte à dessiner' }, competitions }
-
-  // La première carte porte l'accroche de la vignette.
-  ;(cartes[0] as { cover?: unknown }).cover = { text: 'ملخصات اليوم: شاهدها كلها', tone: 'results' }
+  if (!rencontres.length) return { p: { ok: false, note: 'aucune rencontre appariée à ESPN — pas de carte à dessiner' }, competitions }
 
   const lien = `${SITE_PUBLIC}/resumes/${jour}`
-  const description = captionJourneeResumes({
-    dateAr: labelAr(jour),
-    matchs: matchs.map((m) => ({
-      dom: m.equipe_dom ?? '', ext: m.equipe_ext ?? '',
-      scoreDom: m.score_dom, scoreExt: m.score_ext,
-      competitionAr: leagueAr(m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''),
-    })),
-  })
-  const jobId = `resumes-${jour}-${Math.random().toString(36).slice(2, 7)}`
-  // En aperçu, le travail est marqué `preview` : le studio rend, l'adresse
-  // tombe dans le journal, et RIEN n'est publié. C'est le seul moyen de
-  // regarder le reel avant qu'il ne parte sur la page.
-  await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify(apercu
-    ? { kind: 'preview', label: 'preview-resumes', date: jour }
-    : {
-        kind: 'reel', label: 'resumes-reel', date: jour, journee: jour,
-        title: `ملخصات اليوم — ${jour}`,
-        description,
-        comment: `🎬 ${lien}`,
-      }), { expirationTtl: 6 * 3600 })
-  await studio(env, '/render/reel', {
-    type: 'matchday',
-    data: { matches: cartes, heading: 'ملخصات اليوم', lang: 'ar' },
-    seconds: 9,
-    jobId,
-    callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
-  })
-  return { p: { ok: true, note: `reel en rendu (${cartes.length} cartes, job ${jobId})${apercu ? ' — APERÇU, rien ne sera publié' : ' — publication au retour du studio'}` }, competitions }
+  const n = rencontres.length
+  const base = `resumes-${jour}-${Math.random().toString(36).slice(2, 7)}`
+  const ids: string[] = []
+
+  for (let i = 0; i < n; i++) {
+    const { carte, ligne } = rencontres[i]
+    const jobId = `${base}-${i + 1}`
+    ids.push(jobId)
+    // L'accroche de vignette, sur la carte unique de ce reel.
+    carte.cover = { text: 'شاهد الملخص كاملاً', tone: 'results' }
+    const ligueAr = leagueAr(ligne.competition ?? SOURCES.find((o) => o.cle === ligne.source)?.competition ?? '')
+    const titre = `${ligne.equipe_dom ?? ''} ${ligne.score_dom ?? ''}–${ligne.score_ext ?? ''} ${ligne.equipe_ext ?? ''}`.trim()
+    // La légende parle de CE match, pas de la journée : un post par match
+    // qui réciterait les onze autres serait illisible, et le lecteur ne
+    // saurait pas lequel il regarde. La journée entière est au bout du
+    // lien, et c'est à ça que sert le commentaire.
+    const description = [
+      `🎬 ${ligueAr}`, '', titre, '',
+      'الملخص الكامل — الرابط في التعليقات 👇', '',
+      `#ملخصات ${AR_TAGS_RESUMES}`,
+    ].join('\n')
+    await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify(apercu
+      ? { kind: 'preview', label: 'preview-resumes', date: jour }
+      : {
+          kind: 'reel', label: 'resumes-reel', date: jour, journee: jour,
+          title: titre.slice(0, 100),
+          description,
+          comment: `🎬 ${lien}`,
+          // Douze minutes entre deux matchs : une journée à dix résumés
+          // s'étale sur deux heures au lieu de dix posts d'affilée.
+          delaiMin: i * RESUMES_ECART_MIN,
+        }), { expirationTtl: 12 * 3600 })
+    await studio(env, '/render/reel', {
+      type: 'matchday',
+      // UN SEUL MATCH PAR REEL, cinq secondes. Mehdi, 20/10/2026 : « les
+      // résumés, fais des reels de 5 sec chacun, pour tous les matchs ».
+      // Le calcul derrière : `renderAnimatedReel` répartit la durée entre
+      // les cartes, donc une carte seule prend les cinq secondes entières
+      // — contre trois secondes dans un reel de neuf à trois cartes. Et
+      // une vidéo de cinq secondes se regarde presque toujours à plus de
+      // la moitié, ce qui est la part du clip vue que Facebook récompense.
+      data: { matches: [carte], heading: ligueAr || 'ملخصات اليوم', lang: 'ar' },
+      seconds: 5,
+      jobId,
+      callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
+    })
+    if (apercu) break   // un seul suffit à juger le rendu
+  }
+  const combien = apercu ? 1 : n
+  return {
+    p: { ok: true, note: `${combien} reel(s) de 5 s en rendu, un par match (jobs ${ids.slice(0, combien).join(', ')})${apercu ? ' — APERÇU, rien ne sera publié' : `, un toutes les ${RESUMES_ECART_MIN} min`}` },
+    competitions,
+  }
 }
 
 /** Rend le reel d'une journée SANS rien publier : l'adresse arrive dans le journal. */
@@ -711,7 +756,7 @@ async function sortirLaJournee(env: Env, jour: string, matchs: LigneJour[]): Pro
   // posts par match, et s'y fier a fait supprimer une publication qui
   // n'avait rien demandé (19/10/2026). Une clé par journée, et elle ne
   // désigne qu'une chose.
-  if (p.ok && p.id) await env.CACHE.put(`fb:journee-post:${jour}`, p.id, { expirationTtl: 30 * 86400 })
+  if (p.ok && p.id) await (await import('./automation')).ajouterJourneePost(env, jour, p.id)
   return { p, competitions }
 }
 
@@ -761,7 +806,10 @@ export async function republierJournee(env: Env, date: string, jourDemande?: str
   // mieux vaut deux posts qu'un effacement au jugé.
   const auto = await import('./automation')
   const cleAncien = `fb:journee-post:${jour}`
-  let ancien = await env.CACHE.get(cleAncien)
+  // Une journée fait désormais PLUSIEURS posts — un reel de cinq secondes
+  // par match. N'en supprimer qu'un laisserait les autres sur la page à
+  // côté de leurs remplaçants.
+  const anciens = await auto.lireJourneePosts(env, jour)
 
   // ── LE REPLI, POUR LES JOURNÉES D'AVANT LA CLÉ ────────────────────
   // Elle n'existe que depuis le 19/10 au soir : sans repli, une journée
@@ -772,17 +820,24 @@ export async function republierJournee(env: Env, date: string, jourDemande?: str
   // absolue des lignes ; en cas d'égalité ou de doute, on ne supprime
   // rien. C'est ce qui manquait quand la première republication a effacé
   // un post de résumé qui n'avait rien demandé.
-  if (!ancien) {
+  if (!anciens.length) {
     const compte = new Map<string, number>()
     for (const x of matchsDuJour) if (x.fb_post_id) compte.set(x.fb_post_id, (compte.get(x.fb_post_id) ?? 0) + 1)
     const [tete, n] = [...compte.entries()].sort((a, b) => b[1] - a[1])[0] ?? ['', 0]
-    if (tete && n > matchsDuJour.length / 2) ancien = tete
+    if (tete && n > matchsDuJour.length / 2) anciens.push(tete)
   }
 
   let effacement = 'aucun post de journée identifié — rien supprimé'
-  if (ancien) {
-    const r = await auto.fbSupprimer(env, ancien)
-    effacement = r.ok ? `supprimé ${ancien}` : r.note
+  if (anciens.length) {
+    const faits: string[] = []
+    for (const id of anciens) {
+      const r = await auto.fbSupprimer(env, id)
+      faits.push(r.ok ? `supprimé ${id}` : r.note)
+    }
+    // La liste repart à zéro : les posts qu'on s'apprête à refaire
+    // s'inscriront dedans au fur et à mesure qu'ils sortiront.
+    await env.CACHE.delete(cleAncien)
+    effacement = faits.join(' · ')
   }
 
   // Reel d'abord, post photo en repli : voir `sortirLaJourneeEnReel`.

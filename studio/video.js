@@ -183,7 +183,18 @@ export async function animSlide({ spec, seconds, fps = 25, out, small = false, f
     }
     const nxt = `v${i}`
     // show: the layer exists only inside a time window (word-by-word captions)
-    const en = an.show ? `:enable='between(t,${an.show.st},${an.show.en ?? total.toFixed(3)})'` : ''
+    // blink: le calque apparait et disparait en cadence. On le pose sur
+    // l'overlay plutot que sur l'alpha du calque, et ce n'est pas un
+    // detail : des `fade` enchaines ne clignotent PAS, parce qu'un fade
+    // multiplie l'alpha — une fois tombe a zero, un fade-in suivant
+    // multiplie zero par sa rampe et rend zero. `enable` saute purement
+    // l'overlay sur les images « eteintes », ce qui ne coute rien.
+    //   st     : debut du clignotement
+    //   period : duree d'un cycle
+    //   on     : part du cycle ou le calque est visible
+    const en = an.blink
+      ? `:enable='gte(t,${an.blink.st ?? 0})*lt(mod(t-${an.blink.st ?? 0},${an.blink.period}),${an.blink.on})'`
+      : an.show ? `:enable='between(t,${an.show.st},${an.show.en ?? total.toFixed(3)})'` : ''
     fc.push(`[${cur}][l${i}]overlay=x='${x}':y='${y}':eval=frame:format=yuv420${en}[${nxt}]`)
     cur = nxt
   })

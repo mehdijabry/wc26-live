@@ -1931,13 +1931,16 @@ export async function handleStudioCallback(req: Request, env: Env): Promise<Resp
       at: Date.now() + delaiMin * 60_000,
       video_url: body.url, description: job.description ?? '', title: job.title ?? '',
       comment: (job as { comment?: string }).comment, label: reelLabel, date: job.date,
+      // La journée descend avec l'élément : c'est `processReelQueue` qui
+      // publiera, donc c'est lui qui devra retenir l'identifiant du post.
+      journee,
     }])
     await log(env, job.date, reelLabel, true, `${body.seconds ?? '?'}s · en file, publication dans ${delaiMin} min · ${body.url}`)
     return new Response('ok')
   }
   const r = await fbReel(env, { video_url: body.url, description: job.description ?? '', title: job.title ?? '' })
   if (journee) {
-    if (r.ok && r.id) await env.CACHE.put(`fb:journee-post:${journee}`, r.id, { expirationTtl: 30 * 86400 })
+    if (r.ok && r.id) await ajouterJourneePost(env, journee, r.id)
     if (!r.ok) await env.CACHE.delete(`fb:journee-resumes:${journee}`)
   }
   if (r.ok) { await bump(env, job.date, 'reel'); if (reelLabel === 'goal-reel') await bump(env, job.date, 'goalreel') }
@@ -1957,8 +1960,33 @@ export async function handleStudioCallback(req: Request, env: Env): Promise<Resp
   return new Response('ok')
 }
 
+/**
+ * LES POSTS D'UNE JOURNÉE DE RÉSUMÉS — UNE LISTE, PLUS UN IDENTIFIANT.
+ *
+ * La clé `fb:journee-post:<jour>` ne portait qu'un identifiant, parce
+ * qu'une journée faisait un post. Depuis le 20/10 elle en fait plusieurs
+ * — un reel de neuf secondes par tranche de trois matchs — et le bouton
+ * « refaire la journée » n'en aurait supprimé qu'un, laissant les autres
+ * sur la page à côté de leurs remplaçants.
+ *
+ * Lecture tolérante : les journées publiées avant ce changement ont une
+ * chaîne nue sous cette clé, et elles doivent rester supprimables.
+ */
+export async function lireJourneePosts(env: Env, jour: string): Promise<string[]> {
+  const brut = await env.CACHE.get(`fb:journee-post:${jour}`)
+  if (!brut) return []
+  if (brut.startsWith('[')) { try { return (JSON.parse(brut) as string[]).filter(Boolean) } catch { return [] } }
+  return [brut]
+}
+export async function ajouterJourneePost(env: Env, jour: string, id: string): Promise<void> {
+  const liste = await lireJourneePosts(env, jour)
+  if (liste.includes(id)) return
+  liste.push(id)
+  await env.CACHE.put(`fb:journee-post:${jour}`, JSON.stringify(liste), { expirationTtl: 30 * 86400 })
+}
+
 // Reel publish queue (2026-09-16): cover variants of the same story, one every N minutes.
-type ReelQueueItem = { at: number; video_url: string; description: string; title: string; comment?: string; label: string; date: string }
+type ReelQueueItem = { at: number; video_url: string; description: string; title: string; comment?: string; label: string; date: string; journee?: string }
 async function pushReelQueue(env: Env, items: ReelQueueItem[]): Promise<void> {
   const q = JSON.parse((await env.CACHE.get('auto:reel:queue')) ?? '[]') as ReelQueueItem[]
   q.push(...items)
@@ -1972,6 +2000,9 @@ export async function processReelQueue(env: Env, date: string): Promise<void> {
   await env.CACHE.put('auto:reel:queue', JSON.stringify(q), { expirationTtl: 2 * 86400 })
   const r = await fbReel(env, { video_url: it.video_url, description: it.description, title: it.title })
   if (r.ok) await bump(env, date, 'reel')
+  // Un reel de journée publié depuis la file : son identifiant rejoint la
+  // liste du jour, sans quoi « refaire la journée » le laisserait en place.
+  if (r.ok && r.id && it.journee) await ajouterJourneePost(env, it.journee, r.id)
   await log(env, date, it.label, r.ok, r.ok ? `variant · ${r.note ?? ''} · ${it.video_url}` : `graph ${r.status ?? 'error'} ${r.note ?? ''} · ${it.video_url}`)
   if (r.ok && it.comment) {
     if (r.id) { const c = await fbComment(env, r.id, it.comment); await log(env, date, `${it.label}-comment`, c.ok, c.ok ? c.note ?? 'ok' : `${c.note ?? 'failed'}`) }
