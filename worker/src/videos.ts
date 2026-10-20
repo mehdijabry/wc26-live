@@ -34,7 +34,7 @@
  */
 import type { Env } from './index'
 import type { AutoMatch } from './automation'
-import { bigMatchesToday, fbPost, labelAr, leagueAr, log, renderImage, sbHeaders } from './automation'
+import { WORKER_PUBLIC, bigMatchesToday, fbPost, labelAr, leagueAr, log, renderImage, sbHeaders, studio, toDraw } from './automation'
 import { logoCompetition } from './competitions'
 import { clesDAppariement, clipsDePlaylist, derniersClips, type Clip } from './youtube'
 import { captionJourneeResumes } from './accroches'
@@ -544,6 +544,125 @@ async function relacher(env: Env, verrou: string, essais: number): Promise<void>
  * main : les deux doivent sortir EXACTEMENT la même carte, sinon la
  * seconde deviendrait un deuxième format à maintenir.
  */
+/**
+ * LA JOURNÉE DE RÉSUMÉS, EN REEL (Mehdi, 20/10/2026).
+ *
+ * « Tout passe en reel ou lien direct — même les résumés, on prépare un
+ * reel spécial. » Le post photo qu'il remplace est conservé juste en
+ * dessous : il sert encore de repli quand le studio est indisponible, et
+ * c'est lui qui porte le rendu de l'image à écussons.
+ *
+ * ── NEUF SECONDES, TROIS CARTES ──────────────────────────────────────
+ * Ce n'est pas un réglage au jugé, c'est la mesure de Mehdi : le même
+ * contenu a fait 1 036 vues en 9 s et 3 cartes, contre 217 en 30 s. Ce
+ * qui décide est la PART DU CLIP REGARDÉE, pas le nombre de matchs
+ * montrés. Le reel ne porte donc que les trois premières rencontres ;
+ * la liste complète vit dans la légende, qui n'a pas de durée, et le
+ * lien vers la page du jour vit dans le commentaire.
+ *
+ * ── POURQUOI ON REPASSE PAR ESPN ─────────────────────────────────────
+ * Les lignes de la table `videos` portent les noms d'équipes et le score,
+ * mais PAS les écussons. Une carte sans blason est une carte vide, et le
+ * gabarit refuse par principe d'en inventer un. On réapparie donc chaque
+ * rencontre à son match ESPN — par `match_id` quand l'appariement avait
+ * abouti, par la paire de clubs sinon — et une rencontre qu'on ne
+ * retrouve pas ne prend simplement pas de carte. Elle reste dans la
+ * légende.
+ *
+ * ── CE QUI REND CETTE SORTIE ASYNCHRONE ──────────────────────────────
+ * Elle ne publie rien. Elle met un travail en file au studio et rend
+ * `ok` dès que le rendu est accepté ; la publication, l'identifiant du
+ * post et le commentaire arrivent dans `/studio/callback`, qui sait
+ * refermer `fb:journee-post:<jour>` et relâcher le verrou si le rendu
+ * échoue. L'appelant ne voit donc jamais d'identifiant ici — c'est voulu,
+ * et c'est la raison pour laquelle la clé de journée est devenue la
+ * seule source de vérité pour la suppression.
+ */
+async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[], apercu = false): Promise<{
+  p: { ok: boolean; id?: string; note?: string }
+  competitions: Array<{ logo: string; label: string }>
+}> {
+  const competitions: Array<{ logo: string; label: string }> = []
+  const vues = new Set<string>()
+  for (const m of matchs) {
+    const nom = m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''
+    if (!nom || vues.has(nom)) continue
+    vues.add(nom)
+    const logo = logoCompetition(nom)
+    if (logo) competitions.push({ logo, label: leagueAr(nom) })
+  }
+
+  // Réappariement ESPN : seul moyen d'obtenir les écussons des clubs.
+  const pool = await bigMatchesToday(env, jour.replace(/-/g, '')).catch(() => [] as AutoMatch[])
+  const parId = new Map(pool.map((m) => [String(m.id), m]))
+  const parPaire = new Map(pool.map((m) => [`${cleClub(m.home)}|${cleClub(m.away)}`, m]))
+  const cartes: Array<ReturnType<typeof toDraw> & { score?: string; time: string; live: false; leagueLogo?: string; cover?: unknown }> = []
+  for (const x of matchs) {
+    if (cartes.length >= 3) break
+    const e = (x.match_id ? parId.get(String(x.match_id)) : undefined)
+      ?? (x.equipe_dom && x.equipe_ext ? parPaire.get(`${cleClub(x.equipe_dom)}|${cleClub(x.equipe_ext)}`) : undefined)
+    if (!e) continue
+    const logo = logoCompetition(x.competition ?? e.league ?? '')
+    cartes.push({
+      ...toDraw(e),
+      live: false,
+      score: `${x.score_dom ?? e.homeScore}–${x.score_ext ?? e.awayScore}`,
+      time: 'FT',
+      ...(logo ? { leagueLogo: logo } : {}),
+    })
+  }
+  // Aucune carte : le studio n'a rien à dessiner. On laisse l'appelant
+  // retomber sur le post photo plutôt que de publier un reel vide.
+  if (!cartes.length) return { p: { ok: false, note: 'aucune rencontre appariée à ESPN — pas de carte à dessiner' }, competitions }
+
+  // La première carte porte l'accroche de la vignette.
+  ;(cartes[0] as { cover?: unknown }).cover = { text: 'ملخصات اليوم: شاهدها كلها', tone: 'results' }
+
+  const lien = `${SITE_PUBLIC}/resumes/${jour}`
+  const description = captionJourneeResumes({
+    dateAr: labelAr(jour),
+    matchs: matchs.map((m) => ({
+      dom: m.equipe_dom ?? '', ext: m.equipe_ext ?? '',
+      scoreDom: m.score_dom, scoreExt: m.score_ext,
+      competitionAr: leagueAr(m.competition ?? SOURCES.find((o) => o.cle === m.source)?.competition ?? ''),
+    })),
+  })
+  const jobId = `resumes-${jour}-${Math.random().toString(36).slice(2, 7)}`
+  // En aperçu, le travail est marqué `preview` : le studio rend, l'adresse
+  // tombe dans le journal, et RIEN n'est publié. C'est le seul moyen de
+  // regarder le reel avant qu'il ne parte sur la page.
+  await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify(apercu
+    ? { kind: 'preview', label: 'preview-resumes', date: jour }
+    : {
+        kind: 'reel', label: 'resumes-reel', date: jour, journee: jour,
+        title: `ملخصات اليوم — ${jour}`,
+        description,
+        comment: `🎬 ${lien}`,
+      }), { expirationTtl: 6 * 3600 })
+  await studio(env, '/render/reel', {
+    type: 'matchday',
+    data: { matches: cartes, heading: 'ملخصات اليوم', lang: 'ar' },
+    seconds: 9,
+    jobId,
+    callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
+  })
+  return { p: { ok: true, note: `reel en rendu (${cartes.length} cartes, job ${jobId})${apercu ? ' — APERÇU, rien ne sera publié' : ' — publication au retour du studio'}` }, competitions }
+}
+
+/** Rend le reel d'une journée SANS rien publier : l'adresse arrive dans le journal. */
+export async function apercuJourneeResumes(env: Env, jour: string): Promise<string> {
+  const toutes = await lignesDuJour(env, jour)
+  if (!toutes.length) return `aucun résumé enregistré pour ${jour}`
+  const parMatch = new Map<string, LigneJour>()
+  for (const x of toutes) {
+    const cle = cleRencontre(x)
+    const vu = parMatch.get(cle)
+    if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(cle, x)
+  }
+  const r = await sortirLaJourneeEnReel(env, jour, [...parMatch.values()], true)
+  return r.p.note ?? (r.p.ok ? 'en rendu' : 'échec')
+}
+
 async function sortirLaJournee(env: Env, jour: string, matchs: LigneJour[]): Promise<{
   p: Awaited<ReturnType<typeof fbPost>>
   competitions: Array<{ logo: string; label: string }>
@@ -666,7 +785,15 @@ export async function republierJournee(env: Env, date: string, jourDemande?: str
     effacement = r.ok ? `supprimé ${ancien}` : r.note
   }
 
-  const { p, competitions } = await sortirLaJournee(env, jour, matchs)
+  // Reel d'abord, post photo en repli : voir `sortirLaJourneeEnReel`.
+  let { p, competitions } = await sortirLaJourneeEnReel(env, jour, matchs).catch(
+    (e) => ({ p: { ok: false, note: `reel échoué: ${String(e).slice(0, 120)}` }, competitions: [] as Array<{ logo: string; label: string }> }),
+  )
+  if (!p.ok) {
+    const repli = await sortirLaJournee(env, jour, matchs)
+    p = { ...repli.p, note: `${p.note} → repli post photo${repli.p.note ? ` (${repli.p.note})` : ''}` }
+    competitions = repli.competitions
+  }
   for (const x of matchsDuJour) await marquer(env, x.video_id, { publie_fb: p.ok, fb_post_id: p.id ?? null })
   // Le verrou repart dans son état « publié » pour que la passe
   // automatique ne reparte pas dessus cinq minutes plus tard.
@@ -813,7 +940,14 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     // la date et les logos de championnats qui ont joué ce jour ».
     let sortie
     try {
-      sortie = await sortirLaJournee(env, jour, matchs)
+      sortie = await sortirLaJourneeEnReel(env, jour, matchs)
+      // Le reel n'a pas pu être mis en file (studio éteint, aucune
+      // rencontre appariée) : on publie quand même, en photo. Une journée
+      // non publiée est pire qu'une journée publiée dans l'ancien format.
+      if (!sortie.p.ok) {
+        const repli = await sortirLaJournee(env, jour, matchs)
+        sortie = { p: { ...repli.p, note: `${sortie.p.note} → repli post photo${repli.p.note ? ` (${repli.p.note})` : ''}` }, competitions: repli.competitions }
+      }
     } catch (e) {
       await relacher(env, verrou, essais)
       await log(env, date, 'yt-journee', false, `rendu échoué (${jour}), essai ${essais}/3 : ${String(e).slice(0, 160)}`)

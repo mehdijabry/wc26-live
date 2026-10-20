@@ -88,7 +88,11 @@ export const DEFAULT_AUTOMATION: AutomationSettings = {
   enabled: false,
   articles: true, articlesPerDay: 12,
   matchday: true, morningHour: 8,
-  ftPosts: true, ftPerDay: 8,
+  // Mehdi, 20/10/2026 : « tout passe en reel ou lien direct ». Les scores
+  // finaux ne partent plus en photo — c'est `resultsReel` qui les porte,
+  // en un reel de 9 s le lendemain matin (mesuré : un reel publié après
+  // 20 h fait 4-22 vues, le même le matin 200-800).
+  ftPosts: false, ftPerDay: 8,
   stories: true, storiesPerDay: 10,
   reels: true,
   goalAlerts: true, goalReelsPerDay: 20,
@@ -369,19 +373,24 @@ export async function fbPost(env: Env, p: { message: string; link?: string; imag
 }
 
 /**
- * POST DE LIEN — HORS SERVICE DEPUIS LE 18/10/2026.
+ * POST DE LIEN — REMIS EN SERVICE LE 20/10/2026, POUR LES ARTICLES SEULS.
  *
- * Plus aucun appelant, et c'est volontaire : Mehdi, 18/10/2026 — « plus
- * aucun lien en description pour aucun type de format ». Un post de lien
- * EST un lien en description ; la règle le met donc au placard entier.
- * Buts et résumés sont repassés en post photo, lien en premier commentaire.
+ * Il avait été mis au placard le 18/10 par la règle « plus aucun lien en
+ * description pour aucun type de format ». Mehdi l'a levée pour ce
+ * format-ci le 20/10 : « tout passe en reel ou lien direct ». Les
+ * articles sont le seul contenu du fil dont le but EST le clic — un
+ * résumé se regarde, un article se lit ailleurs.
  *
- * On le garde parce qu'il porte deux choses qu'on ne veut pas réapprendre :
- * la publication par le Graph (Make ne sait faire que des posts photo) et
- * le `rafraichirOpenGraph` sans lequel Facebook ressort son aperçu en
- * cache. À NE RALLUMER que si Mehdi lève la règle.
+ * LA RÈGLE TIENT TOUJOURS PARTOUT AILLEURS. Buts, résumés, scores,
+ * matchs du jour : lien en premier commentaire, jamais en description.
+ * N'élargis pas cet appelant sans que Mehdi le demande.
  *
- * Ce qui suit décrit pourquoi il avait été écrit, la veille :
+ * Et noter ce que le post de lien n'est PAS : le lien ne va pas dans le
+ * texte, il va dans le champ `link` de l'appel Graph. Facebook en tire
+ * sa carte d'aperçu, cliquable sur toute sa surface. C'est ce qui le
+ * sépare d'un post photo, où l'image s'ouvre en grand et s'arrête là.
+ *
+ * Ce qui suit décrit pourquoi il avait été écrit, le 17/10 :
  *
  * Un post PHOTO ouvre l'image en grand et s'arrête là ; un post de LIEN
  * affiche l'aperçu Open Graph de la page visée et le clic y atterrit. C'est
@@ -527,7 +536,8 @@ export async function processRepublishQueue(env: Env, date: string, label: strin
       let card: string | null = null
       try { card = await renderImage(env, 'article-post', { title: row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE }) } catch { /* raw image */ }
       const image = card ?? (row.image_url ? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url)}` : `${SITE}/icon-512.png`)
-      r = await fbPost(env, { message: `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article — link in the comments 👇`, link, image_url: image, title: row.title, comment: `📰 Read the full article: ${link}` })
+      // Post de lien, comme le publicateur d'articles depuis le 20/10.
+      r = await fbLinkPost(env, { message: `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}`, link, image_url: image, title: row.title })
     }
     if (r.ok) {
       const { token } = await pageAuth(env)
@@ -1064,7 +1074,7 @@ async function bigMatchesTodayUncached(env: Env, ymd: string): Promise<AutoMatch
   return out.sort((x, y) => x.rank - y.rank || x.kickoff.localeCompare(y.kickoff))
 }
 /** Shape consumed by studio/draw.js. */
-function toDraw(m: AutoMatch) {
+export function toDraw(m: AutoMatch) {
   const live = m.state === 'in'
   return {
     home: m.home, away: m.away, homeLogo: m.homeLogo, awayLogo: m.awayLogo, league: m.league,
@@ -1837,8 +1847,30 @@ export async function handleStudioCallback(req: Request, env: Env): Promise<Resp
     return new Response('ok')
   }
   const reelLabel = job.label ?? 'matchday-reel'
-  if (!body.ok || !body.url) { await log(env, job.date, reelLabel, false, `render failed: ${body.error ?? 'unknown'}`); return new Response('ok') }
+  // ── LA JOURNÉE DE RÉSUMÉS EST UN CAS À PART (20/10/2026) ────────────
+  // Elle était un post photo, donc SYNCHRONE : on postait, on recevait
+  // l'identifiant, on refermait le verrou du jour dans la foulée. En reel,
+  // la publication a lieu ICI, plusieurs minutes après que `videos.ts` a
+  // posé son verrou. Deux choses doivent donc redescendre jusqu'ici :
+  //   · l'identifiant du post, sous `fb:journee-post:<jour>` — c'est la
+  //     seule clé sur laquelle s'appuie la suppression/republication, et
+  //     s'y tromper a déjà effacé une publication qui n'avait rien demandé ;
+  //   · le RELÂCHEMENT du verrou si le rendu échoue, sans quoi la journée
+  //     resterait marquée « publiée » alors que rien n'est sorti.
+  const journee = (job as { journee?: string }).journee
+  if (!body.ok || !body.url) {
+    await log(env, job.date, reelLabel, false, `render failed: ${body.error ?? 'unknown'}`)
+    if (journee) {
+      await env.CACHE.delete(`fb:journee-resumes:${journee}`)
+      await log(env, job.date, 'yt-journee', false, `rendu du reel échoué pour ${journee} — verrou relâché, la prochaine passe réessaiera`)
+    }
+    return new Response('ok')
+  }
   const r = await fbReel(env, { video_url: body.url, description: job.description ?? '', title: job.title ?? '' })
+  if (journee) {
+    if (r.ok && r.id) await env.CACHE.put(`fb:journee-post:${journee}`, r.id, { expirationTtl: 30 * 86400 })
+    if (!r.ok) await env.CACHE.delete(`fb:journee-resumes:${journee}`)
+  }
   if (r.ok) { await bump(env, job.date, 'reel'); if (reelLabel === 'goal-reel') await bump(env, job.date, 'goalreel') }
   await log(env, job.date, reelLabel, r.ok, r.ok ? `${body.seconds ?? '?'}s · ${r.note ?? ''} · ${body.url}` : `graph ${r.status ?? 'error'} ${r.note ?? ''} · ${body.url}`)
   // Links as a Page comment under the reel (reel descriptions aren't clickable).
@@ -2088,12 +2120,23 @@ export async function maybeAutoPublishArticle(env: Env, articleId: string): Prom
   let card: string | null = null
   try { card = await renderImage(env, 'article-post', { title: ar ? arCols.title_ar : row.title, slug: row.slug, image_url: row.image_url, repli: REPLI_ARTICLE, lang: ar ? 'ar' : 'en' }) } catch (e) { await log(env, date, 'article-card', false, String(e)) }
   const image = card ?? `${WORKER_PUBLIC}/fb-img?u=${encodeURIComponent(row.image_url!)}`
+  // ── L'ARTICLE PART EN POST DE LIEN (Mehdi, 20/10/2026) ──────────────
+  // « Tout passe en reel ou lien direct. » L'article est le seul format du
+  // fil dont le but est le CLIC : un but se regarde sur place, un article
+  // se lit ailleurs. Un post photo ouvrait l'image en grand et s'arrêtait
+  // là — mesuré à zéro clic vers le site sur dix publications.
+  //
+  // Plus de « الرابط في التعليقات » ni de commentaire portant l'adresse :
+  // la carte d'aperçu EST le lien, et la répéter en commentaire ne ferait
+  // que doubler. `image_url` ne sert plus qu'au repli sans jeton de page,
+  // où l'on retombe sur un post photo avec le lien en commentaire.
   const message = ar
-    ? `${arCols.title_ar}${arCols.excerpt_ar ? '\n\n' + arCols.excerpt_ar : ''}\n\nما رأيك؟ 👇\n👉 المقال كاملاً — الرابط في التعليقات 👇\n\n${row.title}\n\n#كرة_القدم #أخبار #Pressing90`
-    : `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}\n\n👉 Full article — link in the comments 👇`
-  const p = await fbPost(env, { message, link, image_url: image, title: ar ? arCols.title_ar! : row.title, comment: ar ? `📰 اقرأ المقال كاملاً: ${link}` : `📰 Read the full article: ${link}` })
+    ? `${arCols.title_ar}${arCols.excerpt_ar ? '\n\n' + arCols.excerpt_ar : ''}\n\nما رأيك؟ 👇\n\n${row.title}\n\n#كرة_القدم #أخبار #Pressing90`
+    : `${row.title}${row.excerpt ? '\n\n' + row.excerpt : ''}`
+  const p = await fbLinkPost(env, { message, link, image_url: image, title: ar ? arCols.title_ar! : row.title })
   if (p.ok) await bump(env, date, 'post')
-  await log(env, date, 'article-post', p.ok, p.ok ? `${row.slug} · ${p.note ?? ''} · ${image}` : `${p.note ?? p.status ?? 'error'}`)
+  // `fbLinkPost` ne rend pas de `status` : son échec est tout entier dans `note`.
+  await log(env, date, 'article-post', p.ok, p.ok ? `${row.slug} · ${p.note ?? ''} · ${link}` : `${p.note ?? 'error'}`)
   // Story (QR + "visit our profile")
   // Article stories are semi-automatic (link sticker is manual on Meta):
   // the video is rendered and Mehdi receives the story kit by e-mail.
@@ -3586,6 +3629,14 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
     }
     if (job === 'barca-article') { const { hour, minute } = localParts(); return { ok: true, note: await runBarcaArticle(env, s, date, hour, minute, true) } }
     if (job === 'barca-digest') { const { hour, minute } = localParts(); return { ok: true, note: await runBarcaDigest(env, s, date, hour, minute, true, false) } }
+    if (job === 'preview' && String((extra as { type?: string }).type) === 'resumes') {
+      // { type:'resumes', jour:'YYYY-MM-DD' } → rend le reel de la journée
+      // sans rien publier ; l'adresse arrive dans le journal sous
+      // « preview-resumes · PREVIEW ready ».
+      const v = await import('./videos')
+      const jour = String((extra as { jour?: string }).jour ?? date)
+      return { ok: true, note: `${await v.apercuJourneeResumes(env, jour)} — URL dans le journal (« preview-resumes »)` }
+    }
     if (job === 'preview' && String((extra as { type?: string }).type) === 'barca') { const { hour, minute } = localParts(); return { ok: true, note: `${await runBarcaDigest(env, s, date, hour, minute, true, true)} — URL in the log as "preview-barca · PREVIEW ready"` } }
     if (job === 'barca-lineup') { const w = String((extra as { which?: string }).which ?? ''); return { ok: true, note: await runBarcaLineups(env, s, date, true, w === 'predicted' || w === 'confirmed' ? w : undefined) } }
     if (job === 'lineup-seed') {
