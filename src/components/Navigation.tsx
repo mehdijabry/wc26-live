@@ -106,7 +106,20 @@ export function Navigation() {
           paddingBottom: scrolled ? '0.75rem' : '1.25rem',
         }}
       >
-        <div className="container max-w-6xl mx-auto px-6 flex items-center justify-between">
+        {/* `max-w-7xl` ET PAS `6xl`. Mehdi, 20/10/2026 : « le logo en haut à
+            gauche chevauche le HOME alors qu'il y a suffisamment de place sur
+            PC ». La place existait sur son écran, pas dans le conteneur — qui
+            plafonnait à 1152 px quelle que soit la largeur de la fenêtre.
+
+            Mesuré : dès que le bloc de droite dépasse 350 px, la boîte du logo
+            est comprimée de 204 à 136 px alors que son contenu en fait
+            toujours 204, et les 68 px d'excédent passent SOUS les liens —
+            `min-w-0` l'autorise à rétrécir, `whitespace-nowrap` l'empêche de
+            se replier. Le bloc de droite franchit ce seuil dès qu'on est
+            connecté : il porte alors le nom, la couronne et les deux soldes.
+            À 1280 px de conteneur, la boîte retrouve ses 204 px et il reste
+            20 px avant le premier lien. */}
+          <div className="container max-w-7xl mx-auto px-6 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-2.5 group min-w-0">
             {/* PAS DE `rounded-lg` ICI. Le SVG porte déjà ses propres coins
                 arrondis ; un second rognage par CSS coupait le filet doré de
@@ -123,7 +136,13 @@ export function Navigation() {
             />
             {/* dir=ltr — the Latin wordmark must not reorder in RTL mode
                 (the trailing ’ jumps to the left side otherwise) */}
-            <div className="leading-tight min-w-0" dir="ltr">
+            {/* `overflow-hidden` : le garde-fou. Les 20 px gagnés ci-dessus
+                suffisent aujourd'hui, mais un solde qui passe le million ou
+                une médaille de plus les reprendraient. Si la place vient à
+                manquer, la signature se COUPE au lieu de passer sous les
+                liens — un texte tronqué est un désagrément, un texte
+                superposé est un bogue. */}
+            <div className="leading-tight min-w-0 overflow-hidden" dir="ltr">
               <div className="font-display font-bold tracking-tight text-base sm:text-lg whitespace-nowrap">
                 Pressing <span className="text-accent-gold">90’</span>
               </div>
@@ -136,7 +155,7 @@ export function Navigation() {
                   navigation vers la droite et mangeait la place d'« Accueil »
                   (Mehdi, 2026-10-10). Pliée en deux et réduite d'un pixel,
                   elle tient sous le nom sans dépasser sa largeur. */}
-              <div className="hidden sm:block text-[8px] uppercase tracking-[0.16em] font-mono whitespace-nowrap mt-1 leading-[1.5] text-slate-500">
+              <div className="hidden lg:block text-[8px] uppercase tracking-[0.16em] font-mono whitespace-nowrap mt-1 leading-[1.5] text-slate-500">
                 <div>More than a game.</div>
                 <div>Our field of expression.</div>
               </div>
