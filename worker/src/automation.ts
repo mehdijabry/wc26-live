@@ -3812,6 +3812,14 @@ export async function runJobNow(env: Env, job: string, extra: Record<string, unk
       await log(env, date, 'make-ping', r.ok, note)
       return { ok: true, note }
     }
+    // Le bouton de l'admin : rend le reel de résumés d'HIER sans rien
+    // publier. Hier plutôt qu'aujourd'hui parce que la journée en cours
+    // n'a en général qu'un ou deux résumés avant le soir.
+    if (job === 'resumes-preview') {
+      const v = await import('./videos')
+      const jour = String((extra as { jour?: string }).jour ?? yesterdayParts().date)
+      return { ok: true, note: `${await v.apercuJourneeResumes(env, jour)} — la vidéo apparaît dans « Previews » ci-dessous` }
+    }
     if (job === 'preview' && String((extra as { type?: string }).type) === 'resumes') {
       // { type:'resumes', jour:'YYYY-MM-DD' } → rend le reel de la journée
       // sans rien publier ; l'adresse arrive dans le journal sous
