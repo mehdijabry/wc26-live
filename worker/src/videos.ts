@@ -38,6 +38,7 @@ import { WORKER_PUBLIC, bigMatchesToday, fbPost, labelAr, leagueAr, log, renderI
 import { logoCompetition } from './competitions'
 import { clesDAppariement, clipsDePlaylist, derniersClips, type Clip } from './youtube'
 import { captionJourneeResumes } from './accroches'
+import { ressemblance } from './pronostics'
 
 
 export type Source = {
@@ -470,6 +471,8 @@ type LigneJour = {
   competition: string | null
   equipe_dom: string | null; equipe_ext: string | null
   score_dom: number | null; score_ext: number | null
+  /** Secondes. Départage deux versions du même match. */
+  duree_s?: number | null
 }
 
 /**
@@ -498,6 +501,28 @@ type LigneJour = {
  * sur la même clé, c'est précisément son métier. L'identifiant ne sert
  * plus que de secours, quand les équipes manquent.
  */
+/**
+ * DEUX VIDÉOS POUR LA MÊME RENCONTRE : LAQUELLE GARDE-T-ON ?
+ *
+ * Mehdi, 20/10/2026 : « on ne publie qu'une version peu importe laquelle,
+ * jamais deux versions du même match », et « la durée doit être un filtre
+ * de classement ».
+ *
+ * Le `kind` d'abord — court, puis résumé, puis extended : c'est lui qui
+ * porte le score dans son titre, et c'était déjà la règle ici. Mais il ne
+ * départage rien quand les deux versions sont du même format, et c'est le
+ * cas le plus courant : la Serie A publie le MÊME résumé deux fois, une
+ * fois titré en italien, une fois en anglais, avec quarante secondes
+ * d'écart. La plus longue gagne alors — la même règle que le site
+ * (`src/lib/videos.ts`), pour que le reel et la page montrent la même.
+ */
+const RANG_RESUME: Record<string, number> = { resume_court: 0, resume: 1, resume_long: 2 }
+function remplace(vu: LigneJour | undefined, x: LigneJour): boolean {
+  if (!vu) return true
+  const a = RANG_RESUME[x.kind] ?? 1, b = RANG_RESUME[vu.kind] ?? 1
+  return a !== b ? a < b : (x.duree_s ?? 0) > (vu.duree_s ?? 0)
+}
+
 const cleRencontre = (x: { match_id: string | null; equipe_dom: string | null; equipe_ext: string | null; video_id: string }): string =>
   (x.equipe_dom && x.equipe_ext)
     ? `${cleClub(x.equipe_dom)}|${cleClub(x.equipe_ext)}`
@@ -515,7 +540,7 @@ async function lignesDuJour(env: Env, jour: string): Promise<LigneJour[]> {
     `${env.SUPABASE_URL}/rest/v1/videos_matchs?or=(match_id.not.is.null,equipe_dom.not.is.null)`
     + `&kind=in.(resume,resume_court,resume_long)`
     + `&publie_at=gte.${encodeURIComponent(debut)}&publie_at=lte.${encodeURIComponent(fin)}`
-    + `&select=video_id,kind,source,match_id,publie_at,fb_post_id,competition,equipe_dom,equipe_ext,score_dom,score_ext`
+    + `&select=video_id,kind,source,match_id,publie_at,fb_post_id,competition,equipe_dom,equipe_ext,score_dom,score_ext,duree_s`
     + `&order=publie_at.asc&limit=300`,
     { headers: sbHeaders(env) },
   )
@@ -591,6 +616,56 @@ const RESUMES_MAX_REELS = 12
 const RESUMES_ECART_MIN = 12
 const AR_TAGS_RESUMES = '#كرة_القدم #اهداف #Pressing90'
 
+/**
+ * LA RENCONTRE ESPN QUI CORRESPOND À CE RÉSUMÉ.
+ *
+ * Trois passes, de la plus sûre à la plus permissive. Elle existe parce que
+ * la journée du 19/10/2026 n'est sortie qu'à TROIS reels sur huit : cinq
+ * rencontres n'ont pas été reconnues, et un résumé sans rencontre ESPN n'a
+ * pas d'écussons, donc pas de carte, donc pas de reel. Le détail de ce qui
+ * échouait, nom par nom :
+ *
+ *   · `Leeds United – Manchester United` contre « Leeds 1-1 Man United » :
+ *     « man » fait trois lettres, et `memeMot` en exige quatre — les deux
+ *     noms gardent donc un mot orphelin, ce que `ressemblance` refuse ;
+ *   · `Nottingham Forest` contre « Nottm Forest » : une troncature au
+ *     milieu du mot, qu'aucune comparaison par préfixe ne rattrape ;
+ *   · `Tottenham Hotspur` contre « Spurs » : un surnom ;
+ *   · `Crystal Palace` contre « C Palace » : celui-là, `ressemblance` le
+ *     reconnaît — mais il n'était pas appelé ici.
+ *
+ * La troisième passe tient sur un fait de calendrier et non sur une
+ * ressemblance : DANS UNE COMPÉTITION DONNÉE, UN CLUB NE JOUE QU'UNE FOIS
+ * PAR JOUR. Si un seul match de la réserve a un côté qui ressemble à l'un
+ * des nôtres, c'est celui-là — l'autre côté n'ajoute rien. Et s'il y en a
+ * deux, on renonce, exactement comme avant.
+ */
+function apparierResume(pool: AutoMatch[], x: LigneJour): AutoMatch | null {
+  // 1. L'identifiant ESPN, quand la détection l'a déjà relevé.
+  if (x.match_id) {
+    const e = pool.find((m) => String(m.id) === String(x.match_id))
+    if (e) return e
+  }
+  const dom = x.equipe_dom ?? '', ext = x.equipe_ext ?? ''
+  if (!dom || !ext) return null
+  const slug = SOURCES.find((o) => o.cle === x.source)?.slug ?? ''
+  // 2. La règle d'ensemble : égalité, préfixe, initiales (trouverMatch),
+  //    puis la ressemblance des deux côtés.
+  const parNom = trouverMatch(pool, [dom, ext], slug)
+  if (parNom) return parNom
+  const candidats = pool.filter((m) => m.slug === slug)
+  const SEUIL = 0.6
+  const deuxCotes = candidats.find((m) =>
+    (ressemblance(m.home, dom) >= SEUIL && ressemblance(m.away, ext) >= SEUIL)
+    || (ressemblance(m.home, ext) >= SEUIL && ressemblance(m.away, dom) >= SEUIL))
+  if (deuxCotes) return deuxCotes
+  // 3. UN SEUL CÔTÉ, MAIS UN SEUL MATCH POSSIBLE.
+  const unCote = candidats.filter((m) =>
+    ressemblance(m.home, dom) >= SEUIL || ressemblance(m.away, ext) >= SEUIL
+    || ressemblance(m.home, ext) >= SEUIL || ressemblance(m.away, dom) >= SEUIL)
+  return unCote.length === 1 ? unCote[0] : null
+}
+
 async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[], apercu = false): Promise<{
   p: { ok: boolean; id?: string; note?: string }
   competitions: Array<{ logo: string; label: string }>
@@ -605,20 +680,31 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
     if (logo) competitions.push({ logo, label: leagueAr(nom) })
   }
 
-  // Réappariement ESPN : seul moyen d'obtenir les écussons des clubs.
-  const pool = await bigMatchesToday(env, jour.replace(/-/g, '')).catch(() => [] as AutoMatch[])
-  const parId = new Map(pool.map((m) => [String(m.id), m]))
-  const parPaire = new Map(pool.map((m) => [`${cleClub(m.home)}|${cleClub(m.away)}`, m]))
+  // ── RÉAPPARIEMENT ESPN : LE JOUR, ET LA VEILLE ────────────────────────
+  // Seul moyen d'obtenir les écussons des clubs — et il doit regarder deux
+  // journées, pas une. Les résumés de Premier League du week-end arrivent
+  // sur YouTube le LUNDI : le 19/10/2026, quatre des huit rencontres de la
+  // journée s'étaient jouées la veille, et aucune n'était dans la réserve
+  // du jour. Chercher dans les deux ne risque pas de confusion, puisque
+  // l'appariement reste borné à la compétition de la ligne.
+  const veille = new Date(Date.parse(`${jour}T12:00:00Z`) - 86400_000).toISOString().slice(0, 10)
+  const pool = [
+    ...await bigMatchesToday(env, jour.replace(/-/g, '')).catch(() => [] as AutoMatch[]),
+    ...await bigMatchesToday(env, veille.replace(/-/g, '')).catch(() => [] as AutoMatch[]),
+  ]
   type Carte = ReturnType<typeof toDraw> & {
     score?: string; time: string; live: false; leagueLogo?: string
     cover?: unknown; lienCommentaire?: boolean
   }
   const rencontres: Array<{ carte: Carte; ligne: LigneJour }> = []
+  // Une rencontre perdue en route ne doit pas l'être en silence : c'est ce
+  // qui a fait passer la journée du 19/10 de huit reels à trois sans que
+  // rien ne le dise.
+  const manques: string[] = []
   for (const x of matchs) {
     if (rencontres.length >= RESUMES_MAX_REELS) break
-    const e = (x.match_id ? parId.get(String(x.match_id)) : undefined)
-      ?? (x.equipe_dom && x.equipe_ext ? parPaire.get(`${cleClub(x.equipe_dom)}|${cleClub(x.equipe_ext)}`) : undefined)
-    if (!e) continue
+    const e = apparierResume(pool, x)
+    if (!e) { manques.push(`${x.equipe_dom ?? '?'}–${x.equipe_ext ?? '?'}`); continue }
     const logo = logoCompetition(x.competition ?? e.league ?? '')
     rencontres.push({
       ligne: x,
@@ -636,7 +722,7 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
   }
   // Aucune carte : le studio n'a rien à dessiner. On laisse l'appelant
   // retomber sur le post photo plutôt que de publier un reel vide.
-  if (!rencontres.length) return { p: { ok: false, note: 'aucune rencontre appariée à ESPN — pas de carte à dessiner' }, competitions }
+  if (!rencontres.length) return { p: { ok: false, note: `aucune rencontre appariée à ESPN — pas de carte à dessiner (${manques.join(', ') || 'rien à apparier'})` }, competitions }
 
   const lien = `${SITE_PUBLIC}/resumes/${jour}`
   const n = rencontres.length
@@ -664,7 +750,11 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
     // un cadre affiché à 960 de large. La seconde serait étirée.
     const vignette = `https://i.ytimg.com/vi/${ligne.video_id}/maxresdefault.jpg`
     const lienVideo = `${SITE_PUBLIC}/v/${ligne.video_id}`
-    const titre = `${ligne.equipe_dom ?? ''} ${ligne.score_dom ?? ''}–${ligne.score_ext ?? ''} ${ligne.equipe_ext ?? ''}`.trim()
+    // LE SCORE DE LA CARTE, PAS CELUI DE LA LIGNE. Un résumé de Premier
+    // League arrive sans score en base — le titre YouTube ne le donne pas —
+    // et la légende sortait « Brighton – Crystal Palace », un tiret seul
+    // entre deux noms. La carte, elle, l'a déjà : elle retombe sur ESPN.
+    const titre = `${ligne.equipe_dom ?? carte.home} ${carte.score ?? ''} ${ligne.equipe_ext ?? carte.away}`.replace(/\s+/g, ' ').trim()
     // La légende parle de CE match, pas de la journée : un post par match
     // qui réciterait les onze autres serait illisible, et le lecteur ne
     // saurait pas lequel il regarde. La journée entière est au bout du
@@ -722,7 +812,8 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
   }
   const combien = apercu ? 1 : n
   return {
-    p: { ok: true, note: `${combien} reel(s) de 5 s en rendu, un par match (jobs ${ids.slice(0, combien).join(', ')})${apercu ? ' — APERÇU, rien ne sera publié' : `, un toutes les ${RESUMES_ECART_MIN} min`}` },
+    p: { ok: true, note: `${combien} reel(s) de 8 s en rendu, un par match (jobs ${ids.slice(0, combien).join(', ')})${apercu ? ' — APERÇU, rien ne sera publié' : `, un toutes les ${RESUMES_ECART_MIN} min`}`
+      + (manques.length ? ` · NON APPARIÉS, donc sans reel : ${manques.join(', ')}` : '') },
     competitions,
   }
 }
@@ -735,7 +826,7 @@ export async function apercuJourneeResumes(env: Env, jour: string): Promise<stri
   for (const x of toutes) {
     const cle = cleRencontre(x)
     const vu = parMatch.get(cle)
-    if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(cle, x)
+    if (remplace(vu, x)) parMatch.set(cle, x)
   }
   const r = await sortirLaJourneeEnReel(env, jour, [...parMatch.values()], true)
   return r.p.note ?? (r.p.ok ? 'en rendu' : 'échec')
@@ -825,7 +916,7 @@ export async function republierJournee(env: Env, date: string, jourDemande?: str
   for (const x of matchsDuJour) {
     const cle = cleRencontre(x)
     const vu = parMatch.get(cle)
-    if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(cle, x)
+    if (remplace(vu, x)) parMatch.set(cle, x)
   }
   const matchs = [...parMatch.values()]
 
@@ -900,6 +991,7 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     publie_at: string; fb_post_id: string | null; competition: string | null
     equipe_dom: string | null; equipe_ext: string | null
     score_dom: number | null; score_ext: number | null
+    duree_s?: number | null
   }
   // On regarde large : trente heures couvrent la journée en cours et la
   // précédente, de sorte qu'une journée jamais publiée (worker tombé, studio
@@ -908,7 +1000,7 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
   const r = await fetch(
     `${env.SUPABASE_URL}/rest/v1/videos_matchs?publie_fb=eq.false&match_id=not.is.null`
     + `&kind=in.(resume,resume_court,resume_long)&publie_at=gte.${encodeURIComponent(depuis)}`
-    + `&select=video_id,kind,source,titre,match_id,publie_at,fb_post_id,competition,equipe_dom,equipe_ext,score_dom,score_ext`
+    + `&select=video_id,kind,source,titre,match_id,publie_at,fb_post_id,competition,equipe_dom,equipe_ext,score_dom,score_ext,duree_s`
     + `&order=publie_at.asc&limit=200`,
     { headers: sbHeaders(env) },
   )
@@ -963,9 +1055,9 @@ export async function publierJourneeResumes(env: Env, date: string, force: boole
     for (const x of (toutes.length ? toutes : lignes)) {
       const cle = cleRencontre(x)
       const vu = parMatch.get(cle)
-      // Le court l'emporte sur l'extended : c'est lui qui porte le score
-      // relevé dans le titre, et il est sorti pour tout le monde.
-      if (!vu || (vu.kind === 'resume_long' && x.kind !== 'resume_long')) parMatch.set(cle, x)
+      // Le court l'emporte sur l'extended, et à format égal la plus
+      // longue : voir `remplace`.
+      if (remplace(vu, x as LigneJour)) parMatch.set(cle, x)
     }
     const matchs = [...parMatch.values()]
 

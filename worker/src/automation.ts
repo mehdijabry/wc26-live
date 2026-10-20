@@ -536,7 +536,33 @@ export async function fbAlbumPost(env: Env, p: { message: string; photos: string
 }
 
 const normLine = (s: string) => s.split('\n')[0].toLowerCase().replace(/[^a-z0-9\u0600-\u06FF]+/g, ' ').trim().slice(0, 60)
-/** Find the Page post whose first line matches `message`, created in the last 15 min. */
+/**
+ * LA DEUXIÈME LIGNE UTILE, qui porte ce qui distingue ce post des autres.
+ *
+ * LA PREMIÈRE NE SUFFIT PLUS. Elle valait quand une journée faisait un
+ * post : « 🎬 الدوري الإنجليزي الممتاز » désignait alors le seul récap du
+ * jour. Depuis que chaque match sort en reel, CINQ reels d'une même
+ * journée de Premier League ouvrent sur cette ligne-là, mot pour mot — et
+ * `findRecentPost` rendait le plus récent des cinq. Un commentaire resté
+ * en file pendant qu'un autre reel sortait serait allé sous le mauvais
+ * post, avec le lien d'un autre match.
+ *
+ * Ce qui les sépare est la ligne du dessous : « Brighton 5–0 Crystal
+ * Palace ». On la compare en PLUS de la première, et seulement quand elle
+ * existe — une publication d'une seule ligne retrouve l'ancien comportement
+ * au lieu de ne plus rien reconnaître du tout.
+ */
+const normTitre = (s: string): string => {
+  const l = s.split('\n').map((x) => x.trim()).filter(Boolean)
+  return l.length > 1 ? normLine(l[1]) : ''
+}
+/** Le post retrouvé est-il bien celui qu'on cherche ? */
+export function memePost(attendu: string, trouve: string): boolean {
+  if (normLine(trouve) !== normLine(attendu)) return false
+  const t = normTitre(attendu)
+  return !t || normTitre(trouve) === t
+}
+/** Find the Page post whose first line (and title line) matches `message`, created in the last 15 min. */
 async function findRecentPost(env: Env, message: string, attempts = 1): Promise<string | null> {
   const want = normLine(message)
   for (let i = 0; i < attempts; i++) {
@@ -545,17 +571,32 @@ async function findRecentPost(env: Env, message: string, attempts = 1): Promise<
       const { id: pid, token } = await pageAuth(env)
       const j = await graph(env, token, 'GET', `/${pid}/posts`, { fields: 'id,message,created_time', limit: '8' })
       const rows = (j.data ?? []) as Array<{ id: string; message?: string; created_time: string }>
-      const hit = rows.find((r) => normLine(r.message ?? '') === want && Date.now() - Date.parse(r.created_time) < 15 * 60_000)
+      const hit = rows.find((r) => memePost(message, r.message ?? '') && Date.now() - Date.parse(r.created_time) < 15 * 60_000)
       if (hit) return hit.id
     } catch (e) { console.log('[fb] findRecentPost', e) }
   }
   return null
 }
-type PendingComment = { message: string; comment: string; until: number }
-export async function enqueuePendingComment(env: Env, message: string, comment: string): Promise<void> {
+/**
+ * `journee` : LA JOURNÉE DE RÉSUMÉS À LAQUELLE CE POST APPARTIENT.
+ *
+ * Un reel publié par Make ne rend AUCUN identifiant — Make n'en donne
+ * pas. `fb:journee-post:<jour>` restait donc vide, et « refaire la
+ * journée » n'aurait effacé que l'ancien post photo en laissant les huit
+ * reels sur la page, à côté de leurs remplaçants.
+ *
+ * L'identifiant n'a pourtant pas besoin d'un appel de plus : le passage
+ * qui pose le commentaire DOIT déjà retrouver le post. On l'inscrit au
+ * moment où il le trouve, et la reconnaissance tient maintenant compte de
+ * la ligne du titre — ce qui compte double ici, puisqu'une inscription
+ * erronée ferait supprimer un post qui n'a rien demandé (incident du
+ * 18/10/2026).
+ */
+type PendingComment = { message: string; comment: string; until: number; journee?: string }
+export async function enqueuePendingComment(env: Env, message: string, comment: string, journee?: string): Promise<void> {
   const raw = await env.CACHE.get('auto:pendingcomments')
   const q = (raw ? JSON.parse(raw) : []) as PendingComment[]
-  q.push({ message, comment, until: Date.now() + 30 * 60_000 })
+  q.push({ message, comment, until: Date.now() + 30 * 60_000, ...(journee ? { journee } : {}) })
   await env.CACHE.put('auto:pendingcomments', JSON.stringify(q), { expirationTtl: 3600 })
 }
 /**
@@ -620,6 +661,16 @@ export async function processPendingComments(env: Env, date: string): Promise<vo
   for (const x of q) {
     const id = await findRecentPost(env, x.message, 1)
     if (!id) { keep.push(x); continue }
+    // Le post retrouvé entre dans la liste de sa journée AVANT le
+    // commentaire : il existe, que le commentaire passe ou non.
+    // Enveloppé : ce passage est le SEUL qui pose les commentaires, et un
+    // hoquet du KV ne doit pas empêcher un lien de sortir.
+    if (x.journee) {
+      try {
+        await ajouterJourneePost(env, x.journee, id)
+        await log(env, date, 'journee-post', true, `${id} rattaché à la journée ${x.journee}`)
+      } catch (e) { await log(env, date, 'journee-post', false, `${id} non rattaché : ${String(e).slice(0, 100)}`) }
+    }
     const c = await fbComment(env, id, x.comment)
     await log(env, date, 'link-comment', c.ok, `${c.ok ? 'commented' : 'failed: ' + (c.note ?? '')} under "${x.message.split('\n')[0].slice(0, 40)}"`)
   }
@@ -1964,7 +2015,7 @@ export async function handleStudioCallback(req: Request, env: Env): Promise<Resp
       await log(env, job.date, `${reelLabel}-comment`, c.ok, c.ok ? c.note ?? 'ok' : `${c.note ?? 'failed'} (needs pages_manage_engagement?)`)
     } else if (env.FB_PAGE_TOKEN) {
       // Make post: found later by its first line in /posts (every minute, 30 min).
-      await enqueuePendingComment(env, job.description ?? '', comment)
+      await enqueuePendingComment(env, job.description ?? '', comment, journee)
       await log(env, job.date, `${reelLabel}-comment`, true, 'queued — commented once Facebook has processed the video')
     }
   }
@@ -2017,7 +2068,7 @@ export async function processReelQueue(env: Env, date: string): Promise<void> {
   await log(env, date, it.label, r.ok, r.ok ? `variant · ${r.note ?? ''} · ${it.video_url}` : `graph ${r.status ?? 'error'} ${r.note ?? ''} · ${it.video_url}`)
   if (r.ok && it.comment) {
     if (r.id) { const c = await fbComment(env, r.id, it.comment); await log(env, date, `${it.label}-comment`, c.ok, c.ok ? c.note ?? 'ok' : `${c.note ?? 'failed'}`) }
-    else if (env.FB_PAGE_TOKEN) { await enqueuePendingComment(env, it.description, it.comment) }
+    else if (env.FB_PAGE_TOKEN) { await enqueuePendingComment(env, it.description, it.comment, it.journee) }
   }
 }
 // Full-time scores (Mehdi, 2026-09-14): « une photo pour chaque match mais dans une publication regroupée ».
