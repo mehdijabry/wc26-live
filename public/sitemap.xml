@@ -25,6 +25,18 @@
     <priority>0.9</priority>
   </url>
   <url>
+    <loc>https://pressing90.live/resumes</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://pressing90.live/buts</loc>
+    <lastmod>2026-10-20</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
     <loc>https://pressing90.live/predictions</loc>
     <lastmod>2026-07-15</lastmod>
     <changefreq>daily</changefreq>
@@ -608,8 +620,8 @@
   <url><loc>https://pressing90.live/club/south-african-premiership/richards-bay-fc</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://pressing90.live/club/south-african-premiership/marumo-gallants</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://pressing90.live/clubs/saudi-pro-league</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.7</priority></url>
-  <url><loc>https://pressing90.live/club/saudi-pro-league/al-hilal</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://pressing90.live/club/saudi-pro-league/al-qadsiah</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://pressing90.live/club/saudi-pro-league/al-hilal</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://pressing90.live/club/saudi-pro-league/al-nassr</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://pressing90.live/club/saudi-pro-league/al-ahli</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>
   <url><loc>https://pressing90.live/club/saudi-pro-league/al-ittihad</loc><lastmod>2026-10-20</lastmod><changefreq>weekly</changefreq><priority>0.6</priority></url>

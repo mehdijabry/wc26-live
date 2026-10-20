@@ -13,3 +13,6 @@ promo/frames/
 promo/sample-frames/
 studio/fonts/
 dist-apercu/
+
+# Cache local de wrangler (jamais versionné)
+.wrangler/

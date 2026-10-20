@@ -430,7 +430,7 @@ async function main() {
   // evergreen pages keep the hand-maintained baseline from
   // public/sitemap.xml (bump those dates there when their content
   // actually changes).
-  const LIVE_ROUTES = new Set(['/', '/wc26', '/today', '/news', '/predictions', '/board'])
+  const LIVE_ROUTES = new Set(['/', '/wc26', '/today', '/news', '/predictions', '/board', '/resumes', '/buts'])
   try {
     const today = new Date().toISOString().slice(0, 10)
     const sitemapSrc = readFileSync(SITEMAP, 'utf8')
