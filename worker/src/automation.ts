@@ -1918,6 +1918,23 @@ export async function handleStudioCallback(req: Request, env: Env): Promise<Resp
     }
     return new Response('ok')
   }
+  // ── UNE PARTIE QUI ATTEND SON TOUR (20/10/2026) ─────────────────────
+  // Les résultats sortent maintenant en plusieurs reels de neuf secondes
+  // plutôt qu'un seul qui n'annoncerait que trois matchs sur huit. Le
+  // studio les rend à la chaîne, donc leurs retours arrivent à quelques
+  // minutes d'intervalle : publier à l'arrivée les ferait se suivre de
+  // trop près. `delaiMin` les range dans la file des reels, qui sait les
+  // sortir à l'heure dite.
+  const delaiMin = Number((job as { delaiMin?: number }).delaiMin ?? 0)
+  if (delaiMin > 0) {
+    await pushReelQueue(env, [{
+      at: Date.now() + delaiMin * 60_000,
+      video_url: body.url, description: job.description ?? '', title: job.title ?? '',
+      comment: (job as { comment?: string }).comment, label: reelLabel, date: job.date,
+    }])
+    await log(env, job.date, reelLabel, true, `${body.seconds ?? '?'}s · en file, publication dans ${delaiMin} min · ${body.url}`)
+    return new Response('ok')
+  }
   const r = await fbReel(env, { video_url: body.url, description: job.description ?? '', title: job.title ?? '' })
   if (journee) {
     if (r.ok && r.id) await env.CACHE.put(`fb:journee-post:${journee}`, r.id, { expirationTtl: 30 * 86400 })
@@ -2616,16 +2633,75 @@ function resultsCaption(list: AutoMatch[], label: string, date: string, matchDat
   lines.push('', top.length === 2 ? `أكبر مفاجأة: ${fmt(top[0])} أم ${fmt(top[1])}؟ 👇` : 'نتيجة منطقية أم مفاجأة؟ 👇', `👉 الإحصائيات والترتيب — الرابط في التعليقات 👇`, '', `⏱ Full-time results — ${label}`, '', `${AR_TAGS} #نتائج #football`)
   return lines.join('\n')
 }
+/**
+ * LES RÉSULTATS EN PLUSIEURS REELS DE NEUF SECONDES (Mehdi, 20/10/2026).
+ *
+ * « Pas 9 secondes, ça prend plus des fois — la plupart de ce format
+ *  passe sans annoncer la moitié des matchs. Il faut tout annoncer, au
+ *  pire on publie 2 ou 3 reels de 9 secondes. »
+ *
+ * Il décrit exactement ce que faisait ce code : `vedettes` ne gardait que
+ * les TROIS matchs de tête pour l'image, la légende en listait dix, et
+ * les sept autres n'apparaissaient nulle part à l'écran. Une soirée de
+ * championnat à huit matchs sortait donc avec cinq matchs invisibles.
+ *
+ * La tentation était d'allonger le reel. C'est l'inverse de ce que la
+ * mesure dit : neuf secondes et trois cartes ont fait 1 036 vues, le même
+ * contenu en trente secondes 217 — et allonger à huit cartes donnerait
+ * une seconde par carte, illisible. La durée n'est pas le réglage ; le
+ * NOMBRE DE REELS l'est.
+ *
+ * On découpe donc en tranches de trois, chacune son reel de neuf
+ * secondes, chacune sa vignette et sa légende, et on les espace de vingt
+ * minutes pour ne pas publier trois fois d'affilée. Plafond à quatre
+ * reels (douze matchs) : au-delà, c'est la page qui ne parle plus que de
+ * ça, et les matchs restants vivent dans la légende du dernier.
+ */
+const RESULTS_MAX_REELS = 4
 async function queueResultsReel(env: Env, date: string, label: string, finished: AutoMatch[], jobLabel = 'results-reel', matchDate = date): Promise<string> {
-  const list = finished.slice(0, 10)          // la légende : tout
-  const vedettes = list.slice(0, REEL_VEDETTES)  // l'image : les trois de tête
-  const jobId = `results-${date}-${Math.random().toString(36).slice(2, 7)}`
+  const list = finished.slice(0, REEL_VEDETTES * RESULTS_MAX_REELS)
+  const tranches: AutoMatch[][] = []
+  for (let i = 0; i < list.length; i += REEL_VEDETTES) tranches.push(list.slice(i, i + REEL_VEDETTES))
+  if (!tranches.length) return 'aucun résultat'
+  const n = tranches.length
   const heading = resultsHeading(date, matchDate)
-  await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({ kind: 'reel', label: jobLabel, date, title: `${heading} — ${labelAr(matchDate)}`, description: resultsCaption(list, label, date, matchDate), comment: `⏱ كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb-reel` }), { expirationTtl: 6 * 3600 })
-  const cover = { text: matchDate === date ? 'نتائج اليوم: هل فاجأتك؟' : 'نتائج الأمس: هل فاجأتك؟', tone: 'results' }
-  await studio(env, '/render/reel', { type: 'matchday', data: { matches: vedettes.map((m, i) => (i === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar' }, seconds: 9, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback` })
-  await log(env, date, jobLabel, true, `rendering ${vedettes.length} of ${list.length} results (job ${jobId}): ${list.map((m) => `${m.home} ${m.homeScore}-${m.awayScore} ${m.away}`).join(' · ').slice(0, 160)}`)
-  return jobId
+  const base = `results-${date}-${Math.random().toString(36).slice(2, 7)}`
+  const ids: string[] = []
+
+  for (let i = 0; i < n; i++) {
+    const tranche = tranches[i]
+    const jobId = `${base}-${i + 1}`
+    ids.push(jobId)
+    // Le titre et la vignette portent le numéro de partie : sans lui, trois
+    // reels successifs se lisent comme trois fois le même post. Chiffres
+    // latins, comme partout à l'affichage.
+    const part = n > 1 ? ` (${i + 1}/${n})` : ''
+    // La légende de CHAQUE partie ne liste que SES matchs. Répéter les dix
+    // à chaque fois ferait trois pavés identiques sous trois vidéos
+    // différentes — et le lecteur ne saurait pas laquelle il regarde.
+    const description = resultsCaption(tranche, label, date, matchDate)
+      + (n > 1 ? `\n\n${i + 1}/${n}` : '')
+    await env.CACHE.put(`auto:job:${jobId}`, JSON.stringify({
+      kind: 'reel', label: jobLabel, date,
+      title: `${heading} — ${labelAr(matchDate)}${part}`,
+      description,
+      comment: `⏱ كل النتائج والإحصائيات: ${SITE}/today?lang=ar&ref=fb-reel`,
+      // Vingt minutes entre deux parties. Le premier part dès que le studio
+      // le rend ; les suivants attendent dans la file des reels.
+      delaiMin: i * 20,
+    }), { expirationTtl: 8 * 3600 })
+    const cover = {
+      text: (matchDate === date ? 'نتائج اليوم' : 'نتائج الأمس') + (n > 1 ? ` ${i + 1}/${n}` : '') + ': هل فاجأتك؟',
+      tone: 'results',
+    }
+    await studio(env, '/render/reel', {
+      type: 'matchday',
+      data: { matches: tranche.map((m, k) => (k === 0 ? { ...toDrawResult(m), cover } : toDrawResult(m))), heading, lang: 'ar' },
+      seconds: 9, jobId, callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
+    })
+  }
+  await log(env, date, jobLabel, true, `${n} reel(s) de ${REEL_VEDETTES} cartes pour ${list.length} résultats (jobs ${ids.join(', ')}): ${list.map((m) => `${m.home} ${m.homeScore}-${m.awayScore} ${m.away}`).join(' · ').slice(0, 200)}`)
+  return ids[0]
 }
 // Since the 2026-09-13 audit the reel goes out the NEXT MORNING at 07:30 as
 // "نتائج الأمس" (matchDate = yesterday, log/job on today's date): every reel
