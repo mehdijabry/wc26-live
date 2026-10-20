@@ -68,6 +68,12 @@ const Terms = lazy(() => import('./components/pages/Terms').then((m) => ({ defau
 const ResponsibleGambling = lazy(() => import('./components/pages/ResponsibleGambling').then((m) => ({ default: m.ResponsibleGambling })))
 const Watch = lazy(() => import('./components/pages/Watch').then((m) => ({ default: m.Watch })))
 const WatchCountry = lazy(() => import('./components/pages/WatchCountry').then((m) => ({ default: m.WatchCountry })))
+
+// Les préfixes de chemin où le bandeau des scores en direct est monté :
+// les cinq onglets de la navigation et leurs sous-pages. Un préfixe, pas
+// une égalité, pour que /clubs/:league, /club/:league/:club et /buts/:jour
+// le gardent. `/predict` couvre aussi `/predictions`.
+const ROUTES_AVEC_BANDEAU = ['/clubs', '/club/', '/predict', '/board', '/analyse', '/buts']
 const TeamPage = lazy(() => import('./components/pages/TeamPage').then((m) => ({ default: m.TeamPage })))
 const Explained = lazy(() => import('./components/pages/Explained').then((m) => ({ default: m.Explained })))
 const ExplainedTopic = lazy(() => import('./components/pages/ExplainedTopic').then((m) => ({ default: m.ExplainedTopic })))
@@ -260,14 +266,12 @@ function App() {
       <main
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4.5rem)' }}
       >
-        {/* The ticker is mobile-only (md:hidden inside the component).
-            / and /today open on the big broadcast scoreboard, so the
-            ticker chips right above it would be the same scores twice —
-            skip it there. Other routes (news, article, wc26) have no
-            scoreboard and keep it. */}
-        {!location.pathname.startsWith('/admin-panel-') &&
-          location.pathname !== '/' &&
-          location.pathname !== '/today' && <LiveTicker />}
+        {/* Le bandeau du direct, sur toutes les largeurs d'écran, mais
+            seulement sur les cinq onglets de navigation et leurs sous-pages
+            (Mehdi, 19/10/2026 : « leagues | predict | leaderboard |
+            analysis | goals »). Ni l'accueil ni /today, qui ouvrent déjà
+            sur le grand tableau des scores ; ni les actualités ; ni l'admin. */}
+        {ROUTES_AVEC_BANDEAU.some((p) => location.pathname.startsWith(p)) && <LiveTicker />}
         {/* StickyCountdown (WC26 next-match pill) unmounted after the
             final — the tournament store has no upcoming fixtures so it
             rendered nothing; removing the mount also stops its 1s tick. */}

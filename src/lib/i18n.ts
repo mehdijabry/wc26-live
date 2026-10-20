@@ -68,6 +68,9 @@ export function localeOf(l: Lang): string {
 // ─── UI strings (keyed by the English source string) ─────────────────
 const AR: Record<string, string> = {
   'Search a player': 'ابحث عن لاعب',
+  // Le bandeau du direct (LiveTicker)
+  'No match in progress': 'لا توجد مباريات جارية الآن',
+  'Live scores': 'النتائج المباشرة',
   'Copied by': 'نسخه',
   'Open bets': 'رهانات جارية',
   'History': 'السجل',
@@ -836,6 +839,9 @@ const AR_LEAGUES: Record<string, string> = {
 // ─── French UI strings (same keys as AR) ─────────────────────────────
 const FR: Record<string, string> = {
   'Search a player': 'Chercher un joueur',
+  // Le bandeau du direct (LiveTicker)
+  'No match in progress': 'Aucun match en cours',
+  'Live scores': 'Scores en direct',
   'Copied by': 'Copié par',
   'Open bets': 'Paris en cours',
   'History': 'Historique',
