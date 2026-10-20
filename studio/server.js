@@ -473,6 +473,13 @@ app.post('/render/image', async (req, res) => {
 const GOAL_ASSETS = {
   music: 'https://pressing90.live/media/music-quake-aavirall.mp3',   // « Quake » (aavirall, Uppbeat) — credit line required in every caption (see worker)
 }
+/** Les fonds video, servis par le site comme le reste des assets. */
+const FONDS_VIDEO = {
+  // Le stade de nuit sous les projecteurs — gabarit des reels de resume
+  // (Mehdi, 20/10/2026). Genere avec Gemini, 10 s, 720x1280 : il est
+  // mis a l'echelle 1080x1920 au rendu, ce qui passe sur un fond voile.
+  stade: 'https://pressing90.live/media/stade-nuit.mp4',
+}
 const BARCA_ASSETS = {
   confetti: 'https://pressing90.live/media/barca-confetti-paper.mp4',   // paper-toned loops (editorial redesign, 2026-09-14)
   roar: 'https://pressing90.live/media/sfx-goal-roar.mp3',
@@ -660,6 +667,14 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         if (type === 'matchday') {
           const ms = (data.matches || []).slice(0, 10)
           if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4')   // « يوم برشلونة » slide
+          // Un fond video demande par l'appelant : TOUTES les cartes le
+          // portent, sinon un reel de plusieurs cartes alternerait video et
+          // plaque. Le telechargement est mis en cache par `cachedAsset`,
+          // donc il n'a lieu qu'une fois par vie du conteneur.
+          if (data.fondVideo && FONDS_VIDEO[data.fondVideo]) {
+            const v = await cachedAsset(FONDS_VIDEO[data.fondVideo], `p90-fond-${data.fondVideo}.mp4`)
+            for (const m of ms) m.bgVideo = v
+          }
           // « ucl » = soirée de coupe d'Europe : même squelette, peau de nuit
           // et or (voir drawUclMatchLayers). Le worker ne le pose que si
           // TOUTES les affiches de tête sont de la même compétition.

@@ -667,7 +667,15 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
 
   // ── Le fond : plaque, marque, QR, et le titre de la competition
   const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
-    await poser(ctx, peauBarca(m.barca, m.home, m.away) ? 'reel-barca' : 'reel-neutre', W, H)
+    // ── FOND VIDEO OU PLAQUE (Mehdi, 20/10/2026) ──────────────────────
+    // « Utilise cette video comme gabarit, seuls les textes changent ; tu
+    // remets le logo, le QR, etc. » Le moteur sait deja poser une video en
+    // boucle SOUS les calques (`spec.bgVideo` dans animSlide) : il suffit
+    // que ce calque-ci cesse d'etre opaque. On ne pose donc plus la plaque,
+    // on pose un VOILE — et le logo, le QR et le titre restent dessines
+    // ici, au-dessus de la video, exactement comme avant.
+    if (m.bgVideo) voileSurVideo(ctx, W, H)
+    else await poser(ctx, peauBarca(m.barca, m.home, m.away) ? 'reel-barca' : 'reel-neutre', W, H)
     // La marque plus grande : a 96 px elle se perdait sur une plaque de nuit,
     // alors que le coin avait de la place (Mehdi, 15/10).
     paintLogo(ctx, 44, 44, 150)
@@ -755,7 +763,50 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
     layers.cover = PNG(cv)
     anims.push({ layer: 'cover', x: 40, y: 1620, fade: { st: 0, d: 0 }, out: { st: 2.6, d: 0.4 } })
   }
-  return { layers, anims }
+  // `server.js` lit `specs[i].bgVideo` : sans ce renvoi, la video est
+  // demandee puis perdue, et le reel sort sur fond noir. C'est ce qui
+  // arrivait au fond bokeh du Barca depuis que cette carte est devenue
+  // celle par defaut (15/10) — son `ms[0].bgVideo` n'allait nulle part.
+  return { layers, anims, bgVideo: m.bgVideo || undefined }
+}
+
+/**
+ * LE VOILE QUI REND UNE VIDEO LISIBLE.
+ *
+ * Une plaque opaque garantissait le contraste ; une video de stade, non —
+ * un projecteur qui passe derriere un score blanc l'efface. Le voile
+ * rattrape ca en trois couches, et aucune n'est decorative :
+ *
+ *   · un assombrissement general, pour que l'image cesse de concurrencer
+ *     le texte ;
+ *   · deux degrades aux extremites, la ou vivent le titre et le QR — un
+ *     QR ne se lit QUE sur fond franc, c'est la partie non negociable ;
+ *   · un creux sombre au centre, sous les ecussons et le score.
+ *
+ * On ne touche pas a la video elle-meme : elle reste nette au milieu des
+ * zones vides, ou c'est elle qu'on veut voir.
+ */
+function voileSurVideo(ctx, W, H) {
+  ctx.save()
+  ctx.fillStyle = 'rgba(5, 8, 15, 0.46)'
+  ctx.fillRect(0, 0, W, H)
+
+  const haut = ctx.createLinearGradient(0, 0, 0, 420)
+  haut.addColorStop(0, 'rgba(5, 8, 15, 0.86)')
+  haut.addColorStop(1, 'rgba(5, 8, 15, 0)')
+  ctx.fillStyle = haut; ctx.fillRect(0, 0, W, 420)
+
+  const bas = ctx.createLinearGradient(0, H - 560, 0, H)
+  bas.addColorStop(0, 'rgba(5, 8, 15, 0)')
+  bas.addColorStop(0.55, 'rgba(5, 8, 15, 0.80)')
+  bas.addColorStop(1, 'rgba(5, 8, 15, 0.94)')
+  ctx.fillStyle = bas; ctx.fillRect(0, H - 560, W, 560)
+
+  const centre = ctx.createRadialGradient(W / 2, 700, 60, W / 2, 700, 620)
+  centre.addColorStop(0, 'rgba(5, 8, 15, 0.62)')
+  centre.addColorStop(1, 'rgba(5, 8, 15, 0)')
+  ctx.fillStyle = centre; ctx.fillRect(0, 180, W, 1100)
+  ctx.restore()
 }
 
 // ── Petits utilitaires ─────────────────────────────────────────────────────

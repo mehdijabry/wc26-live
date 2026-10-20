@@ -680,7 +680,17 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
       // — contre trois secondes dans un reel de neuf à trois cartes. Et
       // une vidéo de cinq secondes se regarde presque toujours à plus de
       // la moitié, ce qui est la part du clip vue que Facebook récompense.
-      data: { matches: [carte], heading: ligueAr || 'ملخصات اليوم', lang: 'ar' },
+      data: {
+        matches: [carte],
+        heading: ligueAr || 'ملخصات اليوم',
+        lang: 'ar',
+        // LE GABARIT EST UNE VIDEO (Mehdi, 20/10/2026) : un stade de nuit
+        // sous les projecteurs, posé en boucle SOUS les calques. Le studio
+        // remplace alors sa plaque opaque par un voile — le logo, le QR et
+        // les textes restent dessinés par-dessus, seule la carte du match
+        // change d'un reel à l'autre.
+        fondVideo: 'stade',
+      },
       seconds: 5,
       jobId,
       callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
