@@ -650,6 +650,20 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
     // L'accroche de vignette, sur la carte unique de ce reel.
     carte.cover = { text: 'شاهد الملخص كاملاً', tone: 'results' }
     const ligueAr = leagueAr(ligne.competition ?? SOURCES.find((o) => o.cle === ligne.source)?.competition ?? '')
+    // ── LA VIGNETTE DU RÉSUMÉ, ET SON LIEN À LUI ──────────────────────
+    // Mehdi, 20/10/2026 : « moi je te parlais des highlights, pas des
+    // scores » — puis, au choix de la vignette : « avec le lien en
+    // commentaire du résumé en question ».
+    //
+    // Le reel ne renvoie donc plus vers la page de la journée mais vers
+    // `/v/<id>`, la page de CETTE vidéo — celle dont l'OG est calculé au
+    // rendu. Un spectateur qui scanne ou qui clique tombe sur le résumé
+    // qu'il vient de voir annoncé, pas sur une liste où le retrouver.
+    //
+    // `maxresdefault` et pas `hqdefault` : 1280×720 contre 480×360, pour
+    // un cadre affiché à 960 de large. La seconde serait étirée.
+    const vignette = `https://i.ytimg.com/vi/${ligne.video_id}/maxresdefault.jpg`
+    const lienVideo = `${SITE_PUBLIC}/v/${ligne.video_id}`
     const titre = `${ligne.equipe_dom ?? ''} ${ligne.score_dom ?? ''}–${ligne.score_ext ?? ''} ${ligne.equipe_ext ?? ''}`.trim()
     // La légende parle de CE match, pas de la journée : un post par match
     // qui réciterait les onze autres serait illisible, et le lecteur ne
@@ -666,13 +680,16 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
           kind: 'reel', label: 'resumes-reel', date: jour, journee: jour,
           title: titre.slice(0, 100),
           description,
-          comment: `🎬 ${lien}`,
+          comment: `🎬 ${lienVideo}`,
           // Douze minutes entre deux matchs : une journée à dix résumés
           // s'étale sur deux heures au lieu de dix posts d'affilée.
           delaiMin: i * RESUMES_ECART_MIN,
         }), { expirationTtl: 12 * 3600 })
     await studio(env, '/render/reel', {
-      type: 'matchday',
+      // `resume` et plus `matchday` : sa carte mène avec la VIGNETTE du
+      // résumé, là où celle des scores mène avec les écussons. C'est ce
+      // qui sépare « il y a une vidéo à voir » de « voilà le score ».
+      type: 'resume',
       // UN SEUL MATCH PAR REEL, cinq secondes. Mehdi, 20/10/2026 : « les
       // résumés, fais des reels de 5 sec chacun, pour tous les matchs ».
       // Le calcul derrière : `renderAnimatedReel` répartit la durée entre
@@ -681,7 +698,7 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
       // une vidéo de cinq secondes se regarde presque toujours à plus de
       // la moitié, ce qui est la part du clip vue que Facebook récompense.
       data: {
-        matches: [carte],
+        matches: [{ ...carte, vignette }],
         heading: ligueAr || 'ملخصات اليوم',
         lang: 'ar',
         // LE GABARIT EST UNE VIDEO (Mehdi, 20/10/2026) : un stade de nuit
@@ -691,7 +708,13 @@ async function sortirLaJourneeEnReel(env: Env, jour: string, matchs: LigneJour[]
         // change d'un reel à l'autre.
         fondVideo: 'stade',
       },
-      seconds: 5,
+      // HUIT SECONDES PAR CARTE (Mehdi, 20/10/2026, en voyant l'aperçu :
+      // « un peu plus long, fais genre 8 s pour chaque score »). Cinq
+      // laissaient à peine le temps de lire les deux clubs et le score
+      // avant la coupure — et le bandeau du lien, qui ne commence à
+      // clignoter qu'à 1,2 s, n'avait que trois secondes pour se faire
+      // voir.
+      seconds: 8,
       jobId,
       callbackUrl: `${WORKER_PUBLIC}/studio/callback`,
     })

@@ -771,6 +771,131 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
 }
 
 /**
+ * LA CARTE D'UN RESUME — LA VIGNETTE D'ABORD, LE SCORE ENSUITE.
+ *
+ * Mehdi, 20/10/2026 : « moi je te parlais des highlights, pas des
+ * scores ». Il avait raison et c'etait mon erreur : le reel de resume
+ * reprenait la carte de score, donc il annoncait un score. Rien a
+ * l'image ne disait qu'il y avait une VIDEO a voir — seule l'adresse
+ * dans le commentaire le laissait deviner.
+ *
+ * La vignette du resume officiel prend donc la tete de la carte, et le
+ * score passe dessous, en soutien. C'est l'image qui dit « il y a un
+ * resume », le score dit seulement lequel.
+ *
+ * ── CE QU'ON NE FAIT PAS ─────────────────────────────────────────────
+ * On ne reheberge RIEN. La vignette est chargee a l'adresse publique de
+ * la video, le reel renvoie vers elle, et le flux du diffuseur n'est
+ * jamais recopie. C'est la limite que le projet tient depuis le debut :
+ * integrer, jamais republier.
+ *
+ * ── POURQUOI UNE CARTE A PART ────────────────────────────────────────
+ * `gabaritMatchSlide` sert aux resultats, aux matchs du jour et aux
+ * soirees europeennes. Y greffer une vignette aurait demande de
+ * deplacer toutes ses ancres — et une erreur s'y serait vue sur trois
+ * formats a la fois. Celle-ci ne sert qu'aux resumes.
+ */
+export async function gabaritResumeSlide(m, idx, total, heading, lang = 'ar') {
+  registerBrandFonts()
+  const W = 1080, H = 1920
+  const PNG = (c) => c.toBuffer('image/png')
+  const VX = 60, VY = 300, VW = 960, VH = 540          // la vignette, en 16/9
+
+  // ── Le fond : voile sur la video, logo, titre, QR ───────────────────
+  const bg = createCanvas(W, H); { const ctx = ctx2d(bg)
+    if (m.bgVideo) voileSurVideo(ctx, W, H)
+    else await poser(ctx, 'reel-neutre', W, H)
+    paintLogo(ctx, 44, 44, 150)
+    if (heading) ar(ctx, heading, W / 2, 232, { size: 44 })
+    if (total > 1) txt(ctx, `${idx + 1}/${total}`, W / 2, 285, { size: 24, font: 'Archivo', color: OR })
+    blocInscription(ctx, W / 2, 1230, 200, W)
+  }
+
+  // ── La vignette, dans un cadre aux coins arrondis ───────────────────
+  // Le cadre est dessine MEME si l'image manque : un trou noir se lit
+  // comme un defaut, un cadre vide se lit comme une video qui charge.
+  const vig = createCanvas(VW, VH); { const ctx = ctx2d(vig)
+    const r = 24
+    ctx.save()
+    ctx.beginPath(); ctx.moveTo(r, 0)
+    ctx.arcTo(VW, 0, VW, VH, r); ctx.arcTo(VW, VH, 0, VH, r)
+    ctx.arcTo(0, VH, 0, 0, r); ctx.arcTo(0, 0, VW, 0, r); ctx.closePath()
+    ctx.clip()
+    ctx.fillStyle = '#0A0E14'; ctx.fillRect(0, 0, VW, VH)
+    const img = m.vignette ? await loadImgOuRepli(m.vignette, null) : null
+    if (img) {
+      // `cover` : on remplit le cadre et on rogne, plutot que de laisser
+      // des bandes noires. Les vignettes YouTube sont en 16/9 comme le
+      // cadre, donc le rognage est nul dans le cas courant — il ne sert
+      // qu'aux sources qui s'ecartent du format.
+      const ech = Math.max(VW / img.width, VH / img.height)
+      const dw = img.width * ech, dh = img.height * ech
+      ctx.drawImage(img, (VW - dw) / 2, (VH - dh) / 2, dw, dh)
+      // Un fond sombre en bas de la vignette : le titre du diffuseur y est
+      // souvent ecrit en blanc, et il cognait avec le bord du cadre.
+      const g = ctx.createLinearGradient(0, VH - 150, 0, VH)
+      g.addColorStop(0, 'rgba(5,8,15,0)'); g.addColorStop(1, 'rgba(5,8,15,0.45)')
+      ctx.fillStyle = g; ctx.fillRect(0, VH - 150, VW, 150)
+    }
+    ctx.restore()
+    ctx.strokeStyle = 'rgba(204,172,97,0.70)'; ctx.lineWidth = 3
+    ctx.beginPath(); ctx.moveTo(r, 1.5)
+    ctx.arcTo(VW - 1.5, 1.5, VW - 1.5, VH - 1.5, r); ctx.arcTo(VW - 1.5, VH - 1.5, 1.5, VH - 1.5, r)
+    ctx.arcTo(1.5, VH - 1.5, 1.5, 1.5, r); ctx.arcTo(1.5, 1.5, VW - 1.5, 1.5, r); ctx.closePath(); ctx.stroke()
+  }
+
+  // ── Le bandeau « lecture » au centre de la vignette ─────────────────
+  const play = createCanvas(140, 140); { const ctx = ctx2d(play)
+    ctx.save()
+    ctx.beginPath(); ctx.arc(70, 70, 60, 0, Math.PI * 2)
+    ctx.fillStyle = 'rgba(5,8,15,0.62)'; ctx.fill()
+    ctx.strokeStyle = CREME; ctx.lineWidth = 4; ctx.stroke()
+    ctx.beginPath(); ctx.moveTo(56, 40); ctx.lineTo(102, 70); ctx.lineTo(56, 100); ctx.closePath()
+    ctx.fillStyle = CREME; ctx.fill()
+    ctx.restore()
+  }
+
+  // ── Les ecussons, les noms, le score ────────────────────────────────
+  const dom = await crest(m.homeLogo), ext = await crest(m.awayLogo)
+  const ecusson = (im) => { const c = createCanvas(150, 150); if (im) c.getContext('2d').drawImage(im, 0, 0, 150, 150); return c }
+
+  const noms = createCanvas(W, 90); { const ctx = ctx2d(noms)
+    ar(ctx, nomAr(m.home), 230, 45, { size: 32 })
+    ar(ctx, nomAr(m.away), W - 230, 45, { size: 32 })
+  }
+  const centre = createCanvas(420, 170); { const ctx = ctx2d(centre)
+    txt(ctx, String(m.score ?? '').replace('–', ' – '), 210, 85, { size: 86, font: 'Anton', color: OR })
+  }
+
+  // ── Le bandeau du lien, clignotant ──────────────────────────────────
+  const lw = W - 160
+  const lien = createCanvas(lw, 104); { const ctx = ctx2d(lien)
+    couvrir(ctx, [0, 0, lw, 104], '#070B16', 20)
+    ar(ctx, 'الرابط في التعليقات 👇', lw / 2, 52, { size: 38, color: OR })
+  }
+
+  const layers = { bg: PNG(bg), vig: PNG(vig), play: PNG(play), noms: PNG(noms), centre: PNG(centre), lien: PNG(lien) }
+  layers.home = PNG(ecusson(dom)); layers.away = PNG(ecusson(ext))
+  const anims = [
+    { layer: 'vig', x: VX, y: VY, fade: { st: 0, d: 0 } },
+    { layer: 'play', x: W / 2 - 70, y: VY + VH / 2 - 70, w: 140, h: 140, pop: { from: 1.35, st: 0.3, d: 0.4 }, fade: { st: 0.3, d: 0.3 } },
+    { layer: 'home', x: 155, y: 900, slide: { dx: -360, dy: 0, st: 0.45, d: 0.5 }, fade: { st: 0.45, d: 0.25 } },
+    { layer: 'away', x: 775, y: 900, slide: { dx: 360, dy: 0, st: 0.45, d: 0.5 }, fade: { st: 0.45, d: 0.25 } },
+    { layer: 'centre', x: 330, y: 890, w: 420, h: 170, pop: { from: 1.3, st: 0.7, d: 0.3 }, fade: { st: 0.7, d: 0.25 } },
+    { layer: 'noms', x: 0, y: 1080, fade: { st: 0.9, d: 0.3 } },
+    { layer: 'lien', x: 80, y: 1520, blink: { st: 1.6, period: 0.9, on: 0.55 } },
+  ]
+  if (idx === 0 && m.cover) {
+    const cv = createCanvas(W - 80, 140); const ctx = ctx2d(cv)
+    couvrir(ctx, [0, 0, W - 80, 140], '#070B16', 18)
+    ar(ctx, m.cover.text || '', (W - 80) / 2, 70, { size: 38 })
+    layers.cover = PNG(cv)
+    anims.push({ layer: 'cover', x: 40, y: 1700, fade: { st: 0, d: 0 }, out: { st: 3.4, d: 0.4 } })
+  }
+  return { layers, anims, bgVideo: m.bgVideo || undefined }
+}
+
+/**
  * LE VOILE QUI REND UNE VIDEO LISIBLE.
  *
  * Une plaque opaque garantissait le contraste ; une video de stade, non —
@@ -788,24 +913,30 @@ export async function gabaritMatchSlide(m, idx, total, heading, lang = 'ar') {
  */
 function voileSurVideo(ctx, W, H) {
   ctx.save()
-  ctx.fillStyle = 'rgba(5, 8, 15, 0.46)'
+  // PREMIER REGLAGE MESURE, PAS DEVINE. A 0,46 d'assombrissement general
+  // plus deux degrades a 0,80-0,94, le stade disparaissait : le reel
+  // ressortait sur fond noir et le gabarit video ne servait a rien. Le
+  // voile ne doit calmer l'image que la ou du texte se pose.
+  ctx.fillStyle = 'rgba(5, 8, 15, 0.20)'
   ctx.fillRect(0, 0, W, H)
 
-  const haut = ctx.createLinearGradient(0, 0, 0, 420)
-  haut.addColorStop(0, 'rgba(5, 8, 15, 0.86)')
+  const haut = ctx.createLinearGradient(0, 0, 0, 400)
+  haut.addColorStop(0, 'rgba(5, 8, 15, 0.70)')
   haut.addColorStop(1, 'rgba(5, 8, 15, 0)')
-  ctx.fillStyle = haut; ctx.fillRect(0, 0, W, 420)
+  ctx.fillStyle = haut; ctx.fillRect(0, 0, W, 400)
 
-  const bas = ctx.createLinearGradient(0, H - 560, 0, H)
+  // Le bas s'arrete bien avant le QR : celui-ci porte DEJA sa plaque
+  // blanche, c'est elle qui le rend lisible, pas l'obscurite autour.
+  const bas = ctx.createLinearGradient(0, H - 420, 0, H)
   bas.addColorStop(0, 'rgba(5, 8, 15, 0)')
-  bas.addColorStop(0.55, 'rgba(5, 8, 15, 0.80)')
-  bas.addColorStop(1, 'rgba(5, 8, 15, 0.94)')
-  ctx.fillStyle = bas; ctx.fillRect(0, H - 560, W, 560)
+  bas.addColorStop(1, 'rgba(5, 8, 15, 0.62)')
+  ctx.fillStyle = bas; ctx.fillRect(0, H - 420, W, 420)
 
-  const centre = ctx.createRadialGradient(W / 2, 700, 60, W / 2, 700, 620)
-  centre.addColorStop(0, 'rgba(5, 8, 15, 0.62)')
+  // Un creux doux sous les ecussons et le score, et rien de plus.
+  const centre = ctx.createRadialGradient(W / 2, 700, 80, W / 2, 700, 560)
+  centre.addColorStop(0, 'rgba(5, 8, 15, 0.40)')
   centre.addColorStop(1, 'rgba(5, 8, 15, 0)')
-  ctx.fillStyle = centre; ctx.fillRect(0, 180, W, 1100)
+  ctx.fillStyle = centre; ctx.fillRect(0, 200, W, 1000)
   ctx.restore()
 }
 

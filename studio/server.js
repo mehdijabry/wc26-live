@@ -16,7 +16,7 @@ import { drawScoreCard, drawMatchdayPost, drawMatchStory, drawMatchSlide, drawAr
 import { renderReel, renderGoalAnim, renderAnimatedReel, renderTaleReel, musicPath, renderSoireeReel } from './video.js'
 // Les gabarits de Mehdi (15/10/2026). Chaque fonction respecte le contrat du
 // format qu'elle remplace : le montage ci-dessous n'a rien à savoir du changement.
-import { gabaritGoalLayers, gabaritGoalAnimSpec, gabaritButClip, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant, gabaritOgVideo, gabaritResumesDuJour, gabaritButFilet } from './draw-gabarits.js'
+import { gabaritGoalLayers, gabaritGoalAnimSpec, gabaritButClip, gabaritAlbumFinal, gabaritStatsMatch, gabaritTableauSoiree, gabaritQuatreMoments, gabaritMatchdayPost, gabaritMatchSlide, gabaritResumeSlide, gabaritOuvertureSoiree, gabaritRecapSoiree, gabaritArticleSlide, gabaritArticlePost, gabaritMatchdayStory, gabaritArticleStory, gabaritLineupPost, gabaritTaleCover, gabaritTicketGagnant, gabaritOgVideo, gabaritResumesDuJour, gabaritButFilet } from './draw-gabarits.js'
 import edgePkg from 'msedge-tts'
 import { spawn as spawnChild } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -662,9 +662,9 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
       }
 
       // ── Animated reels (Mehdi, 2026-09-09: one visual language for all reels) ──
-      if (['matchday', 'goal', 'article', 'articles'].includes(type)) {
+      if (['matchday', 'resume', 'goal', 'article', 'articles'].includes(type)) {
         const specs = []
-        if (type === 'matchday') {
+        if (type === 'matchday' || type === 'resume') {
           const ms = (data.matches || []).slice(0, 10)
           if (data.special === 'barca' && ms[0] && ms[0].feature) ms[0].bgVideo = await cachedAsset(BARCA_ASSETS.calm, 'p90-barca-bokeh-paper.mp4')   // « يوم برشلونة » slide
           // Un fond video demande par l'appelant : TOUTES les cartes le
@@ -680,7 +680,9 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
           // TOUTES les affiches de tête sont de la même compétition.
           // Gabarit de Mehdi par defaut depuis le 15/10 ; `data.ancien` rebascule
           // sur les anciennes cartes sans redeploiement.
-          const carte = data.ancien ? (data.special === 'ucl' ? drawUclMatchLayers : drawMatchLayers) : gabaritMatchSlide
+          const carte = type === 'resume'
+            ? gabaritResumeSlide
+            : data.ancien ? (data.special === 'ucl' ? drawUclMatchLayers : drawMatchLayers) : gabaritMatchSlide
           for (let i = 0; i < ms.length; i++) specs.push(await carte(ms[i], i, ms.length, data.heading, data.lang))
         }
         else if (type === 'goal') {
@@ -718,9 +720,9 @@ async function buildReel({ type, data, voiceUrl, seconds, theme }) {
         if (voiceUrl) { const r = await recuperer(voiceUrl); if (!r.ok) throw new Error('voice fetch failed ' + r.status); voice = path.join(dir, 'voice.mp3'); await fs.writeFile(voice, Buffer.from(await r.arrayBuffer())) }
         // `data.musique` l'emporte : c'est ainsi que le reel de résultats
         // demande sa propre piste alors qu'il emprunte le type 'matchday'.
-        const music = await musicPath(data.musique || (type === 'goal' ? 'goal' : type === 'matchday' ? 'matchday' : 'article'))
+        const music = await musicPath(data.musique || (type === 'goal' ? 'goal' : (type === 'matchday' || type === 'resume') ? 'matchday' : 'article'))
         const out = path.join(dir, 'reel.mp4')
-        const dflt = type === 'goal' ? 9 : type === 'article' ? 12 : type === 'articles' ? 10 * slides.length : 4 * slides.length
+        const dflt = type === 'goal' ? 9 : type === 'resume' ? 8 : type === 'article' ? 12 : type === 'articles' ? 10 * slides.length : 4 * slides.length
         const sfx = type === 'goal' && data.special === 'barca' && data.sfx !== false ? await cachedAsset(BARCA_ASSETS.roar, 'p90-goal-roar.mp3') : null
         const { seconds: len } = await renderAnimatedReel({ slides, voice, music, musicGain: voice ? 0.22 : sfx ? 0.55 : 0.9, seconds: seconds || dflt, out, sfx })
         const buf = await fs.readFile(out)
