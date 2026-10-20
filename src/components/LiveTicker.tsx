@@ -484,7 +484,7 @@ export function LiveTicker() {
           une décoration. Le clignotement vit dans `p90-temoin` (index.css). */}
       <span
         className={
-          'p90-temoin h-2 w-2 rounded-full ' + (direct ? 'bg-white shadow-[0_0_9px_rgba(255,255,255,.85)]' : 'bg-[#8E9496]')
+          'h-2 w-2 rounded-full ' + (direct ? 'p90-lampe' : 'bg-[#8E9496]')
         }
       />
       <span

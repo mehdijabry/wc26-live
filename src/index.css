@@ -196,10 +196,45 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
    et la bande repassait sous l'en-tête — mesuré sur l'aperçu avant
    correction. `sticky` établit déjà le repère des calques absolus. */
 .p90-panneau { overflow: hidden; }
+/* ── LE NÉON (Mehdi, 20/10/2026 : « F · néon ») ─────────────────────
+   Le rouge d'avant était un GRENAT, et pas à cause de sa teinte : un
+   dégradé qui finissait à #7E1309 — presque marron — sous des stries
+   noires à 16 %. Le panneau en sortait éteint même quand il jouait.
+   Ici la surface ÉMET : presque aucun dégradé, une arête supérieure
+   chaude, et la lumière qui déborde sur la page. C'est ce débordement,
+   plus que la teinte, qui fait lire « allumé ». */
 .p90-allume {
-  background: linear-gradient(180deg, #A81C12 0%, #7E1309 100%);
-  border-top: 1px solid #D4392B;
-  border-bottom: 1px solid #5E0E06;
+  background: linear-gradient(180deg, #FF2D18 0%, #F41707 40%, #FF2D18 100%);
+  border-top: 1px solid #FFD2C6;
+  border-bottom: 1px solid #8C1104;
+  /* UN PLANCHER DE LUMIÈRE, hors animation. Le décrochage (`p90-zap`)
+     remplace la propriété `animation` de cet élément pendant 260 ms : sans
+     valeur de repos, le halo disparaîtrait d'un coup à chaque glitch. */
+  box-shadow: inset 0 1px 0 rgba(255,245,240,.62), 0 0 22px rgba(255,55,25,.34);
+  /* Le halo respire sur SIX SECONDES — neuf paraissaient trop longues.
+     Un panneau de stade n'a jamais une lumière parfaitement stable, et
+     c'est le seul mouvement qu'on perçoit sans le regarder. Le balayage
+     tient la même période (3 s × aller-retour), pour qu'il n'y ait qu'un
+     rythme dans la bande et pas deux. */
+  animation: p90-halo 6s ease-in-out infinite;
+}
+/* ── TRÈS LÉGÈRE (Mehdi, 20/10 : « on va rendre ça treees léger ») ──
+   L'écart entre les deux extrêmes a été divisé par trois. Ce qu'on
+   cherche n'est plus de VOIR la lumière varier mais d'empêcher la bande
+   de paraître figée : un panneau dont la luminosité ne bouge pas d'un
+   cheveu se lit comme une image, pas comme une source.
+   Accessoirement, le décrochage remplace cette animation pendant 260 ms
+   et la fait repartir de zéro : avec une amplitude aussi faible, le
+   redémarrage ne se voit plus. */
+@keyframes p90-halo {
+  0%, 100% {
+    box-shadow: inset 0 1px 0 rgba(255,246,242,.70), inset 0 -1px 0 rgba(255,200,180,.26),
+      0 0 24px rgba(255,55,25,.42), 0 12px 36px -12px rgba(255,55,25,.52);
+  }
+  50% {
+    box-shadow: inset 0 1px 0 rgba(255,250,246,.82), inset 0 -1px 0 rgba(255,206,188,.32),
+      0 0 32px rgba(255,58,28,.56), 0 15px 42px -12px rgba(255,58,28,.64);
+  }
 }
 .p90-eteint {
   background: linear-gradient(180deg, #2A0B08 0%, #1C0705 100%);
@@ -212,6 +247,13 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
   position: absolute; inset: 0; z-index: 3; pointer-events: none;
   background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
 }
+/* ALLUMÉ, ELLES S'EFFACENT. Une strie noire sur une ligne sur trois ôte
+   environ 5 % de luminance : c'est peu, et c'est pourtant la moitié de
+   ce qui faisait paraître le panneau terne. Le panneau ÉTEINT, lui, les
+   garde telles quelles — il doit rester mat. */
+.p90-allume .p90-stries {
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.06) 0 1px, transparent 1px 3px);
+}
 /* Le battement de rafraîchissement : la bande claire qui descend sans
    fin sur un panneau filmé. C'est ELLE, plus que le décrochage, qui fait
    lire « panneau » et non « bandeau rouge ». */
@@ -221,25 +263,70 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
   background: linear-gradient(180deg, transparent, rgba(255,255,255,.05) 46%,
     rgba(255,255,255,.085) 50%, rgba(255,255,255,.05) 54%, transparent);
 }
-.p90-allume .p90-balayage { animation: p90-roule 3.4s linear infinite; }
+/* ── POURQUOI `alternate`, ET PAS UNE BOUCLE ───────────────────────
+   Le balayage descendait de -25 % a 25 % puis REVENAIT D'UN COUP a son
+   point de depart : la lumiere montait doucement et se coupait net,
+   toutes les 3,4 secondes (Mehdi, 20/10 : « je vois la lumiere
+   s'intensifier petit a petit et s'eteindre d'un coup »). Et ce battement
+   la n'avait aucun rapport avec celui du halo : deux rythmes qui se
+   croisaient.
+   En `alternate`, la bande claire redescend par ou elle est montee. Plus
+   aucune discontinuite, et une demi-periode de 3 s pour un aller-retour
+   de 6 s — exactement la respiration du panneau. */
+.p90-allume .p90-balayage { animation: p90-roule 3s ease-in-out infinite alternate; }
 .p90-eteint .p90-balayage { opacity: .25; }
 @keyframes p90-roule { from { transform: translateY(-25%) } to { transform: translateY(25%) } }
 
 /* Le souffle du néon : sept secondes, et presque rien. */
 .p90-allume::before {
   content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
-  background: radial-gradient(120% 180% at 50% 0%, rgba(255,170,150,.30),
-    rgba(255,120,90,.10) 45%, transparent 72%);
-  animation: p90-souffle 7s ease-in-out infinite;
+  background: radial-gradient(130% 200% at 50% 0%, rgba(255,250,235,.30), transparent 72%);
+  /* MÊME DURÉE QUE LE HALO ET QUE LE BALAYAGE : tout respire ensemble,
+     sinon on voit des battements qui se croisent au lieu d'une lumière
+     qui varie. */
+  animation: p90-souffle 6s ease-in-out infinite;
 }
-@keyframes p90-souffle { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+@keyframes p90-souffle { 0%,100% { opacity: .80 } 50% { opacity: 1 } }
 
-/* LE TÉMOIN CLIGNOTE, mot et point ENSEMBLE. Franc (steps) et pas en
-   fondu : un voyant s'allume et s'éteint, il ne respire pas. Et il
-   descend à 0,22 et non à zéro — éteint pour de bon, il donnerait
-   l'impression d'un affichage qui saute. */
+/* LE TÉMOIN BAT, mot et lampe ENSEMBLE. Franc (steps) et pas en fondu :
+   un voyant s'allume et s'éteint, il ne respire pas.
+
+   LE MOT descend à 55 % et non à 22 % : à 22 % sur un rouge vif il
+   disparaissait, et la bande semblait perdre son étiquette une seconde
+   sur deux.
+
+   LA LAMPE, elle, ne joue plus sur l'opacité du tout. C'est ce qui
+   donnait « un point noir » (Mehdi, 20/10) : un point blanc à 22 % sur
+   un fond sombre vire au charbon. Une vraie lampe ne devient pas
+   transparente, elle passe au rouge sombre — mais pas au GRENAT, où on
+   ne la voyait plus : elle garde un rouge franc et un reste de halo. */
 .p90-allume .p90-temoin { animation: p90-clignote 1.4s steps(1, end) infinite; }
-@keyframes p90-clignote { 0%,64% { opacity: 1 } 65%,100% { opacity: .22 } }
+@keyframes p90-clignote { 0%,64% { opacity: 1 } 65%,100% { opacity: .55 } }
+
+.p90-lampe { border-radius: 999px; }
+.p90-allume .p90-lampe { animation: p90-lampe 1.4s steps(1, end) infinite; }
+/* PLUS UNE SEULE TOUCHE DE BLANC. Le cœur clair occupait le tiers d'un
+   point de huit pixels : à cette taille l'œil ne voyait plus que lui, et
+   la lampe restait blanche (Mehdi, 20/10 : « le point à côté de LIVE
+   n'est toujours pas rouge »). Elle est maintenant rouge de bout en
+   bout — seulement plus claire au centre qu'au bord, ce qui suffit à la
+   détacher d'un panneau lui-même rouge. L'anneau sombre fait le reste :
+   c'est le culot de la lampe. */
+/* « SOUS VERRE » (Mehdi, 20/10, sur six nuances proposées : « je prends
+   le 6 »). Deux anneaux, et c'est la clé : un cerne sombre contre le
+   verre, puis un liseré clair qui accroche la lumière du panneau, comme
+   la lentille d'un voyant. Un point rouge sur un panneau rouge a besoin
+   de ce sertissage — la teinte seule ne le détacherait pas. */
+@keyframes p90-lampe {
+  0%, 64% {
+    background: radial-gradient(circle at 50% 34%, #FF7E60 0%, #FF2A12 45%, #D60E00 100%);
+    box-shadow: 0 0 0 1px rgba(40,0,0,.9), 0 0 0 2px rgba(255,214,200,.55), 0 0 12px rgba(255,80,45,.9);
+  }
+  65%, 100% {
+    background: radial-gradient(circle at 50% 34%, #C83020 0%, #A01004 48%, #760A01 100%);
+    box-shadow: 0 0 0 1px rgba(30,0,0,.95), 0 0 0 2px rgba(255,200,185,.3);
+  }
+}
 
 /* ── LE DÉCROCHAGE ─────────────────────────────────────────────────
    Trois choses à la fois, parce qu'un vrai panneau n'en fait jamais
@@ -277,6 +364,14 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .p90-allume::before, .p90-allume .p90-balayage, .p90-allume .p90-temoin { animation: none; }
+  .p90-allume, .p90-allume::before, .p90-allume .p90-balayage,
+  .p90-allume .p90-temoin, .p90-allume .p90-lampe { animation: none; }
   .p90-allume::before { opacity: .7; }
+  /* La lampe reste ALLUMÉE : son état de repos est l'état allumé, pas
+     l'inverse — une bande du direct dont le voyant est éteint mentirait. */
+  .p90-allume .p90-lampe {
+    background: radial-gradient(circle at 50% 34%, #FF7E60 0%, #FF2A12 45%, #D60E00 100%);
+    box-shadow: 0 0 0 1px rgba(40,0,0,.9), 0 0 0 2px rgba(255,214,200,.55), 0 0 12px rgba(255,80,45,.9);
+  }
+  .p90-allume { box-shadow: inset 0 1px 0 rgba(255,250,246,.8), 0 0 32px rgba(255,60,30,.55); }
 }
