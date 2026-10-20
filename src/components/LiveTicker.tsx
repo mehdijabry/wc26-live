@@ -17,7 +17,7 @@ import {
   type EspnCompetitor,
   type EspnEvent,
 } from '../lib/api'
-import { useLang, useT } from '../lib/i18n'
+import { localeOf, useLang, useT } from '../lib/i18n'
 import { MatchSheet } from './MatchSheet'
 
 /**
@@ -58,6 +58,22 @@ const REPRISE_MS = 3_000
 const SEUIL_TAP = 6
 /** Au-delà, on arrête de dupliquer : on ne couvre pas un écran infini. */
 const COPIES_MAX = 12
+/**
+ * À partir de combien de matchs en cours la bande se referme sur le présent.
+ *
+ * Mehdi, 20/10/2026 : « quand il y a moins de 4 matchs live, affiche les
+ * matchs live ET les prochains, dans l'ordre des cinq grands championnats,
+ * la C1, etc., comme dans la page matchs. Si plus de 4, la bande n'affiche
+ * que les matchs live. »
+ *
+ * La raison tient en une phrase : une bande qui ne porterait qu'un seul
+ * match un mardi après-midi tournerait à vide, alors qu'un samedi à seize
+ * heures le direct suffit largement à la remplir — et tout ce qui n'est pas
+ * en cours ne ferait qu'éloigner ce qui l'est.
+ */
+const SEUIL_DIRECT = 4
+/** Plafond global : au-delà, la boucle devient trop longue pour revenir. */
+const TOTAL_MAX = 12
 
 type Glisser = {
   pointerId: number
@@ -75,7 +91,8 @@ function nomDe(c: EspnCompetitor | undefined): string {
 
 export function LiveTicker() {
   const t = useT()
-  const rtl = useLang((s) => s.lang === 'ar')
+  const lang = useLang((s) => s.lang)
+  const rtl = lang === 'ar'
   const [events, setEvents] = useState<EspnEvent[]>([])
   const [loaded, setLoaded] = useState(false)
   // L'instant où la dernière réponse ESPN est arrivée : liveClock() s'en
@@ -118,11 +135,22 @@ export function LiveTicker() {
         if (stop) return
         // statusLabel() porte la garde anti « match zombie » (state='in'
         // des heures avant le coup d'envoi) : on passe par lui, jamais par
-        // status.type.state directement. Grandes compétitions d'abord.
-        const flat = r.competitions.flatMap((c) => c.events.map((ev) => ({ ev, tier: c.tier })))
-        const live = flat.filter((x) => statusLabel(x.ev).live)
-        live.sort((a, b) => a.tier - b.tier || (a.ev.date ?? '').localeCompare(b.ev.date ?? ''))
-        setEvents(live.map((x) => x.ev))
+        // status.type.state directement. On l'appelle UNE fois par match —
+        // il relit l'horloge et la date, ce n'est pas gratuit.
+        const flat = r.competitions.flatMap((c) =>
+          c.events.map((ev) => ({ ev, tier: c.tier, s: statusLabel(ev) })))
+        // `tier` est la hiérarchie des compétitions du site (LEAGUE_META dans
+        // api.ts) : Mondial, C1, les cinq grands championnats, puis le reste.
+        // C'est elle qui ordonne la page des matchs ; la bande la suit, pour
+        // que les deux racontent le classement du football dans le même ordre.
+        const rang = (a: { tier: number; ev: EspnEvent }, b: { tier: number; ev: EspnEvent }) =>
+          a.tier - b.tier || (a.ev.date ?? '').localeCompare(b.ev.date ?? '')
+        const direct = flat.filter((x) => x.s.live).sort(rang)
+        const avenir = flat.filter((x) => !x.s.live && !x.s.finished).sort(rang)
+        // Le direct d'abord, toujours. Les prochains ne viennent compléter
+        // que lorsque le présent ne suffit pas à remplir la bande.
+        const choix = direct.length >= SEUIL_DIRECT ? direct : [...direct, ...avenir]
+        setEvents(choix.slice(0, TOTAL_MAX).map((x) => x.ev))
         setFetchedAt(Date.now())
       } catch {
         /* le réseau est borné (reseau.ts) : on garde la dernière liste */
@@ -300,11 +328,23 @@ export function LiveTicker() {
         </span>
       )
     }
-    return events.map((ev) => {
+    const items = events.map((ev) => {
       const { home, away } = eventTeams(ev)
       const s = statusLabel(ev)
-      const minute = s.paused ? t('HT') : liveClock(s.rawClock, fetchedAt)
-      const score = `${home?.score ?? '0'} - ${away?.score ?? '0'}`
+      // UN MATCH EN COURS PORTE SON SCORE, UN MATCH À VENIR SON HEURE.
+      // Et il le dit aussi par sa couleur : le direct en craie pleine, le
+      // reste en gris. Sans cette différence, une bande mêlant les deux
+      // ferait lire « 0 - 0 » sur un match qui n'a pas commencé.
+      const centre = s.live
+        ? `${home?.score ?? '0'} - ${away?.score ?? '0'}`
+        : t('vs')
+      const marque = s.live
+        ? (s.paused ? t('HT') : liveClock(s.rawClock, fetchedAt))
+        // `localeOf` et pas `undefined` : sur un appareil réglé autrement,
+        // l'heure sortirait dans la langue de la machine — et en arabe elle
+        // sortirait en chiffres ٠١٢٣, que le site n'affiche jamais.
+        : (ev.date ? new Date(ev.date).toLocaleTimeString(localeOf(lang), { hour: '2-digit', minute: '2-digit' }) : '')
+      const teinte = s.live ? 'text-slate-900' : 'text-slate-500'
       return (
         <button
           key={ev.id}
@@ -315,19 +355,45 @@ export function LiveTicker() {
           // doivent pas non plus recevoir le focus au clavier.
           tabIndex={copie > 0 ? -1 : 0}
           onClick={onClickClavier}
-          aria-label={`${nomDe(home)} ${score} ${nomDe(away)} (${minute})`}
+          aria-label={`${nomDe(home)} ${centre} ${nomDe(away)}${marque ? ` (${marque})` : ''}`}
           className="inline-flex items-center gap-2.5 whitespace-nowrap rounded-sm px-1 outline-none focus-visible:ring-1 focus-visible:ring-accent-red/70"
         >
-          <span className="font-sans text-[13px] text-slate-900">{nomDe(home)}</span>
-          <span className="font-display text-[17px] font-bold leading-none tabular-nums text-slate-900">{score}</span>
-          <span className="font-sans text-[13px] text-slate-900">{nomDe(away)}</span>
-          <span className="font-mono text-[11px] tabular-nums text-slate-500">({minute})</span>
+          <span className={'font-sans text-[13px] ' + teinte}>{nomDe(home)}</span>
+          <span
+            className={
+              (s.live
+                ? 'font-display text-[17px] font-bold leading-none tabular-nums text-slate-900'
+                : 'font-mono text-[11px] uppercase tracking-wider text-slate-400')
+            }
+          >
+            {centre}
+          </span>
+          <span className={'font-sans text-[13px] ' + teinte}>{nomDe(away)}</span>
+          {marque && (
+            <span className={'font-mono text-[11px] tabular-nums ' + (s.live ? 'text-slate-500' : 'text-slate-400')}>
+              ({marque})
+            </span>
+          )}
         </button>
       )
     })
+    // Rien en cours, mais des matchs à venir : la bande le DIT avant de les
+    // énumérer. Le badge gris le signale déjà, mais il est hors de la piste
+    // et sort du champ de lecture dès que la bande a défilé.
+    if (aucunDirect) {
+      items.unshift(
+        <span key="rien" className="inline-flex items-center whitespace-nowrap font-sans text-[13px] text-slate-500">
+          {t('No match in progress')}
+        </span>,
+      )
+    }
+    return items
   }
 
-  const direct = loaded && !vide
+  // Un seul match en cours suffit à allumer le badge. S'il n'y en a aucun
+  // alors que la bande porte des matchs, c'est qu'elle montre l'à-venir.
+  const aucunDirect = loaded && events.length > 0 && !events.some((ev) => statusLabel(ev).live)
+  const direct = loaded && !vide && !aucunDirect
   // Le badge est FIXE, hors de la piste ; premier enfant du flex, il se
   // retrouve de lui-même du côté où la lecture commence (à droite en RTL).
   const badge = (
