@@ -164,6 +164,35 @@ export function LiveTicker() {
     return () => { stop = true; clearInterval(id); clearInterval(tickId) }
   }, [])
 
+  // ── SOUS L'EN-TÊTE, ET JAMAIS À MOITIÉ DESSOUS ────────────────────────
+  // Mehdi, 20/10/2026, deux captures à l'appui : « une partie du haut de la
+  // bande est cachée par l'en-tête ». Elle était dans le flux du document,
+  // donc elle glissait sous l'en-tête fixe au premier défilement — et une
+  // bande de 48 px à moitié couverte ne se lit pas comme un élément qui
+  // s'en va, elle se lit comme un défaut d'affichage.
+  //
+  // Elle est donc COLLANTE, posée juste sous l'en-tête. Et on MESURE cet
+  // en-tête au lieu de recopier une constante : il rétrécit en défilant
+  // (1,25 rem de marge au repos, 0,75 une fois défilé) et grandit du
+  // creux de l'écran en mode application. Un `top` écrit en dur serait
+  // faux dans au moins un de ces trois états.
+  const [hautEntete, setHautEntete] = useState<number | null>(null)
+  useEffect(() => {
+    const entete = document.querySelector('header')
+    if (!entete) return
+    const mesurer = () => setHautEntete(Math.round(entete.getBoundingClientRect().height))
+    mesurer()
+    // `border-box`, ET PAS LE DÉFAUT. L'en-tête ne change pas de contenu
+    // quand il rétrécit — il change de REMBOURRAGE (1,25 rem → 0,75 au
+    // défilement). Un ResizeObserver en `content-box`, qui est le défaut,
+    // ne voit rien de ce changement : la bande restait collée à 84 px sous
+    // un en-tête redescendu à 64, et vingt pixels de fond s'ouvraient entre
+    // les deux. Mesuré en production avant correction.
+    const ro = new ResizeObserver(mesurer)
+    ro.observe(entete, { box: 'border-box' })
+    return () => ro.disconnect()
+  }, [])
+
   // ── Mouvement réduit : on écoute le réglage, il peut changer en route. ──
   useEffect(() => {
     const mq = (() => {
@@ -359,18 +388,24 @@ export function LiveTicker() {
           className="inline-flex items-center gap-2.5 whitespace-nowrap rounded-sm px-1 outline-none focus-visible:ring-1 focus-visible:ring-accent-red/70"
         >
           <span className={'font-sans text-[13px] ' + teinte}>{nomDe(home)}</span>
+          {/* LE DORÉ DIT « PAS ENCORE », LE ROUGE DIT « MAINTENANT ».
+              Mehdi, 20/10/2026 : « mets notre jaune, le vs et l'heure en
+              jaune pour les matchs pas commencés ; si c'est live le temps
+              apparaît en rouge ». Ça tombe juste sur la règle du site —
+              le rouge n'y désigne que le direct — et ça donne au reste la
+              couleur de la marque plutôt qu'un gris de plus. */}
           <span
             className={
               (s.live
                 ? 'font-display text-[17px] font-bold leading-none tabular-nums text-slate-900'
-                : 'font-mono text-[11px] uppercase tracking-wider text-slate-400')
+                : 'font-mono text-[11px] font-semibold uppercase tracking-wider text-accent-gold')
             }
           >
             {centre}
           </span>
           <span className={'font-sans text-[13px] ' + teinte}>{nomDe(away)}</span>
           {marque && (
-            <span className={'font-mono text-[11px] tabular-nums ' + (s.live ? 'text-slate-500' : 'text-slate-400')}>
+            <span className={'font-mono text-[11px] font-semibold tabular-nums ' + (s.live ? 'text-accent-red' : 'text-accent-gold')}>
               ({marque})
             </span>
           )}
@@ -418,9 +453,11 @@ export function LiveTicker() {
       role="region"
       aria-label={t('Live scores')}
       aria-live="off"
-      // Dans le flux du document, sous la Navigation fixe : le bandeau part
-      // avec le défilement de la page, l'en-tête reste.
-      className="flex h-12 select-none items-stretch border-b border-slate-200 bg-card"
+      // `z-40` : sous l'en-tête (50) — si les deux devaient se croiser, c'est
+      // l'en-tête qui passe devant. Le repli en `calc()` sert la première
+      // image, avant que la mesure ne soit tombée.
+      className="sticky z-40 flex h-12 select-none items-stretch border-b border-slate-200 bg-card"
+      style={{ top: hautEntete ?? 'calc(env(safe-area-inset-top, 0px) + 5.25rem)' }}
     >
       {badge}
       {reduit ? (

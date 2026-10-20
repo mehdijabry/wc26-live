@@ -256,15 +256,20 @@ function App() {
       {/* Two top-padding contributions:
           1. env(safe-area-inset-top, 0px) — clears the iOS notch / Dynamic
              Island when the site runs as an installed PWA (~47-59px).
-          2. 4.5rem (72px) — clears the fixed Navigation header so page
-             content (including the LiveTicker matches row immediately
-             below) starts BELOW the nav instead of being covered by it.
+          2. 5.25rem (84px) — la hauteur RÉELLE de l'en-tête au repos,
+             mesurée en production le 20/10/2026 : 44 px de contenu et
+             2 × 1,25 rem de rembourrage. Elle valait 4.5rem (72 px), et
+             il manquait donc douze pixels : le haut de chaque page
+             passait sous l'en-tête. Mehdi l'a vu sur la bande des scores,
+             mais le défaut portait sur toutes les pages.
+             L'en-tête rétrécit à 64 px une fois qu'on défile — sans
+             conséquence ici, ce rembourrage ne joue qu'en haut de page.
           Combined, mobile PWAs get ~120-130px of clearance which matches
           the nav's standalone-mode height.
           The LiveTicker lives inside main so this single padding rule
           positions it correctly below the nav — no manual offsets. */}
       <main
-        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 4.5rem)' }}
+        style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 5.25rem)' }}
       >
         {/* Le bandeau du direct, sur toutes les largeurs d'écran, mais
             seulement sur les cinq onglets de navigation et leurs sous-pages
