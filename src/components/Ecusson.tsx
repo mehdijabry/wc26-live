@@ -27,10 +27,37 @@ import { useEffect, useState } from 'react'
  */
 
 const CREME = '#ECEFE8'
-/** Une mesure par adresse, pour toute la vie de l'onglet. */
+/**
+ * Une mesure par adresse ET PAR TEINTE. La clé portait la seule adresse,
+ * ce qui suffisait tant qu'il n'existait qu'un fond. Depuis le panneau du
+ * direct (20/10/2026) le même écusson peut être demandé deux fois — en
+ * crème sur le sol noir-vert, en blanc sur le rouge du panneau — et une
+ * clé sur l'adresse seule rendrait le premier des deux aux deux endroits.
+ */
 const vues = new Map<string, string | null>()
 
-function repeindre(url: string): Promise<string | null> {
+/**
+ * `toujours` : repeindre sans mesurer. `jamais` : ne jamais repeindre.
+ *
+ * ── POURQUOI « JAMAIS » EXISTE (20/10/2026) ──────────────────────────
+ * La mesure répond à « cet écusson est-il trop sombre pour le SOL du
+ * site ? ». Le panneau du direct a renversé la question : son fond est
+ * rouge, et Liverpool y tombe à 1,47 de contraste quand il en faudrait 3
+ * (mesuré sur les écussons réels : PSG 2,05, Milan 2,27, Barcelone 2,37,
+ * Villarreal 2,54, Manchester United 2,57 — tous sous le seuil).
+ *
+ * La silhouette blanche a d'abord paru régler l'affaire. Elle ne règle
+ * rien : remplir l'écusson efface son dessin, et Mehdi l'a vu tout de
+ * suite — « on ne reconnaît plus les logos ». Barcelone devenait un
+ * bouclier vide, le PSG un rond vide.
+ *
+ * Le panneau pose donc chaque écusson sur une PASTILLE CLAIRE, ce qui
+ * garantit le contraste sans toucher au logo. Mais sur du clair, la
+ * mesure d'origine devient nuisible : elle repeindrait la Juventus en
+ * crème sur une pastille crème, et c'est elle qui disparaîtrait. D'où
+ * `jamais`.
+ */
+function repeindre(url: string, teinte = CREME, toujours = false): Promise<string | null> {
   return new Promise((resolve) => {
     const im = new Image()
     im.crossOrigin = 'anonymous'
@@ -39,18 +66,21 @@ function repeindre(url: string): Promise<string | null> {
       try {
         // On mesure sur une réduction : le verdict est le même, le coût
         // est divisé par dix.
-        const N = 64
-        const p = document.createElement('canvas'); p.width = N; p.height = N
-        const pc = p.getContext('2d', { willReadFrequently: true })
-        if (!pc) return resolve(null)
-        pc.drawImage(im, 0, 0, N, N)
-        const d = pc.getImageData(0, 0, N, N).data
-        let opaques = 0, somme = 0
-        for (let i = 0; i < d.length; i += 4) {
-          if (d[i + 3] < 128) continue
-          opaques++; somme += (d[i] + d[i + 1] + d[i + 2]) / 3
+        let opaques = 1, somme = 0
+        if (!toujours) {
+          const N = 64
+          const p = document.createElement('canvas'); p.width = N; p.height = N
+          const pc = p.getContext('2d', { willReadFrequently: true })
+          if (!pc) return resolve(null)
+          pc.drawImage(im, 0, 0, N, N)
+          const d = pc.getImageData(0, 0, N, N).data
+          opaques = 0
+          for (let i = 0; i < d.length; i += 4) {
+            if (d[i + 3] < 128) continue
+            opaques++; somme += (d[i] + d[i + 1] + d[i + 2]) / 3
+          }
         }
-        if (!opaques || somme / opaques >= 42) return resolve(null)
+        if (!toujours && (!opaques || somme / opaques >= 42)) return resolve(null)
 
         // 128 px suffisent : l'écusson s'affiche au plus à 64, et doubler
         // couvre les écrans à forte densité sans peser en mémoire.
@@ -60,7 +90,7 @@ function repeindre(url: string): Promise<string | null> {
         if (!ctx) return resolve(null)
         ctx.drawImage(im, 0, 0, T, T)
         ctx.globalCompositeOperation = 'source-in'
-        ctx.fillStyle = CREME
+        ctx.fillStyle = teinte
         ctx.fillRect(0, 0, T, T)
         resolve(c.toDataURL('image/png'))
       } catch { resolve(null) }
@@ -69,26 +99,36 @@ function repeindre(url: string): Promise<string | null> {
   })
 }
 
-export default function Ecusson({ src, repli, alt = '', className }: {
+export default function Ecusson({ src, repli, alt = '', className, teinte, mode = 'auto' }: {
   src?: string | null
   /** Ce qu'on affiche si l'adresse est cassée — un monogramme, en général. */
   repli?: string | null
   alt?: string
   className?: string
+  /** La couleur de remplissage, quand on repeint. Crème par défaut. */
+  teinte?: string
+  /**
+   * `auto` : repeindre si l'écusson est trop sombre pour le sol du site.
+   * `jamais` : ne jamais repeindre — sur une pastille claire, voir plus haut.
+   * `toujours` : repeindre sans mesurer.
+   */
+  mode?: 'auto' | 'jamais' | 'toujours'
 }) {
   const [source, setSource] = useState<string | null>(src ?? null)
 
   useEffect(() => {
     setSource(src ?? null)
     if (!src) return
-    if (vues.has(src)) { const v = vues.get(src); if (v) setSource(v); return }
+    if (mode === 'jamais') return
+    const cle = `${src}|${teinte ?? CREME}|${mode}`
+    if (vues.has(cle)) { const v = vues.get(cle); if (v) setSource(v); return }
     let vivant = true
-    void repeindre(src).then((v) => {
-      vues.set(src, v)
+    void repeindre(src, teinte, mode === 'toujours').then((v) => {
+      vues.set(cle, v)
       if (vivant && v) setSource(v)
     })
     return () => { vivant = false }
-  }, [src])
+  }, [src, teinte, mode])
 
   if (!source) return null
   return (

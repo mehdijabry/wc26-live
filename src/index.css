@@ -180,3 +180,103 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
 @media (prefers-reduced-motion: reduce) {
   .trace-passe { animation: none; opacity: 0; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LE PANNEAU DU DIRECT (Mehdi, 20/10/2026)
+   La bande des scores cesse d'être un bandeau de texte : elle devient un
+   panneau de stade à LED. Écussons seuls, rouge allumé quand ça joue,
+   éteint quand rien ne se joue — et un décrochage, comme un vrai
+   panneau publicitaire.
+
+   Tout vit ici et pas en classes Tailwind : ce sont des @keyframes, que
+   Tailwind ne sait pas écrire, et elles ont besoin de se lire ensemble.
+   ═══════════════════════════════════════════════════════════════════ */
+/* PAS DE `position` ICI. Ce fichier est chargé APRÈS les utilitaires de
+   Tailwind : un `position: relative` écrasait le `sticky` de la classe,
+   et la bande repassait sous l'en-tête — mesuré sur l'aperçu avant
+   correction. `sticky` établit déjà le repère des calques absolus. */
+.p90-panneau { overflow: hidden; }
+.p90-allume {
+  background: linear-gradient(180deg, #A81C12 0%, #7E1309 100%);
+  border-top: 1px solid #D4392B;
+  border-bottom: 1px solid #5E0E06;
+}
+.p90-eteint {
+  background: linear-gradient(180deg, #2A0B08 0%, #1C0705 100%);
+  border-top: 1px solid #45130E;
+  border-bottom: 1px solid #120403;
+}
+
+/* La matière : les stries d'un panneau à LED, très faibles. */
+.p90-stries {
+  position: absolute; inset: 0; z-index: 3; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.16) 0 1px, transparent 1px 3px);
+}
+/* Le battement de rafraîchissement : la bande claire qui descend sans
+   fin sur un panneau filmé. C'est ELLE, plus que le décrochage, qui fait
+   lire « panneau » et non « bandeau rouge ». */
+.p90-balayage {
+  position: absolute; left: 0; right: 0; top: -100%; height: 200%;
+  z-index: 3; pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(255,255,255,.05) 46%,
+    rgba(255,255,255,.085) 50%, rgba(255,255,255,.05) 54%, transparent);
+}
+.p90-allume .p90-balayage { animation: p90-roule 3.4s linear infinite; }
+.p90-eteint .p90-balayage { opacity: .25; }
+@keyframes p90-roule { from { transform: translateY(-25%) } to { transform: translateY(25%) } }
+
+/* Le souffle du néon : sept secondes, et presque rien. */
+.p90-allume::before {
+  content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none;
+  background: radial-gradient(120% 180% at 50% 0%, rgba(255,170,150,.30),
+    rgba(255,120,90,.10) 45%, transparent 72%);
+  animation: p90-souffle 7s ease-in-out infinite;
+}
+@keyframes p90-souffle { 0%,100% { opacity: .45 } 50% { opacity: 1 } }
+
+/* LE TÉMOIN CLIGNOTE, mot et point ENSEMBLE. Franc (steps) et pas en
+   fondu : un voyant s'allume et s'éteint, il ne respire pas. Et il
+   descend à 0,22 et non à zéro — éteint pour de bon, il donnerait
+   l'impression d'un affichage qui saute. */
+.p90-allume .p90-temoin { animation: p90-clignote 1.4s steps(1, end) infinite; }
+@keyframes p90-clignote { 0%,64% { opacity: 1 } 65%,100% { opacity: .22 } }
+
+/* ── LE DÉCROCHAGE ─────────────────────────────────────────────────
+   Trois choses à la fois, parce qu'un vrai panneau n'en fait jamais
+   qu'une : l'arrachement de deux tranches de ligne, le saut de courant,
+   et la dérive chromatique. 260 ms — au-delà c'est un effet, en deçà on
+   ne le voit pas. Le RYTHME est tiré au sort en JavaScript : une cadence
+   régulière se lit immédiatement comme un truquage. */
+.p90-calque {
+  position: absolute; top: 0; left: 0; right: 0; height: 100%; z-index: 2;
+  opacity: 0; overflow: hidden; pointer-events: none;
+}
+.p90-zap { animation: p90-saute .26s steps(1, end) 1; }
+.p90-zap .p90-secousse { animation: p90-tremble .26s steps(2, end) 1; }
+.p90-zap .p90-c1 { animation: p90-arrache1 .26s steps(1, end) 1; }
+.p90-zap .p90-c2 { animation: p90-arrache2 .26s steps(1, end) 1; }
+@keyframes p90-saute {
+  0% { filter: brightness(1.55) saturate(1.25) } 22% { filter: brightness(.42) }
+  45% { filter: brightness(1.25) } 70% { filter: brightness(.72) } 100% { filter: none }
+}
+@keyframes p90-tremble {
+  0% { transform: translateX(0) } 25% { transform: translateX(-5px) }
+  55% { transform: translateX(3px) } 80% { transform: translateX(-1px) } 100% { transform: translateX(0) }
+}
+@keyframes p90-arrache1 {
+  0%   { opacity: .85; transform: translateX(-9px); clip-path: inset(14% 0 58% 0); filter: hue-rotate(160deg) saturate(2) }
+  40%  { opacity: .85; transform: translateX(6px);  clip-path: inset(52% 0 30% 0) }
+  75%  { opacity: .6;  transform: translateX(-3px); clip-path: inset(70% 0 10% 0) }
+  100% { opacity: 0;   transform: none }
+}
+@keyframes p90-arrache2 {
+  0%   { opacity: .7; transform: translateX(7px);  clip-path: inset(34% 0 44% 0); filter: brightness(1.6) }
+  45%  { opacity: .7; transform: translateX(-8px); clip-path: inset(4% 0 80% 0) }
+  80%  { opacity: .45; transform: translateX(2px); clip-path: inset(60% 0 22% 0) }
+  100% { opacity: 0;  transform: none }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p90-allume::before, .p90-allume .p90-balayage, .p90-allume .p90-temoin { animation: none; }
+  .p90-allume::before { opacity: .7; }
+}

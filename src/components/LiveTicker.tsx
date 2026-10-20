@@ -18,6 +18,8 @@ import {
   type EspnEvent,
 } from '../lib/api'
 import { localeOf, useLang, useT } from '../lib/i18n'
+import { teamBadgeFallback } from '../lib/utils'
+import Ecusson from './Ecusson'
 import { MatchSheet } from './MatchSheet'
 
 /**
@@ -108,6 +110,10 @@ export function LiveTicker() {
   })
   const [nbCopies, setNbCopies] = useState(2)
   const vide = loaded && events.length === 0
+  // Calculé ICI et pas plus bas : le décrochage en dépend, et un `const`
+  // lu avant sa déclaration lève une erreur de zone morte à l'exécution.
+  const aucunDirect = loaded && events.length > 0 && !events.some((ev) => statusLabel(ev).live)
+  const direct = loaded && !vide && !aucunDirect
 
   // ── Tout ce que la boucle d'animation touche vit dans des refs : la
   // position, l'état « tenu », la pause, le sens. Rien ici ne déclenche un
@@ -115,6 +121,12 @@ export function LiveTicker() {
   // sans que l'arbre bouge.
   const cadre = useRef<HTMLDivElement>(null)   // la fenêtre (overflow hidden)
   const piste = useRef<HTMLDivElement>(null)   // l'élément translaté
+  // Les deux copies du décrochage. Elles portent LE MÊME décalage que la
+  // piste, écrit à la même image : une tranche arrachée qui montrerait un
+  // autre moment de la boucle se verrait immédiatement.
+  const pisteC1 = useRef<HTMLDivElement>(null)
+  const pisteC2 = useRef<HTMLDivElement>(null)
+  const racine = useRef<HTMLDivElement>(null)
   const copieA = useRef<HTMLDivElement>(null)  // la première copie, mesurée
   const pos = useRef(0)                        // décalage en px, ramené dans [0, largeur)
   const largeur = useRef(0)                    // largeur d'une copie
@@ -238,7 +250,10 @@ export function LiveTicker() {
       if (!p) return
       const L = largeur.current
       if (L > 0) pos.current = ((pos.current % L) + L) % L
-      p.style.transform = `translateX(${sens.current * pos.current}px)`
+      const t = `translateX(${sens.current * pos.current}px)`
+      p.style.transform = t
+      if (pisteC1.current) pisteC1.current.style.transform = t
+      if (pisteC2.current) pisteC2.current.style.transform = t
     }
     const image = (now: number) => {
       // Un onglet qui revient d'arrière-plan livre un delta énorme : borné
@@ -252,6 +267,31 @@ export function LiveTicker() {
     id = requestAnimationFrame(image)
     return () => cancelAnimationFrame(id)
   }, [reduit])
+
+  // ── LE DÉCROCHAGE DU PANNEAU ──────────────────────────────────────
+  // Il ne tourne QUE quand le panneau est allumé : un panneau sans
+  // courant ne décroche pas. Et son rythme est tiré au sort entre sept
+  // et seize secondes — une cadence régulière se lit immédiatement comme
+  // un truquage, c'est l'irrégularité qui fait vrai.
+  useEffect(() => {
+    if (reduit || !direct) return
+    let prochain = 0
+    let fin = 0
+    const zap = () => {
+      const el = racine.current
+      if (!el) return
+      el.classList.remove('p90-zap')
+      void el.offsetWidth          // force le navigateur à rejouer l'animation
+      el.classList.add('p90-zap')
+      fin = window.setTimeout(() => el.classList.remove('p90-zap'), 280)
+    }
+    const boucle = () => { zap(); prochain = window.setTimeout(boucle, 7000 + Math.random() * 9000) }
+    prochain = window.setTimeout(boucle, 4000 + Math.random() * 6000)
+    return () => {
+      clearTimeout(prochain); clearTimeout(fin)
+      racine.current?.classList.remove('p90-zap')
+    }
+  }, [reduit, direct])
 
   // Le minuteur de reprise survivrait au démontage si on ne l'annulait pas.
   useEffect(() => () => { if (reprise.current !== null) clearTimeout(reprise.current) }, [])
@@ -351,9 +391,9 @@ export function LiveTicker() {
     if (!loaded) return null
     if (vide) {
       return (
-        <span className="inline-flex items-center whitespace-nowrap font-sans text-[13px] text-slate-500">
+        <span className="inline-flex items-center whitespace-nowrap font-sans text-[13px] text-white/50">
           {t('No match in progress')}
-          <span aria-hidden className="mx-10 text-slate-400">·</span>
+          <span aria-hidden className="mx-10 text-white/25">·</span>
         </span>
       )
     }
@@ -373,7 +413,16 @@ export function LiveTicker() {
         // l'heure sortirait dans la langue de la machine — et en arabe elle
         // sortirait en chiffres ٠١٢٣, que le site n'affiche jamais.
         : (ev.date ? new Date(ev.date).toLocaleTimeString(localeOf(lang), { hour: '2-digit', minute: '2-digit' }) : '')
-      const teinte = s.live ? 'text-slate-900' : 'text-slate-500'
+      // SUR LE PANNEAU, PLUS AUCUN NOM — rien que les écussons. Et chacun
+      // sur une PASTILLE CLAIRE : sur le rouge, Liverpool tombe à 1,47 de
+      // contraste quand il en faudrait 3 (mesuré le 20/10 ; PSG, Milan,
+      // Barcelone, Villarreal et Manchester United sont sous le seuil eux
+      // aussi). La pastille le règle pour TOUS les clubs, y compris ceux
+      // qu'on n'a pas encore croisés, sans seuil ni mesure.
+      //
+      // La silhouette blanche avait d'abord paru plus simple. Elle efface
+      // le dessin : « on ne reconnaît plus les logos » (Mehdi, 20/10) —
+      // Barcelone devenait un bouclier vide.
       return (
         <button
           key={ev.id}
@@ -385,27 +434,23 @@ export function LiveTicker() {
           tabIndex={copie > 0 ? -1 : 0}
           onClick={onClickClavier}
           aria-label={`${nomDe(home)} ${centre} ${nomDe(away)}${marque ? ` (${marque})` : ''}`}
-          className="inline-flex items-center gap-2.5 whitespace-nowrap rounded-sm px-1 outline-none focus-visible:ring-1 focus-visible:ring-accent-red/70"
+          className="inline-flex items-center gap-2 whitespace-nowrap rounded-sm px-1 outline-none focus-visible:ring-1 focus-visible:ring-white/70"
         >
-          <span className={'font-sans text-[13px] ' + teinte}>{nomDe(home)}</span>
-          {/* LE DORÉ DIT « PAS ENCORE », LE ROUGE DIT « MAINTENANT ».
-              Mehdi, 20/10/2026 : « mets notre jaune, le vs et l'heure en
-              jaune pour les matchs pas commencés ; si c'est live le temps
-              apparaît en rouge ». Ça tombe juste sur la règle du site —
-              le rouge n'y désigne que le direct — et ça donne au reste la
-              couleur de la marque plutôt qu'un gris de plus. */}
+          <Blason camp={home} />
+          {/* Le score d'un match en cours, en blanc ; le « vs » d'un match à
+              venir, en doré. L'heure et la minute restent blanches. */}
           <span
             className={
-              (s.live
-                ? 'font-display text-[17px] font-bold leading-none tabular-nums text-slate-900'
-                : 'font-mono text-[11px] font-semibold uppercase tracking-wider text-accent-gold')
+              s.live
+                ? 'font-display text-[19px] font-bold leading-none tabular-nums text-white [text-shadow:0_1px_4px_rgba(0,0,0,.55)]'
+                : 'font-mono text-[11px] font-semibold uppercase tracking-wider text-accent-gold [text-shadow:0_1px_3px_rgba(0,0,0,.5)]'
             }
           >
             {centre}
           </span>
-          <span className={'font-sans text-[13px] ' + teinte}>{nomDe(away)}</span>
+          <Blason camp={away} />
           {marque && (
-            <span className={'font-mono text-[11px] font-semibold tabular-nums ' + (s.live ? 'text-accent-red' : 'text-accent-gold')}>
+            <span className={'font-mono text-[11px] font-semibold tabular-nums ' + (s.live ? 'text-white' : 'text-white/75')}>
               ({marque})
             </span>
           )}
@@ -417,7 +462,7 @@ export function LiveTicker() {
     // et sort du champ de lecture dès que la bande a défilé.
     if (aucunDirect) {
       items.unshift(
-        <span key="rien" className="inline-flex items-center whitespace-nowrap font-sans text-[13px] text-slate-500">
+        <span key="rien" className="inline-flex items-center whitespace-nowrap font-sans text-[13px] text-white/50">
           {t('No match in progress')}
         </span>,
       )
@@ -425,51 +470,71 @@ export function LiveTicker() {
     return items
   }
 
-  // Un seul match en cours suffit à allumer le badge. S'il n'y en a aucun
-  // alors que la bande porte des matchs, c'est qu'elle montre l'à-venir.
-  const aucunDirect = loaded && events.length > 0 && !events.some((ev) => statusLabel(ev).live)
-  const direct = loaded && !vide && !aucunDirect
   // Le badge est FIXE, hors de la piste ; premier enfant du flex, il se
   // retrouve de lui-même du côté où la lecture commence (à droite en RTL).
   const badge = (
     <div
       aria-hidden
-      className="relative z-10 flex h-full shrink-0 items-center gap-2 border-e border-slate-200 bg-card px-3"
+      className={
+        'relative z-[4] flex h-full shrink-0 items-center gap-2 px-3 border-e '
+        + (direct ? 'border-white/20' : 'border-white/[0.07]')
+      }
     >
-      <span className="relative flex h-2 w-2">
-        {direct && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-accent-red/60 opacity-75" />
-        )}
-        <span className={'relative inline-flex h-2 w-2 rounded-full ' + (direct ? 'bg-accent-red' : 'bg-slate-500')} />
-      </span>
-      <span className={'font-mono text-[11px] font-bold tracking-[0.2em] ' + (direct ? 'text-accent-red' : 'text-slate-500')}>
+      {/* LE TÉMOIN CLIGNOTE, mot et point ENSEMBLE — c'est un voyant, pas
+          une décoration. Le clignotement vit dans `p90-temoin` (index.css). */}
+      <span
+        className={
+          'p90-temoin h-2 w-2 rounded-full ' + (direct ? 'bg-white shadow-[0_0_9px_rgba(255,255,255,.85)]' : 'bg-[#8E9496]')
+        }
+      />
+      <span
+        className={
+          'p90-temoin font-mono text-[11px] font-bold tracking-[0.2em] '
+          + (direct ? 'text-white [text-shadow:0_0_12px_rgba(255,255,255,.45)]' : 'text-[#C2C6C7]')
+        }
+      >
         LIVE
       </span>
     </div>
   )
 
+  // Les copies du décrochage : même contenu, même décalage, invisibles tant
+  // qu'il ne se passe rien. Elles ne sont montées que sur un panneau allumé —
+  // un panneau sans courant ne décroche pas, inutile d'en porter le poids.
+  const copies = (ref: typeof piste) => (
+    <div ref={ref} className="relative flex h-full w-max items-center ps-4 will-change-transform">
+      {Array.from({ length: nbCopies }, (_, i) => (
+        <div key={i} aria-hidden className="flex h-full items-center gap-12 pe-12">{contenu(i)}</div>
+      ))}
+    </div>
+  )
+
   return (
     <div
+      ref={racine}
       role="region"
       aria-label={t('Live scores')}
       aria-live="off"
       // `z-40` : sous l'en-tête (50) — si les deux devaient se croiser, c'est
       // l'en-tête qui passe devant. Le repli en `calc()` sert la première
       // image, avant que la mesure ne soit tombée.
-      className="sticky z-40 flex h-12 select-none items-stretch border-b border-slate-200 bg-card"
+      className={
+        'p90-panneau sticky z-40 flex h-[52px] select-none items-stretch '
+        + (direct ? 'p90-allume' : 'p90-eteint')
+      }
       style={{ top: hautEntete ?? 'calc(env(safe-area-inset-top, 0px) + 5.25rem)' }}
     >
       {badge}
       {reduit ? (
         // Mouvement réduit : pas de défilement automatique. Un overflow natif,
         // glissable au doigt et parcourable au clavier, et une seule copie.
-        <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
+        <div className="no-scrollbar relative z-[2] min-w-0 flex-1 overflow-x-auto">
           <div className="flex h-full w-max items-center gap-12 px-4">{contenu(0)}</div>
         </div>
       ) : (
         <div
           ref={cadre}
-          className="min-w-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
+          className="relative z-[2] min-w-0 flex-1 cursor-grab overflow-hidden active:cursor-grabbing"
           // pan-y : le doigt qui monte ou descend fait défiler la PAGE, le
           // navigateur garde ce geste ; on ne prend que l'horizontal.
           style={{ touchAction: 'pan-y' }}
@@ -483,7 +548,7 @@ export function LiveTicker() {
               son transform, et un re-rendu ne doit jamais l'effacer.
               `relative` pour que les offsetLeft des boutons se mesurent
               depuis la piste (le focus clavier en dépend). */}
-          <div ref={piste} className="relative flex h-full w-max items-center ps-4 will-change-transform">
+          <div ref={piste} className="p90-secousse relative flex h-full w-max items-center ps-4 will-change-transform">
             {Array.from({ length: nbCopies }, (_, i) => (
               <div
                 key={i}
@@ -497,8 +562,17 @@ export function LiveTicker() {
               </div>
             ))}
           </div>
+          {direct && !reduit && (
+            <>
+              <div className="p90-calque p90-c1">{copies(pisteC1)}</div>
+              <div className="p90-calque p90-c2">{copies(pisteC2)}</div>
+            </>
+          )}
         </div>
       )}
+      {/* La matière du panneau, au-dessus de tout et insensible au doigt. */}
+      <div className="p90-balayage" aria-hidden />
+      <div className="p90-stries" aria-hidden />
       <MatchSheet
         open={!!openMatch}
         eventId={openMatch?.id}
@@ -506,5 +580,42 @@ export function LiveTicker() {
         onClose={() => setOpenMatch(null)}
       />
     </div>
+  )
+}
+
+/**
+ * UN ÉCUSSON SUR LE PANNEAU — cerné de blanc, jamais repeint.
+ *
+ * Sur le rouge, Liverpool tombe à 1,47 de contraste quand il en faudrait
+ * 3 (mesuré le 20/10 sur les écussons réels ; PSG 2,05, Milan 2,27,
+ * Barcelone 2,37, Villarreal 2,54 et Manchester United 2,57 passent sous
+ * le seuil eux aussi). Deux pistes ont été écartées avant celle-ci :
+ *
+ *   · la SILHOUETTE BLANCHE efface le dessin — « on ne reconnaît plus les
+ *     logos » (Mehdi, 20/10), Barcelone devenait un bouclier vide ;
+ *   · la PASTILLE claire derrière l'écusson règle le contraste mais pose
+ *     un rond blanc sur le panneau, et on perd la matière du rouge.
+ *
+ * Le liseré cerne la forme sans rien recouvrir. Deux passes serrées d'un
+ * pixel plutôt qu'une large : une ombre portée large fait un HALO, et
+ * Mehdi l'a vu sur la première version — « baisse un peu le halo, il est
+ * trop intense ». Ce qu'on veut est un bord net, pas une lueur.
+ *
+ * `mode="jamais"` : surtout ne pas laisser `Ecusson` repeindre. Sa mesure
+ * répond à « trop sombre pour le SOL du site ? », une question qui n'a
+ * pas de sens ici — et elle rendrait la Juventus en crème, donc illisible
+ * une fois cernée de blanc.
+ */
+function Blason({ camp }: { camp: EspnCompetitor | undefined }) {
+  const t = camp?.team
+  const src = teamBadgeFallback(t?.logo, t?.abbreviation, t?.shortDisplayName ?? t?.displayName)
+  if (!src) return <span className="h-[26px] w-[26px] shrink-0" />
+  return (
+    <Ecusson
+      src={src}
+      mode="jamais"
+      alt=""
+      className="h-[26px] w-[26px] shrink-0 object-contain [filter:drop-shadow(0_0_1px_rgba(255,255,255,.7))_drop-shadow(0_0_1px_rgba(255,255,255,.45))_drop-shadow(0_1px_2px_rgba(0,0,0,.5))]"
+    />
   )
 }
