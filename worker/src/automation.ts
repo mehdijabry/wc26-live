@@ -367,17 +367,48 @@ export async function fbPost(env: Env, p: { message: string; link?: string; imag
   if (env.MAKE_FB_WEBHOOK_URL) {
     const r = await hook(env.MAKE_FB_WEBHOOK_URL, { kind: 'post', message: p.message, image_url: p.image_url, title: p.title })
     if (r.ok) {
-      if (!p.comment || !env.FB_PAGE_TOKEN) return { ok: true, status: r.status, note: 'make post' }
+      // ── UN 200 DE MAKE NE VEUT PAS DIRE « PUBLIÉ » ────────────────────
+      // Il veut dire « reçu ». Le webhook répond « Accepted » et MET EN
+      // FILE ; c'est le scénario, plus tard, qui publie — s'il est actif.
+      //
+      // Le 7/10/2026 à 16:01 UTC le scénario photo a échoué (« Missing or
+      // invalid image file ») et Make l'a désactivé. Pendant ONZE JOURS le
+      // worker a continué d'appeler le webhook, Make a continué de répondre
+      // 200, et cette branche a continué d'écrire « make post » dans le
+      // journal. Rien n'a été publié. Cinquante charges se sont empilées
+      // dans la file du webhook jusqu'à saturation (50/50), et c'est
+      // seulement quand la file a débordé, le 18, que le refus a enfin
+      // fait basculer sur le Graph — qui a RÉTABLI la publication.
+      //
+      // Le plus dur à avaler : la vérification existait déjà. On appelait
+      // `findRecentPost` et on ne trouvait rien, onze jours de suite. On en
+      // concluait « le post n'est pas encore visible » et on rendait `ok`.
+      // La preuve était là, on la jetait.
+      //
+      // Désormais : pas de post retrouvé, pas de succès. On descend sur le
+      // Graph. Le risque inverse — publier deux fois si Make finit par
+      // sortir le post après notre fenêtre — est borné : `findRecentPost`
+      // attend six tours de dix secondes, alors que ce scénario s'exécute
+      // en cinq à dix secondes quand il va bien. Et perdre un post en
+      // silence est plus grave que d'en publier un en double, parce que le
+      // double se voit.
+      if (!env.FB_PAGE_TOKEN) {
+        // Sans jeton de page on ne PEUT pas vérifier. On le dit, au lieu de
+        // laisser croire que « make post » vaut preuve de publication.
+        return { ok: true, status: r.status, note: 'make accepté (non vérifiable sans FB_PAGE_TOKEN)' }
+      }
       const id = await findRecentPost(env, p.message, 6)
       if (id) {
+        if (!p.comment) return { ok: true, status: r.status, id, note: `make post ${id}` }
         const c = await fbComment(env, id, p.comment)
         return { ok: true, status: r.status, id, note: `make post ${id} · ${c.ok ? 'link commented' : 'comment failed: ' + (c.note ?? '')}` }
       }
-      await enqueuePendingComment(env, p.message, p.comment)
-      return { ok: true, status: r.status, note: 'make post · comment pending (post not visible yet, retry every minute)' }
+      raisonMake = 'make a accepté (200) mais le post est introuvable après 60 s — scénario inactif ou file saturée'
+      console.log('[fb]', raisonMake, '→ graph fallback')
+    } else {
+      console.log('[fb] make webhook failed', r.status, r.corps ?? '', '→ graph fallback')
+      raisonMake = `make ${r.status ?? 'sans réponse'}${r.corps ? ` « ${r.corps} »` : ''}`
     }
-    console.log('[fb] make webhook failed', r.status, r.corps ?? '', '→ graph fallback')
-    raisonMake = `make ${r.status ?? 'sans réponse'}${r.corps ? ` « ${r.corps} »` : ''}`
   }
   if (env.FB_PAGE_TOKEN) {
     try {
