@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:prerender": "tsc -b && node scripts/sitemap-clubs.mjs && vite build && node scripts/prerender.mjs",
+    "build:prerender": "tsc -b && node scripts/sitemap-clubs.mjs && node scripts/sitemap-journees.mjs && vite build && node scripts/prerender.mjs",
     "prerender": "node scripts/prerender.mjs",
     "lint": "eslint .",
     "preview": "vite preview",

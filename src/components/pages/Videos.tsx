@@ -90,7 +90,19 @@ export default function Videos({ kind }: { kind: 'but' | 'resume' }) {
     new Date(iso).toLocaleTimeString(localeOf(lang), { hour: '2-digit', minute: '2-digit' })
 
   return (
-    <div className="container max-w-5xl mx-auto px-6 pt-10 pb-16">
+    // `data-videos-pret` : LE SIGNAL DU PRÉRENDU, et rien d'autre.
+    //
+    // Le prérendu capture la page dès que son titre a changé — bien avant
+    // que la liste soit revenue de la base. Résultat mesuré le 21/10 : le
+    // 18 octobre partait avec ses onze rencontres, le 19 avec un en-tête et
+    // rien dessous. Une page sur deux arrivait vide chez Google, ce qui est
+    // pire que de ne pas la déclarer.
+    //
+    // L'attribut apparaît dès que la réponse est connue — liste pleine ou
+    // vide, peu importe : c'est l'attente qui doit cesser, pas le contenu
+    // qui doit exister. Il ne coûte rien au navigateur et ne change rien à
+    // l'affichage.
+    <div className="container max-w-5xl mx-auto px-6 pt-10 pb-16" data-videos-pret={liste !== null || echec ? '1' : undefined}>
       <SectionHeader
         niveau={1}
         eyebrow={journee ? libelleJour(journee) : t('football today')}

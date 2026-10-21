@@ -69,6 +69,8 @@ function titreParDefaut() {
 
 /** Routes qui ont gardé le titre par défaut — remplie pendant la passe. */
 const sansTitrePropre = []
+/** Les journées dont la liste n'est pas revenue à temps : elles partent minces. */
+const journeesSansListe = []
 
 /** Routes où le voile d'introduction était encore là au moment de la photo. */
 const voileRestant = []
@@ -243,6 +245,23 @@ async function prerenderRoute(browser, route) {
     // ailleurs c'est un doublon qui part en production : on ne fait pas
     // échouer la route, mais on le dit à la fin au lieu de l'avaler.
     if (route !== '/') sansTitrePropre.push(route)
+  }
+
+  // ── Les pages de journée attendent leurs vidéos ───────────────────
+  //
+  // Leur liste vient de la base APRÈS le montage, et le titre — le signal
+  // d'attente par défaut — change bien avant elle. La capture arrivait donc
+  // au hasard : le 18 octobre est parti avec ses onze rencontres, le 19
+  // avec un en-tête et rien dessous. Une page vide déclarée au plan du site
+  // est pire qu'une page absente.
+  //
+  // `data-videos-pret` est posé par le composant dès que la réponse est
+  // connue, pleine ou vide. On l'attend, et on n'échoue pas s'il tarde :
+  // mieux vaut la page mince que pas de page du tout.
+  if (/^\/(resumes|buts)\//.test(route)) {
+    await page.waitForSelector('[data-videos-pret]', { timeout: 15_000 }).catch(() => {
+      journeesSansListe.push(route)
+    })
   }
 
   // ── Attendre que le voile d'introduction soit parti ────────────────
@@ -467,6 +486,15 @@ async function main() {
     for (const r of sansTitrePropre) console.log(`  - ${r}`)
   } else {
     console.log('[prerender] Chaque route a son propre titre.')
+  }
+  // Une journée mince part quand même — mais elle se dit, sinon on
+  // déclarerait au plan du site des pages sans contenu sans jamais le
+  // savoir. C'est exactement la panne silencieuse qu'on cherche à fuir.
+  if (journeesSansListe.length) {
+    console.log(
+      `[prerender] ATTENTION — ${journeesSansListe.length} journée(s) capturées SANS leur liste de vidéos :`
+    )
+    for (const r of journeesSansListe) console.log(`  - ${r}`)
   }
   if (failures.length) {
     console.log('[prerender] Failures:')
