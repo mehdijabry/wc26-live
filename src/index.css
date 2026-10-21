@@ -466,3 +466,17 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
 @media (prefers-reduced-motion: reduce) {
   .p90-perte-lueur, .p90-perte-entre { animation: none; }
 }
+
+/* ── LE GAIN DE JETONS ─────────────────────────────────────────────
+   Le chiffre monte et s'efface, comme un point gagné dans un jeu. Plus
+   court et plus discret que la fête d'un pari : on le verra tous les
+   jours, et ce qu'on voit tous les jours doit savoir se faire oublier. */
+.p90-gain-monte { animation: p90-gain 1.3s cubic-bezier(.2,.9,.3,1) both; }
+@keyframes p90-gain {
+  0%   { opacity: 0; transform: translateY(14px) scale(.82) }
+  18%  { opacity: 1; transform: translateY(0) scale(1.06) }
+  30%  { transform: scale(1) }
+  70%  { opacity: 1; transform: translateY(-14px) }
+  100% { opacity: 0; transform: translateY(-40px) }
+}
+@media (prefers-reduced-motion: reduce) { .p90-gain-monte { animation: none; } }

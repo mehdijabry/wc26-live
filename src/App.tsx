@@ -1,4 +1,5 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
+import { GainJetons } from './components/GainJetons'
 import { Routes, Route, Navigate, useLocation, useParams, Link } from 'react-router-dom'
 import { Navigation } from './components/Navigation'
 import { BarriereDErreur } from './components/BarriereDErreur'
@@ -206,6 +207,13 @@ function App() {
 
   return (
     <div className="min-h-svh pb-20 md:pb-0">
+      {/* LA SCÈNE D'UN GAIN DE JETONS — montée une seule fois, pour tout
+          le site. N'importe quel bouton de réclamation l'appelle par
+          `montrerGain()` (store/gain.ts) sans rien savoir de son
+          apparence : c'est ce qui l'empêche de diverger d'un bouton à
+          l'autre. Elle ne capte aucun clic. */}
+      <GainJetons />
+
       {/* Intro splash — décoratif, et incapable de bloquer l'écran (voir plus haut). */}
       {intro !== 'retire' && (
         <div
@@ -860,7 +868,7 @@ function BoardPage() {
         <Classement />
       </Suspense>
       <div className="container max-w-6xl mx-auto px-6"><Ad slot="board-mid" /></div>
-    </>
+          </>
   )
 }
 

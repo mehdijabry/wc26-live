@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
+import { useGain } from '../../store/gain'
 import { usePageHead, useJsonLd } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
 import { Icone } from '../Icone'
@@ -159,6 +160,7 @@ export function Classement() {
     navigate(`/l/${l.slug}`)
   }
 
+  const montrerGain = useGain((g) => g.montrerGain)
   const onReclamer = (slug: string) => {
     setOccupe(true)
     setMessage(null)
@@ -183,6 +185,9 @@ export function Classement() {
           ? t('Claimed today in {g} — one group per day.').replace('{g}', r.groupe)
           : avecN(t('{n} crampons claimed.'), r.crampons),
       )
+      // `deja` veut dire « rien de neuf » : le message le dit, et la
+      // scène ne se joue pas. Fêter zéro crampon serait une moquerie.
+      if (!r.deja) montrerGain(r.crampons, 'crampon')
       await charger()
       await useAuth.getState().refreshProfile()
     })
@@ -375,6 +380,11 @@ export function Classement() {
               return
             }
             setMessage(t('Prize taken from {g}.').replace('{g}', r.groupe))
+            // Le prix tombe dans l'une des deux monnaies : on annonce
+            // celle qui a bougé, pour que la couleur de la scène dise
+            // elle-même ce qu'on vient de gagner.
+            if (r.pressings > 0) montrerGain(r.pressings, 'pressing')
+            else montrerGain(r.crampons, 'crampon')
             await charger()
             await useAuth.getState().refreshProfile()
           })

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
+import { useGain } from '../../store/gain'
 import { usePageHead } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
 import {
@@ -83,6 +84,7 @@ export function LeaguePage() {
     setReclame(bonus)
   }, [slug])
 
+  const montrerGain = useGain((g) => g.montrerGain)
   const onReclamer = async () => {
     setOccupe(true)
     setMessageBonus(null)
@@ -94,6 +96,8 @@ export function LeaguePage() {
     }
     if (r.deja) {
       setMessageBonus(t('Claimed today in {g} — one group per day.').replace('{g}', r.groupe))
+    } else {
+      montrerGain(r.crampons, 'crampon')
     }
     await charger()
     // Le solde a bougé : le menu du compte doit le refléter sans rechargement.

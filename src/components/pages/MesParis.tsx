@@ -17,6 +17,7 @@ import {
 import { ficheDuMatch, type Fiche } from '../../lib/ficheMatch'
 import PartagerPari from '../PartagerPari'
 import { parisPubliables } from '../../lib/posts'
+import { useGain } from '../../store/gain'
 import { FeteGain } from '../FeteGain'
 import { PertePari } from '../PertePari'
 
@@ -77,6 +78,7 @@ export default function MesParis() {
   const [params, setParams] = useSearchParams()
   const vise = Number(params.get('slip')) || null
   const [feteFaite, setFeteFaite] = useState(false)
+  const montrerGain = useGain((g) => g.montrerGain)
   const [apercu, setApercu] = useState<'gain' | 'perte' | null>(null)   // aperçu seulement
 
   const [publiables, setPubliables] = useState<Set<number> | null>(null)
@@ -254,6 +256,25 @@ export default function MesParis() {
                          shadow-lg active:scale-95 transition-transform"
             >
               🌧 Rejouer la défaite
+            </button>
+            {/* La scène des réclamations se déclenche depuis n'importe
+                quel bouton du site ; on l'essaie ici, au même endroit que
+                les deux autres. */}
+            <button
+              type="button"
+              onClick={() => montrerGain(12, 'crampon')}
+              className="rounded-full bg-[#C08A4E] px-4 py-2.5 text-ink-900 text-sm font-semibold
+                         shadow-lg active:scale-95 transition-transform"
+            >
+              🥾 +12 crampons
+            </button>
+            <button
+              type="button"
+              onClick={() => montrerGain(250, 'pressing')}
+              className="rounded-full bg-accent-gold/80 px-4 py-2.5 text-ink-900 text-sm font-semibold
+                         shadow-lg active:scale-95 transition-transform"
+            >
+              🪙 +250 pressings
             </button>
           </div>
         </>
