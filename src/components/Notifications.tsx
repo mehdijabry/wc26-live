@@ -365,8 +365,24 @@ export function Notifications({ compact = false }: { compact?: boolean } = {}) {
       </div>
     )
 
-    return n.lien ? (
-      <Link to={n.lien} onClick={onNaviguer} className="block hover:bg-slate-100/40 rounded-xl transition-colors">
+    // ── UN PARI GAGNÉ MÈNE AU PARI, PAS À LA LISTE ──────────────────
+    // Le déclencheur en base pose `/my-bets`, la page entière — à charge
+    // au lecteur de retrouver lequel a gagné parmi vingt bulletins. Les
+    // données de la notification portent pourtant son identifiant. On
+    // l'ajoute ici plutôt que de toucher au déclencheur : c'est une
+    // question d'affichage, et une migration pour ça serait du luxe.
+    //
+    // `fete=1` demande la célébration. Elle ne se joue qu'une fois par
+    // bulletin — la page s'en souvient, pas l'adresse.
+    // Gagné ou perdu, le lien mène au BULLETIN. La scène qui s'y joue
+    // dépend de son issue, pas de l'adresse — `anim=1` dit seulement
+    // « on arrive d'une notification », et la page lit le reste.
+    const cible = (n.kind === 'pari_gagne' || n.kind === 'pari_perdu') && n.donnees?.slip
+      ? `/my-bets?slip=${encodeURIComponent(String(n.donnees.slip))}&anim=1`
+      : n.lien
+
+    return cible ? (
+      <Link to={cible} onClick={onNaviguer} className="block hover:bg-slate-100/40 rounded-xl transition-colors">
         {corps}
       </Link>
     ) : corps

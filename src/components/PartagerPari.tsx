@@ -13,12 +13,15 @@ import { publierPari } from '../lib/posts'
  * même endroit. Ce n'est pas un billet de blog, c'est un mot sur un ticket.
  */
 export function PartagerPari({
-  slipId, matchIds, dejaPublie, onPublie,
+  slipId, matchIds, dejaPublie, onPublie, invite,
 }: {
   slipId: number
   matchIds: string[]
   dejaPublie?: boolean
   onPublie?: (postId: number) => void
+  /** Au retour d'une notification de gain : le bouton bat trois secondes,
+   *  puis se tait. C'est le seul instant où l'envie de partager existe. */
+  invite?: boolean
 }) {
   const t = useT()
   const [ouvert, setOuvert] = useState(false)
@@ -53,10 +56,21 @@ export function PartagerPari({
 
   return (
     <>
+      {/* L'INVITATION — trois battements, puis le repos.
+          Un bouton qui pulse sans fin devient un clignotant qu'on cesse
+          de voir, et il fait douter : « est-ce que ça charge ? ». La
+          bulle dit pourquoi il s'agite ; sans phrase, on devine. */}
+      {invite && !ouvert && (
+        <span className="p90-partage-bulle mb-1 inline-flex w-full items-center gap-1 font-mono text-[10.5px]
+                         uppercase tracking-wider text-accent-gold">
+          {t('Share your win')}
+        </span>
+      )}
       <button
         type="button"
         onClick={() => setOuvert((v) => !v)}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent-gold text-ink-900 text-xs font-semibold active:scale-[0.98] transition-transform"
+        className={'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-accent-gold text-ink-900 text-xs font-semibold active:scale-[0.98] transition-transform'
+          + (invite ? ' p90-partage-invite' : '')}
       >
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="M12 16V4m0 0L8 8m4-4 4 4" strokeLinecap="round" strokeLinejoin="round" />

@@ -375,3 +375,94 @@ html[dir="rtl"] .tabular-nums, html[dir="rtl"] time { direction: ltr; unicode-bi
   }
   .p90-allume { box-shadow: inset 0 1px 0 rgba(255,250,246,.8), 0 0 32px rgba(255,60,30,.55); }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   LA FÊTE D'UN PARI GAGNÉ (Mehdi, 21/10/2026)
+   Confettis en canvas dans FeteGain.tsx ; ici, ce que le CSS fait mieux :
+   la lumière, l'entrée du chiffre, et l'invitation à partager.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Deux halos qui respirent en décalé — un seul paraîtrait allumé, deux
+   qui se croisent paraissent vivants. */
+.p90-fete-halo {
+  background:
+    radial-gradient(60% 50% at 22% 78%, rgba(217,181,74,.38), transparent 70%),
+    radial-gradient(55% 45% at 80% 70%, rgba(74,222,128,.22), transparent 70%),
+    radial-gradient(90% 70% at 50% 42%, rgba(255,255,255,.10), transparent 72%);
+  animation: p90-fete-souffle 2.4s ease-in-out;
+}
+@keyframes p90-fete-souffle {
+  0%   { opacity: 0; transform: scale(1.25) }
+  18%  { opacity: 1; transform: scale(1) }
+  70%  { opacity: .9 }
+  100% { opacity: 0; transform: scale(1.06) }
+}
+
+/* Le chiffre arrive par en dessous, avec un dépassement court : il doit
+   avoir l'air lancé, pas affiché. */
+.p90-fete-entre { animation: p90-fete-monte .62s cubic-bezier(.16,1.1,.3,1) both; }
+@keyframes p90-fete-monte {
+  from { opacity: 0; transform: translateY(26px) scale(.9) }
+  to   { opacity: 1; transform: none }
+}
+
+/* ── LE BULLETIN QU'ON VIENT D'OUVRIR ─────────────────────────────
+   Un halo doré qui s'éteint en trois secondes. Il sert à répondre à la
+   seule question du moment : « lequel ? ». Au-delà, il décorerait. */
+.p90-pari-vise { animation: p90-pari-halo 3s ease-out 1; }
+@keyframes p90-pari-halo {
+  0%   { box-shadow: 0 0 0 3px rgba(217,181,74,.85), 0 0 34px rgba(217,181,74,.5) }
+  70%  { box-shadow: 0 0 0 2px rgba(217,181,74,.35), 0 0 18px rgba(217,181,74,.2) }
+  100% { box-shadow: 0 0 0 0 rgba(217,181,74,0), 0 0 0 rgba(217,181,74,0) }
+}
+
+/* ── L'INVITATION À PARTAGER ──────────────────────────────────────
+   TROIS SECONDES, ET ELLE S'ARRÊTE (Mehdi : « une petite animation de
+   3 sec qui s'arrête après les 3 sec »). Un bouton qui pulse sans fin
+   devient un clignotant qu'on cesse de voir, et il fait douter : « est-ce
+   que ça charge ? ». Trois battements d'une seconde, puis le repos. */
+.p90-partage-invite { animation: p90-partage-bat 1s ease-in-out 3; }
+@keyframes p90-partage-bat {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(217,181,74,.55) }
+  35%      { transform: scale(1.055); box-shadow: 0 0 0 9px rgba(217,181,74,0) }
+}
+/* La bulle qui dit pourquoi : elle entre avec le battement et part avec
+   lui. Un bouton qui s'agite sans phrase laisse deviner. */
+.p90-partage-bulle { animation: p90-bulle 3.6s ease-in-out 1 forwards; }
+@keyframes p90-bulle {
+  0%        { opacity: 0; transform: translateY(5px) }
+  12%, 78%  { opacity: 1; transform: none }
+  100%      { opacity: 0; transform: translateY(-4px) }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p90-fete-halo, .p90-fete-entre, .p90-pari-vise,
+  .p90-partage-invite, .p90-partage-bulle { animation: none; }
+  /* Le repère du bulletin reste, simplement sans mouvement : sans lui on
+     ne saurait plus lequel on vient d'ouvrir. */
+  .p90-pari-vise { box-shadow: 0 0 0 2px rgba(217,181,74,.7); }
+}
+
+/* ── LA SCÈNE D'UN PARI PERDU ──────────────────────────────────────
+   Tout y est l'inverse de la fête, sauf la durée du fondu. La lumière
+   ne monte pas, elle se retire ; le chiffre ne jaillit pas, il se pose. */
+.p90-perte-lueur {
+  background: radial-gradient(70% 55% at 50% 58%, rgba(120,120,130,.16), transparent 72%);
+  animation: p90-perte-retrait 1.5s ease-out;
+}
+@keyframes p90-perte-retrait {
+  0%   { opacity: 1 }
+  100% { opacity: 0 }
+}
+/* Pas de rebond ici : un `cubic-bezier` qui dépasse donnerait de
+   l'entrain à une mauvaise nouvelle. Une descente simple, et elle
+   s'arrête net. */
+.p90-perte-entre { animation: p90-perte-pose .5s ease-out both; }
+@keyframes p90-perte-pose {
+  from { opacity: 0; transform: translateY(-10px) }
+  to   { opacity: 1; transform: none }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .p90-perte-lueur, .p90-perte-entre { animation: none; }
+}

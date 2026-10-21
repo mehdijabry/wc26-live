@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Icone } from '../Icone'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { usePageHead } from '../../lib/head'
 import { AuthModal } from '../AuthModal'
@@ -17,6 +17,8 @@ import {
 import { ficheDuMatch, type Fiche } from '../../lib/ficheMatch'
 import PartagerPari from '../PartagerPari'
 import { parisPubliables } from '../../lib/posts'
+import { FeteGain } from '../FeteGain'
+import { PertePari } from '../PertePari'
 
 /** Les buteurs d'un match : propre a cette page, contrairement aux fiches. */
 const cacheButeurs = new Map<string, Map<string, string>>()
@@ -69,7 +71,62 @@ export default function MesParis() {
    * « Partage ✓ », parce qu'un echec de lecture ne veut pas dire « deja
    * publie » (regle des trois etats d'affichage).
    */
+  // ── ON ARRIVE D'UNE NOTIFICATION DE GAIN ────────────────────────
+  // `?slip=` dit lequel, `?fete=1` demande la célébration. Les deux sont
+  // posés par la cloche (Notifications.tsx), jamais par la base.
+  const [params, setParams] = useSearchParams()
+  const vise = Number(params.get('slip')) || null
+  const [feteFaite, setFeteFaite] = useState(false)
+  const [apercu, setApercu] = useState<'gain' | 'perte' | null>(null)   // aperçu seulement
+
   const [publiables, setPubliables] = useState<Set<number> | null>(null)
+
+  // LE BULLETIN VISÉ, UNE FOIS LA LISTE ARRIVÉE. On attend qu'il soit là
+  // plutôt que de lire les chiffres dans l'adresse : une fête qui
+  // annoncerait autre chose que le ticket juste en dessous serait pire
+  // que pas de fête du tout — et une adresse se trafique.
+  const bulletinVise = useMemo(
+    () => (vise && bulletins ? bulletins.find((b) => b.id === vise) ?? null : null),
+    [vise, bulletins],
+  )
+
+  // LA FÊTE NE REVIENT JAMAIS SUR LE MÊME BULLETIN. Le témoin est local au
+  // navigateur : c'est un plaisir d'interface, pas une donnée — et le
+  // perdre en changeant de téléphone ne coûte rien.
+  const dejaFete = (id: number) => {
+    try { return localStorage.getItem(`p90.fete.${id}`) === '1' } catch { return false }
+  }
+  const noterFete = (id: number) => {
+    try { localStorage.setItem(`p90.fete.${id}`, '1') } catch { /* navigation privée */ }
+  }
+  // En sortant de scène on retire `anim` : un rafraîchissement ne doit
+  // pas rejouer, et le témoin local peut avoir été refusé.
+  const nettoyerAdresse = () => {
+    const p = new URLSearchParams(params)
+    p.delete('anim')
+    setParams(p, { replace: true })
+  }
+
+  // UNE SEULE PORTE, DEUX SCÈNES. `anim=1` dit qu'on arrive d'une
+  // notification ; c'est l'ISSUE DU BULLETIN qui décide de ce qui se
+  // joue — une adresse ne doit pas pouvoir annoncer une victoire sur un
+  // pari perdu.
+  const scene = params.get('anim') === '1' && !feteFaite && bulletinVise && !dejaFete(bulletinVise.id)
+    ? bulletinVise.status === 'won' ? 'gain' : bulletinVise.status === 'lost' ? 'perte' : null
+    : null
+
+  // ── ON DESCEND JUSQU'AU BULLETIN ────────────────────────────────────
+  // Après la fête, pas pendant : faire défiler sous un voile opaque ne
+  // sert à rien, et l'animation d'entrée du ticket passerait inaperçue.
+  useEffect(() => {
+    if (!bulletinVise || scene) return
+    const el = document.getElementById(`pari-${bulletinVise.id}`)
+    if (!el) return
+    const minuteur = window.setTimeout(
+      () => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60,
+    )
+    return () => clearTimeout(minuteur)
+  }, [bulletinVise, scene])
 
   usePageHead({
     titre: 'My bets — Pressing 90′',
@@ -157,6 +214,71 @@ export default function MesParis() {
 
   return (
     <div className="max-w-3xl mx-auto px-4 py-8">
+      {/* LA FÊTE, AU-DESSUS DE TOUT, ET UNE SEULE FOIS.
+          Elle se démonte d'elle-même au bout de 2,4 s ou au premier appui.
+          En sortant, elle retire `fete` de l'adresse : un rafraîchissement
+          ne doit pas rejouer la scène, et le témoin local pourrait avoir
+          été refusé (navigation privée). */}
+      {/* APERÇU EN DÉVELOPPEMENT SEULEMENT — `/my-bets?demo-fete=1`.
+          Voir la célébration demande un compte et un pari gagné ; pendant
+          qu'on la règle, c'est une demi-journée d'attente par essai.
+          `import.meta.env.DEV` vaut `false` en production et Vite retire
+          le bloc à la construction : rien de ceci n'est livré. */}
+      {import.meta.env.DEV && params.get('demo-fete') === '1' && (
+        <>
+          {apercu === 'gain' && (
+            <FeteGain gain={1250} mise={50} cote={25} jambes={3} forcer
+                      onFini={() => setApercu(null)} />
+          )}
+          {apercu === 'perte' && (
+            <PertePari mise={50} cote={25} jambes={3} gagnees={2} forcer
+                       onFini={() => setApercu(null)} />
+          )}
+          {/* UN BOUTON, PAS UN DÉCLENCHEMENT AU CHARGEMENT. La fête dure
+              2,4 s : jouée à l'ouverture de la page, elle est finie avant
+              qu'on ait levé les yeux, et on croit qu'elle ne marche pas.
+              Ici elle se rejoue autant de fois qu'on veut. */}
+          <div className="fixed bottom-24 end-4 z-[70] flex flex-col items-end gap-2">
+            <button
+              type="button"
+              onClick={() => setApercu('gain')}
+              className="rounded-full bg-accent-gold px-4 py-2.5 text-ink-900 text-sm font-semibold
+                         shadow-lg active:scale-95 transition-transform"
+            >
+              🎉 Rejouer la fête
+            </button>
+            <button
+              type="button"
+              onClick={() => setApercu('perte')}
+              className="rounded-full bg-slate-700 px-4 py-2.5 text-slate-100 text-sm font-semibold
+                         shadow-lg active:scale-95 transition-transform"
+            >
+              🌧 Rejouer la défaite
+            </button>
+          </div>
+        </>
+      )}
+
+      {scene === 'perte' && bulletinVise && (
+        <PertePari
+          mise={bulletinVise.stake}
+          cote={bulletinVise.odds}
+          jambes={(bulletinVise.legs ?? []).length}
+          gagnees={(bulletinVise.legs ?? []).filter((j) => j.status === 'won').length}
+          onFini={() => { noterFete(bulletinVise.id); setFeteFaite(true); nettoyerAdresse() }}
+        />
+      )}
+
+      {scene === 'gain' && bulletinVise && (
+        <FeteGain
+          gain={bulletinVise.payout ?? 0}
+          mise={bulletinVise.stake}
+          cote={bulletinVise.odds}
+          jambes={(bulletinVise.legs ?? []).length}
+          onFini={() => { noterFete(bulletinVise.id); setFeteFaite(true); nettoyerAdresse() }}
+        />
+      )}
+
       <p className="text-[11px] uppercase tracking-[0.2em] text-accent-gold font-mono">{t('My bets')}</p>
       <h1 className="font-display text-4xl sm:text-5xl text-slate-900 mt-1">{t('Every slip you have placed')}</h1>
 
@@ -222,7 +344,11 @@ export default function MesParis() {
               const jambes = b.legs ?? []
               const gainPossible = Math.round(b.stake * b.odds)
               return (
-                <article key={b.id} className="glass rounded-sm overflow-hidden">
+                <article
+                  key={b.id}
+                  id={`pari-${b.id}`}
+                  className={cn('glass rounded-sm overflow-hidden', b.id === vise && 'p90-pari-vise')}
+                >
                   <header className="px-5 py-4 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2 border-b border-slate-200">
                     <div>
                       <h2 className="font-display text-xl text-slate-900">
@@ -297,6 +423,7 @@ export default function MesParis() {
                       <div className="w-full flex flex-wrap items-center gap-2">
                         <PartagerPari
                           slipId={b.id}
+                          invite={b.id === vise && feteFaite}
                           matchIds={(b.legs ?? []).map((j) => j.match_id)}
                           dejaPublie={publiables !== null && !publiables.has(b.id)}
                           onPublie={() => setPubliables((v) => {
