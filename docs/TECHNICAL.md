@@ -544,13 +544,20 @@ Sitemap: https://pressing90.live/sitemap.xml
 ### Frontend (Cloudflare Pages)
 
 ```bash
-npm run build               # build Vite → dist/
-npx wrangler pages deploy dist \
-    --project-name=wc26-live \
-    --branch=main
+npm run build:prerender     # tsc + sitemap + vite build + prérendu des 545 routes
+npx wrangler pages deploy dist --project-name=wc26-live
 ```
 
-CI/CD : le projet est aussi connecté à `github.com/mehdijabry/wc26-live`, donc tout push sur `main` redéploie automatiquement via Cloudflare Pages.
+> ⚠️ **Jamais `npm run build` seul.** Le site est une SPA : sans l'étape de
+> prérendu, `dist/index.html` ne contient qu'une racine React vide, et Google
+> n'indexe plus rien. L'erreur a été commise, et le site a perdu son
+> référencement pendant quatorze jours sans que rien ne le signale.
+
+> ⚠️ **Il n'y a PAS de déploiement automatique.** Cloudflare répond
+> `Git Provider: No` sur le projet `wc26-live` : il ne reçoit que des dépôts
+> directs par wrangler. **Un push sur `main` ne met rien en ligne.** Pousser
+> et déployer sont deux gestes séparés, et oublier le second laisse le site
+> en arrière sans aucun signal.
 
 ### Worker (Cloudflare Workers)
 
@@ -648,14 +655,11 @@ Un titre subtil par confédération, affiché dans les groupes :
 # Dev local
 npm run dev                          # Vite dev server :5173
 
-# Build production
-npm run build                        # → dist/
+# Build production — JAMAIS `npm run build` seul, voir « Déploiement »
+npm run build:prerender              # → dist/ avec les 545 routes prérendues
 
-# Deploy frontend
-./worker/node_modules/.bin/wrangler pages deploy dist \
-    --project-name=wc26-live \
-    --branch=main \
-    --commit-dirty=true
+# Deploy frontend (aucun déploiement automatique : le push ne suffit pas)
+npx wrangler pages deploy dist --project-name=wc26-live
 
 # Deploy Worker
 cd worker && npx wrangler deploy
