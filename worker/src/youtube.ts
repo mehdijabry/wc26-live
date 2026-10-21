@@ -149,6 +149,35 @@ export async function chaineParPoignee(env: EnvYt, poignee: string): Promise<{ i
  * appelant, en croisant avec les matchs terminés : ici on ne rend que ce
  * que le texte dit vraiment.
  */
+/** Ce que les diffuseurs posent DEVANT le nom du club, et qui n'en fait pas partie. */
+const PREFIXE_DIFFUSEUR = /^(?:maxi\s+sintesi|sintesi|tutti\s+i\s+gol|all\s+goals?|goals?|highlights?|resumen|r[ée]sum[ée])\s+/i
+
+/**
+ * UNE REDIFFUSION N'EST PAS UN RÉSUMÉ DU JOUR.
+ *
+ * La Serie A republie ses classiques — « JUVENTUS-LAZIO 2-2 | CLASSIC
+ * HIGHLIGHTS SERIE A 2025/26 » — et la détection les prenait pour des
+ * matchs d'aujourd'hui. Tant que les équipes n'étaient pas reconnues, ils
+ * dormaient sur le site en « ? – ? » ; maintenant qu'elles le sont, un
+ * match de la saison PASSÉE sortirait avec son score comme résultat du
+ * jour. L'appariement ESPN le rattraperait sans doute, mais « sans
+ * doute » ne suffit pas quand l'erreur est publique.
+ *
+ * Deux signaux, tous deux dans le titre : le mot, et la saison.
+ */
+export function estPerime(titre: string, maintenant = new Date()): boolean {
+  const t = String(titre || '')
+  if (/\bclassic\b|\bthrowback\b|\bon this day\b|\brewind\b/i.test(t)) return true
+  const m = t.match(/\b(20\d{2})\s*[\/-]\s*(\d{2})\b/)
+  if (m) {
+    // La saison bascule en juillet : en octobre 2026 on est en 2026/27.
+    const an = maintenant.getUTCFullYear()
+    const debut = maintenant.getUTCMonth() + 1 >= 7 ? an : an - 1
+    if (Number(m[1]) < debut) return true
+  }
+  return false
+}
+
 export function clesDAppariement(c: Clip): {
   hashtags: string[]; paire: [string, string] | null; score: [number, number] | null
 } {
@@ -177,6 +206,27 @@ export function clesDAppariement(c: Clip): {
       hashtags,
       paire: [avecScore[1].trim(), avecScore[4].trim()],
       score: [Number(avecScore[2]), Number(avecScore[3])],
+    }
+  }
+
+  // 1 bis. ÉQUIPE-ÉQUIPE SUIVI DU SCORE — Serie A.
+  //    « FIORENTINA-COMO 1-3 | EXTENDED HIGHLIGHTS » : la paire et le
+  //    score se touchent, sans séparateur entre eux. Le motif 1 ne le voit
+  //    pas (il attend un nom APRÈS le score) et le motif 3 non plus (le
+  //    score mord sur le second nom). Six résumés de Serie A sont entrés
+  //    sans équipes le 20/10, donc sans carte et sans reel possible.
+  //
+  //    Le double tiret rend ce motif sûr là où le motif 3 est prudent :
+  //    c'est le score qui l'ancre, pas une supposition.
+  const avecTiretScore = t.match(new RegExp(`(?:^|\\|)\\s*(${NOM})\\s*[-–]\\s*(${NOM})\\s+(\\d{1,2})\\s*[-–]\\s*(\\d{1,2})\\s*(?:\\||$)`, 'u'))
+  if (avecTiretScore) {
+    return {
+      hashtags,
+      // « MAXI SINTESI FIORENTINA » n'est pas un club : la Serie A
+      // préfixe ses versions italiennes, et le nom partirait tel quel
+      // dans la légende et sur la carte.
+      paire: [avecTiretScore[1].replace(PREFIXE_DIFFUSEUR, '').trim(), avecTiretScore[2].trim()],
+      score: [Number(avecTiretScore[3]), Number(avecTiretScore[4])],
     }
   }
 

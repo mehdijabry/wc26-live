@@ -36,7 +36,7 @@ import type { Env } from './index'
 import type { AutoMatch } from './automation'
 import { WORKER_PUBLIC, bigMatchesToday, fbPost, labelAr, leagueAr, log, renderImage, sbHeaders, studio, toDraw } from './automation'
 import { logoCompetition } from './competitions'
-import { clesDAppariement, clipsDePlaylist, derniersClips, type Clip } from './youtube'
+import { clesDAppariement, clipsDePlaylist, derniersClips, estPerime, type Clip } from './youtube'
 import { captionJourneeResumes } from './accroches'
 import { ressemblance } from './pronostics'
 
@@ -325,6 +325,9 @@ export async function scanResumes(env: Env, date: string): Promise<string> {
       // porte souvent « Highlights » dans son pied de chaîne.
       const kind = classer(c.titre)
       if (kind === 'autre') continue
+      // Une rediffusion d'une saison passée porte un score, et ce score
+      // n'est pas celui d'aujourd'hui. Voir `estPerime`.
+      if (estPerime(c.titre)) continue
       if (s.motCle && !s.motCle.test(`${c.titre} ${c.description}`)) continue
       // Un résumé sans paire d'équipes reconnue n'est pas un résumé de
       // match : c'est une compilation de journée (« EVERY Weekend Goal »).
@@ -1194,6 +1197,12 @@ export async function rattacherOrphelins(env: Env, date: string): Promise<string
   for (const x of rows) {
     const s = SOURCES.find((o) => o.cle === x.source)
     if (!s) continue
+    // LA MÊME GARDE QU'À L'ENTRÉE. Cette passe recolle un orphelin à un
+    // match D'AUJOURD'HUI : une rediffusion de la saison passée qui porte
+    // la même affiche — Juventus-Lazio revient chaque année — se verrait
+    // attribuer le match du jour, avec son score à lui. La vidéo serait
+    // vieille d'un an derrière un résultat du soir.
+    if (estPerime(x.titre)) continue
     const k = clesDAppariement({ videoId: x.video_id, titre: x.titre, description: '', publie: '', chaine: '' })
     const m = k.paire ? trouverMatch(pool, k.paire, s.slug) : null
     if (!m) continue
