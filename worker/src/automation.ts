@@ -678,7 +678,7 @@ export async function processPendingComments(env: Env, date: string): Promise<vo
   else await env.CACHE.delete('auto:pendingcomments')
 }
 
-const GRAPH = 'https://graph.facebook.com/v21.0'
+export const GRAPH = 'https://graph.facebook.com/v21.0'
 type GraphJson = Record<string, unknown> & { id?: string | number; error?: { message?: string; code?: number } }
 export async function graph(env: Env, token: string, method: 'GET' | 'POST' | 'DELETE', path: string, params: Record<string, string>): Promise<GraphJson> {
   const url = new URL(`${GRAPH}${path}`)
@@ -3587,6 +3587,32 @@ export async function rapportQuotidien(env: Env, date: string): Promise<string> 
   lignes.push(sorties.length
     ? '<ul>' + sorties.map(([nom, n]) => `<li>${nom} : ${n}</li>`).join('') + '</ul>'
     : '<p>Aucune publication.</p>')
+  // ── CE QUI MARCHE ─────────────────────────────────────────────────
+  // ON NE MESURE PAS UNE SECONDE FOIS. `review.ts` relève déjà les reels
+  // de la page avec leurs insights, et il le fait mieux : médianes et non
+  // moyennes — la distribution des vues est trop asymétrique pour une
+  // moyenne —, taux de complétion, et découpage par durée, format, langue
+  // et créneau. Le panneau admin l'affiche depuis septembre.
+  //
+  // Le rapport n'en reprend que la tête : les chiffres qu'on veut voir
+  // sans ouvrir une page, et la première recommandation. Deux relevés
+  // parallèles finiraient par se contredire, et c'est la divergence qui
+  // coûte cher — pas le chiffre manquant.
+  try {
+    const { playbookReviewData } = await import('./review')
+    const d = await playbookReviewData(env, { days: 7, limit: 40, refresh: false })
+    const a = d.review.account
+    const chiffres = [
+      `${d.review.count} reels`,
+      a.medianViews != null ? `${a.medianViews} vues médianes` : null,
+      a.medianCompletion != null ? `complétion ${Math.round(a.medianCompletion * 100)} %` : null,
+      `${a.perDay.toFixed(1)}/jour`,
+    ].filter(Boolean).join(' · ')
+    lignes.push(`<p style="margin:14px 0 4px"><b>Ce qui marche</b> — 7 jours</p><p style="margin:0 0 6px">${chiffres}</p>`)
+    const reco = d.review.recommendations[0] ?? d.review.actions[0]
+    if (reco) lignes.push(`<p style="margin:0 0 4px;color:#555">${reco}</p>`)
+  } catch { /* le rapport part sans le bilan plutôt que pas du tout */ }
+
   lignes.push(`<p style="color:#888;font-size:13px">${entrees.length} entrées au journal · ${reussis.length} réussies · `
     + `<a href="${SITE}/admin">panneau admin</a></p>`)
 
