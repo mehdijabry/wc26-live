@@ -3438,6 +3438,182 @@ async function alerteBanqueSujets(env: Env, date: string, restants: number, parJ
   await log(env, date, 'tale-stock', m.ok, `${restants} sujet(s) restant(s) — mail ${m.ok ? 'envoyé' : 'échoué: ' + (m.note ?? '')}`)
 }
 
+/**
+ * LE RAPPORT DU MATIN — ce qui est sorti hier, et surtout ce qui s'est tu.
+ *
+ * ── POURQUOI IL EXISTE ────────────────────────────────────────────────
+ * Le journal KV contient tout et n'est lu par personne. Le 19/10, les
+ * résumés sont sortis à TROIS sur huit et personne ne l'a su pendant une
+ * journée entière. Le 20, la journée n'est pas sortie du tout. Dans les
+ * deux cas le journal le disait — il fallait aller le chercher.
+ *
+ * Une chaîne de publication qui s'arrête doit VENIR À TOI. C'est la règle
+ * posée après la file de rendus gelée du 13/10 ; elle n'était appliquée
+ * qu'aux jetons Facebook.
+ *
+ * ── POURQUOI IL PART TOUS LES JOURS, MÊME QUAND TOUT VA BIEN ──────────
+ * Un courriel qui n'arrive qu'en cas de problème ne permet jamais de
+ * distinguer « rien n'a échoué » de « le rapport lui-même est cassé ».
+ * Il part donc chaque matin, et c'est l'OBJET qui porte le verdict :
+ * « 31 publications, rien à signaler » se lit sans ouvrir. On n'ouvre que
+ * lorsque l'objet le demande.
+ *
+ * ── CE QU'IL SAIT REPÉRER QUE LE JOURNAL NE DIT PAS ───────────────────
+ * Un silence. Le journal ne contient que ce qui s'est produit : une tâche
+ * qui n'a jamais démarré n'y laisse aucune trace, et c'est exactement la
+ * panne la plus coûteuse. On compare donc les RÉGLAGES — ce qui est censé
+ * tourner — à ce que le journal montre.
+ */
+type Attendu = { actif: boolean; job: string; quoi: string }
+
+export async function rapportQuotidien(env: Env, date: string): Promise<string> {
+  const hier = yesterdayParts()
+  // `yesterdayParts()` rend une étiquette anglaise — elle sert aussi aux
+  // légendes. Ici le courriel est en français : on la reformule.
+  const jourFr = new Intl.DateTimeFormat('fr-FR', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'long' })
+    .format(new Date(`${hier.date}T12:00:00Z`))
+  const entrees = await readLog(env, hier.date)
+  if (!entrees.length) {
+    // Aucune entrée du tout : ce n'est pas « une journée calme », c'est le
+    // worker qui n'a pas tourné. Ça se dit en toutes lettres.
+    const m = await sendMail(env,
+      `🚨 Pressing 90 · ${jourFr} — le journal est VIDE`,
+      enveloppe('Le journal de la journée est vide', [
+        `Aucune entrée pour le ${hier.date}. Le worker n'a rien fait, ou n'a pas tourné du tout.`,
+        'À vérifier en premier : les crons du worker, puis le panneau admin → Automatisation.',
+      ]),
+      `Aucune entrée au journal pour le ${hier.date}.`)
+    await log(env, date, 'rapport', m.ok, `journal vide pour ${hier.date} — mail ${m.ok ? 'envoyé' : 'échoué'}`)
+    return 'journal vide'
+  }
+
+  const s = await loadAutomationSettings(env)
+  const par = (job: string) => entrees.filter((e) => e.job === job)
+  const reussis = entrees.filter((e) => e.ok)
+  const echecs = entrees.filter((e) => !e.ok)
+
+  // ── CE QUI S'EST TU ───────────────────────────────────────────────
+  // Seules les tâches À HEURE FIXE entrent ici. Un reel de but dépend
+  // d'un but : son absence n'est pas une panne, et la signaler chaque
+  // matin apprendrait à ignorer le rapport.
+  const attendus: Attendu[] = [
+    { actif: s.enabled && s.matchday, job: 'matchday-post', quoi: 'l’album des matchs du jour' },
+    { actif: s.enabled && s.resultsReel, job: 'results-reel', quoi: 'le reel des résultats' },
+    { actif: s.enabled && s.barcaDaily, job: 'barca-digest', quoi: 'le résumé Barça de 9 h' },
+    { actif: s.enabled && s.articles, job: 'article', quoi: 'les articles' },
+    { actif: s.enabled && s.tales, job: 'tale', quoi: 'les Football Stories' },
+    { actif: s.resumesVideo !== false, job: 'yt-scan', quoi: 'la détection des résumés' },
+  ]
+  const muets = attendus.filter((a) => a.actif && par(a.job).length === 0)
+
+  // ── LA JOURNÉE DE RÉSUMÉS A-T-ELLE ÉTÉ CLOSE ? ────────────────────
+  // C'est LE signal qui manquait. Le verrou `fb:journee-resumes:<jour>`
+  // est posé quand la journée sort — ou marqué « abandon » quand elle
+  // renonce. Absent au matin, la journée n'a jamais été tranchée : c'est
+  // exactement ce qui s'est passé le 19 (trois reels sur huit) et le 20
+  // (rien du tout), et dans les deux cas rien ne l'a dit.
+  //
+  // Ce n'est pas rangé dans les silences : une journée sans aucun résumé
+  // détecté est légitime. C'est une LIGNE DE FAIT, et elle est en tête.
+  const verrou = await env.CACHE.get(`fb:journee-resumes:${hier.date}`)
+  // COMBIEN Y AVAIT-IL À PUBLIER ? Sans ce chiffre, « jamais close »
+  // alarmerait aussi les jours sans football — et une alerte qui crie
+  // pour rien apprend à ne plus la lire. Un verrou absent n'est une
+  // anomalie que s'il y avait quelque chose à publier.
+  let detectes = -1
+  try {
+    const rr = await fetch(
+      `${env.SUPABASE_URL}/rest/v1/videos_matchs?select=video_id&kind=in.(resume,resume_court,resume_long)`
+      + `&publie_at=gte.${hier.date}T00:00:00Z&publie_at=lte.${hier.date}T23:59:59.999Z&limit=200`,
+      { headers: sbHeaders(env) },
+    )
+    if (rr.ok) detectes = ((await rr.json()) as unknown[]).length
+  } catch { /* le rapport part quand même */ }
+
+  const reelsSortis = par('resumes-reel').filter((e) => e.ok).length
+  const journeeEnPanne = !verrou && detectes > 0
+  const etatJournee = verrou === '1'
+    ? `publiée — ${reelsSortis} reel(s) pour ${detectes < 0 ? '?' : detectes} résumé(s) détecté(s)`
+    : verrou === 'abandon'
+      ? 'ABANDONNÉE après trois tentatives'
+      : detectes === 0
+        ? 'aucun résumé détecté ce jour-là — rien à publier'
+        : `JAMAIS CLOSE — ${detectes < 0 ? 'des' : detectes} résumé(s) détecté(s), ni publiés ni abandonnés`
+
+  // ── LES PUBLICATIONS, PAR FAMILLE ─────────────────────────────────
+  const familles: Array<[string, string]> = [
+    ['resumes-reel', 'résumés'], ['goal-reel', 'buts'], ['soiree-reel', 'soirée européenne'],
+    ['results-reel', 'résultats'], ['matchday-post', 'matchs du jour'], ['matchday-reel', 'matchs du jour (reel)'],
+    ['barca-digest', 'Barça'], ['article-post', 'articles'], ['tale-reel', 'stories'], ['goal-anim', 'reconstitutions'],
+  ]
+  const sorties = familles
+    .map(([job, nom]) => [nom, par(job).filter((e) => e.ok).length] as const)
+    .filter(([, n]) => n > 0)
+  const total = sorties.reduce((a, [, n]) => a + n, 0)
+
+  // ── LES ÉCHECS, REGROUPÉS ─────────────────────────────────────────
+  // Vingt-quatre fois la même erreur, c'est UNE erreur qui se répète. La
+  // lister vingt-quatre fois noierait les autres.
+  const parEchec = new Map<string, { n: number; note: string; heure: string }>()
+  for (const e of echecs) {
+    const v = parEchec.get(e.job)
+    if (v) v.n++
+    else parEchec.set(e.job, { n: 1, note: String(e.note ?? '').slice(0, 220), heure: String(e.t ?? '').slice(11, 16) })
+  }
+
+  // ── L'OBJET PORTE LE VERDICT ──────────────────────────────────────
+  const souci = muets.length > 0 || parEchec.size > 0 || journeeEnPanne || verrou === 'abandon'
+  const sujet = souci
+    ? `⚠️ Pressing 90 · ${jourFr} — ` + [
+        journeeEnPanne || verrou === 'abandon' ? 'résumés non publiés' : '',
+        muets.length ? `${muets.length} silence(s)` : '',
+        parEchec.size ? `${parEchec.size} échec(s)` : '',
+      ].filter(Boolean).join(', ')
+    : `✅ Pressing 90 · ${jourFr} — ${total} publications, rien à signaler`
+
+  const lignes: string[] = []
+  lignes.push(`<p style="margin:0 0 14px;padding:10px 12px;background:#f5f3f0;border-radius:8px">`
+    + `<b>Journée de résumés</b> : ${etatJournee}</p>`)
+  if (muets.length) {
+    lignes.push('<p style="margin:14px 0 4px"><b>Ce qui ne s’est jamais déclenché</b> — activé dans les réglages, absent du journal :</p>')
+    lignes.push('<ul>' + muets.map((m) => `<li>${m.quoi} <span style="color:#888">(${m.job})</span></li>`).join('') + '</ul>')
+  }
+  if (parEchec.size) {
+    lignes.push('<p style="margin:14px 0 4px"><b>Ce qui a échoué</b></p>')
+    lignes.push('<ul>' + [...parEchec.entries()].map(([job, v]) =>
+      `<li><code>${job}</code>${v.n > 1 ? ` ×${v.n}` : ''} — ${v.heure} — ${v.note}</li>`).join('') + '</ul>')
+  }
+  lignes.push('<p style="margin:14px 0 4px"><b>Ce qui est sorti</b></p>')
+  lignes.push(sorties.length
+    ? '<ul>' + sorties.map(([nom, n]) => `<li>${nom} : ${n}</li>`).join('') + '</ul>'
+    : '<p>Aucune publication.</p>')
+  lignes.push(`<p style="color:#888;font-size:13px">${entrees.length} entrées au journal · ${reussis.length} réussies · `
+    + `<a href="${SITE}/admin">panneau admin</a></p>`)
+
+  const texte = [
+    sujet,
+    muets.length ? 'Silences : ' + muets.map((m) => m.quoi).join(', ') : '',
+    parEchec.size ? 'Échecs : ' + [...parEchec.keys()].join(', ') : '',
+    `Journée de résumés : ${etatJournee}`,
+    'Sorti : ' + (sorties.map(([n, c]) => `${n} ${c}`).join(', ') || 'rien'),
+  ].filter(Boolean).join('\n')
+
+  const m = await sendMail(env, sujet, enveloppeHtml(jourFr, lignes), texte)
+  await log(env, date, 'rapport', m.ok,
+    `${hier.date} — ${total} publications, ${muets.length} silence(s), ${parEchec.size} échec(s) — mail ${m.ok ? 'envoyé' : 'échoué: ' + (m.note ?? '')}`)
+  return sujet
+}
+
+/** Le gabarit du courriel : sobre, lisible sur un téléphone, sans image. */
+function enveloppeHtml(titre: string, lignes: string[]): string {
+  return `<div style="font-family:system-ui,-apple-system,sans-serif;max-width:560px;margin:0 auto;padding:18px;line-height:1.55;color:#1a1a1a">`
+    + `<h2 style="margin:0 0 14px;font-size:17px">Pressing 90’ — ${titre}</h2>`
+    + lignes.join('') + '</div>'
+}
+function enveloppe(titre: string, paragraphes: string[]): string {
+  return enveloppeHtml(titre, paragraphes.map((x) => `<p style="margin:0 0 10px">${x}</p>`))
+}
+
 /** Per-minute entry point (from scheduled()). Cheap when idle. */
 export async function runAutomationTick(env: Env): Promise<void> {
   const { date, hour, minute, label } = localParts()
@@ -3494,6 +3670,17 @@ export async function runAutomationTick(env: Env): Promise<void> {
     try { await runResultsReel(env, s, date, y.label, hour, minute, false, y.date) } catch (e) { await log(env, date, 'results-reel', false, String(e)) }
   }
   if (minute === 7) { try { await checkTokenAndAlert(env, date, 'au contrôle horaire') } catch (e) { await log(env, date, 'token-alert', false, String(e)) } }
+  // LE RAPPORT DE LA VEILLE, à 6 h 30 locales : la journée d'hier est close
+  // depuis longtemps — le dernier reel de la file part au plus tard vers
+  // minuit — et il arrive avant que la journée d'aujourd'hui commence.
+  // Le verrou KV tient même si deux ticks se chevauchent.
+  if (hour === 6 && minute === 30) {
+    const claim = `auto:rapport:${date}`
+    if (!(await env.CACHE.get(claim))) {
+      await env.CACHE.put(claim, '1', { expirationTtl: 36 * 3600 })
+      try { await rapportQuotidien(env, date) } catch (e) { await log(env, date, 'rapport', false, String(e).slice(0, 200)) }
+    }
+  }
   try { await processTaleQueue(env, date) } catch (e) { await log(env, date, 'tale-reel', false, String(e)) }
   try { await processReelQueue(env, date) } catch (e) { await log(env, date, 'tale-reel', false, String(e)) }
   if (s.goalAnim) { try { await processGoalAnim(env, s, date) } catch (e) { await log(env, date, 'goal-anim', false, String(e)) } }
